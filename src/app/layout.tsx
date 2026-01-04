@@ -1,0 +1,50 @@
+import type { Metadata, Viewport } from "next";
+import { GeistSans } from "geist/font/sans";
+import { ThemeProvider } from "@/components/providers/theme-provider";
+import { Toaster as SonnerToaster } from "sonner";
+import { CommandPalette } from "@/components/command-palette/command-palette";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: "Lumina - AI Chat Workstation",
+  description: "Premium LLM chat frontend with model control, context management, and agentic tools",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Lumina",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${GeistSans.variable} font-sans antialiased`}>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {children}
+          <CommandPalette />
+          <SonnerToaster richColors closeButton />
+        </ThemeProvider>
+      </body>
+    </html>
+  );
+}
