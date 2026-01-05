@@ -12,11 +12,13 @@ import {
 } from "@/components/ui/select";
 import { useSettingsStore } from "@/stores/settings-store";
 import { MODELS } from "@/lib/constants/models";
+import { useModelsStore } from "@/stores/models-store";
 import { toast } from "sonner";
 
 export function GeneralSettings() {
   const { defaultModelId: savedDefaultModelId, updateDefaultModel } =
     useSettingsStore();
+  const { models, loadModels } = useModelsStore();
   const [defaultModelId, setDefaultModelId] = useState(
     savedDefaultModelId || MODELS[0].id
   );
@@ -26,6 +28,10 @@ export function GeneralSettings() {
       setDefaultModelId(savedDefaultModelId);
     }
   }, [savedDefaultModelId]);
+
+  useEffect(() => {
+    loadModels().catch(() => {});
+  }, [loadModels]);
 
   const handleSave = async () => {
     await updateDefaultModel(defaultModelId);
@@ -50,7 +56,7 @@ export function GeneralSettings() {
               <SelectValue placeholder="Select a model" />
             </SelectTrigger>
             <SelectContent>
-              {MODELS.map((model) => (
+              {(models.length > 0 ? models : MODELS).map((model) => (
                 <SelectItem key={model.id} value={model.id}>
                   {model.name} ({model.provider})
                 </SelectItem>

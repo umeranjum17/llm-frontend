@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Plus, FolderOpen, ChevronDown, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,13 @@ export function ProjectSelector({
   const projects = useLiveQuery(() => getAllProjects(), []);
 
   const currentProject = projects?.find((p) => p.id === currentProjectId);
+
+  useEffect(() => {
+    if (!projects) return;
+    if (currentProjectId && !currentProject) {
+      onProjectChange(undefined);
+    }
+  }, [projects, currentProjectId, currentProject, onProjectChange]);
 
   const handleNewProject = () => {
     setEditingProjectId(undefined);

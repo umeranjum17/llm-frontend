@@ -1,6 +1,7 @@
 import { encode } from "gpt-tokenizer";
 import { getModelById } from "@/lib/constants/models";
 import type { Message } from "@/lib/db/schema";
+import { getImagesFromMessageContent, getTextFromMessageContent } from "@/lib/utils/message-content";
 
 export function countTokens(text: string): number {
   try {
@@ -31,7 +32,9 @@ export function countMessagesTokens(messages: Message[]): number {
 
   for (const message of messages) {
     // Count message content
-    total += countTokens(message.content);
+    total += countTokens(getTextFromMessageContent(message.content));
+    // Heuristic overhead for images (exact tokenization is provider-specific).
+    total += getImagesFromMessageContent(message.content).length * 200;
 
     // Add overhead for message formatting (role, etc.)
     total += 4; // Approximate overhead per message

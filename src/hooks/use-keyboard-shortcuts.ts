@@ -3,20 +3,20 @@ import { useHotkeys } from "react-hotkeys-hook";
 import { useRouter } from "next/navigation";
 import { useUIStore } from "@/stores/ui-store";
 import { createChat } from "@/lib/db/queries";
-import { MODELS } from "@/lib/constants/models";
+import { DEFAULT_MODEL } from "@/lib/constants/models";
 import { toast } from "sonner";
 
 export function useKeyboardShortcuts() {
   const router = useRouter();
   const { setActiveChatId } = useUIStore();
 
-  // Cmd/Ctrl + N - New Chat
-  useHotkeys("mod+n", async (e) => {
+  // Alt/Option + Shift + N - New Chat (avoids common browser/OS conflicts)
+  useHotkeys("alt+shift+n", async (e) => {
     e.preventDefault();
     try {
       const newChat = await createChat({
         title: "New Chat",
-        modelId: MODELS[0].id,
+        modelId: DEFAULT_MODEL.id,
       });
       setActiveChatId(newChat.id);
       toast.success("New chat created");

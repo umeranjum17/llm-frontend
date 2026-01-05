@@ -13,12 +13,12 @@ interface Shortcut {
 const SHORTCUTS: Shortcut[] = [
   // Navigation
   {
-    keys: ["Cmd", "K"],
+    keys: ["Cmd", "Shift", "P"],
     description: "Open command palette",
     category: "Navigation",
   },
   {
-    keys: ["Cmd", "N"],
+    keys: ["Alt", "Shift", "N"],
     description: "New chat",
     category: "Navigation",
   },
@@ -84,7 +84,12 @@ export function KeyboardShortcutsSettings() {
   const renderKey = (key: string) => {
     // Replace "Cmd" with "⌘" on Mac, "Ctrl" on Windows/Linux
     const isMac = typeof window !== "undefined" && navigator.platform.includes("Mac");
-    const displayKey = key === "Cmd" ? (isMac ? "⌘" : "Ctrl") : key;
+    const displayKey =
+      key === "Cmd"
+        ? (isMac ? "⌘" : "Ctrl")
+        : key === "Alt"
+          ? (isMac ? "⌥" : "Alt")
+          : key;
 
     return (
       <Badge

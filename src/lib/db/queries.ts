@@ -1,4 +1,4 @@
-import { db, type Chat, type Message, type Project, type ProjectFile, type ModelFavorite, type ApiKey, type UserSettings } from "./schema";
+import { db, type Chat, type Message, type Project, type ProjectFile, type ModelFavorite, type ApiKey, type UserSettings, type Agent, type Prompt } from "./schema";
 
 // ============= CHAT QUERIES =============
 
@@ -69,6 +69,55 @@ export async function searchChats(query: string) {
 
 export async function getMessages(chatId: string) {
   return await db.messages.where("chatId").equals(chatId).sortBy("createdAt");
+}
+
+export async function getMessageById(id: string) {
+  return await db.messages.get(id);
+}
+
+export async function getLastMessage(chatId: string) {
+  const messages = await db.messages.where("chatId").equals(chatId).sortBy("createdAt");
+  return messages[messages.length - 1];
+}
+
+export async function getMessagesForBranch(chatId: string, leafMessageId?: string) {
+  const messages = await getMessages(chatId);
+  if (messages.length === 0) return [];
+
+  const byId = new Map(messages.map((m) => [m.id, m] as const));
+  let cursor = leafMessageId ? byId.get(leafMessageId) : messages[messages.length - 1];
+  if (!cursor) cursor = messages[messages.length - 1];
+
+  const path: typeof messages = [];
+  const visited = new Set<string>();
+
+  while (cursor && !visited.has(cursor.id)) {
+    visited.add(cursor.id);
+    path.push(cursor);
+    cursor = cursor.parentId ? byId.get(cursor.parentId) : undefined;
+  }
+
+  return path.reverse();
+}
+
+export async function getMessageSiblings(chatId: string, messageId: string) {
+  const messages = await getMessages(chatId);
+  const target = messages.find((m) => m.id === messageId);
+  if (!target) return [];
+  return messages
+    .filter((m) => (m.parentId || "") === (target.parentId || ""))
+    .sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function chatHasBranches(chatId: string) {
+  const messages = await getMessages(chatId);
+  const counts = new Map<string, number>();
+  for (const m of messages) {
+    const key = m.parentId || "";
+    counts.set(key, (counts.get(key) || 0) + 1);
+    if ((counts.get(key) || 0) > 1) return true;
+  }
+  return false;
 }
 
 export async function addMessage(message: Omit<Message, "id" | "createdAt">) {
@@ -238,6 +287,7 @@ export async function getSettings() {
       theme: "system",
       enabledTools: [],
       shortcuts: {},
+      currentProjectId: undefined,
       updatedAt: Date.now(),
     };
     await db.settings.add(settings);
@@ -247,6 +297,118 @@ export async function getSettings() {
 
 export async function updateSettings(updates: Partial<Omit<UserSettings, "id">>) {
   await db.settings.update("default", { ...updates, updatedAt: Date.now() });
+}
+
+// ============= AGENT QUERIES =============
+
+export async function getAllAgents() {
+  return await db.agents.orderBy("updatedAt").reverse().toArray();
+}
+
+export async function getAgentById(id: string) {
+  return await db.agents.get(id);
+}
+
+export async function getActiveAgents() {
+  return await db.agents.where("isActive").equals(1).toArray();
+}
+
+export async function getBuiltInAgents() {
+  return await db.agents.where("isBuiltIn").equals(1).toArray();
+}
+
+export async function addAgent(agent: Omit<Agent, "id" | "createdAt" | "updatedAt" | "usageCount">) {
+  const now = Date.now();
+  const newAgent: Agent = {
+    ...agent,
+    id: crypto.randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+    usageCount: 0,
+  };
+  await db.agents.add(newAgent);
+  return newAgent;
+}
+
+export async function upsertAgent(agent: Agent) {
+  await db.agents.put({ ...agent, updatedAt: Date.now() });
+}
+
+export async function updateAgent(id: string, updates: Partial<Agent>) {
+  await db.agents.update(id, { ...updates, updatedAt: Date.now() });
+}
+
+export async function deleteAgent(id: string) {
+  await db.agents.delete(id);
+}
+
+export async function incrementAgentUsage(agentId: string) {
+  const agent = await db.agents.get(agentId);
+  if (!agent) return;
+  await db.agents.update(agentId, {
+    usageCount: (agent.usageCount || 0) + 1,
+    updatedAt: Date.now(),
+  });
+}
+
+// ============= PROMPT QUERIES =============
+
+export async function getAllPrompts() {
+  return await db.prompts.orderBy("updatedAt").reverse().toArray();
+}
+
+export async function getPromptById(id: string) {
+  return await db.prompts.get(id);
+}
+
+export async function searchPrompts(query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) return await getAllPrompts();
+  return await db.prompts
+    .filter((p) => p.title.toLowerCase().includes(q) || p.content.toLowerCase().includes(q))
+    .toArray();
+}
+
+export async function getPromptsByCategory(category: string) {
+  return await db.prompts.where("category").equals(category).toArray();
+}
+
+export async function getFavoritePrompts() {
+  return await db.prompts.where("isFavorite").equals(1).toArray();
+}
+
+export async function addPrompt(prompt: Omit<Prompt, "id" | "createdAt" | "updatedAt" | "usageCount">) {
+  const now = Date.now();
+  const newPrompt: Prompt = {
+    ...prompt,
+    id: crypto.randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+    usageCount: 0,
+  };
+  await db.prompts.add(newPrompt);
+  return newPrompt;
+}
+
+export async function upsertPrompt(prompt: Prompt) {
+  await db.prompts.put({ ...prompt, updatedAt: Date.now() });
+}
+
+export async function updatePrompt(id: string, updates: Partial<Prompt>) {
+  await db.prompts.update(id, { ...updates, updatedAt: Date.now() });
+}
+
+export async function deletePrompt(id: string) {
+  await db.prompts.delete(id);
+}
+
+export async function incrementPromptUsage(promptId: string) {
+  const prompt = await db.prompts.get(promptId);
+  if (!prompt) return;
+  await db.prompts.update(promptId, {
+    usageCount: (prompt.usageCount || 0) + 1,
+    updatedAt: Date.now(),
+  });
 }
 
 // ============= TAG QUERIES =============

@@ -3,6 +3,8 @@
  * Defines which parameters each model supports
  */
 
+import { getModelById } from "@/lib/constants/models";
+
 export interface ModelCapabilities {
   supportsSystemPrompt: boolean;
   supportsTemperature: boolean;
@@ -143,5 +145,12 @@ export const DEFAULT_CAPABILITIES: ModelCapabilities = {
 };
 
 export function getModelCapabilities(modelId: string): ModelCapabilities {
-  return MODEL_CAPABILITIES[modelId] || DEFAULT_CAPABILITIES;
+  const base = MODEL_CAPABILITIES[modelId] || DEFAULT_CAPABILITIES;
+  const model = getModelById(modelId);
+  if (!model) return base;
+  return {
+    ...base,
+    supportsVision: model.supportsVision ?? base.supportsVision,
+    supportsReasoning: model.supportsReasoning ?? base.supportsReasoning,
+  };
 }

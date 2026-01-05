@@ -3,29 +3,85 @@
 import { useEffect, useRef, useState } from "react";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 import { useLiveQuery } from "dexie-react-hooks";
-import { getMessages } from "@/lib/db/queries";
+import { getChatById, getMessages, updateChat } from "@/lib/db/queries";
 import { MessageItem } from "./message-item";
 import { useChat } from "@/hooks/use-chat";
 import { Loader2, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { Message } from "@/lib/db/schema";
+import { BranchNavigator } from "./branch-navigator";
 
 interface MessageListProps {
   chatId: string;
   arenaModelId?: string; // Optional filter for Arena Mode
 }
 
+function buildMaps(allMessages: Message[]) {
+  const byId = new Map<string, Message>();
+  const childrenByParent = new Map<string, Message[]>();
+
+  for (const m of allMessages) byId.set(m.id, m);
+
+  for (const m of allMessages) {
+    const key = m.parentId || "";
+    const arr = childrenByParent.get(key) || [];
+    arr.push(m);
+    childrenByParent.set(key, arr);
+  }
+
+  for (const [key, arr] of childrenByParent.entries()) {
+    arr.sort((a, b) => a.createdAt - b.createdAt);
+    childrenByParent.set(key, arr);
+  }
+
+  return { byId, childrenByParent };
+}
+
+function getBranchPath(allMessages: Message[], leafId?: string) {
+  if (allMessages.length === 0) return [];
+  const { byId } = buildMaps(allMessages);
+  const fallbackLeaf = allMessages[allMessages.length - 1];
+  let cursor = leafId ? byId.get(leafId) : fallbackLeaf;
+  if (!cursor) cursor = fallbackLeaf;
+
+  const visited = new Set<string>();
+  const path: Message[] = [];
+  while (cursor && !visited.has(cursor.id)) {
+    visited.add(cursor.id);
+    path.push(cursor);
+    cursor = cursor.parentId ? byId.get(cursor.parentId) : undefined;
+  }
+  return path.reverse();
+}
+
+function getLatestLeafFrom(messageId: string, childrenByParent: Map<string, Message[]>) {
+  let cursor = messageId;
+  const visited = new Set<string>();
+  while (!visited.has(cursor)) {
+    visited.add(cursor);
+    const children = childrenByParent.get(cursor) || [];
+    if (children.length === 0) break;
+    cursor = children[children.length - 1].id;
+  }
+  return cursor;
+}
+
 export function MessageList({ chatId, arenaModelId }: MessageListProps) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
-  const { continueResponse, continuingMessageId, editMessage } = useChat(chatId);
+  const { continueResponse, continuingMessageId, editMessage, regenerateAssistant } = useChat(chatId);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [showNewMessagesButton, setShowNewMessagesButton] = useState(false);
   const previousMessageCount = useRef(0);
 
   // Use Dexie live query for reactive updates
   const allMessages = useLiveQuery(() => getMessages(chatId), [chatId]);
+  const chat = useLiveQuery(() => getChatById(chatId), [chatId]);
 
-  // Filter messages for Arena Mode if needed
-  const messages = allMessages?.filter(m => {
+  const activeLeafId = chat?.activeBranchLeafId;
+  const branchPath = allMessages ? getBranchPath(allMessages, activeLeafId) : undefined;
+
+  // Filter messages for Arena Mode if needed (within branch)
+  const messages = branchPath?.filter((m) => {
     if (!arenaModelId) return true;
     if (m.role !== "assistant") return true;
     return m.modelId === arenaModelId;
@@ -81,18 +137,60 @@ export function MessageList({ chatId, arenaModelId }: MessageListProps) {
     );
   }
 
+  const { childrenByParent } = allMessages ? buildMaps(allMessages) : { childrenByParent: new Map<string, Message[]>() };
+
+  const switchSibling = async (message: Message, direction: -1 | 1) => {
+    if (!allMessages) return;
+    const parentKey = message.parentId || "";
+    const siblings = (childrenByParent.get(parentKey) || []).filter((m) => m.role !== "tool");
+    if (siblings.length <= 1) return;
+
+    const currentIndex = siblings.findIndex((m) => m.id === message.id);
+    if (currentIndex === -1) return;
+
+    const nextIndex = (currentIndex + direction + siblings.length) % siblings.length;
+    const siblingId = siblings[nextIndex].id;
+    const newLeaf = getLatestLeafFrom(siblingId, childrenByParent);
+    await updateChat(chatId, { activeBranchLeafId: newLeaf, hasBranches: true });
+  };
+
+  const handleFork = async (messageId: string) => {
+    await updateChat(chatId, { activeBranchLeafId: messageId, hasBranches: true });
+  };
+
   return (
     <div className="relative h-full">
       <Virtuoso
         ref={virtuosoRef}
         data={messages}
         itemContent={(index, message) => (
-          <MessageItem
-            message={message}
-            onContinue={continueResponse}
-            onEdit={editMessage}
-            isContinuing={continuingMessageId === message.id}
-          />
+          <div>
+            <MessageItem
+              message={message}
+              onContinue={continueResponse}
+              onEdit={editMessage}
+              onFork={handleFork}
+              onRegenerate={regenerateAssistant}
+              isContinuing={continuingMessageId === message.id}
+            />
+            {(() => {
+              const parentKey = message.parentId || "";
+              const siblings = (childrenByParent.get(parentKey) || []).filter((m) => m.role !== "tool");
+              if (siblings.length <= 1) return null;
+              const idx = siblings.findIndex((m) => m.id === message.id);
+              if (idx === -1) return null;
+              return (
+                <div className="mx-auto max-w-3xl px-4 pb-4 -mt-4">
+                  <BranchNavigator
+                    index={idx}
+                    count={siblings.length}
+                    onPrev={() => switchSibling(message, -1)}
+                    onNext={() => switchSibling(message, 1)}
+                  />
+                </div>
+              );
+            })()}
+          </div>
         )}
         followOutput={isAtBottom ? "smooth" : false}
         alignToBottom

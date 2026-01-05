@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   Dialog,
@@ -16,8 +16,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Star, Check, ChevronRight, ChevronDown } from "lucide-react";
-import { MODELS, type Model, getModelById } from "@/lib/constants/models";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Search, Star, Check, ChevronRight, ChevronDown, RefreshCcw } from "lucide-react";
+import { type Model, getModelById } from "@/lib/constants/models";
 import { cn } from "@/lib/utils";
 import {
   getFavoriteModels,
@@ -27,12 +28,17 @@ import {
 } from "@/lib/db/queries";
 import { useModelSettingsStore } from "@/stores/model-settings-store";
 import { ParameterPresets } from "@/components/settings/parameter-presets";
+import { useModelsStore } from "@/stores/models-store";
+import { useApiKeysStore } from "@/stores/api-keys-store";
+import { providerLabel } from "@/lib/ai/provider-routing";
 
 interface ModelPickerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   currentModelId: string;
   onSelectModel: (modelId: string) => void;
+  currentProviderId?: string;
+  onSelectProviderId?: (providerId: string | undefined) => void;
 }
 
 export function ModelPickerDialog({
@@ -40,10 +46,17 @@ export function ModelPickerDialog({
   onOpenChange,
   currentModelId,
   onSelectModel,
+  currentProviderId,
+  onSelectProviderId,
 }: ModelPickerDialogProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [manualModelId, setManualModelId] = useState<string>(currentModelId);
+
+  const { models, isLoading: modelsLoading, fetchedAt, loadModels } = useModelsStore();
+  const keys = useApiKeysStore((s) => s.keys);
+  useEffect(() => setManualModelId(currentModelId), [currentModelId, open]);
 
   const {
     currentSettings,
@@ -56,7 +69,7 @@ export function ModelPickerDialog({
   const recentModels = useLiveQuery(() => getRecentModels(5), []);
 
   // Filter models by search and category
-  const filteredModels = MODELS.filter((model) => {
+  const filteredModels = models.filter((model) => {
     const matchesSearch =
       model.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       model.provider.toLowerCase().includes(searchQuery.toLowerCase());
@@ -90,6 +103,17 @@ export function ModelPickerDialog({
     onSelectModel(modelId);
     onOpenChange(false);
   };
+
+  const llmProviderOptions = Array.from(
+    new Map(
+      keys
+        .filter((k) =>
+          ["openrouter", "openai", "anthropic", "groq", "together", "perplexity", "anyscale", "ollama", "lmstudio"].includes(k.provider) ||
+          k.provider.startsWith("custom-openai:")
+        )
+        .map((k) => [k.provider, { id: k.provider, name: k.label || providerLabel(k.provider) }] as const)
+    ).values()
+  );
 
   const handleToggleFavorite = async (
     modelId: string,
@@ -145,7 +169,23 @@ export function ModelPickerDialog({
                   {category.label}
                 </Button>
               ))}
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full text-xs h-7 gap-2"
+                onClick={() => loadModels({ refresh: true })}
+                disabled={modelsLoading}
+                title="Refresh catalog (OpenRouter)"
+              >
+                <RefreshCcw className={cn("h-3.5 w-3.5", modelsLoading && "animate-spin")} />
+                Refresh
+              </Button>
             </div>
+            {fetchedAt ? (
+              <div className="text-[10px] text-muted-foreground">
+                Models updated {new Date(fetchedAt).toLocaleString()}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -243,6 +283,49 @@ export function ModelPickerDialog({
 
           {showAdvanced && (
             <div className="px-6 pb-6 pt-2 space-y-6 animate-in slide-in-from-top-2 duration-200">
+              {onSelectProviderId && (
+                <div className="space-y-2">
+                  <Label>Provider</Label>
+                  <Select
+                    value={currentProviderId || "auto"}
+                    onValueChange={(value) =>
+                      onSelectProviderId(value === "auto" ? undefined : value)
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Auto" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">Auto</SelectItem>
+                      {llmProviderOptions.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Auto prefers direct providers when available, otherwise falls back to OpenRouter.
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label>Manual Model ID</Label>
+                <Input
+                  placeholder="e.g., gpt-4o / claude-3-5-sonnet-20241022 / llama3.1"
+                  value={manualModelId}
+                  onChange={(e) => setManualModelId(e.target.value)}
+                  onBlur={() => {
+                    const trimmed = manualModelId.trim();
+                    if (trimmed && trimmed !== currentModelId) onSelectModel(trimmed);
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Useful for OpenAI-compatible providers and local endpoints not listed in the model catalog.
+                </p>
+              </div>
+
               <div className="grid grid-cols-2 gap-8">
                 <div className="space-y-4">
                   <div className="space-y-2">

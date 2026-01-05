@@ -4,13 +4,15 @@ import { useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";  // Need to import or use a basic textarea
-import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send } from "lucide-react";
+import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
 import type { Message } from "@/lib/db/schema";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import type { SearchResult, WebSearchResponse } from "@/lib/tools/web-search";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { getImagesFromMessageContent, getTextFromMessageContent, isMessageContentParts } from "@/lib/utils/message-content";
 
 type ToolCallLike = {
   id?: string;
@@ -43,6 +45,8 @@ interface MessageItemProps {
   message: Message;
   onContinue?: (messageId: string) => void;
   onEdit?: (messageId: string, newContent: string) => void;
+  onFork?: (messageId: string) => void;
+  onRegenerate?: (assistantMessageId: string) => void;
   isContinuing?: boolean;
 }
 
@@ -50,14 +54,23 @@ export function MessageItem({
   message,
   onContinue,
   onEdit,
+  onFork,
+  onRegenerate,
   isContinuing,
 }: MessageItemProps) {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [editContent, setEditContent] = useState(message.content);
+  const [editContent, setEditContent] = useState(getTextFromMessageContent(message.content));
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
 
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
+  const images = getImagesFromMessageContent(message.content);
+  const textContent = getTextFromMessageContent(message.content);
+  const canEdit = isUser && onEdit && !isMessageContentParts(message.content);
+  const canFork = isUser && !!onFork;
+  const canRegenerate = isAssistant && !!onRegenerate;
 
   const toolCalls = (Array.isArray(message.toolCalls) ? message.toolCalls : []) as ToolCallLike[];
   const toolResults = (Array.isArray(message.toolResults) ? message.toolResults : []) as ToolResultLike[];
@@ -106,13 +119,14 @@ export function MessageItem({
   };
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(message.content);
+    const payload = images.length > 0 ? `${textContent}\n\n${images.join("\n")}` : textContent;
+    await navigator.clipboard.writeText(payload);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleSaveEdit = async () => {
-    if (editContent.trim() === message.content) {
+    if (editContent.trim() === textContent) {
       setIsEditing(false);
       return;
     }
@@ -130,14 +144,13 @@ export function MessageItem({
   return (
     <div
       className={cn(
-        "group relative px-4 py-6 hover:bg-accent/50 transition-colors",
-        isUser && "bg-muted/30"
+        "group relative px-4 py-6 transition-colors hover:bg-accent/30"
       )}
     >
       <div className="mx-auto max-w-3xl">
         <div className="flex gap-4">
           {/* Avatar */}
-          <Avatar className="h-8 w-8 shrink-0">
+          <Avatar className="h-8 w-8 shrink-0 ring-1 ring-border">
             <AvatarFallback>
               {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
             </AvatarFallback>
@@ -145,155 +158,210 @@ export function MessageItem({
 
           {/* Content */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-sm font-semibold">
-                {isUser ? "You" : "Assistant"}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {formatDistanceToNow(new Date(message.createdAt), {
-                  addSuffix: true,
-                })}
-              </span>
-            </div>
+            <div
+              className={cn(
+                "rounded-2xl border bg-card/70 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/50",
+                isUser && "bg-secondary/60 supports-[backdrop-filter]:bg-secondary/40"
+              )}
+            >
+              <div className="mb-2 flex items-center gap-2">
+                <span className="text-sm font-semibold">
+                  {isUser ? "You" : "Assistant"}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {formatDistanceToNow(new Date(message.createdAt), {
+                    addSuffix: true,
+                  })}
+                </span>
+              </div>
 
-            {/* Editing Mode */}
-            {isEditing ? (
-              <div className="space-y-2">
-                <Textarea
-                  value={editContent}
-                  onChange={(e) => setEditContent(e.target.value)}
-                  className="min-h-[100px]"
-                />
-                <div className="flex gap-2 justify-end">
-                  <Button size="sm" variant="ghost" onClick={() => setIsEditing(false)}>
-                    <XIcon className="h-4 w-4 mr-2" /> Cancel
-                  </Button>
-                  <Button size="sm" onClick={handleSaveEdit}>
-                    <Send className="h-4 w-4 mr-2" /> Save & Regenerate
+              {/* Editing Mode */}
+              {isEditing ? (
+                <div className="space-y-2">
+                  <Textarea
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    className="min-h-[100px]"
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <Button size="sm" variant="ghost" onClick={() => setIsEditing(false)}>
+                      <XIcon className="h-4 w-4 mr-2" /> Cancel
+                    </Button>
+                    <Button size="sm" onClick={handleSaveEdit}>
+                      <Send className="h-4 w-4 mr-2" /> Save & Regenerate
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                /* Message content */
+                <div className="prose prose-sm dark:prose-invert max-w-none">
+                  {isAssistant ? (
+                    <MarkdownRenderer content={textContent} />
+                  ) : (
+                    <p className="whitespace-pre-wrap">{textContent}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Images */}
+              {!isEditing && images.length > 0 && (
+                <>
+                  <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {images.map((url) => (
+                      <button
+                        key={url}
+                        type="button"
+                        onClick={() => setLightboxUrl(url)}
+                        className="relative overflow-hidden rounded-lg border bg-muted focus:outline-none focus:ring-2 focus:ring-ring"
+                        title="Open image"
+                      >
+                        <div
+                          className={cn(
+                            "absolute inset-0 bg-muted",
+                            loadedImages[url] ? "opacity-0" : "animate-pulse"
+                          )}
+                        />
+                        <img
+                          src={url}
+                          alt="Attachment"
+                          loading="lazy"
+                          className={cn(
+                            "h-40 w-full object-cover",
+                            loadedImages[url] ? "opacity-100" : "opacity-0"
+                          )}
+                          onLoad={() =>
+                            setLoadedImages((prev) => ({ ...prev, [url]: true }))
+                          }
+                        />
+                      </button>
+                    ))}
+                  </div>
+
+                  <Dialog open={!!lightboxUrl} onOpenChange={(open) => !open && setLightboxUrl(null)}>
+                    <DialogContent className="max-w-4xl p-2">
+                      {lightboxUrl ? (
+                        <img
+                          src={lightboxUrl}
+                          alt="Image"
+                          className="max-h-[80vh] w-full object-contain"
+                        />
+                      ) : null}
+                    </DialogContent>
+                  </Dialog>
+                </>
+              )}
+
+              {/* Continue button for incomplete responses */}
+              {!isEditing && isAssistant && message.canContinue && onContinue && (
+                <div className="mt-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onContinue(message.id)}
+                    disabled={isContinuing}
+                    className="gap-2"
+                  >
+                    <CornerDownRight className="h-4 w-4" />
+                    {isContinuing ? "Continuing..." : "Continue Response"}
                   </Button>
                 </div>
-              </div>
-            ) : (
-              /* Message content */
-              <div className="prose prose-sm dark:prose-invert max-w-none">
-                {isAssistant ? (
-                  <MarkdownRenderer content={message.content} />
-                ) : (
-                  <p className="whitespace-pre-wrap">{message.content}</p>
-                )}
-              </div>
-            )}
+              )}
 
-            {/* Continue button for incomplete responses */}
-            {!isEditing && isAssistant && message.canContinue && onContinue && (
-              <div className="mt-3">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onContinue(message.id)}
-                  disabled={isContinuing}
-                  className="gap-2"
-                >
-                  <CornerDownRight className="h-4 w-4" />
-                  {isContinuing ? "Continuing..." : "Continue Response"}
-                </Button>
-              </div>
-            )}
+              {/* Incomplete indicator */}
+              {isAssistant && message.isIncomplete && !message.canContinue && (
+                <div className="mt-2 text-xs text-muted-foreground italic">
+                  (Response was continued below)
+                </div>
+              )}
 
-            {/* Incomplete indicator */}
-            {isAssistant && message.isIncomplete && !message.canContinue && (
-              <div className="mt-2 text-xs text-muted-foreground italic">
-                (Response was continued below)
-              </div>
-            )}
+              {/* Tool calls/results */}
+              {!isEditing && isAssistant && toolEvents.length > 0 && (
+                <div className="mt-4 space-y-2">
+                  {toolEvents.map((toolEvent) => {
+                    const isWebSearch =
+                      toolEvent.name === "webSearch" && isWebSearchResponse(toolEvent.result);
+                    const webSearch = isWebSearch ? (toolEvent.result as WebSearchResponse) : null;
 
-            {/* Tool calls/results */}
-            {!isEditing && isAssistant && toolEvents.length > 0 && (
-              <div className="mt-4 space-y-2">
-                {toolEvents.map((toolEvent) => {
-                  const isWebSearch =
-                    toolEvent.name === "webSearch" && isWebSearchResponse(toolEvent.result);
-                  const webSearch = isWebSearch ? (toolEvent.result as WebSearchResponse) : null;
-
-                  return (
-                  <div
-                    key={toolEvent.key}
-                    className="rounded-lg border bg-muted/50"
-                  >
-                    <div className="flex items-center justify-between px-3 py-2">
-                      <div className="text-sm font-medium">
-                        {toolEvent.name === "webSearch" ? "Web Search" : toolEvent.name}
-                        {webSearch?.query ? (
-                          <span className="ml-2 text-xs text-muted-foreground">
-                            “{webSearch.query}”
-                          </span>
-                        ) : null}
-                      </div>
-                      {webSearch && webSearch.results.length > 0 ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-xs gap-2"
-                          onClick={() => handleCopySources(webSearch.results)}
-                          title="Copy sources"
-                        >
-                          <Copy className="h-3.5 w-3.5" />
-                          Copy
-                        </Button>
-                      ) : null}
-                    </div>
-
-                    <div className="px-3 pb-3 text-sm">
-                      {webSearch ? (
-                        <div className="space-y-2">
-                          <div className="text-xs text-muted-foreground">
-                            Provider: {webSearch.provider}
-                            {webSearch.error ? ` • ${webSearch.error}` : ""}
+                    return (
+                      <div
+                        key={toolEvent.key}
+                        className="rounded-xl border bg-muted/40"
+                      >
+                        <div className="flex items-center justify-between px-3 py-2">
+                          <div className="text-sm font-medium">
+                            {toolEvent.name === "webSearch" ? "Web Search" : toolEvent.name}
+                            {webSearch?.query ? (
+                              <span className="ml-2 text-xs text-muted-foreground">
+                                “{webSearch.query}”
+                              </span>
+                            ) : null}
                           </div>
-                          <ol className="space-y-2">
-                            {webSearch.results.map((r, idx) => (
-                              <li key={`${r.url}-${idx}`} className="space-y-1">
-                                <a
-                                  href={r.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="font-medium hover:underline break-words"
-                                >
-                                  {idx + 1}. {r.title}
-                                </a>
-                                {r.publishedDate ? (
-                                  <div className="text-xs text-muted-foreground">
-                                    {r.publishedDate}
-                                  </div>
-                                ) : null}
-                                {r.snippet ? (
-                                  <div className="text-xs text-muted-foreground">
-                                    {r.snippet}
-                                  </div>
-                                ) : null}
-                              </li>
-                            ))}
-                          </ol>
+                          {webSearch && webSearch.results.length > 0 ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-xs gap-2"
+                              onClick={() => handleCopySources(webSearch.results)}
+                              title="Copy sources"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                              Copy
+                            </Button>
+                          ) : null}
                         </div>
-                      ) : (
-                        <pre className="text-xs text-muted-foreground overflow-x-auto">
-                          {JSON.stringify(
-                            {
-                              args: toolEvent.args,
-                              result: toolEvent.result,
-                            },
-                            null,
-                            2
+
+                        <div className="px-3 pb-3 text-sm">
+                          {webSearch ? (
+                            <div className="space-y-2">
+                              <div className="text-xs text-muted-foreground">
+                                Provider: {webSearch.provider}
+                                {webSearch.error ? ` • ${webSearch.error}` : ""}
+                              </div>
+                              <ol className="space-y-2">
+                                {webSearch.results.map((r, idx) => (
+                                  <li key={`${r.url}-${idx}`} className="space-y-1">
+                                    <a
+                                      href={r.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="font-medium hover:underline break-words"
+                                    >
+                                      {idx + 1}. {r.title}
+                                    </a>
+                                    {r.publishedDate ? (
+                                      <div className="text-xs text-muted-foreground">
+                                        {r.publishedDate}
+                                      </div>
+                                    ) : null}
+                                    {r.snippet ? (
+                                      <div className="text-xs text-muted-foreground">
+                                        {r.snippet}
+                                      </div>
+                                    ) : null}
+                                  </li>
+                                ))}
+                              </ol>
+                            </div>
+                          ) : (
+                            <pre className="text-xs text-muted-foreground overflow-x-auto">
+                              {JSON.stringify(
+                                {
+                                  args: toolEvent.args,
+                                  result: toolEvent.result,
+                                },
+                                null,
+                                2
+                              )}
+                            </pre>
                           )}
-                        </pre>
-                      )}
-                    </div>
-                  </div>
-                  );
-                })}
-              </div>
-            )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Actions */}
@@ -312,7 +380,29 @@ export function MessageItem({
                   <Copy className="h-4 w-4" />
                 )}
               </Button>
-              {isUser && onEdit && (
+              {canFork && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => onFork?.(message.id)}
+                  title="Fork from here"
+                >
+                  <GitBranch className="h-4 w-4" />
+                </Button>
+              )}
+              {canRegenerate && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => onRegenerate?.(message.id)}
+                  title="Regenerate (new branch)"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              )}
+              {canEdit && (
                 <Button
                   variant="ghost"
                   size="icon"

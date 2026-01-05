@@ -8,6 +8,8 @@ export interface Model {
   category: string[];
   supportsReasoning?: boolean;
   supportsVision?: boolean;
+  description?: string;
+  maxCompletionTokens?: number;
 }
 
 // Default model list (Phase 1 - basic models)
@@ -70,12 +72,22 @@ export const MODELS: Model[] = [
   },
 ];
 
+let dynamicModels: Model[] | null = null;
+
+export function setDynamicModels(models: Model[] | null) {
+  dynamicModels = models;
+}
+
+export function getAllModels(): Model[] {
+  return dynamicModels && dynamicModels.length > 0 ? dynamicModels : MODELS;
+}
+
 export function getModelById(modelId: string): Model | undefined {
-  return MODELS.find((m) => m.id === modelId);
+  return getAllModels().find((m) => m.id === modelId);
 }
 
 export function getModelsByCategory(category: string): Model[] {
-  return MODELS.filter((m) => m.category.includes(category));
+  return getAllModels().filter((m) => m.category.includes(category));
 }
 
 export const DEFAULT_MODEL = MODELS[0]; // Claude 3.5 Sonnet

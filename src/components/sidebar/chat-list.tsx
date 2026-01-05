@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Virtuoso } from "react-virtuoso";
 import { useLiveQuery } from "dexie-react-hooks";
-import { MessageSquare, Pin, Star, Trash2, Folder, ChevronDown, ChevronRight, FolderPlus } from "lucide-react";
+import { MessageSquare, Pin, Star, Trash2, Folder, ChevronDown, ChevronRight, FolderPlus, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getAllChats, deleteChat, updateChat, getAllFolders, createFolder } from "@/lib/db/queries";
 import { useUIStore } from "@/stores/ui-store";
@@ -116,7 +116,7 @@ export function ChatList({ searchQuery }: ChatListProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="px-4 py-2 flex justify-between items-center border-b bg-muted/20">
+      <div className="px-4 py-2 flex justify-between items-center border-b bg-background/40 backdrop-blur supports-[backdrop-filter]:bg-background/30">
         <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Your Library</span>
         <Button variant="ghost" size="icon" className="h-5 w-5" onClick={handleCreateFolder} title="New Folder">
           <FolderPlus className="h-3.5 w-3.5" />
@@ -183,8 +183,8 @@ function ChatItem({
   return (
     <div
       className={cn(
-        "group relative cursor-pointer border-b px-4 py-3 transition-colors hover:bg-accent",
-        isActive && "bg-accent",
+        "group relative cursor-pointer border-b border-border/60 px-4 py-3 transition-colors hover:bg-accent/60",
+        isActive && "bg-background/60 before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-primary",
         isNested && "pl-8"
       )}
       onClick={onClick}
@@ -196,6 +196,7 @@ function ChatItem({
           <div className="flex items-center gap-2 mb-1">
             {chat.pinned && <Pin className="h-3 w-3 text-primary shrink-0" />}
             {chat.favorite && <Star className="h-3 w-3 text-yellow-500 shrink-0" />}
+            {chat.hasBranches && <GitBranch className="h-3 w-3 text-muted-foreground shrink-0" />}
             <h3 className="text-sm font-medium truncate">{chat.title}</h3>
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">

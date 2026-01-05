@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useHotkeys } from "react-hotkeys-hook";
 import {
   CommandDialog,
   CommandEmpty,
@@ -20,31 +21,36 @@ import {
   Moon,
   Sun,
   Laptop,
+  FileText,
 } from "lucide-react";
 import { useUIStore } from "@/stores/ui-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { createChat } from "@/lib/db/queries";
 import { MODELS } from "@/lib/constants/models";
 import { useTheme } from "next-themes";
+import { useModelsStore } from "@/stores/models-store";
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const { setActiveChatId } = useUIStore();
   const { theme, setTheme } = useTheme();
+  const { models, loadModels } = useModelsStore();
 
-  // Listen for Cmd+K / Ctrl+K
+  // Cmd/Ctrl+Shift+P mirrors many “command palette” UX patterns and avoids common OS/browser conflicts.
+  useHotkeys(
+    "mod+shift+p",
+    (e) => {
+      e.preventDefault();
+      setOpen((prev) => !prev);
+    },
+    { enableOnFormTags: false }
+  );
+
   useEffect(() => {
-    const down = (e: KeyboardEvent) => {
-      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        setOpen((open) => !open);
-      }
-    };
-
-    document.addEventListener("keydown", down);
-    return () => document.removeEventListener("keydown", down);
-  }, []);
+    if (!open) return;
+    loadModels().catch(() => {});
+  }, [open, loadModels]);
 
   const handleNewChat = async () => {
     const newChat = await createChat({
@@ -74,6 +80,11 @@ export function CommandPalette() {
     setOpen(false);
   };
 
+  const handleInsertPrompt = () => {
+    window.dispatchEvent(new CustomEvent("lumina:open-prompt-library"));
+    setOpen(false);
+  };
+
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
       <CommandInput placeholder="Type a command or search..." />
@@ -85,9 +96,11 @@ export function CommandPalette() {
           <CommandItem onSelect={handleNewChat}>
             <MessageSquarePlus className="mr-2 h-4 w-4" />
             <span>New Chat</span>
-            <span className="ml-auto text-xs text-muted-foreground">
-              Cmd+N
-            </span>
+            <span className="ml-auto text-xs text-muted-foreground">Alt+Shift+N</span>
+          </CommandItem>
+          <CommandItem onSelect={handleInsertPrompt}>
+            <FileText className="mr-2 h-4 w-4" />
+            <span>Insert Prompt</span>
           </CommandItem>
           <CommandItem onSelect={handleSettings}>
             <Settings className="mr-2 h-4 w-4" />
@@ -126,7 +139,7 @@ export function CommandPalette() {
 
         {/* Quick Model Selection */}
         <CommandGroup heading="Start Chat with Model">
-          {MODELS.slice(0, 6).map((model) => (
+          {(models.length > 0 ? models : MODELS).slice(0, 10).map((model) => (
             <CommandItem
               key={model.id}
               onSelect={() => handleSelectModel(model.id)}

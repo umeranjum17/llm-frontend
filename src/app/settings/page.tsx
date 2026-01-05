@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Key, Palette, Keyboard, Download, Settings as SettingsIcon } from "lucide-react";
+import { ArrowLeft, Key, Palette, Keyboard, Download, Settings as SettingsIcon, Bot, FileText } from "lucide-react";
 import { ApiKeysSettings } from "@/components/settings/api-keys-settings";
 import { ThemeSettings } from "@/components/settings/theme-settings";
 import { KeyboardShortcutsSettings } from "@/components/settings/keyboard-shortcuts-settings";
 import { ExportImportSettings } from "@/components/settings/export-import-settings";
 import { GeneralSettings } from "@/components/settings/general-settings";
+import { AgentsSettings } from "@/components/settings/agents-settings";
+import { PromptsSettings } from "@/components/settings/prompts-settings";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useSettingsStore } from "@/stores/settings-store";
 
@@ -27,7 +29,7 @@ export default function SettingsPage() {
   useEffect(() => {
     const tabParam = new URLSearchParams(window.location.search).get("tab");
     if (!tabParam) return;
-    const allowedTabs = ["general", "api-keys", "theme", "shortcuts", "data"];
+    const allowedTabs = ["general", "api-keys", "theme", "shortcuts", "data", "agents", "prompts"];
     if (allowedTabs.includes(tabParam)) setActiveTab(tabParam);
   }, []);
 
@@ -59,7 +61,7 @@ export default function SettingsPage() {
       <div className="flex-1 overflow-auto">
         <div className="container max-w-5xl mx-auto px-6 py-8">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-5 mb-8">
+            <TabsList className="grid w-full grid-cols-7 mb-8">
               <TabsTrigger value="general" className="gap-2">
                 <SettingsIcon className="h-4 w-4" />
                 General
@@ -75,6 +77,14 @@ export default function SettingsPage() {
               <TabsTrigger value="shortcuts" className="gap-2">
                 <Keyboard className="h-4 w-4" />
                 Shortcuts
+              </TabsTrigger>
+              <TabsTrigger value="agents" className="gap-2">
+                <Bot className="h-4 w-4" />
+                Agents
+              </TabsTrigger>
+              <TabsTrigger value="prompts" className="gap-2">
+                <FileText className="h-4 w-4" />
+                Prompts
               </TabsTrigger>
               <TabsTrigger value="data" className="gap-2">
                 <Download className="h-4 w-4" />
@@ -96,6 +106,14 @@ export default function SettingsPage() {
 
             <TabsContent value="shortcuts" className="space-y-6">
               <KeyboardShortcutsSettings />
+            </TabsContent>
+
+            <TabsContent value="agents" className="space-y-6">
+              <AgentsSettings />
+            </TabsContent>
+
+            <TabsContent value="prompts" className="space-y-6">
+              <PromptsSettings />
             </TabsContent>
 
             <TabsContent value="data" className="space-y-6">

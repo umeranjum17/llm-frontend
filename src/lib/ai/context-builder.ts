@@ -1,5 +1,6 @@
-import { getProjectFileById, getMessages, getChatById } from "@/lib/db/queries";
+import { getProjectFileById, getMessages, getChatById, getAgentById } from "@/lib/db/queries";
 import type { Message } from "@/lib/db/schema";
+import { getTextFromMessageContent } from "@/lib/utils/message-content";
 
 export async function parseReferences(content: string): Promise<{
   cleanContent: string;
@@ -40,6 +41,24 @@ export async function buildContextMessages(
 
   // Get chat to access project
   const chat = await getChatById(chatId);
+
+  // Add agent system prompt if exists
+  if (chat?.agentId) {
+    try {
+      const agent = await getAgentById(chat.agentId);
+      if (agent?.isActive && agent.systemPrompt) {
+        messages.push({
+          id: `system-agent-${agent.id}`,
+          chatId,
+          role: "system",
+          content: agent.systemPrompt,
+          createdAt: Date.now(),
+        });
+      }
+    } catch (error) {
+      console.error("Failed to load agent:", error);
+    }
+  }
 
   // Add project system prompt if exists
   if (chat?.projectId) {
@@ -84,7 +103,7 @@ export async function buildContextMessages(
         // Summarize or include recent messages
         const recentMessages = refMessages.slice(-10); // Last 10 messages
         const summary = recentMessages
-          .map((m) => `${m.role}: ${m.content}`)
+          .map((m) => `${m.role}: ${getTextFromMessageContent(m.content)}`)
           .join("\n\n");
 
         messages.push({

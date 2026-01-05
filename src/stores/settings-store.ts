@@ -12,6 +12,7 @@ interface SettingsState extends Partial<UserSettings> {
   updateEnabledTools: (tools: string[]) => Promise<void>;
   updateShortcuts: (shortcuts: Record<string, string>) => Promise<void>;
   updateSidebarWidth: (width: number) => Promise<void>;
+  updateCurrentProject: (projectId: string | undefined) => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -48,5 +49,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateSidebarWidth: async (width) => {
     await updateSettings({ sidebarWidth: width });
     set({ sidebarWidth: width });
+  },
+
+  updateCurrentProject: async (projectId) => {
+    await updateSettings({ currentProjectId: projectId });
+    set({ currentProjectId: projectId });
   },
 }));

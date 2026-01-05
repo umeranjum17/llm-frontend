@@ -14,7 +14,7 @@ interface ApiKeysState {
   // Actions
   loadKeys: () => Promise<void>;
   getKeyForProvider: (provider: string) => ApiKey | undefined;
-  addKey: (provider: string, key: string, label?: string) => Promise<void>;
+  addKey: (provider: string, key: string, label?: string, baseUrl?: string) => Promise<void>;
   removeKey: (id: string) => Promise<void>;
   hasKey: (provider: string) => boolean;
 }
@@ -32,8 +32,8 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
     return get().keys.find((k) => k.provider === provider);
   },
 
-  addKey: async (provider, key, label) => {
-    const newKey = await dbAddApiKey({ provider, key, label });
+  addKey: async (provider, key, label, baseUrl) => {
+    const newKey = await dbAddApiKey({ provider, key, label, baseUrl });
     set({ keys: [...get().keys, newKey] });
   },
 

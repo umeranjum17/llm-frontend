@@ -30,11 +30,15 @@ export function ExportImportSettings() {
         const messages = await db.messages.toArray();
         const projects = await db.projects.toArray();
         const projectFiles = await db.projectFiles.toArray();
+        const agents = await db.agents.toArray();
+        const prompts = await db.prompts.toArray();
 
         data.chats = chats;
         data.messages = messages;
         data.projects = projects;
         data.projectFiles = projectFiles;
+        data.agents = agents;
+        data.prompts = prompts;
       }
 
       if (exportScope === "all" || exportScope === "settings") {
@@ -87,6 +91,8 @@ export function ExportImportSettings() {
       if (data.messages) await db.messages.bulkPut(data.messages);
       if (data.projects) await db.projects.bulkPut(data.projects);
       if (data.projectFiles) await db.projectFiles.bulkPut(data.projectFiles);
+      if (data.agents) await db.agents.bulkPut(data.agents);
+      if (data.prompts) await db.prompts.bulkPut(data.prompts);
       if (data.settings) await db.settings.bulkPut(data.settings);
       if (data.modelFavorites) await db.modelFavorites.bulkPut(data.modelFavorites);
       if (data.folders) await db.folders.bulkPut(data.folders);

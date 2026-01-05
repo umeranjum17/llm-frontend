@@ -1,10 +1,14 @@
 import { useState, useCallback } from "react";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useUIStore } from "@/stores/ui-store";
-import { addMessage, updateChat, getChatById, updateMessage, deleteMessagesAfter, getMessages } from "@/lib/db/queries";
+import { addMessage, updateChat, getChatById, updateMessage, getMessagesForBranch, getLastMessage, getMessageById, chatHasBranches, incrementAgentUsage } from "@/lib/db/queries";
 import { buildContextMessages } from "@/lib/ai/context-builder";
 import { estimateCost } from "@/lib/utils/token-counter";
+import type { MessageContent } from "@/lib/db/schema";
+import { getImagesFromMessageContent, getTextFromMessageContent, mapTextInMessageContent } from "@/lib/utils/message-content";
+import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { toast } from "sonner";
+import { pickBestProviderId, providerLabel } from "@/lib/ai/provider-routing";
 
 function cleanReferencesForLLM(content: string) {
   return content
@@ -16,20 +20,15 @@ export function useChat(chatId: string) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [continuingMessageId, setContinuingMessageId] = useState<string | null>(null);
-  const { getKeyForProvider } = useApiKeysStore();
+  const { keys, getKeyForProvider } = useApiKeysStore();
   const { isArenaMode, arenaModelIds } = useUIStore();
 
   const generateResponse = useCallback(async (
-    messageContent: string,
+    messageContent: MessageContent,
     attachments?: Array<{ name: string; content: string }>,
-    overrideModelId?: string
+    overrideModelId?: string,
+    parentUserMessageId?: string
   ) => {
-    // Get API key
-    const apiKey = getKeyForProvider("openrouter");
-    if (!apiKey) {
-      throw new Error("No API key found. Please add an OpenRouter API key.");
-    }
-
     // Get chat details for model info
     const chat = await getChatById(chatId);
     if (!chat) {
@@ -37,7 +36,40 @@ export function useChat(chatId: string) {
     }
 
     const modelId = overrideModelId || chat.modelId;
+
+    const llmProviderIds = Array.from(
+      new Set(
+        keys
+          .map((k) => k.provider)
+          .filter((p) =>
+            ["openrouter", "openai", "anthropic", "groq", "together", "perplexity", "anyscale", "ollama", "lmstudio"].includes(p) ||
+            p.startsWith("custom-openai:")
+          )
+      )
+    );
+
+    const providerId =
+      (chat.providerId && llmProviderIds.includes(chat.providerId) ? chat.providerId : null) ||
+      pickBestProviderId({
+        modelId,
+        availableProviderIds: llmProviderIds,
+      });
+
+    if (!providerId) {
+      throw new Error("No provider configured. Add an API key (or local provider) in Settings.");
+    }
+
+    const apiKey = getKeyForProvider(providerId);
+    const providerKeyRequired = !["ollama", "lmstudio"].includes(providerId);
+    if (providerKeyRequired && !apiKey) {
+      throw new Error(`Missing API key for ${providerLabel(providerId)}.`);
+    }
+
     const enabledTools = chat.enabledTools || [];
+    const images = getImagesFromMessageContent(messageContent);
+    if (images.length > 0 && !getModelCapabilities(modelId).supportsVision) {
+      throw new Error(`Selected model (${modelId}) does not support images.`);
+    }
     const webSearchConfig = (() => {
       if (!enabledTools.includes("web-search")) return undefined;
 
@@ -56,8 +88,11 @@ export function useChat(chatId: string) {
       return undefined;
     })();
 
-    const contextMessages = await buildContextMessages(messageContent, chatId);
-    const history = await getMessages(chatId);
+    const contextMessages = await buildContextMessages(
+      getTextFromMessageContent(messageContent),
+      chatId
+    );
+    const history = await getMessagesForBranch(chatId, parentUserMessageId);
 
     const llmMessages = [
       ...contextMessages.map((m) => ({
@@ -74,7 +109,10 @@ export function useChat(chatId: string) {
         )
         .map((m) => ({
           role: m.role as "system" | "user" | "assistant",
-          content: m.role === "user" ? cleanReferencesForLLM(m.content) : m.content,
+          content:
+            m.role === "user"
+              ? mapTextInMessageContent(m.content, cleanReferencesForLLM)
+              : m.content,
         })),
     ];
 
@@ -85,6 +123,7 @@ export function useChat(chatId: string) {
       content: "",
       modelId,
       isArena: !!overrideModelId,
+      parentId: parentUserMessageId,
     });
 
     // Call API route for streaming
@@ -92,9 +131,11 @@ export function useChat(chatId: string) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-API-Key": apiKey.key,
+        ...(apiKey?.key ? { "X-API-Key": apiKey.key } : {}),
       },
       body: JSON.stringify({
+        providerId,
+        providerBaseUrl: apiKey?.baseUrl,
         modelId,
         messages: llmMessages,
         enabledTools,
@@ -207,30 +248,49 @@ export function useChat(chatId: string) {
     const currentTotalCost = chat.totalCost || 0;
     await updateChat(chatId, {
       totalCost: currentTotalCost + cost,
+      activeBranchLeafId: assistantMessage.id,
     });
-  }, [chatId, getKeyForProvider]);
+  }, [chatId, getKeyForProvider, keys]);
 
-  const sendMessage = async (content: string, attachments?: Array<{ name: string; content: string }>) => {
+  const sendMessage = async (content: MessageContent, attachments?: Array<{ name: string; content: string }>) => {
     setIsLoading(true);
     setError(null);
 
     try {
+      const chat = await getChatById(chatId);
+      if (!chat) throw new Error("Chat not found");
+      if (chat.agentId) {
+        incrementAgentUsage(chat.agentId).catch(() => {});
+      }
+
+      const images = getImagesFromMessageContent(content);
+      if (images.length > 0) {
+        const modelId = chat.modelId;
+        const caps = getModelCapabilities(modelId);
+        if (!caps.supportsVision) {
+          throw new Error(`Current model (${modelId}) does not support images.`);
+        }
+      }
+
+      const parentId = chat.activeBranchLeafId || (await getLastMessage(chatId))?.id;
+
       // Add user message to database with original content
-      await addMessage({
+      const userMessage = await addMessage({
         chatId,
         role: "user",
         content,
+        parentId,
       });
 
       // Update chat's updatedAt timestamp
-      await updateChat(chatId, {});
+      await updateChat(chatId, { activeBranchLeafId: userMessage.id });
 
       if (isArenaMode && arenaModelIds.length > 0) {
         await Promise.all(
-          arenaModelIds.map(modelId => generateResponse(content, attachments, modelId))
+          arenaModelIds.map(modelId => generateResponse(content, attachments, modelId, userMessage.id))
         );
       } else {
-        await generateResponse(content, attachments);
+        await generateResponse(content, attachments, undefined, userMessage.id);
       }
 
     } catch (err) {
@@ -245,23 +305,25 @@ export function useChat(chatId: string) {
     setError(null);
 
     try {
-      // Get message to verify existence and timestamp
-      const messages = await getMessages(chatId);
-      const message = messages.find(m => m.id === messageId);
+      const message = await getMessageById(messageId);
+      if (!message || message.chatId !== chatId) throw new Error("Message not found");
+      if (message.role !== "user") throw new Error("Only user messages can be edited");
 
-      if (!message) throw new Error("Message not found");
+      // Create a new branch user message (sibling) instead of overwriting history.
+      const branchedUser = await addMessage({
+        chatId,
+        role: "user",
+        content: newContent,
+        parentId: message.parentId,
+      });
 
-      // Update message content
-      await updateMessage(messageId, { content: newContent });
+      const hasBranches = await chatHasBranches(chatId);
+      await updateChat(chatId, {
+        activeBranchLeafId: branchedUser.id,
+        hasBranches,
+      });
 
-      // Delete all messages AFTER this one
-      await deleteMessagesAfter(chatId, message.createdAt);
-
-      // Update chat timestamp
-      await updateChat(chatId, {});
-
-      // Regenerate response
-      await generateResponse(newContent);
+      await generateResponse(newContent, undefined, undefined, branchedUser.id);
 
     } catch (err) {
       handleError(err);
@@ -276,33 +338,51 @@ export function useChat(chatId: string) {
     setContinuingMessageId(messageId);
 
     try {
-      // ... existing continue logic (can be refactored later if needed, but keeping as is for safety) ...
-      // (Copying existing implementation for now to minimize risk, but simplified)
-      // Actually, for brevity, I will keep the original implementation via "Wait, I should probably reuse generateResponse but continue has simpler logic"
-      // Re-implementing continueResponse with similar logic to original file to match expectations
-
-      // Get the message to continue
-      const messages = await getMessages(chatId);
-      if (!messages.some((m) => m.id === messageId)) {
-        throw new Error("Message not found");
-      }
+      const message = await getMessageById(messageId);
+      if (!message || message.chatId !== chatId) throw new Error("Message not found");
 
       const continuePrompt = "Please continue your previous response.";
-      await addMessage({
+      const continueUser = await addMessage({
         chatId,
         role: "user",
         content: continuePrompt,
+        parentId: messageId,
       });
-      await updateChat(chatId, {});
+      await updateChat(chatId, { activeBranchLeafId: continueUser.id });
 
       await updateMessage(messageId, { canContinue: false });
-      await generateResponse(continuePrompt);
+      await generateResponse(continuePrompt, undefined, undefined, continueUser.id);
 
     } catch (err) {
       handleError(err);
     } finally {
       setIsLoading(false);
       setContinuingMessageId(null);
+    }
+  };
+
+  const regenerateAssistant = async (assistantMessageId: string) => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const assistant = await getMessageById(assistantMessageId);
+      if (!assistant || assistant.chatId !== chatId) throw new Error("Message not found");
+      if (assistant.role !== "assistant") throw new Error("Can only regenerate assistant messages");
+      if (!assistant.parentId) throw new Error("No parent message to regenerate from");
+
+      const parentUser = await getMessageById(assistant.parentId);
+      if (!parentUser || parentUser.chatId !== chatId || parentUser.role !== "user") {
+        throw new Error("Parent user message not found");
+      }
+
+      const hasBranches = await chatHasBranches(chatId);
+      await updateChat(chatId, { activeBranchLeafId: assistant.parentId, hasBranches });
+      await generateResponse(parentUser.content, undefined, undefined, parentUser.id);
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -317,6 +397,7 @@ export function useChat(chatId: string) {
     sendMessage,
     editMessage,
     continueResponse,
+    regenerateAssistant,
     isLoading,
     error,
     continuingMessageId,

@@ -1,0 +1,111 @@
+import type { Agent } from "@/lib/db/schema";
+
+function now() {
+  return Date.now();
+}
+
+export const BUILTIN_AGENTS: Agent[] = [
+  {
+    id: "agent_builtin_code_assistant",
+    name: "Code Assistant",
+    description: "Helps write, debug, and review code.",
+    avatar: "💻",
+    systemPrompt:
+      "You are a senior software engineer. Ask clarifying questions when requirements are ambiguous. Provide concise, correct code and explain trade-offs briefly.",
+    modelId: undefined,
+    enabledTools: ["web-search"],
+    knowledgeBaseIds: [],
+    parameters: { temperature: 0.2 },
+    isBuiltIn: true,
+    isActive: true,
+    createdAt: now(),
+    updatedAt: now(),
+    usageCount: 0,
+  },
+  {
+    id: "agent_builtin_research_analyst",
+    name: "Research Analyst",
+    description: "Finds and synthesizes information with sources.",
+    avatar: "🔎",
+    systemPrompt:
+      "You are a research analyst. Use web search when needed. Summarize findings clearly and include assumptions, caveats, and sources when applicable.",
+    modelId: undefined,
+    enabledTools: ["web-search"],
+    knowledgeBaseIds: [],
+    parameters: { temperature: 0.4 },
+    isBuiltIn: true,
+    isActive: true,
+    createdAt: now(),
+    updatedAt: now(),
+    usageCount: 0,
+  },
+  {
+    id: "agent_builtin_writing_editor",
+    name: "Writing Editor",
+    description: "Edits for clarity, tone, and structure.",
+    avatar: "✍️",
+    systemPrompt:
+      "You are an expert editor. Improve clarity and structure while preserving the author’s intent. Suggest alternatives and keep the tone consistent.",
+    modelId: undefined,
+    enabledTools: [],
+    knowledgeBaseIds: [],
+    parameters: { temperature: 0.6 },
+    isBuiltIn: true,
+    isActive: true,
+    createdAt: now(),
+    updatedAt: now(),
+    usageCount: 0,
+  },
+  {
+    id: "agent_builtin_translator",
+    name: "Translator",
+    description: "Translates text while preserving meaning and tone.",
+    avatar: "🌐",
+    systemPrompt:
+      "You are a professional translator. Preserve meaning, tone, and formatting. Ask what target language and regional variant to use if unclear.",
+    modelId: undefined,
+    enabledTools: [],
+    knowledgeBaseIds: [],
+    parameters: { temperature: 0.3 },
+    isBuiltIn: true,
+    isActive: true,
+    createdAt: now(),
+    updatedAt: now(),
+    usageCount: 0,
+  },
+  {
+    id: "agent_builtin_summarizer",
+    name: "Summarizer",
+    description: "Summarizes content with key points and takeaways.",
+    avatar: "🧾",
+    systemPrompt:
+      "You summarize content. Produce a short summary, then key bullet points, and optional action items if applicable.",
+    modelId: undefined,
+    enabledTools: [],
+    knowledgeBaseIds: [],
+    parameters: { temperature: 0.4 },
+    isBuiltIn: true,
+    isActive: true,
+    createdAt: now(),
+    updatedAt: now(),
+    usageCount: 0,
+  },
+  {
+    id: "agent_builtin_eli5",
+    name: "Explain Like I'm 5",
+    description: "Explains concepts simply with examples.",
+    avatar: "🧠",
+    systemPrompt:
+      "Explain concepts in simple terms with intuitive analogies. Avoid jargon unless asked. Offer a short example.",
+    modelId: undefined,
+    enabledTools: [],
+    knowledgeBaseIds: [],
+    parameters: { temperature: 0.7 },
+    isBuiltIn: true,
+    isActive: true,
+    createdAt: now(),
+    updatedAt: now(),
+    usageCount: 0,
+  },
+];
+
