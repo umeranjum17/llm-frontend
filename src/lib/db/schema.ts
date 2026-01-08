@@ -33,6 +33,7 @@ export interface Chat {
   favorite?: boolean;
   tags?: string[];
   folderId?: string;
+  order?: number; // For manual ordering within folder
   reasoningLevel?: "low" | "medium" | "high" | "xhigh";
   enabledTools?: string[];
   budgetCap?: number; // Max spend in USD
@@ -43,16 +44,16 @@ export interface Chat {
 
 export type MessageContentPart =
   | {
-      type: "text";
-      text: string;
-    }
+    type: "text";
+    text: string;
+  }
   | {
-      type: "image_url";
-      image_url: {
-        url: string; // data URL or https URL
-        detail?: "auto" | "low" | "high";
-      };
+    type: "image_url";
+    image_url: {
+      url: string; // data URL or https URL
+      detail?: "auto" | "low" | "high";
     };
+  };
 
 export type MessageContent = string | MessageContentPart[];
 
@@ -87,13 +88,21 @@ export interface ApiKey {
 export interface UserSettings {
   id: string; // Always 'default'
   theme: "light" | "dark" | "system";
+  defaultProviderId?: string;
   defaultModelId?: string;
+  defaultModelIdsByProvider?: Record<string, string>;
   defaultReasoningLevel?: string;
   enabledTools: string[];
   shortcuts: Record<string, string>;
   sidebarWidth?: number;
   currentProjectId?: string;
   updatedAt: number;
+  // Memory settings
+  memoryEnabled?: boolean;           // Master toggle for memory feature
+  memoryModelId?: string;            // Which model to use for extraction
+  memoryRetentionDays?: number;      // null/undefined = forever, or days to keep
+  memoryAutoExtract?: boolean;       // Auto-learn from conversations
+  memoryMaxItems?: number;           // Limit total memories
 }
 
 export interface ModelFavorite {
@@ -103,10 +112,23 @@ export interface ModelFavorite {
   lastUsed: number;
 }
 
+export interface UserMemory {
+  id: string;
+  content: string;                    // "The user's name is Umer"
+  category: "fact" | "preference" | "project" | "skill" | "other";
+  confidence: number;                 // 0-1 how confident the AI is about this fact
+  source: "auto" | "manual";          // Auto-extracted or user-added
+  chatId?: string;                    // Which chat it came from (for auto-extracted)
+  createdAt: number;
+  updatedAt: number;
+  isActive: boolean;                  // User can disable specific memories
+}
+
 export interface Folder {
   id: string;
   name: string;
   color?: string;
+  order?: number; // For manual ordering
   createdAt: number;
 }
 
@@ -183,6 +205,19 @@ export interface Prompt {
   usageCount: number;
 }
 
+export interface VectorDocument {
+  id: string;
+  text: string;
+  embedding: number[];
+  metadata?: {
+    chatId?: string;
+    messageId?: string;
+    projectId?: string;
+    fileId?: string;
+    timestamp?: number;
+  };
+}
+
 // Database class
 export class LuminaDB extends Dexie {
   projects!: EntityTable<Project, "id">;
@@ -192,12 +227,14 @@ export class LuminaDB extends Dexie {
   apiKeys!: EntityTable<ApiKey, "id">;
   settings!: EntityTable<UserSettings, "id">;
   modelFavorites!: EntityTable<ModelFavorite, "id">;
+  userMemories!: EntityTable<UserMemory, "id">;
   folders!: EntityTable<Folder, "id">;
   tags!: EntityTable<Tag, "id">;
   tagRules!: EntityTable<TagRule, "id">;
   parameterPresets!: EntityTable<ParameterPreset, "id">;
   agents!: EntityTable<Agent, "id">;
   prompts!: EntityTable<Prompt, "id">;
+  vectorDocuments!: EntityTable<VectorDocument, "id">;
 
   constructor() {
     super("LuminaDB");
@@ -264,6 +301,64 @@ export class LuminaDB extends Dexie {
       parameterPresets: "id, name, createdAt, isDefault",
       agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
       prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
+    });
+
+    // Version 5: Add vector documents for RAG
+    this.version(5).stores({
+      projects: "id, name, createdAt, updatedAt",
+      projectFiles: "id, projectId, name, createdAt",
+      chats:
+        "id, projectId, title, modelId, createdAt, updatedAt, pinned, favorite, folderId",
+      messages: "id, chatId, role, createdAt, parentId",
+      apiKeys: "id, provider, createdAt, baseUrl",
+      settings: "id",
+      modelFavorites: "id, category, pinnedOrder, lastUsed",
+      folders: "id, name, createdAt",
+      tags: "id, name, createdAt, usageCount",
+      tagRules: "id, tagId, enabled, createdAt",
+      parameterPresets: "id, name, createdAt, isDefault",
+      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
+      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
+      vectorDocuments: "id",
+    });
+
+    // Version 6: Add order fields for drag & drop
+    this.version(6).stores({
+      projects: "id, name, createdAt, updatedAt",
+      projectFiles: "id, projectId, name, createdAt",
+      chats:
+        "id, projectId, title, modelId, createdAt, updatedAt, pinned, favorite, folderId, order",
+      messages: "id, chatId, role, createdAt, parentId",
+      apiKeys: "id, provider, createdAt, baseUrl",
+      settings: "id",
+      modelFavorites: "id, category, pinnedOrder, lastUsed",
+      folders: "id, name, createdAt, order",
+      tags: "id, name, createdAt, usageCount",
+      tagRules: "id, tagId, enabled, createdAt",
+      parameterPresets: "id, name, createdAt, isDefault",
+      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
+      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
+      vectorDocuments: "id",
+    });
+
+    // Version 7: Add user memories for ChatGPT-like memory feature
+    this.version(7).stores({
+      projects: "id, name, createdAt, updatedAt",
+      projectFiles: "id, projectId, name, createdAt",
+      chats:
+        "id, projectId, title, modelId, createdAt, updatedAt, pinned, favorite, folderId, order",
+      messages: "id, chatId, role, createdAt, parentId",
+      apiKeys: "id, provider, createdAt, baseUrl",
+      settings: "id",
+      modelFavorites: "id, category, pinnedOrder, lastUsed",
+      userMemories: "id, category, source, createdAt, isActive",
+      folders: "id, name, createdAt, order",
+      tags: "id, name, createdAt, usageCount",
+      tagRules: "id, tagId, enabled, createdAt",
+      parameterPresets: "id, name, createdAt, isDefault",
+      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
+      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
+      vectorDocuments: "id",
     });
   }
 }

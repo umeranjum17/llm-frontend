@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useHotkeys } from "react-hotkeys-hook";
 import {
@@ -15,29 +15,52 @@ import {
 import {
   MessageSquarePlus,
   Settings,
-  Search,
   Sparkles,
-  Palette,
   Moon,
   Sun,
   Laptop,
   FileText,
+  RefreshCw,
+  ArrowRightLeft,
 } from "lucide-react";
 import { useUIStore } from "@/stores/ui-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import { createChat } from "@/lib/db/queries";
-import { MODELS } from "@/lib/constants/models";
+import { createChat, getChatById, updateChat, updateModelLastUsed } from "@/lib/db/queries";
+import { MODELS, type Model, getModelById } from "@/lib/constants/models";
 import { useTheme } from "next-themes";
 import { useModelsStore } from "@/stores/models-store";
+import { getDefaultChatConfig } from "@/lib/ai/default-chat";
+import { useApiKeysStore } from "@/stores/api-keys-store";
+import { isModelIdCompatibleWithProviderId, pickBestProviderId } from "@/lib/ai/provider-routing";
+import { toast } from "sonner";
+import Fuse from "fuse.js";
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const router = useRouter();
-  const { setActiveChatId } = useUIStore();
+  const { activeChatId, setActiveChatId } = useUIStore();
   const { theme, setTheme } = useTheme();
   const { models, loadModels } = useModelsStore();
+  const keys = useApiKeysStore((s) => s.keys);
 
-  // Cmd/Ctrl+Shift+P mirrors many “command palette” UX patterns and avoids common OS/browser conflicts.
+  // Get compatible LLM provider IDs
+  const llmProviderIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          keys
+            .map((k) => k.provider)
+            .filter((p) =>
+              ["openrouter", "openai", "anthropic", "groq", "together", "perplexity", "anyscale", "ollama", "lmstudio"].includes(p) ||
+              p.startsWith("custom-openai:")
+            )
+        )
+      ),
+    [keys]
+  );
+
+  // Cmd/Ctrl+Shift+P mirrors many "command palette" UX patterns and avoids common OS/browser conflicts.
   useHotkeys(
     "mod+shift+p",
     (e) => {
@@ -47,27 +70,129 @@ export function CommandPalette() {
     { enableOnFormTags: false }
   );
 
+  // Also respond to Cmd/Ctrl+K for model search
+  useHotkeys(
+    "mod+k",
+    (e) => {
+      e.preventDefault();
+      setOpen(true);
+      setSearch("");
+    },
+    { enableOnFormTags: false }
+  );
+
   useEffect(() => {
-    if (!open) return;
-    loadModels().catch(() => {});
+    if (!open) {
+      setSearch("");
+      return;
+    }
+    loadModels().catch(() => { });
   }, [open, loadModels]);
 
+  const allModels = models.length > 0 ? models : MODELS;
+
+  // Available models (filtered by provider compatibility)
+  const availableModels = useMemo(() => {
+    return allModels.filter((model) =>
+      pickBestProviderId({ modelId: model.id, availableProviderIds: llmProviderIds }) !== null
+    );
+  }, [allModels, llmProviderIds]);
+
+  // Create Fuse.js instance for fuzzy search
+  const fuse = useMemo(() => {
+    if (availableModels.length === 0) return null;
+    return new Fuse(availableModels, {
+      keys: [
+        { name: "name", weight: 0.5 },
+        { name: "id", weight: 0.3 },
+        { name: "provider", weight: 0.15 },
+        { name: "description", weight: 0.05 },
+      ],
+      threshold: 0.4, // More forgiving
+      distance: 100,
+      ignoreLocation: true,
+      includeScore: true,
+      minMatchCharLength: 2,
+      findAllMatches: true,
+    });
+  }, [availableModels]);
+
+  // Filter models using fuzzy search
+  const filteredModels = useMemo(() => {
+    const q = search.trim();
+    if (!q) {
+      return availableModels.slice(0, 15);
+    }
+    if (fuse) {
+      return fuse.search(q).map((r) => r.item).slice(0, 15);
+    }
+    // Fallback
+    const lowerQ = q.toLowerCase();
+    return availableModels
+      .filter((model) => {
+        const haystack = `${model.name} ${model.id} ${model.provider}`.toLowerCase();
+        return haystack.includes(lowerQ);
+      })
+      .slice(0, 15);
+  }, [availableModels, fuse, search]);
+
   const handleNewChat = async () => {
+    const { defaultProviderId, defaultModelId, defaultModelIdsByProvider } =
+      useSettingsStore.getState();
+    const { providerId, modelId } = getDefaultChatConfig({
+      defaultProviderId,
+      defaultModelId,
+      defaultModelIdsByProvider,
+    });
     const newChat = await createChat({
       title: "New Chat",
-      modelId: MODELS[0].id,
+      modelId,
+      providerId: providerId || undefined,
     });
     setActiveChatId(newChat.id);
     setOpen(false);
   };
 
-  const handleSelectModel = async (modelId: string) => {
+  const handleSelectModelNewChat = async (modelId: string) => {
     const newChat = await createChat({
       title: "New Chat",
       modelId,
     });
     setActiveChatId(newChat.id);
     setOpen(false);
+  };
+
+  // Switch model for CURRENT active chat
+  const handleSwitchModel = async (modelId: string) => {
+    if (!activeChatId) {
+      // No active chat, create new one
+      await handleSelectModelNewChat(modelId);
+      return;
+    }
+
+    try {
+      const chat = await getChatById(activeChatId);
+      if (!chat) {
+        await handleSelectModelNewChat(modelId);
+        return;
+      }
+
+      await updateModelLastUsed(modelId);
+      const updates: { modelId: string; providerId?: string } = { modelId };
+
+      // If provider is incompatible, find a new one
+      if (chat.providerId && !isModelIdCompatibleWithProviderId(chat.providerId, modelId)) {
+        const next = pickBestProviderId({ modelId, availableProviderIds: llmProviderIds });
+        updates.providerId = next || undefined;
+      }
+
+      await updateChat(activeChatId, updates);
+      const model = getModelById(modelId);
+      toast.success(`Switched to ${model?.name || modelId}`);
+      setOpen(false);
+    } catch {
+      toast.error("Failed to switch model");
+    }
   };
 
   const handleThemeChange = (newTheme: "light" | "dark" | "system") => {
@@ -85,11 +210,42 @@ export function CommandPalette() {
     setOpen(false);
   };
 
+  const handleOpenModelPicker = () => {
+    window.dispatchEvent(new CustomEvent("lumina:open-model-picker"));
+    setOpen(false);
+  };
+
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
-      <CommandInput placeholder="Type a command or search..." />
+      <CommandInput
+        placeholder="Search models or type a command..."
+        value={search}
+        onValueChange={setSearch}
+      />
       <CommandList>
         <CommandEmpty>No results found.</CommandEmpty>
+
+        {/* Switch Model for Current Chat - shown prominently when there's an active chat */}
+        {activeChatId && filteredModels.length > 0 && (
+          <>
+            <CommandGroup heading="Switch Model (Current Chat)">
+              {filteredModels.slice(0, 6).map((model) => (
+                <CommandItem
+                  key={`switch-${model.id}`}
+                  value={`switch ${model.name} ${model.id}`}
+                  onSelect={() => handleSwitchModel(model.id)}
+                >
+                  <ArrowRightLeft className="mr-2 h-4 w-4" />
+                  <span>{model.name}</span>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {model.provider}
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+            <CommandSeparator />
+          </>
+        )}
 
         {/* Actions */}
         <CommandGroup heading="Actions">
@@ -97,6 +253,11 @@ export function CommandPalette() {
             <MessageSquarePlus className="mr-2 h-4 w-4" />
             <span>New Chat</span>
             <span className="ml-auto text-xs text-muted-foreground">Alt+Shift+N</span>
+          </CommandItem>
+          <CommandItem onSelect={handleOpenModelPicker}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            <span>Browse All Models</span>
+            <span className="ml-auto text-xs text-muted-foreground">⌘M</span>
           </CommandItem>
           <CommandItem onSelect={handleInsertPrompt}>
             <FileText className="mr-2 h-4 w-4" />
@@ -137,12 +298,13 @@ export function CommandPalette() {
 
         <CommandSeparator />
 
-        {/* Quick Model Selection */}
-        <CommandGroup heading="Start Chat with Model">
-          {(models.length > 0 ? models : MODELS).slice(0, 10).map((model) => (
+        {/* Start New Chat with Model */}
+        <CommandGroup heading="Start New Chat">
+          {filteredModels.slice(0, 8).map((model) => (
             <CommandItem
-              key={model.id}
-              onSelect={() => handleSelectModel(model.id)}
+              key={`new-${model.id}`}
+              value={`new ${model.name} ${model.id}`}
+              onSelect={() => handleSelectModelNewChat(model.id)}
             >
               <Sparkles className="mr-2 h-4 w-4" />
               <span>{model.name}</span>

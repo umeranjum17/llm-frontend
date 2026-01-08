@@ -3,8 +3,9 @@ import { useHotkeys } from "react-hotkeys-hook";
 import { useRouter } from "next/navigation";
 import { useUIStore } from "@/stores/ui-store";
 import { createChat } from "@/lib/db/queries";
-import { DEFAULT_MODEL } from "@/lib/constants/models";
 import { toast } from "sonner";
+import { useSettingsStore } from "@/stores/settings-store";
+import { getDefaultChatConfig } from "@/lib/ai/default-chat";
 
 export function useKeyboardShortcuts() {
   const router = useRouter();
@@ -14,9 +15,17 @@ export function useKeyboardShortcuts() {
   useHotkeys("alt+shift+n", async (e) => {
     e.preventDefault();
     try {
+      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider } =
+        useSettingsStore.getState();
+      const { providerId, modelId } = getDefaultChatConfig({
+        defaultProviderId,
+        defaultModelId,
+        defaultModelIdsByProvider,
+      });
       const newChat = await createChat({
         title: "New Chat",
-        modelId: DEFAULT_MODEL.id,
+        modelId,
+        providerId: providerId || undefined,
       });
       setActiveChatId(newChat.id);
       toast.success("New chat created");
@@ -25,6 +34,14 @@ export function useKeyboardShortcuts() {
     }
   }, {
     enableOnFormTags: false,
+  });
+
+  // Alt/Option + Shift + M - Open model picker
+  useHotkeys("alt+shift+m", (e) => {
+    e.preventDefault();
+    window.dispatchEvent(new CustomEvent("lumina:open-model-picker"));
+  }, {
+    enableOnFormTags: true,
   });
 
   // Cmd/Ctrl + / - Keyboard Shortcuts Help

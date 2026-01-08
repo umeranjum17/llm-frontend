@@ -8,12 +8,106 @@ import type { MessageContent } from "@/lib/db/schema";
 import { getImagesFromMessageContent, getTextFromMessageContent, mapTextInMessageContent } from "@/lib/utils/message-content";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { toast } from "sonner";
-import { pickBestProviderId, providerLabel } from "@/lib/ai/provider-routing";
+import { isModelIdCompatibleWithProviderId, pickBestProviderId, providerLabel } from "@/lib/ai/provider-routing";
 
 function cleanReferencesForLLM(content: string) {
   return content
     .replace(/@file:[^\[]+\[([^\]]+)\]/g, "[$1]")
     .replace(/@chat:[^\[]+\[([^\]]+)\]/g, "[$1]");
+}
+
+/**
+ * Handle image generation models separately from chat models.
+ * Calls /api/images and creates a message with the generated image.
+ */
+async function handleImageGeneration(
+  chatId: string,
+  modelId: string,
+  providerId: string,
+  apiKey: { key: string; baseUrl?: string } | undefined,
+  prompt: string,
+  parentUserMessageId?: string
+): Promise<void> {
+  const { addMessage, updateMessage, updateChat, getChatById } = await import("@/lib/db/queries");
+
+  // Create assistant message placeholder
+  const assistantMessage = await addMessage({
+    chatId,
+    role: "assistant",
+    content: [{ type: "text", text: "🎨 Generating image..." }],
+    modelId,
+    parentId: parentUserMessageId,
+  });
+
+  try {
+    console.log("[Image Gen] providerId:", providerId, "apiKey:", apiKey?.key ? "present" : "MISSING");
+    const response = await fetch("/api/images", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey?.key ? { "X-API-Key": apiKey.key } : {}),
+      },
+      body: JSON.stringify({
+        providerId,
+        providerBaseUrl: apiKey?.baseUrl,
+        modelId,
+        prompt,
+        size: "1024x1024",
+        quality: "standard",
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = (errorData as any)?.error || response.statusText;
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    const images = (data as any).images || [];
+
+    if (images.length === 0) {
+      throw new Error("No images generated");
+    }
+
+    // Build content with generated images
+    const contentParts: Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }> = [];
+
+    // Add revised prompt if available
+    if (images[0].revisedPrompt) {
+      contentParts.push({ type: "text", text: `*${images[0].revisedPrompt}*` });
+    }
+
+    // Add all generated images
+    for (const img of images) {
+      if (img.url) {
+        contentParts.push({
+          type: "image_url",
+          image_url: { url: img.url },
+        });
+      }
+    }
+
+    // Update the assistant message with the generated images
+    await updateMessage(assistantMessage.id, {
+      content: contentParts,
+    });
+
+    // Update chat's activeBranchLeafId
+    const chat = await getChatById(chatId);
+    if (chat) {
+      await updateChat(chatId, {
+        activeBranchLeafId: assistantMessage.id,
+      });
+    }
+  } catch (error) {
+    // Update message with error
+    const errorText = error instanceof Error ? error.message : "Image generation failed";
+    await updateMessage(assistantMessage.id, {
+      content: `❌ ${errorText}`,
+    });
+    throw error;
+  }
 }
 
 export function useChat(chatId: string) {
@@ -49,14 +143,20 @@ export function useChat(chatId: string) {
     );
 
     const providerId =
-      (chat.providerId && llmProviderIds.includes(chat.providerId) ? chat.providerId : null) ||
+      (chat.providerId &&
+        llmProviderIds.includes(chat.providerId) &&
+        isModelIdCompatibleWithProviderId(chat.providerId, modelId)
+        ? chat.providerId
+        : null) ||
       pickBestProviderId({
         modelId,
         availableProviderIds: llmProviderIds,
       });
 
     if (!providerId) {
-      throw new Error("No provider configured. Add an API key (or local provider) in Settings.");
+      throw new Error(
+        "No compatible provider configured for this model. Add an API key for OpenRouter or the model's provider in Settings."
+      );
     }
 
     const apiKey = getKeyForProvider(providerId);
@@ -67,9 +167,24 @@ export function useChat(chatId: string) {
 
     const enabledTools = chat.enabledTools || [];
     const images = getImagesFromMessageContent(messageContent);
-    if (images.length > 0 && !getModelCapabilities(modelId).supportsVision) {
+    const modelCaps = getModelCapabilities(modelId);
+
+    if (images.length > 0 && !modelCaps.supportsVision) {
       throw new Error(`Selected model (${modelId}) does not support images.`);
     }
+
+    // Check if this is an image generation model
+    if (modelCaps.isImageGeneration) {
+      return await handleImageGeneration(
+        chatId,
+        modelId,
+        providerId,
+        apiKey,
+        getTextFromMessageContent(messageContent),
+        parentUserMessageId
+      );
+    }
+
     const webSearchConfig = (() => {
       if (!enabledTools.includes("web-search")) return undefined;
 
@@ -218,8 +333,18 @@ export function useChat(chatId: string) {
             inputTokens = parsed.usage.promptTokens;
             outputTokens = parsed.usage.completionTokens;
           }
+
+          // Handle error events that can appear in the stream (from ai SDK v4)
+          if (parsed.type === "error") {
+            const errorMessage = parsed.error?.message || parsed.error?.data?.error?.message || "Stream error occurred";
+            throw new Error(errorMessage);
+          }
         } catch (e) {
-          // Skip invalid JSON
+          // If we threw an error above, re-throw it to the outer catch handler
+          if (e instanceof Error && e.message !== "Failed to parse stream data") {
+            throw e;
+          }
+          console.warn("Failed to parse stream data:", data);
         }
       }
     }
@@ -260,7 +385,7 @@ export function useChat(chatId: string) {
       const chat = await getChatById(chatId);
       if (!chat) throw new Error("Chat not found");
       if (chat.agentId) {
-        incrementAgentUsage(chat.agentId).catch(() => {});
+        incrementAgentUsage(chat.agentId).catch(() => { });
       }
 
       const images = getImagesFromMessageContent(content);
@@ -286,9 +411,19 @@ export function useChat(chatId: string) {
       await updateChat(chatId, { activeBranchLeafId: userMessage.id });
 
       if (isArenaMode && arenaModelIds.length > 0) {
-        await Promise.all(
+        // Use allSettled so one model failure doesn't abort the others
+        const results = await Promise.allSettled(
           arenaModelIds.map(modelId => generateResponse(content, attachments, modelId, userMessage.id))
         );
+        // Report individual failures without throwing (so the hook doesn't go into error state)
+        for (let i = 0; i < results.length; i++) {
+          const result = results[i];
+          if (result.status === "rejected") {
+            const modelId = arenaModelIds[i];
+            const errorMessage = result.reason instanceof Error ? result.reason.message : "Unknown error";
+            toast.error(`Arena: ${modelId} failed - ${errorMessage}`);
+          }
+        }
       } else {
         await generateResponse(content, attachments, undefined, userMessage.id);
       }

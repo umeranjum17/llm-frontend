@@ -1,0 +1,34 @@
+{
+  "ranking": {
+    "factors": [
+      { "name": "benchmark_score", "weight": 0.3 },
+      { "name": "cost_efficiency", "weight": 0.2 },
+      { "name": "context_length", "weight": 0.15 },
+      { "name": "speed", "weight": 0.15 },
+      { "name": "user_rating", "weight": 0.2 }
+    ],
+    "benchmarks": {
+      "coding": "swe-bench",
+      "reasoning": "mmlu",
+      "vision": "vqa",
+      "general": "hellaswag"
+    },
+    "algorithms": {
+      "default": "weighted_score",
+      "advanced": "elo_rating"
+    },
+    "contextLengthScoring": {
+      "min": 4096,
+      "max": 1000000,
+      "optimal": 128000
+    },
+    "costEfficiencyFormula": {
+      "weight": 0.2,
+      "preferLower": true
+    }
+  }
+}
+
+
+
+

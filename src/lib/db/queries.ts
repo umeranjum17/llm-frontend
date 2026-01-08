@@ -3,7 +3,18 @@ import { db, type Chat, type Message, type Project, type ProjectFile, type Model
 // ============= CHAT QUERIES =============
 
 export async function getAllChats() {
-  return await db.chats.orderBy("updatedAt").reverse().toArray();
+  const chats = await db.chats.toArray();
+  // Sort by: pinned first, then by order (if set), then by updatedAt
+  return chats.sort((a, b) => {
+    if (a.pinned && !b.pinned) return -1;
+    if (!a.pinned && b.pinned) return 1;
+    if (a.order !== undefined && b.order !== undefined) {
+      return a.order - b.order;
+    }
+    if (a.order !== undefined) return -1;
+    if (b.order !== undefined) return 1;
+    return b.updatedAt - a.updatedAt;
+  });
 }
 
 export async function getChatById(id: string) {
@@ -215,7 +226,7 @@ export async function deleteProjectFile(id: string) {
 // ============= MODEL FAVORITES QUERIES =============
 
 export async function getFavoriteModels() {
-  return await db.modelFavorites.orderBy("pinnedOrder").toArray();
+  return await db.modelFavorites.orderBy("lastUsed").reverse().toArray();
 }
 
 export async function getRecentModels(limit: number = 5) {
@@ -522,7 +533,16 @@ export async function getDefaultPresets() {
 // ============= FOLDER QUERIES =============
 
 export async function getAllFolders() {
-  return await db.folders.orderBy("createdAt").toArray();
+  const folders = await db.folders.toArray();
+  // Sort by order (if set), then by createdAt
+  return folders.sort((a, b) => {
+    if (a.order !== undefined && b.order !== undefined) {
+      return a.order - b.order;
+    }
+    if (a.order !== undefined) return -1;
+    if (b.order !== undefined) return 1;
+    return a.createdAt - b.createdAt;
+  });
 }
 
 export async function createFolder(name: string, color?: string) {
@@ -548,4 +568,22 @@ export async function deleteFolder(id: string) {
   }
   // Delete the folder
   await db.folders.delete(id);
+}
+
+export async function reorderChats(chatIds: string[]) {
+  // Update order for all chats
+  for (let i = 0; i < chatIds.length; i++) {
+    await db.chats.update(chatIds[i], { order: i });
+  }
+}
+
+export async function reorderFolders(folderIds: string[]) {
+  // Update order for all folders
+  for (let i = 0; i < folderIds.length; i++) {
+    await db.folders.update(folderIds[i], { order: i });
+  }
+}
+
+export async function moveChatToFolder(chatId: string, folderId: string | null) {
+  await db.chats.update(chatId, { folderId: folderId || undefined });
 }

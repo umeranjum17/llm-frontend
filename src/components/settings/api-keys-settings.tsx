@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,9 +13,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useApiKeysStore } from "@/stores/api-keys-store";
-import { Plus, Trash2, Eye, EyeOff, Check } from "lucide-react";
+import { Plus, Trash2, Eye, EyeOff, Check, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { CUSTOM_OPENAI_PREFIX, getProviderConfig, isCustomOpenAIProvider } from "@/lib/providers";
+import { localDetector } from "@/lib/providers/local-detector";
 
 const PROVIDERS = [
   { id: "openrouter", name: "OpenRouter", url: "https://openrouter.ai/keys" },
@@ -42,6 +43,38 @@ export function ApiKeysSettings() {
   const [newBaseUrl, setNewBaseUrl] = useState("");
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [testingKey, setTestingKey] = useState<string | null>(null);
+  const [localStatuses, setLocalStatuses] = useState<Record<string, { connected: boolean; checking: boolean }>>({});
+
+  // Check local providers status
+  useEffect(() => {
+    const checkLocalProviders = async () => {
+      const ollamaStatus = localDetector.getStatus("ollama");
+      const lmstudioStatus = localDetector.getStatus("lmstudio");
+      
+      setLocalStatuses({
+        ollama: {
+          connected: ollamaStatus?.connected ?? false,
+          checking: ollamaStatus?.checking ?? false,
+        },
+        lmstudio: {
+          connected: lmstudioStatus?.connected ?? false,
+          checking: lmstudioStatus?.checking ?? false,
+        },
+      });
+    };
+
+    checkLocalProviders();
+    const interval = setInterval(checkLocalProviders, 2000);
+    
+    // Start auto-checking
+    localDetector.startAutoCheck("ollama", 10000);
+    localDetector.startAutoCheck("lmstudio", 10000);
+
+    return () => {
+      clearInterval(interval);
+      localDetector.stopAllAutoChecks();
+    };
+  }, []);
 
   const handleAddKey = async () => {
     if (!newProvider) {
@@ -161,6 +194,31 @@ export function ApiKeysSettings() {
                     {apiKey.label && (
                       <Badge variant="secondary" className="text-xs">
                         {apiKey.label}
+                      </Badge>
+                    )}
+                    {(apiKey.provider === "ollama" || apiKey.provider === "lmstudio") && (
+                      <Badge 
+                        variant={localStatuses[apiKey.provider]?.connected ? "default" : "secondary"}
+                        className={localStatuses[apiKey.provider]?.connected ? "bg-green-500" : ""}
+                      >
+                        {localStatuses[apiKey.provider]?.checking ? (
+                          "Checking..."
+                        ) : localStatuses[apiKey.provider]?.connected ? (
+                          <>
+                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                            Connected
+                          </>
+                        ) : (
+                          <>
+                            <XCircle className="h-3 w-3 mr-1" />
+                            Disconnected
+                          </>
+                        )}
+                      </Badge>
+                    )}
+                    {(apiKey.provider === "ollama" || apiKey.provider === "lmstudio") && (
+                      <Badge variant="outline" className="text-xs">
+                        No API key needed
                       </Badge>
                     )}
                   </div>

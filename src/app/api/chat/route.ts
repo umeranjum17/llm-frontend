@@ -152,12 +152,12 @@ export async function POST(req: Request) {
 
     const toolInstructionMessages = enabledTools.includes("web-search")
       ? [
-          {
-            role: "system" as const,
-            content:
-              "If you use webSearch, call it as many times as needed (within the step limit), then include a final `Sources` section with numbered markdown links to the URLs you relied on. If you did not use webSearch, do not add a Sources section.",
-          },
-        ]
+        {
+          role: "system" as const,
+          content:
+            "If you use webSearch, call it as many times as needed (within the step limit), then include a final `Sources` section with numbered markdown links to the URLs you relied on. If you did not use webSearch, do not add a Sources section.",
+        },
+      ]
       : [];
 
     // Build tools object
@@ -186,8 +186,36 @@ export async function POST(req: Request) {
       maxSteps: 5, // Enable multi-step agentic behavior
     });
 
-    // Return the streaming response
-    return result.toDataStreamResponse();
+    // Return the streaming response using manual SSE for compatibility with use-chat.ts
+    return new Response(
+      new ReadableStream({
+        async start(controller) {
+          const encoder = new TextEncoder();
+          try {
+            for await (const part of result.fullStream) {
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify(part)}\n\n`)
+              );
+            }
+          } catch (error) {
+            console.error("Stream error:", error);
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ type: "error", error: "Stream failed" })}\n\n`)
+            );
+          } finally {
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+          }
+        },
+      }),
+      {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
+        },
+      }
+    );
   } catch (error) {
     console.error("Chat API error:", error);
     return new Response(

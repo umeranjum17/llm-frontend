@@ -1,6 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   Dialog,
@@ -35,7 +38,15 @@ const PRESET_COLORS = [
   "#ef4444", // red
   "#8b5cf6", // purple
   "#ec4899", // pink
-];
+] as const;
+
+const projectSchema = z.object({
+  name: z.string().min(1, "Project name is required").max(100, "Name too long"),
+  systemPrompt: z.string().optional(),
+  color: z.enum(PRESET_COLORS as any),
+});
+
+type ProjectFormData = z.infer<typeof projectSchema>;
 
 export function ProjectDialog({
   open,
@@ -43,10 +54,23 @@ export function ProjectDialog({
   projectId,
   onSuccess,
 }: ProjectDialogProps) {
-  const [name, setName] = useState("");
-  const [systemPrompt, setSystemPrompt] = useState("");
-  const [color, setColor] = useState(PRESET_COLORS[0]);
-  const [isLoading, setIsLoading] = useState(false);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+    reset,
+    watch,
+    setValue,
+  } = useForm<ProjectFormData>({
+    resolver: zodResolver(projectSchema),
+    defaultValues: {
+      name: "",
+      systemPrompt: "",
+      color: PRESET_COLORS[0],
+    },
+  });
+
+  const color = watch("color");
 
   const project = useLiveQuery(
     () => (projectId ? getProjectById(projectId) : undefined),
@@ -56,44 +80,42 @@ export function ProjectDialog({
   // Load project data when editing
   useEffect(() => {
     if (project) {
-      setName(project.name);
-      setSystemPrompt(project.systemPrompt || "");
-      setColor(project.color || PRESET_COLORS[0]);
+      reset({
+        name: project.name,
+        systemPrompt: project.systemPrompt || "",
+        color: (project.color as any) || PRESET_COLORS[0],
+      });
     } else {
-      setName("");
-      setSystemPrompt("");
-      setColor(PRESET_COLORS[0]);
+      reset({
+        name: "",
+        systemPrompt: "",
+        color: PRESET_COLORS[0],
+      });
     }
-  }, [project]);
+  }, [project, reset]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-
-    setIsLoading(true);
+  const onSubmit = async (data: ProjectFormData) => {
     try {
       if (projectId) {
         // Update existing project
         await updateProject(projectId, {
-          name: name.trim(),
-          systemPrompt: systemPrompt.trim() || undefined,
-          color,
+          name: data.name.trim(),
+          systemPrompt: data.systemPrompt?.trim() || undefined,
+          color: data.color,
         });
         onSuccess?.(projectId);
       } else {
         // Create new project
         const newProject = await createProject({
-          name: name.trim(),
-          systemPrompt: systemPrompt.trim() || undefined,
-          color,
+          name: data.name.trim(),
+          systemPrompt: data.systemPrompt?.trim() || undefined,
+          color: data.color,
         });
         onSuccess?.(newProject.id);
       }
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to save project:", error);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -101,14 +123,11 @@ export function ProjectDialog({
     if (!projectId) return;
     if (!confirm("Delete this project? All files will be removed.")) return;
 
-    setIsLoading(true);
     try {
       await deleteProject(projectId);
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to delete project:", error);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -124,16 +143,17 @@ export function ProjectDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name">Project Name</Label>
             <Input
               id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              {...register("name")}
               placeholder="My Project"
-              required
             />
+            {errors.name && (
+              <p className="text-xs text-destructive">{errors.name.message}</p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -143,7 +163,7 @@ export function ProjectDialog({
                 <button
                   key={presetColor}
                   type="button"
-                  onClick={() => setColor(presetColor)}
+                  onClick={() => setValue("color", presetColor)}
                   className="h-8 w-8 rounded-full border-2 transition-transform hover:scale-110"
                   style={{
                     backgroundColor: presetColor,
@@ -160,8 +180,7 @@ export function ProjectDialog({
             </Label>
             <Textarea
               id="systemPrompt"
-              value={systemPrompt}
-              onChange={(e) => setSystemPrompt(e.target.value)}
+              {...register("systemPrompt")}
               placeholder="You are a helpful assistant..."
               rows={6}
               className="font-mono text-sm"
@@ -177,7 +196,7 @@ export function ProjectDialog({
                 type="button"
                 variant="destructive"
                 onClick={handleDelete}
-                disabled={isLoading}
+                disabled={isSubmitting}
               >
                 Delete Project
               </Button>
@@ -187,12 +206,12 @@ export function ProjectDialog({
                 type="button"
                 variant="outline"
                 onClick={() => onOpenChange(false)}
-                disabled={isLoading}
+                disabled={isSubmitting}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isLoading || !name.trim()}>
-                {isLoading ? "Saving..." : projectId ? "Save" : "Create"}
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Saving..." : projectId ? "Save" : "Create"}
               </Button>
             </div>
           </DialogFooter>

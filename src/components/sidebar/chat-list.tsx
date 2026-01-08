@@ -1,34 +1,164 @@
-import { useEffect, useState } from "react";
-import { Virtuoso } from "react-virtuoso";
+import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { MessageSquare, Pin, Star, Trash2, Folder, ChevronDown, ChevronRight, FolderPlus, GitBranch } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  useDroppable,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { MessageSquare, Pin, Star, Trash2, Folder, ChevronDown, ChevronRight, FolderPlus, GitBranch, GripVertical, MoreVertical, Edit2, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getAllChats, deleteChat, updateChat, getAllFolders, createFolder } from "@/lib/db/queries";
+import { getAllChats, deleteChat, updateChat, getAllFolders, createFolder, reorderChats, reorderFolders, moveChatToFolder, updateFolder, deleteFolder, getLastMessage, getChatById, getAllTags } from "@/lib/db/queries";
+import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { useUIStore } from "@/stores/ui-store";
 import { useChatSearch } from "@/hooks/use-search";
 import { Button } from "@/components/ui/button";
 import type { Chat, Folder as FolderType } from "@/lib/db/schema";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
+import { FolderDialog } from "./folder-dialog";
+import { BulkActions } from "./bulk-actions";
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface ChatListProps {
   searchQuery: string;
 }
 
+type ListItem = { type: "folder"; folder: FolderType } | { type: "chat"; chat: Chat };
+
 export function ChatList({ searchQuery }: ChatListProps) {
   const activeChatId = useUIStore((state) => state.activeChatId);
   const setActiveChatId = useUIStore((state) => state.setActiveChatId);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [draggedItem, setDraggedItem] = useState<ListItem | null>(null);
+  const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+  const [editingFolder, setEditingFolder] = useState<FolderType | null>(null);
+  const [deleteFolderId, setDeleteFolderId] = useState<string | null>(null);
+  const [deleteChatId, setDeleteChatId] = useState<string | null>(null);
+  const [selectedChats, setSelectedChats] = useState<Set<string>>(new Set());
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   // Use Dexie live query for reactive updates
   const chats = useLiveQuery(() => getAllChats(), []);
   const folders = useLiveQuery(() => getAllFolders(), []);
+  const tags = useLiveQuery(() => getAllTags(), []);
 
   // Use fuzzy search with Fuse.js
   const filteredChats = useChatSearch(chats || [], searchQuery);
 
-  const handleChatClick = (chatId: string) => {
-    setActiveChatId(chatId);
+  const handleChatClick = (chatId: string, index: number, e: React.MouseEvent) => {
+    if (e.metaKey || e.ctrlKey) {
+      // Cmd/Ctrl+Click: Toggle selection
+      setSelectedChats(prev => {
+        const next = new Set(prev);
+        if (next.has(chatId)) {
+          next.delete(chatId);
+        } else {
+          next.add(chatId);
+        }
+        return next;
+      });
+      setLastSelectedIndex(index);
+    } else if (e.shiftKey && lastSelectedIndex !== null) {
+      // Shift+Click: Range selection
+      const start = Math.min(lastSelectedIndex, index);
+      const end = Math.max(lastSelectedIndex, index);
+      const items = buildItemsList();
+      const chatItems = items.filter(i => i.type === "chat").slice(start, end + 1);
+      setSelectedChats(prev => {
+        const next = new Set(prev);
+        chatItems.forEach(item => {
+          if (item.type === "chat") {
+            next.add(item.chat.id);
+          }
+        });
+        return next;
+      });
+    } else {
+      // Regular click: Select chat and clear selection
+      setActiveChatId(chatId);
+      setSelectedChats(new Set());
+      setLastSelectedIndex(null);
+    }
+  };
+
+  const handleBulkDelete = async (chatIds: string[]) => {
+    for (const chatId of chatIds) {
+      await deleteChat(chatId);
+      if (activeChatId === chatId) {
+        setActiveChatId(null);
+      }
+    }
+    setSelectedChats(new Set());
+    toast.success(`Deleted ${chatIds.length} chat${chatIds.length > 1 ? "s" : ""}`);
+  };
+
+  const handleBulkMove = async (chatIds: string[], folderId: string | null) => {
+    for (const chatId of chatIds) {
+      await moveChatToFolder(chatId, folderId);
+    }
+    setSelectedChats(new Set());
+    toast.success(`Moved ${chatIds.length} chat${chatIds.length > 1 ? "s" : ""}`);
+  };
+
+  const handleBulkTag = async (chatIds: string[], tagId: string) => {
+    for (const chatId of chatIds) {
+      const chat = await getChatById(chatId);
+      if (chat) {
+        const currentTags = chat.tags || [];
+        if (!currentTags.includes(tagId)) {
+          await updateChat(chatId, { tags: [...currentTags, tagId] });
+        }
+      }
+    }
+    setSelectedChats(new Set());
+    toast.success(`Tagged ${chatIds.length} chat${chatIds.length > 1 ? "s" : ""}`);
   };
 
   const handleTogglePin = async (e: React.MouseEvent, chat: Chat) => {
@@ -41,26 +171,162 @@ export function ChatList({ searchQuery }: ChatListProps) {
     await updateChat(chat.id, { favorite: !chat.favorite });
   };
 
-  const handleDelete = async (e: React.MouseEvent, chatId: string) => {
+  const handleDelete = (e: React.MouseEvent, chatId: string) => {
     e.stopPropagation();
-    if (confirm("Delete this chat?")) {
-      await deleteChat(chatId);
-      if (activeChatId === chatId) {
-        setActiveChatId(null);
-      }
-    }
+    setDeleteChatId(chatId);
   };
 
   const toggleFolder = (folderId: string) => {
     setExpandedFolders(prev => ({ ...prev, [folderId]: !prev[folderId] }));
   };
 
-  const handleCreateFolder = async () => {
-    const name = prompt("Enter folder name:");
-    if (name) {
-      await createFolder(name);
+  const handleCreateFolder = () => {
+    setEditingFolder(null);
+    setFolderDialogOpen(true);
+  };
+
+  const handleSaveFolder = async (name: string, color?: string) => {
+    if (editingFolder) {
+      await updateFolder(editingFolder.id, { name, color });
+      toast.success("Folder updated");
+    } else {
+      await createFolder(name, color);
       toast.success("Folder created");
     }
+  };
+
+  const handleEditFolder = (folder: FolderType) => {
+    setEditingFolder(folder);
+    setFolderDialogOpen(true);
+  };
+
+  const handleDeleteFolder = async () => {
+    if (deleteFolderId) {
+      await deleteFolder(deleteFolderId);
+      toast.success("Folder deleted");
+      setDeleteFolderId(null);
+    }
+  };
+
+  const handleDeleteChatConfirm = async () => {
+    if (deleteChatId) {
+      await deleteChat(deleteChatId);
+      if (activeChatId === deleteChatId) {
+        setActiveChatId(null);
+      }
+      toast.success("Chat deleted");
+      setDeleteChatId(null);
+    }
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    setActiveId(active.id as string);
+
+    // Find the dragged item
+    const allItems = buildItemsList();
+    const item = allItems.find(i =>
+      (i.type === "folder" && i.folder.id === active.id) ||
+      (i.type === "chat" && i.chat.id === active.id)
+    );
+    setDraggedItem(item || null);
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveId(null);
+    setDraggedItem(null);
+
+    if (!over || active.id === over.id) return;
+
+    const activeId = active.id as string;
+    const overId = over.id as string;
+
+    // Handle folder reordering
+    if (activeId.startsWith("folder-") && overId.startsWith("folder-")) {
+      const folderIds = folders?.map(f => f.id) || [];
+      const activeIndex = folderIds.indexOf(activeId.replace("folder-", ""));
+      const overIndex = folderIds.indexOf(overId.replace("folder-", ""));
+
+      if (activeIndex !== -1 && overIndex !== -1) {
+        const newOrder = arrayMove(folderIds, activeIndex, overIndex);
+        await reorderFolders(newOrder);
+      }
+      return;
+    }
+
+    // Handle chat reordering within same folder
+    if (activeId.startsWith("chat-") && overId.startsWith("chat-")) {
+      const activeChatId = activeId.replace("chat-", "");
+      const overChatId = overId.replace("chat-", "");
+      const activeChat = chats?.find(c => c.id === activeChatId);
+      const overChat = chats?.find(c => c.id === overChatId);
+
+      if (activeChat && overChat && activeChat.folderId === overChat.folderId) {
+        const folderChats = chats?.filter(c => c.folderId === activeChat.folderId) || [];
+        const chatIds = folderChats.map(c => c.id);
+        const activeIndex = chatIds.indexOf(activeChatId);
+        const overIndex = chatIds.indexOf(overChatId);
+
+        if (activeIndex !== -1 && overIndex !== -1) {
+          const newOrder = arrayMove(chatIds, activeIndex, overIndex);
+          await reorderChats(newOrder);
+        }
+      }
+      return;
+    }
+
+    // Handle moving chat to folder (drag chat onto folder)
+    if (activeId.startsWith("chat-") && overId.startsWith("folder-")) {
+      const chatId = activeId.replace("chat-", "");
+      const folderId = overId.replace("folder-", "");
+      await moveChatToFolder(chatId, folderId);
+      toast.success("Chat moved to folder");
+      return;
+    }
+
+    // Handle moving chat out of folder (drag to "no-folder" zone)
+    if (activeId.startsWith("chat-") && overId === "no-folder") {
+      const chatId = activeId.replace("chat-", "");
+      await moveChatToFolder(chatId, null);
+      toast.success("Chat moved out of folder");
+      return;
+    }
+  };
+
+  const buildItemsList = (): ListItem[] => {
+    if (!chats || !folders) return [];
+
+    // Group chats by folder
+    const chatsByFolder: Record<string, Chat[]> = {};
+    const looseChats: Chat[] = [];
+
+    filteredChats.forEach(chat => {
+      if (chat.folderId) {
+        if (!chatsByFolder[chat.folderId]) chatsByFolder[chat.folderId] = [];
+        chatsByFolder[chat.folderId].push(chat);
+      } else {
+        looseChats.push(chat);
+      }
+    });
+
+    const items: ListItem[] = [];
+
+    // Add folders
+    folders.forEach(folder => {
+      items.push({ type: "folder", folder });
+      if (expandedFolders[folder.id]) {
+        const folderChats = chatsByFolder[folder.id] || [];
+        folderChats.forEach(chat => items.push({ type: "chat", chat }));
+      }
+    });
+
+    // Add loose chats
+    if (looseChats.length > 0 || items.length === 0) {
+      looseChats.forEach(chat => items.push({ type: "chat", chat }));
+    }
+
+    return items;
   };
 
   if (!chats || !folders) {
@@ -71,33 +337,7 @@ export function ChatList({ searchQuery }: ChatListProps) {
     );
   }
 
-  // Group chats by folder
-  const chatsByFolder: Record<string, Chat[]> = {};
-  const looseChats: Chat[] = [];
-
-  filteredChats.forEach(chat => {
-    if (chat.folderId) {
-      if (!chatsByFolder[chat.folderId]) chatsByFolder[chat.folderId] = [];
-      chatsByFolder[chat.folderId].push(chat);
-    } else {
-      looseChats.push(chat);
-    }
-  });
-
-  // Flat list for Virtuoso (folders and chats)
-  const items: ({ type: "folder", folder: FolderType } | { type: "chat", chat: Chat })[] = [];
-
-  folders.forEach(folder => {
-    items.push({ type: "folder", folder });
-    if (expandedFolders[folder.id]) {
-      const folderChats = chatsByFolder[folder.id] || [];
-      folderChats.forEach(chat => items.push({ type: "chat", chat }));
-    }
-  });
-
-  if (looseChats.length > 0 || items.length === 0) {
-    looseChats.forEach(chat => items.push({ type: "chat", chat }));
-  }
+  const items = buildItemsList();
 
   if (items.length === 0) {
     return (
@@ -114,95 +354,330 @@ export function ChatList({ searchQuery }: ChatListProps) {
     );
   }
 
-  return (
-    <div className="flex h-full flex-col">
-      <div className="px-4 py-2 flex justify-between items-center border-b bg-background/40 backdrop-blur supports-[backdrop-filter]:bg-background/30">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Your Library</span>
-        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={handleCreateFolder} title="New Folder">
-          <FolderPlus className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-      <Virtuoso
-        data={items}
-        className="flex-1"
-        itemContent={(index, item) => {
-          if (item.type === "folder") {
-            const isExpanded = expandedFolders[item.folder.id];
-            return (
-              <div
-                className="flex items-center gap-2 px-4 py-2 cursor-pointer hover:bg-accent/50 group"
-                onClick={() => toggleFolder(item.folder.id)}
-              >
-                {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                <Folder className="h-3.5 w-3.5 text-primary" />
-                <span className="text-xs font-semibold truncate flex-1">{item.folder.name}</span>
-              </div>
-            );
-          }
+  // Get sortable IDs for folders and chats
+  const folderIds = folders.map(f => `folder-${f.id}`);
+  const chatIds = items.filter(i => i.type === "chat").map(i => `chat-${i.chat.id}`);
+  const sortableIds = [...folderIds, ...chatIds, "no-folder"];
 
-          const chat = item.chat;
-          return (
-            <ChatItem
-              key={chat.id}
-              chat={chat}
-              isActive={chat.id === activeChatId}
-              isNested={!!chat.folderId}
-              onClick={() => handleChatClick(chat.id)}
-              onTogglePin={(e) => handleTogglePin(e, chat)}
-              onToggleFavorite={(e) => handleToggleFavorite(e, chat)}
-              onDelete={(e) => handleDelete(e, chat.id)}
-            />
-          );
-        }}
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="flex h-full flex-col">
+        <div className="px-4 py-2 flex justify-between items-center border-b bg-background/40 backdrop-blur supports-[backdrop-filter]:bg-background/30">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Your Library</span>
+          <Button variant="ghost" size="icon" className="h-5 w-5" onClick={handleCreateFolder} title="New Folder">
+            <FolderPlus className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+        {selectedChats.size > 0 && (
+          <BulkActions
+            selectedChats={selectedChats}
+            onClearSelection={() => {
+              setSelectedChats(new Set());
+              setLastSelectedIndex(null);
+            }}
+            onBulkDelete={handleBulkDelete}
+            onBulkMove={handleBulkMove}
+            onBulkTag={handleBulkTag}
+            folders={folders || []}
+            tags={tags || []}
+          />
+        )}
+        <ScrollArea className="flex-1">
+          <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+            <div>
+              {/* No-folder drop zone for moving chats out of folders */}
+              <NoFolderDropZone />
+              {items.map((item, index) => {
+                if (item.type === "folder") {
+                  const folderChatCount = chats?.filter(c => c.folderId === item.folder.id).length || 0;
+                  return (
+                    <SortableFolderItem
+                      key={item.folder.id}
+                      folder={item.folder}
+                      isExpanded={expandedFolders[item.folder.id]}
+                      onToggle={() => toggleFolder(item.folder.id)}
+                      chatCount={folderChatCount}
+                      onEdit={() => handleEditFolder(item.folder)}
+                      onDelete={() => setDeleteFolderId(item.folder.id)}
+                    />
+                  );
+                }
+
+                const chatIndex = items.filter(i => i.type === "chat").findIndex(i => i.type === "chat" && i.chat.id === item.chat.id);
+                return (
+                  <SortableChatItem
+                    key={item.chat.id}
+                    chat={item.chat}
+                    isActive={item.chat.id === activeChatId}
+                    isSelected={selectedChats.has(item.chat.id)}
+                    isNested={!!item.chat.folderId}
+                    onClick={(e) => handleChatClick(item.chat.id, chatIndex, e)}
+                    onTogglePin={(e) => handleTogglePin(e, item.chat)}
+                    onToggleFavorite={(e) => handleToggleFavorite(e, item.chat)}
+                    onDelete={(e) => handleDelete(e, item.chat.id)}
+                    folders={folders || []}
+                    onMoveToFolder={(folderId) => moveChatToFolder(item.chat.id, folderId)}
+                  />
+                );
+              })}
+            </div>
+          </SortableContext>
+        </ScrollArea>
+        <DragOverlay>
+          {draggedItem && (
+            <div className="opacity-50">
+              {draggedItem.type === "folder" ? (
+                <div className="flex items-center gap-2 px-4 py-2">
+                  <Folder className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-xs font-semibold">{draggedItem.folder.name}</span>
+                </div>
+              ) : (
+                <div className="px-4 py-3 border-b">
+                  <div className="text-sm font-medium">{draggedItem.chat.title}</div>
+                </div>
+              )}
+            </div>
+          )}
+        </DragOverlay>
+      </div>
+
+      {/* Folder Dialog */}
+      <FolderDialog
+        open={folderDialogOpen}
+        onOpenChange={setFolderDialogOpen}
+        onSave={handleSaveFolder}
+        folder={editingFolder}
       />
+
+      {/* Delete Folder Confirmation */}
+      <AlertDialog open={!!deleteFolderId} onOpenChange={(open) => !open && setDeleteFolderId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Folder?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the folder but keep all chats inside. The chats will be moved to &quot;No Folder&quot;.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteFolder}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Chat Confirmation */}
+      <AlertDialog open={!!deleteChatId} onOpenChange={(open) => !open && setDeleteChatId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Chat?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the chat and all its messages.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteChatConfirm}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </DndContext>
+  );
+}
+
+
+interface SortableFolderItemProps {
+  folder: FolderType;
+  isExpanded: boolean;
+  onToggle: () => void;
+  chatCount?: number;
+  onEdit: () => void;
+  onDelete: () => void;
+}
+
+function SortableFolderItem({ folder, isExpanded, onToggle, chatCount = 0, onEdit, onDelete }: SortableFolderItemProps) {
+  const [isHovered, setIsHovered] = useState(false);
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: `folder-${folder.id}` });
+  const { setNodeRef: setDroppableRef, isOver } = useDroppable({
+    id: `folder-${folder.id}`,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={(node) => {
+        setNodeRef(node);
+        setDroppableRef(node);
+      }}
+      style={style}
+      className={cn(
+        "flex items-center gap-2 px-4 py-2 cursor-pointer hover:bg-accent/50 group transition-colors",
+        isDragging && "opacity-50",
+        isOver && "bg-accent/80 ring-2 ring-primary ring-offset-2"
+      )}
+      onClick={onToggle}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors p-0.5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <GripVertical className="h-3 w-3" />
+      </button>
+      {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+      <Folder className={cn("h-3.5 w-3.5", folder.color && `text-[${folder.color}]`)} style={folder.color ? { color: folder.color } : undefined} />
+      <span className="text-xs font-semibold truncate flex-1">{folder.name}</span>
+      {chatCount > 0 && (
+        <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+          {chatCount}
+        </span>
+      )}
+      {isHovered && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+            <Button variant="ghost" size="icon" className="h-5 w-5">
+              <MoreVertical className="h-3 w-3" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(); }}>
+              <Edit2 className="h-3.5 w-3.5 mr-2" />
+              Rename
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDelete(); }} className="text-destructive">
+              <Trash2 className="h-3.5 w-3.5 mr-2" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   );
 }
 
-interface ChatItemProps {
+function NoFolderDropZone() {
+  const { setNodeRef, isOver } = useDroppable({
+    id: "no-folder",
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border/60 transition-colors",
+        isOver && "bg-accent/80 text-foreground"
+      )}
+    >
+      {isOver ? "Drop here to remove from folder" : "No Folder"}
+    </div>
+  );
+}
+
+interface SortableChatItemProps {
   chat: Chat;
   isActive: boolean;
+  isSelected?: boolean;
   isNested?: boolean;
-  onClick: () => void;
+  onClick: (e: React.MouseEvent) => void;
   onTogglePin: (e: React.MouseEvent) => void;
   onToggleFavorite: (e: React.MouseEvent) => void;
   onDelete: (e: React.MouseEvent) => void;
+  folders: FolderType[];
+  onMoveToFolder: (folderId: string | null) => void;
 }
 
-function ChatItem({
+function SortableChatItem({
   chat,
   isActive,
+  isSelected = false,
   isNested,
   onClick,
   onTogglePin,
   onToggleFavorite,
   onDelete,
-}: ChatItemProps) {
+  folders,
+  onMoveToFolder,
+}: SortableChatItemProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const lastMessage = useLiveQuery(() => getLastMessage(chat.id), [chat.id]);
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: `chat-${chat.id}` });
+
+  const previewText = lastMessage ? getTextFromMessageContent(lastMessage.content).slice(0, 60) : "";
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
 
   return (
     <div
+      ref={setNodeRef}
+      style={style}
       className={cn(
         "group relative cursor-pointer border-b border-border/60 px-4 py-3 transition-colors hover:bg-accent/60",
         isActive && "bg-background/60 before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-primary",
-        isNested && "pl-8"
+        isSelected && "bg-accent/40 ring-2 ring-primary ring-offset-2",
+        isNested && "pl-8",
+        isDragging && "opacity-50"
       )}
       onClick={onClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            {chat.pinned && <Pin className="h-3 w-3 text-primary shrink-0" />}
-            {chat.favorite && <Star className="h-3 w-3 text-yellow-500 shrink-0" />}
-            {chat.hasBranches && <GitBranch className="h-3 w-3 text-muted-foreground shrink-0" />}
-            <h3 className="text-sm font-medium truncate">{chat.title}</h3>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="truncate">{chat.modelId}</span>
-            <span>•</span>
-            <span>{formatDistanceToNow(new Date(chat.updatedAt), { addSuffix: true })}</span>
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          <button
+            {...attributes}
+            {...listeners}
+            className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors p-0.5 shrink-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GripVertical className="h-3 w-3" />
+          </button>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              {chat.pinned && <Pin className="h-3 w-3 text-primary shrink-0" />}
+              {chat.favorite && <Star className="h-3 w-3 text-yellow-500 shrink-0" />}
+              {chat.hasBranches && <GitBranch className="h-3 w-3 text-muted-foreground shrink-0" />}
+              <h3 className="text-sm font-medium truncate">{chat.title}</h3>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="truncate">{chat.modelId}</span>
+              <span>•</span>
+              <span>{formatDistanceToNow(new Date(chat.updatedAt), { addSuffix: true })}</span>
+            </div>
+            {previewText && (
+              <p className="text-xs text-muted-foreground/80 truncate mt-0.5">
+                {previewText}{previewText.length >= 60 ? "..." : ""}
+              </p>
+            )}
           </div>
         </div>
 
@@ -227,29 +702,38 @@ function ChatItem({
             >
               <Star className={cn("h-3 w-3", chat.favorite && "fill-current text-yellow-500")} />
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={(e) => {
-                e.stopPropagation();
-                const name = prompt("Move to folder (name):");
-                if (name) {
-                  getAllFolders().then(folders => {
-                    const folder = folders.find(f => f.name.toLowerCase() === name.toLowerCase());
-                    if (folder) {
-                      updateChat(chat.id, { folderId: folder.id });
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  title="Move to Folder"
+                >
+                  <Folder className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Move to Folder</DropdownMenuLabel>
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onMoveToFolder(null); }}>
+                  No Folder
+                </DropdownMenuItem>
+                {folders.length > 0 && <DropdownMenuSeparator />}
+                {folders.map((folder) => (
+                  <DropdownMenuItem
+                    key={folder.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onMoveToFolder(folder.id);
                       toast.success(`Moved to ${folder.name}`);
-                    } else {
-                      toast.error("Folder not found");
-                    }
-                  });
-                }
-              }}
-              title="Move to Folder"
-            >
-              <Folder className="h-3 w-3" />
-            </Button>
+                    }}
+                  >
+                    <Folder className="h-3.5 w-3.5 mr-2" style={folder.color ? { color: folder.color } : undefined} />
+                    {folder.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button
               variant="ghost"
               size="icon"

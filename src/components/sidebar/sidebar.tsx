@@ -11,6 +11,7 @@ import { useSettingsStore } from "@/stores/settings-store";
 import { ProjectSelector } from "@/components/projects/project-selector";
 import { ChatList } from "./chat-list";
 import { useSidebarKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { getDefaultChatConfig } from "@/lib/ai/default-chat";
 
 export function Sidebar() {
   const router = useRouter();
@@ -25,11 +26,18 @@ export function Sidebar() {
   const handleNewChat = async () => {
     // Import dynamically to avoid circular dependencies
     const { createChat } = await import("@/lib/db/queries");
-    const { DEFAULT_MODEL } = await import("@/lib/constants/models");
+    const { defaultProviderId, defaultModelId, defaultModelIdsByProvider } =
+      useSettingsStore.getState();
+    const { providerId, modelId } = getDefaultChatConfig({
+      defaultProviderId,
+      defaultModelId,
+      defaultModelIdsByProvider,
+    });
 
     const newChat = await createChat({
       title: "New Chat",
-      modelId: DEFAULT_MODEL.id,
+      modelId,
+      providerId: providerId || undefined,
     });
 
     setActiveChatId(newChat.id);

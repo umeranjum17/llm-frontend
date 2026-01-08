@@ -9,6 +9,11 @@ interface SettingsState extends Partial<UserSettings> {
   loadSettings: () => Promise<void>;
   updateTheme: (theme: "light" | "dark" | "system") => Promise<void>;
   updateDefaultModel: (modelId: string) => Promise<void>;
+  updateDefaultChatDefaults: (opts: {
+    defaultProviderId?: string;
+    defaultModelId?: string;
+    defaultModelIdsByProvider?: Record<string, string>;
+  }) => Promise<void>;
   updateEnabledTools: (tools: string[]) => Promise<void>;
   updateShortcuts: (shortcuts: Record<string, string>) => Promise<void>;
   updateSidebarWidth: (width: number) => Promise<void>;
@@ -18,6 +23,7 @@ interface SettingsState extends Partial<UserSettings> {
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   isLoaded: false,
   theme: "system",
+  defaultModelIdsByProvider: {},
   enabledTools: [],
   shortcuts: {},
 
@@ -34,6 +40,19 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateDefaultModel: async (modelId) => {
     await updateSettings({ defaultModelId: modelId });
     set({ defaultModelId: modelId });
+  },
+
+  updateDefaultChatDefaults: async (opts) => {
+    await updateSettings({
+      defaultProviderId: opts.defaultProviderId,
+      defaultModelId: opts.defaultModelId,
+      defaultModelIdsByProvider: opts.defaultModelIdsByProvider,
+    });
+    set({
+      defaultProviderId: opts.defaultProviderId,
+      defaultModelId: opts.defaultModelId,
+      defaultModelIdsByProvider: opts.defaultModelIdsByProvider,
+    });
   },
 
   updateEnabledTools: async (tools) => {

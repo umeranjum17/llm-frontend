@@ -1,10 +1,16 @@
 "use client";
 
-import { isValidElement } from "react";
+import { isValidElement, memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import remarkGemoji from "remark-gemoji";
+import remarkBreaks from "remark-breaks";
 import rehypeKatex from "rehype-katex";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize from "rehype-sanitize";
+import rehypeSlug from "rehype-slug";
+import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import { CodeBlock } from "./code-block";
 import "katex/dist/katex.min.css";
 
@@ -12,11 +18,22 @@ interface MarkdownRendererProps {
   content: string;
 }
 
-export function MarkdownRenderer({ content }: MarkdownRendererProps) {
+export const MarkdownRenderer = memo(function MarkdownRenderer({ content }: MarkdownRendererProps) {
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[rehypeKatex]}
+      remarkPlugins={[
+        remarkGfm,
+        remarkMath,
+        remarkGemoji,
+        remarkBreaks,
+      ]}
+      rehypePlugins={[
+        rehypeRaw,
+        rehypeSanitize,
+        rehypeSlug,
+        [rehypeAutolinkHeadings, { behavior: "wrap" }],
+        rehypeKatex,
+      ]}
       components={{
         pre: ({ children }) => {
           const child = Array.isArray(children) ? children[0] : children;
@@ -91,17 +108,17 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
           </li>
         ),
         h1: ({ node, children, ...props }) => (
-          <h1 className="text-2xl font-bold mt-6 mb-4" {...props}>
+          <h1 id={props.id} className="text-2xl font-bold mt-6 mb-4 scroll-mt-4" {...props}>
             {children}
           </h1>
         ),
         h2: ({ node, children, ...props }) => (
-          <h2 className="text-xl font-bold mt-5 mb-3" {...props}>
+          <h2 id={props.id} className="text-xl font-bold mt-5 mb-3 scroll-mt-4" {...props}>
             {children}
           </h2>
         ),
         h3: ({ node, children, ...props }) => (
-          <h3 className="text-lg font-semibold mt-4 mb-2" {...props}>
+          <h3 id={props.id} className="text-lg font-semibold mt-4 mb-2 scroll-mt-4" {...props}>
             {children}
           </h3>
         ),
@@ -126,4 +143,4 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
       {content}
     </ReactMarkdown>
   );
-}
+});

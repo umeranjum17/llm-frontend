@@ -12,8 +12,8 @@ export interface Model {
   maxCompletionTokens?: number;
 }
 
-// Default model list (Phase 1 - basic models)
-// Will be expanded in Phase 2
+// Fallback model list (used when dynamic loading fails)
+// These are kept as a safety net, but the system now uses dynamic loading from multiple providers
 export const MODELS: Model[] = [
   {
     id: "anthropic/claude-3.5-sonnet",

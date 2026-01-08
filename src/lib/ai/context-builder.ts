@@ -1,6 +1,8 @@
 import { getProjectFileById, getMessages, getChatById, getAgentById } from "@/lib/db/queries";
 import type { Message } from "@/lib/db/schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
+import { retrieveContext } from "@/lib/rag/retrieval";
+import { getMemoryContext } from "@/lib/memory";
 
 export async function parseReferences(content: string): Promise<{
   cleanContent: string;
@@ -32,12 +34,63 @@ export async function parseReferences(content: string): Promise<{
 
 export async function buildContextMessages(
   userMessage: string,
-  chatId: string
+  chatId: string,
+  options?: {
+    enableRAG?: boolean;
+    ragLimit?: number;
+  }
 ): Promise<Message[]> {
   const messages: Message[] = [];
 
+  // Add user memory context FIRST (personalizes all conversations)
+  try {
+    const memoryContext = await getMemoryContext();
+    if (memoryContext) {
+      messages.push({
+        id: "memory-context",
+        chatId,
+        role: "system",
+        content: memoryContext,
+        createdAt: Date.now(),
+      });
+    }
+  } catch (error) {
+    console.error("Failed to load memory context:", error);
+    // Continue without memory if it fails
+  }
+
   // Parse references from user message
   const { cleanContent, fileReferences, chatReferences } = await parseReferences(userMessage);
+
+  // RAG retrieval if enabled
+  if (options?.enableRAG) {
+    try {
+      const chat = await getChatById(chatId);
+      const ragResults = await retrieveContext(cleanContent, {
+        chatId,
+        projectId: chat?.projectId,
+        limit: options.ragLimit || 3,
+        threshold: 0.6,
+      });
+
+      if (ragResults.length > 0) {
+        const ragContext = ragResults
+          .map((result, idx) => `[Context ${idx + 1} (similarity: ${(result.similarity * 100).toFixed(1)}%)]\n${result.text}`)
+          .join("\n\n---\n\n");
+
+        messages.push({
+          id: "rag-context",
+          chatId,
+          role: "system",
+          content: `Relevant context from previous conversations:\n\n${ragContext}`,
+          createdAt: Date.now(),
+        });
+      }
+    } catch (error) {
+      console.error("RAG retrieval failed:", error);
+      // Continue without RAG if it fails
+    }
+  }
 
   // Get chat to access project
   const chat = await getChatById(chatId);

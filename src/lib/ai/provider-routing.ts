@@ -7,23 +7,64 @@ export function providerLabel(providerId: string) {
   return providerId;
 }
 
-export function inferProviderFromModelId(modelId: string): "openai" | "anthropic" | null {
-  if (modelId.startsWith("openai/")) return "openai";
-  if (modelId.startsWith("anthropic/")) return "anthropic";
-  return null;
+const DIRECT_MODEL_PREFIX_TO_PROVIDER_ID = new Set([
+  "openai",
+  "anthropic",
+  "groq",
+  "together",
+  "perplexity",
+  "anyscale",
+  "ollama",
+  "lmstudio",
+]);
+
+export function inferDirectProviderFromModelId(modelId: string): string | null {
+  const prefix = modelId.split("/")[0];
+  if (!prefix) return null;
+  return DIRECT_MODEL_PREFIX_TO_PROVIDER_ID.has(prefix) ? prefix : null;
+}
+
+export function isModelIdCompatibleWithProviderId(providerId: string, modelId: string): boolean {
+  if (providerId === "openrouter") return true;
+  if (providerId === "anthropic") return modelId.startsWith("anthropic/") || !modelId.includes("/");
+  if (providerId === "openai" || providerId.startsWith(CUSTOM_OPENAI_PREFIX)) {
+    return modelId.startsWith("openai/") || !modelId.includes("/");
+  }
+
+  const prefix = `${providerId}/`;
+  return modelId.startsWith(prefix) || !modelId.includes("/");
 }
 
 export function pickBestProviderId(opts: {
   modelId: string;
   availableProviderIds: string[];
 }): string | null {
-  const preferred = inferProviderFromModelId(opts.modelId);
-  if (preferred && opts.availableProviderIds.includes(preferred)) return preferred;
-  if (opts.availableProviderIds.includes("openrouter")) return "openrouter";
+  const available = opts.availableProviderIds
+    .filter((id) => resolveProvider(id) !== null)
+    .filter((id) => typeof id === "string" && id.length > 0);
 
-  const resolved = opts.availableProviderIds
+  // Prefer the matching direct provider for the model ID (when it exists and is available).
+  const direct = inferDirectProviderFromModelId(opts.modelId);
+  if (direct && available.includes(direct) && isModelIdCompatibleWithProviderId(direct, opts.modelId)) {
+    return direct;
+  }
+
+  // Custom OpenAI-compatible providers can generally serve OpenAI model IDs.
+  if (opts.modelId.startsWith("openai/")) {
+    const custom = available.find((id) => id.startsWith(CUSTOM_OPENAI_PREFIX));
+    if (custom && isModelIdCompatibleWithProviderId(custom, opts.modelId)) return custom;
+  }
+
+  // OpenRouter is the broadest fallback, but only if the model can be routed through it.
+  if (available.includes("openrouter") && isModelIdCompatibleWithProviderId("openrouter", opts.modelId)) {
+    return "openrouter";
+  }
+
+  // Final fallback: choose the best compatible provider by priority.
+  const resolved = available
     .map((id) => resolveProvider(id))
     .filter((p) => p !== null)
+    .filter((p) => isModelIdCompatibleWithProviderId(p.id, opts.modelId))
     .sort((a, b) => a.priority - b.priority);
 
   return resolved[0]?.id ?? null;
@@ -53,7 +94,10 @@ function normalizeAnthropicModelId(modelId: string) {
 export function normalizeModelIdForProviderId(providerId: string, modelId: string) {
   if (providerId === "openrouter") return modelId;
   if (providerId === "anthropic") return normalizeAnthropicModelId(modelId);
-  if (providerId === "openai") return normalizeOpenAIModelId(modelId);
+  if (providerId === "openai" || providerId.startsWith(CUSTOM_OPENAI_PREFIX)) {
+    return normalizeOpenAIModelId(modelId);
+  }
   // Other OpenAI-compatible providers typically don't accept OpenRouter-style prefixes.
-  return normalizeOpenAIModelId(modelId);
+  const prefix = `${providerId}/`;
+  return modelId.startsWith(prefix) ? modelId.slice(prefix.length) : modelId;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback, memo } from "react";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 import { useLiveQuery } from "dexie-react-hooks";
 import { getChatById, getMessages, updateChat } from "@/lib/db/queries";
@@ -66,6 +66,54 @@ function getLatestLeafFrom(messageId: string, childrenByParent: Map<string, Mess
   return cursor;
 }
 
+// Memoized message row component to prevent unnecessary re-renders
+const MessageRow = memo(function MessageRow({
+  message,
+  onContinue,
+  onEdit,
+  onFork,
+  onRegenerate,
+  isContinuing,
+  siblings,
+  siblingIndex,
+  onSwitchSibling,
+  showBranchNav,
+}: {
+  message: Message;
+  onContinue: (messageId: string) => void;
+  onEdit: (messageId: string, newContent: string) => void;
+  onFork: (messageId: string) => void;
+  onRegenerate: (assistantMessageId: string) => void;
+  isContinuing: boolean;
+  siblings: Message[];
+  siblingIndex: number;
+  onSwitchSibling: (message: Message, direction: -1 | 1) => void;
+  showBranchNav: boolean;
+}) {
+  return (
+    <div>
+      <MessageItem
+        message={message}
+        onContinue={onContinue}
+        onEdit={onEdit}
+        onFork={onFork}
+        onRegenerate={onRegenerate}
+        isContinuing={isContinuing}
+      />
+      {showBranchNav && siblings.length > 1 && siblingIndex !== -1 && (
+        <div className="mx-auto max-w-3xl px-4 pb-4 -mt-4">
+          <BranchNavigator
+            index={siblingIndex}
+            count={siblings.length}
+            onPrev={() => onSwitchSibling(message, -1)}
+            onNext={() => onSwitchSibling(message, 1)}
+          />
+        </div>
+      )}
+    </div>
+  );
+});
+
 export function MessageList({ chatId, arenaModelId }: MessageListProps) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const { continueResponse, continuingMessageId, editMessage, regenerateAssistant } = useChat(chatId);
@@ -77,15 +125,49 @@ export function MessageList({ chatId, arenaModelId }: MessageListProps) {
   const allMessages = useLiveQuery(() => getMessages(chatId), [chatId]);
   const chat = useLiveQuery(() => getChatById(chatId), [chatId]);
 
-  const activeLeafId = chat?.activeBranchLeafId;
-  const branchPath = allMessages ? getBranchPath(allMessages, activeLeafId) : undefined;
+  // Memoize the maps to avoid rebuilding on every render
+  const { byId, childrenByParent } = useMemo(() => {
+    if (!allMessages) return { byId: new Map<string, Message>(), childrenByParent: new Map<string, Message[]>() };
+    return buildMaps(allMessages);
+  }, [allMessages]);
 
-  // Filter messages for Arena Mode if needed (within branch)
-  const messages = branchPath?.filter((m) => {
-    if (!arenaModelId) return true;
-    if (m.role !== "assistant") return true;
-    return m.modelId === arenaModelId;
-  });
+  const activeLeafId = chat?.activeBranchLeafId;
+
+  // Memoize branch path computation
+  const branchPath = useMemo(() => {
+    if (!allMessages) return undefined;
+    return getBranchPath(allMessages, activeLeafId);
+  }, [allMessages, activeLeafId]);
+
+  // Memoize final messages list
+  const messages = useMemo(() => {
+    if (!branchPath || !allMessages) return undefined;
+
+    if (!arenaModelId) {
+      // Normal mode: just use branch path as-is
+      return branchPath;
+    }
+
+    // Arena mode: Build message list that includes this model's responses
+    const result: Message[] = [];
+
+    for (const msg of branchPath) {
+      if (msg.role === "user" || msg.role === "system") {
+        result.push(msg);
+        // For user messages, also find the arena assistant response for this model
+        const children = childrenByParent.get(msg.id) || [];
+        const arenaResponse = children.find(
+          (c) => c.role === "assistant" && c.modelId === arenaModelId
+        );
+        if (arenaResponse) {
+          result.push(arenaResponse);
+        }
+      }
+      // Skip assistant messages from branchPath - we add them manually above
+    }
+
+    return result;
+  }, [branchPath, allMessages, arenaModelId, childrenByParent]);
 
   const messageCount = messages?.length || 0;
 
@@ -111,12 +193,53 @@ export function MessageList({ chatId, arenaModelId }: MessageListProps) {
     }
   }, [messageCount, isAtBottom]);
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     if (messageCount > 0) {
       virtuosoRef.current?.scrollToIndex({ index: messageCount - 1, behavior: "smooth" });
       setShowNewMessagesButton(false);
     }
-  };
+  }, [messageCount]);
+
+  // Memoize callbacks to prevent re-renders
+  const switchSibling = useCallback(async (message: Message, direction: -1 | 1) => {
+    if (!allMessages) return;
+    const parentKey = message.parentId || "";
+    const siblings = (childrenByParent.get(parentKey) || []).filter((m) => m.role !== "tool");
+    if (siblings.length <= 1) return;
+
+    const currentIndex = siblings.findIndex((m) => m.id === message.id);
+    if (currentIndex === -1) return;
+
+    const nextIndex = (currentIndex + direction + siblings.length) % siblings.length;
+    const siblingId = siblings[nextIndex].id;
+    const newLeaf = getLatestLeafFrom(siblingId, childrenByParent);
+    await updateChat(chatId, { activeBranchLeafId: newLeaf, hasBranches: true });
+  }, [allMessages, chatId, childrenByParent]);
+
+  const handleFork = useCallback(async (messageId: string) => {
+    await updateChat(chatId, { activeBranchLeafId: messageId, hasBranches: true });
+  }, [chatId]);
+
+  const handleAtBottomChange = useCallback((atBottom: boolean) => {
+    setIsAtBottom(atBottom);
+    if (atBottom) {
+      setShowNewMessagesButton(false);
+    }
+  }, []);
+
+  // Compute sibling info for each message - memoized
+  const siblingInfoMap = useMemo(() => {
+    const map = new Map<string, { siblings: Message[]; index: number }>();
+    if (!messages) return map;
+
+    for (const message of messages) {
+      const parentKey = message.parentId || "";
+      const siblings = (childrenByParent.get(parentKey) || []).filter((m) => m.role !== "tool");
+      const idx = siblings.findIndex((m) => m.id === message.id);
+      map.set(message.id, { siblings, index: idx });
+    }
+    return map;
+  }, [messages, childrenByParent]);
 
   if (!messages) {
     return (
@@ -137,69 +260,34 @@ export function MessageList({ chatId, arenaModelId }: MessageListProps) {
     );
   }
 
-  const { childrenByParent } = allMessages ? buildMaps(allMessages) : { childrenByParent: new Map<string, Message[]>() };
-
-  const switchSibling = async (message: Message, direction: -1 | 1) => {
-    if (!allMessages) return;
-    const parentKey = message.parentId || "";
-    const siblings = (childrenByParent.get(parentKey) || []).filter((m) => m.role !== "tool");
-    if (siblings.length <= 1) return;
-
-    const currentIndex = siblings.findIndex((m) => m.id === message.id);
-    if (currentIndex === -1) return;
-
-    const nextIndex = (currentIndex + direction + siblings.length) % siblings.length;
-    const siblingId = siblings[nextIndex].id;
-    const newLeaf = getLatestLeafFrom(siblingId, childrenByParent);
-    await updateChat(chatId, { activeBranchLeafId: newLeaf, hasBranches: true });
-  };
-
-  const handleFork = async (messageId: string) => {
-    await updateChat(chatId, { activeBranchLeafId: messageId, hasBranches: true });
-  };
-
   return (
     <div className="relative h-full">
       <Virtuoso
         ref={virtuosoRef}
         data={messages}
-        itemContent={(index, message) => (
-          <div>
-            <MessageItem
+        computeItemKey={(index, message) => message.id}
+        increaseViewportBy={{ top: 200, bottom: 200 }}
+        overscan={100}
+        itemContent={(index, message) => {
+          const siblingInfo = siblingInfoMap.get(message.id) || { siblings: [], index: -1 };
+          return (
+            <MessageRow
               message={message}
               onContinue={continueResponse}
               onEdit={editMessage}
               onFork={handleFork}
               onRegenerate={regenerateAssistant}
               isContinuing={continuingMessageId === message.id}
+              siblings={siblingInfo.siblings}
+              siblingIndex={siblingInfo.index}
+              onSwitchSibling={switchSibling}
+              showBranchNav={!arenaModelId}
             />
-            {(() => {
-              const parentKey = message.parentId || "";
-              const siblings = (childrenByParent.get(parentKey) || []).filter((m) => m.role !== "tool");
-              if (siblings.length <= 1) return null;
-              const idx = siblings.findIndex((m) => m.id === message.id);
-              if (idx === -1) return null;
-              return (
-                <div className="mx-auto max-w-3xl px-4 pb-4 -mt-4">
-                  <BranchNavigator
-                    index={idx}
-                    count={siblings.length}
-                    onPrev={() => switchSibling(message, -1)}
-                    onNext={() => switchSibling(message, 1)}
-                  />
-                </div>
-              );
-            })()}
-          </div>
-        )}
+          );
+        }}
         followOutput={isAtBottom ? "smooth" : false}
         alignToBottom
-        atBottomStateChange={(atBottom) => {
-          setIsAtBottom(atBottom);
-          if (atBottom) {
-            setShowNewMessagesButton(false);
-          }
-        }}
+        atBottomStateChange={handleAtBottomChange}
         className="scrollbar-thin"
       />
 

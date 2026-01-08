@@ -1,0 +1,54 @@
+{
+  "categories": {
+    "coding": {
+      "patterns": ["/o1", "/o3", "claude-opus", "gpt-4.1", "gpt-4o", "gpt-4-turbo", "gpt-4", "chatgpt", "devstral", "deepseek", "code", "codellama", "starcoder"],
+      "metadata": {
+        "description": ["code", "programming", "software", "developer"],
+        "benchmarks": ["swe-bench", "human-eval", "mbpp"]
+      },
+      "minScore": 0.7
+    },
+    "reasoning": {
+      "patterns": ["o1", "o3", "deep-think", "thinking", "reason", "reasoning", "r1"],
+      "metadata": {
+        "description": ["reasoning", "logic", "analysis", "mathematical"]
+      },
+      "minScore": 0.6
+    },
+    "vision": {
+      "patterns": ["vision", "multimodal", "image", "gpt-4v", "gpt-4o", "gemini", "claude-3"],
+      "metadata": {
+        "modality": ["text+image", "multimodal"],
+        "supportsVision": true
+      }
+    },
+    "fast": {
+      "metadata": {
+        "price": { "max": 0.1 },
+        "name": ["mini", "flash", "haiku", "turbo", "fast"]
+      }
+    },
+    "cheap": {
+      "metadata": {
+        "price": { "max": 0.05 }
+      }
+    },
+    "free": {
+      "metadata": {
+        "price": { "max": 0.001 }
+      }
+    },
+    "open-source": {
+      "patterns": ["llama", "mistral", "qwen", "gemma", "phi", "falcon"],
+      "metadata": {
+        "openSource": true
+      }
+    },
+    "balanced": {
+      "default": true
+    }
+  }
+}
+
+
+

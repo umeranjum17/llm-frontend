@@ -1,0 +1,72 @@
+{
+  "capabilities": {
+    "supportsVision": {
+      "patterns": ["vision", "multimodal", "image", "gpt-4v", "gpt-4o", "gemini", "claude-3", "claude-3.5"],
+      "metadata": {
+        "modality": ["text+image", "multimodal", "vision"]
+      }
+    },
+    "supportsReasoning": {
+      "patterns": ["o1", "o3", "thinking", "reason", "reasoning", "r1", "deep-think"],
+      "metadata": {
+        "reasoning": true
+      }
+    },
+    "supportsTools": {
+      "patterns": ["function", "tool", "plugin", "gpt-4", "claude", "gemini"],
+      "metadata": {
+        "tools": true,
+        "function_calling": true
+      }
+    },
+    "supportsStreaming": {
+      "default": true,
+      "exceptions": []
+    }
+  },
+  "defaults": {
+    "supportsSystemPrompt": true,
+    "supportsTemperature": true,
+    "maxTemperature": 2.0,
+    "minTemperature": 0.0,
+    "supportsTopP": true,
+    "supportsMaxTokens": true,
+    "supportsFrequencyPenalty": false,
+    "supportsPresencePenalty": false
+  },
+  "providerDefaults": {
+    "openai": {
+      "supportsFrequencyPenalty": true,
+      "supportsPresencePenalty": true,
+      "maxTemperature": 2.0
+    },
+    "anthropic": {
+      "maxTemperature": 1.0,
+      "supportsFrequencyPenalty": false,
+      "supportsPresencePenalty": false
+    },
+    "google": {
+      "maxTemperature": 2.0,
+      "supportsFrequencyPenalty": false,
+      "supportsPresencePenalty": false
+    }
+  },
+  "specialCases": {
+    "openai/o1": {
+      "supportsSystemPrompt": false,
+      "supportsTemperature": false,
+      "supportsTopP": false,
+      "supportsReasoning": true
+    },
+    "openai/o3": {
+      "supportsSystemPrompt": false,
+      "supportsTemperature": false,
+      "supportsTopP": false,
+      "supportsReasoning": true
+    }
+  }
+}
+
+
+
+

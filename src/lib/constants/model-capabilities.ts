@@ -1,9 +1,14 @@
 /**
  * Model capabilities registry
  * Defines which parameters each model supports
+ * Now uses rule engine for dynamic capability detection
  */
 
 import { getModelById } from "@/lib/constants/models";
+import { getRuleEngine } from "@/lib/models/rule-engine";
+import capabilityRulesData from "@/lib/models/rules/capability-rules.json";
+
+const capabilityRules = capabilityRulesData as any;
 
 export interface ModelCapabilities {
   supportsSystemPrompt: boolean;
@@ -18,117 +23,99 @@ export interface ModelCapabilities {
   supportsVision: boolean;
   supportsTools: boolean;
   supportsStreaming: boolean;
+  isImageGeneration: boolean;
 }
 
-export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
-  // Claude Models
-  "anthropic/claude-3.5-sonnet": {
-    supportsSystemPrompt: true,
-    supportsTemperature: true,
-    maxTemperature: 1.0,
-    minTemperature: 0.0,
-    supportsTopP: true,
-    supportsFrequencyPenalty: false,
-    supportsPresencePenalty: false,
-    supportsMaxTokens: true,
-    supportsReasoning: false,
-    supportsVision: true,
-    supportsTools: true,
-    supportsStreaming: true,
-  },
-  "anthropic/claude-3-opus": {
-    supportsSystemPrompt: true,
-    supportsTemperature: true,
-    maxTemperature: 1.0,
-    minTemperature: 0.0,
-    supportsTopP: true,
-    supportsFrequencyPenalty: false,
-    supportsPresencePenalty: false,
-    supportsMaxTokens: true,
-    supportsReasoning: false,
-    supportsVision: true,
-    supportsTools: true,
-    supportsStreaming: true,
-  },
+// Cache for resolved capabilities
+const capabilitiesCache = new Map<string, ModelCapabilities>();
 
-  // OpenAI Models
-  "openai/gpt-4o": {
-    supportsSystemPrompt: true,
-    supportsTemperature: true,
-    maxTemperature: 2.0,
-    minTemperature: 0.0,
-    supportsTopP: true,
-    supportsFrequencyPenalty: true,
-    supportsPresencePenalty: true,
-    supportsMaxTokens: true,
-    supportsReasoning: false,
-    supportsVision: true,
-    supportsTools: true,
-    supportsStreaming: true,
-  },
-  "openai/gpt-4o-mini": {
-    supportsSystemPrompt: true,
-    supportsTemperature: true,
-    maxTemperature: 2.0,
-    minTemperature: 0.0,
-    supportsTopP: true,
-    supportsFrequencyPenalty: true,
-    supportsPresencePenalty: true,
-    supportsMaxTokens: true,
-    supportsReasoning: false,
-    supportsVision: true,
-    supportsTools: true,
-    supportsStreaming: true,
-  },
-  "openai/o1": {
-    supportsSystemPrompt: false,
-    supportsTemperature: false,
-    maxTemperature: 1.0,
-    minTemperature: 1.0,
-    supportsTopP: false,
-    supportsFrequencyPenalty: false,
-    supportsPresencePenalty: false,
-    supportsMaxTokens: true,
-    supportsReasoning: true,
-    supportsVision: false,
-    supportsTools: false,
-    supportsStreaming: true,
-  },
+/**
+ * Get model capabilities using rule engine
+ */
+export function getModelCapabilities(modelId: string): ModelCapabilities {
+  // Check cache but always recalculate isImageGeneration
+  if (capabilitiesCache.has(modelId)) {
+    const cached = capabilitiesCache.get(modelId)!;
+    // Always use fresh image detection check
+    return { ...cached, isImageGeneration: isImageGenerationModel(modelId) };
+  }
 
-  // Google Models
-  "google/gemini-2.0-flash-exp:free": {
-    supportsSystemPrompt: true,
-    supportsTemperature: true,
-    maxTemperature: 2.0,
-    minTemperature: 0.0,
-    supportsTopP: true,
-    supportsFrequencyPenalty: false,
-    supportsPresencePenalty: false,
-    supportsMaxTokens: true,
-    supportsReasoning: false,
-    supportsVision: true,
-    supportsTools: true,
-    supportsStreaming: true,
-  },
+  const model = getModelById(modelId);
+  if (!model) {
+    // Return defaults if model not found
+    const defaults = capabilityRules.defaults;
+    // Check if this is an image generation model by ID pattern
+    const isImageGen = isImageGenerationModel(modelId);
+    return {
+      supportsSystemPrompt: defaults.supportsSystemPrompt,
+      supportsTemperature: defaults.supportsTemperature,
+      maxTemperature: defaults.maxTemperature,
+      minTemperature: defaults.minTemperature,
+      supportsTopP: defaults.supportsTopP,
+      supportsFrequencyPenalty: defaults.supportsFrequencyPenalty,
+      supportsPresencePenalty: defaults.supportsPresencePenalty,
+      supportsMaxTokens: defaults.supportsMaxTokens,
+      supportsReasoning: false,
+      supportsVision: false,
+      supportsTools: defaults.supportsTools ?? false,
+      supportsStreaming: defaults.supportsStreaming ?? true,
+      isImageGeneration: isImageGen,
+    };
+  }
 
-  // Meta Models
-  "meta-llama/llama-3.3-70b-instruct": {
-    supportsSystemPrompt: true,
-    supportsTemperature: true,
-    maxTemperature: 2.0,
-    minTemperature: 0.0,
-    supportsTopP: true,
-    supportsFrequencyPenalty: true,
-    supportsPresencePenalty: true,
-    supportsMaxTokens: true,
-    supportsReasoning: false,
-    supportsVision: false,
-    supportsTools: false,
-    supportsStreaming: true,
-  },
-};
+  // Extract provider from model ID or provider field
+  const provider = model.provider.toLowerCase();
+  const ruleEngine = getRuleEngine();
+  const detected = ruleEngine.detectCapabilities(model, provider);
 
-// Default capabilities for unknown models
+  // Get provider defaults
+  const providerDefaults = capabilityRules.providerDefaults[provider as keyof typeof capabilityRules.providerDefaults] || {};
+  const defaults = { ...capabilityRules.defaults, ...providerDefaults };
+
+  // Build capabilities object
+  const isImageGen = isImageGenerationModel(modelId);
+  const capabilities: ModelCapabilities = {
+    supportsSystemPrompt: (detected.supportsSystemPrompt as boolean) ?? defaults.supportsSystemPrompt,
+    supportsTemperature: (detected.supportsTemperature as boolean) ?? defaults.supportsTemperature,
+    maxTemperature: (detected.maxTemperature as number) ?? defaults.maxTemperature,
+    minTemperature: defaults.minTemperature,
+    supportsTopP: (detected.supportsTopP as boolean) ?? defaults.supportsTopP,
+    supportsFrequencyPenalty: (detected.supportsFrequencyPenalty as boolean) ?? defaults.supportsFrequencyPenalty,
+    supportsPresencePenalty: (detected.supportsPresencePenalty as boolean) ?? defaults.supportsPresencePenalty,
+    supportsMaxTokens: (detected.supportsMaxTokens as boolean) ?? defaults.supportsMaxTokens,
+    supportsReasoning: (detected.supportsReasoning as boolean) ?? (model.supportsReasoning ?? false),
+    supportsVision: (detected.supportsVision as boolean) ?? (model.supportsVision ?? false),
+    supportsTools: (detected.supportsTools as boolean) ?? (defaults.supportsTools ?? false),
+    supportsStreaming: (detected.supportsStreaming as boolean) ?? (defaults.supportsStreaming ?? true),
+    isImageGeneration: isImageGen,
+  };
+
+  // Cache the result
+  capabilitiesCache.set(modelId, capabilities);
+  return capabilities;
+}
+
+/**
+ * Check if a model ID is for image generation
+ */
+export function isImageGenerationModel(modelId: string): boolean {
+  const lowerModelId = modelId.toLowerCase();
+  const imagePatterns = [
+    "dall-e",
+    "dalle",
+    "gpt-image",
+    "gpt-s",
+    "stable-diffusion",
+    "sdxl",
+    "midjourney",
+    "imagen",
+    "flux",
+    "ideogram",
+  ];
+  return imagePatterns.some((pattern) => lowerModelId.includes(pattern));
+}
+
+// Default capabilities for unknown models (kept for backward compatibility)
 export const DEFAULT_CAPABILITIES: ModelCapabilities = {
   supportsSystemPrompt: true,
   supportsTemperature: true,
@@ -142,15 +129,5 @@ export const DEFAULT_CAPABILITIES: ModelCapabilities = {
   supportsVision: false,
   supportsTools: false,
   supportsStreaming: true,
+  isImageGeneration: false,
 };
-
-export function getModelCapabilities(modelId: string): ModelCapabilities {
-  const base = MODEL_CAPABILITIES[modelId] || DEFAULT_CAPABILITIES;
-  const model = getModelById(modelId);
-  if (!model) return base;
-  return {
-    ...base,
-    supportsVision: model.supportsVision ?? base.supportsVision,
-    supportsReasoning: model.supportsReasoning ?? base.supportsReasoning,
-  };
-}

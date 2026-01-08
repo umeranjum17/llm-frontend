@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, memo, useMemo } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";  // Need to import or use a basic textarea
-import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw } from "lucide-react";
+import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
 import type { Message } from "@/lib/db/schema";
@@ -50,7 +50,7 @@ interface MessageItemProps {
   isContinuing?: boolean;
 }
 
-export function MessageItem({
+export const MessageItem = memo(function MessageItem({
   message,
   onContinue,
   onEdit,
@@ -144,7 +144,7 @@ export function MessageItem({
   return (
     <div
       className={cn(
-        "group relative px-4 py-6 transition-colors hover:bg-accent/30"
+        "group relative px-4 py-6"
       )}
     >
       <div className="mx-auto max-w-3xl">
@@ -160,8 +160,8 @@ export function MessageItem({
           <div className="flex-1 min-w-0">
             <div
               className={cn(
-                "rounded-2xl border bg-card/70 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/50",
-                isUser && "bg-secondary/60 supports-[backdrop-filter]:bg-secondary/40"
+                "rounded-2xl border bg-card p-4 shadow-sm",
+                isUser && "bg-secondary"
               )}
             >
               <div className="mb-2 flex items-center gap-2">
@@ -240,11 +240,30 @@ export function MessageItem({
                   <Dialog open={!!lightboxUrl} onOpenChange={(open) => !open && setLightboxUrl(null)}>
                     <DialogContent className="max-w-4xl p-2">
                       {lightboxUrl ? (
-                        <img
-                          src={lightboxUrl}
-                          alt="Image"
-                          className="max-h-[80vh] w-full object-contain"
-                        />
+                        <div className="relative">
+                          <img
+                            src={lightboxUrl}
+                            alt="Image"
+                            className="max-h-[80vh] w-full object-contain"
+                          />
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="absolute bottom-4 right-4 gap-2"
+                            onClick={() => {
+                              const link = document.createElement("a");
+                              link.href = lightboxUrl;
+                              link.download = `image-${Date.now()}.png`;
+                              link.target = "_blank";
+                              document.body.appendChild(link);
+                              link.click();
+                              document.body.removeChild(link);
+                            }}
+                          >
+                            <Download className="h-4 w-4" />
+                            Download
+                          </Button>
+                        </div>
                       ) : null}
                     </DialogContent>
                   </Dialog>
@@ -419,4 +438,4 @@ export function MessageItem({
       </div>
     </div>
   );
-}
+});

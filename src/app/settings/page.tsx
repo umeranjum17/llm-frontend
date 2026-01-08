@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Key, Palette, Keyboard, Download, Settings as SettingsIcon, Bot, FileText } from "lucide-react";
+import { ArrowLeft, Key, Palette, Keyboard, Download, Settings as SettingsIcon, Bot, FileText, Server, Search } from "lucide-react";
 import { ApiKeysSettings } from "@/components/settings/api-keys-settings";
 import { ThemeSettings } from "@/components/settings/theme-settings";
 import { KeyboardShortcutsSettings } from "@/components/settings/keyboard-shortcuts-settings";
@@ -12,12 +13,14 @@ import { ExportImportSettings } from "@/components/settings/export-import-settin
 import { GeneralSettings } from "@/components/settings/general-settings";
 import { AgentsSettings } from "@/components/settings/agents-settings";
 import { PromptsSettings } from "@/components/settings/prompts-settings";
+import { LocalModelsSettings } from "@/components/settings/local-models-settings";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useSettingsStore } from "@/stores/settings-store";
 
 export default function SettingsPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("general");
+  const [searchQuery, setSearchQuery] = useState("");
   const { loadKeys, isLoaded: keysLoaded } = useApiKeysStore();
   const { loadSettings, isLoaded: settingsLoaded } = useSettingsStore();
 
@@ -29,7 +32,7 @@ export default function SettingsPage() {
   useEffect(() => {
     const tabParam = new URLSearchParams(window.location.search).get("tab");
     if (!tabParam) return;
-    const allowedTabs = ["general", "api-keys", "theme", "shortcuts", "data", "agents", "prompts"];
+    const allowedTabs = ["general", "api-keys", "local-models", "theme", "shortcuts", "data", "agents", "prompts"];
     if (allowedTabs.includes(tabParam)) setActiveTab(tabParam);
   }, []);
 
@@ -60,8 +63,22 @@ export default function SettingsPage() {
       {/* Content */}
       <div className="flex-1 overflow-auto">
         <div className="container max-w-5xl mx-auto px-6 py-8">
+          {/* Search */}
+          <div className="mb-6">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Search settings..."
+                className="pl-9"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
+
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-7 mb-8">
+            <TabsList className="grid w-full grid-cols-8 mb-8">
               <TabsTrigger value="general" className="gap-2">
                 <SettingsIcon className="h-4 w-4" />
                 General
@@ -69,6 +86,10 @@ export default function SettingsPage() {
               <TabsTrigger value="api-keys" className="gap-2">
                 <Key className="h-4 w-4" />
                 API Keys
+              </TabsTrigger>
+              <TabsTrigger value="local-models" className="gap-2">
+                <Server className="h-4 w-4" />
+                Local
               </TabsTrigger>
               <TabsTrigger value="theme" className="gap-2">
                 <Palette className="h-4 w-4" />
@@ -98,6 +119,10 @@ export default function SettingsPage() {
 
             <TabsContent value="api-keys" className="space-y-6">
               <ApiKeysSettings />
+            </TabsContent>
+
+            <TabsContent value="local-models" className="space-y-6">
+              <LocalModelsSettings />
             </TabsContent>
 
             <TabsContent value="theme" className="space-y-6">
