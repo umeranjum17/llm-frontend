@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { formatDistanceToNow } from "date-fns";
-import { Brain, Trash2, Plus, Settings2 } from "lucide-react";
+import { Brain, Trash2, Plus, Settings2, RefreshCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +24,7 @@ import {
     deleteMemory,
     deleteAllMemories,
     getMemoryStats,
+    syncMemoriesToVectorStore,
 } from "@/lib/memory";
 import type { UserMemory } from "@/lib/db/schema";
 
@@ -36,10 +37,11 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 const AVAILABLE_MODELS = [
-    { id: "gpt-4o-mini", name: "GPT-4o Mini (Cheapest)" },
-    { id: "gpt-4o", name: "GPT-4o (Best Quality)" },
-    { id: "claude-3-haiku-20240307", name: "Claude 3 Haiku (Fast)" },
-    { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet (Best)" },
+    { id: "openai/gpt-4o-mini", name: "GPT-4o Mini (Cheapest)" },
+    { id: "openai/gpt-4o", name: "GPT-4o (Best Quality)" },
+    { id: "anthropic/claude-3-haiku", name: "Claude 3 Haiku (Fast)" },
+    { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet (Best)" },
+    { id: "google/gemini-flash-1.5", name: "Gemini Flash 1.5 (Fast)" },
 ];
 
 const RETENTION_OPTIONS = [
@@ -113,6 +115,14 @@ export function MemorySettings() {
             await deleteAllMemories();
             toast.success("All memories cleared");
         }
+    };
+
+    const handleReindex = async () => {
+        toast.promise(syncMemoriesToVectorStore(), {
+            loading: "Re-indexing memories...",
+            success: (count) => `Re-indexed ${count} memories`,
+            error: "Failed to re-index memories",
+        });
     };
 
     const memoryEnabled = settings?.memoryEnabled ?? true;
@@ -231,15 +241,26 @@ export function MemorySettings() {
                                 Stored Memories ({memories?.length || 0})
                             </h4>
                             {memories && memories.length > 0 && (
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={handleClearAll}
-                                    className="text-destructive hover:text-destructive"
-                                >
-                                    <Trash2 className="h-4 w-4 mr-2" />
-                                    Clear All
-                                </Button>
+                                <div className="flex gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleReindex}
+                                        title="Re-index for search"
+                                    >
+                                        <RefreshCcw className="h-4 w-4 mr-2" />
+                                        Re-index
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleClearAll}
+                                        className="text-destructive hover:text-destructive"
+                                    >
+                                        <Trash2 className="h-4 w-4 mr-2" />
+                                        Clear All
+                                    </Button>
+                                </div>
                             )}
                         </div>
 

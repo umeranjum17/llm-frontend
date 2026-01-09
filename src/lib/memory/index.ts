@@ -14,6 +14,7 @@ export {
     enforceMemoryLimit,
     getMemoryCount,
     getMemoryStats,
+    syncMemoriesToVectorStore,
 } from "./memory-store";
 
 export {

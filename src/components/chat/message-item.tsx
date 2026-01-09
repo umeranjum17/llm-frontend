@@ -221,6 +221,7 @@ export const MessageItem = memo(function MessageItem({
                             loadedImages[url] ? "opacity-0" : "animate-pulse"
                           )}
                         />
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={url}
                           alt="Attachment"
@@ -241,6 +242,7 @@ export const MessageItem = memo(function MessageItem({
                     <DialogContent className="max-w-4xl p-2">
                       {lightboxUrl ? (
                         <div className="relative">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={lightboxUrl}
                             alt="Image"

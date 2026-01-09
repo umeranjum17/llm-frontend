@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRouter } from "next/navigation";
@@ -13,6 +13,7 @@ import {
   getRecentModels,
   updateChat,
   updateModelLastUsed,
+  getMessages,
 } from "@/lib/db/queries";
 import { MODELS, type Model, getModelById } from "@/lib/constants/models";
 import { MessageList } from "./message-list";
@@ -52,6 +53,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
+import { maybeExtractMemories } from "@/lib/memory";
 
 export function ChatShell() {
   const router = useRouter();
@@ -102,6 +104,25 @@ export function ChatShell() {
     if (isModelIdCompatibleWithProviderId(chat.providerId, chat.modelId)) return;
     updateChat(chat.id, { providerId: undefined }).catch(() => { });
   }, [chat?.id, chat?.modelId, chat?.providerId]);
+
+  // Memory extraction: When switching away from a chat, extract memories from it
+  const previousChatIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prevId = previousChatIdRef.current;
+    previousChatIdRef.current = activeChatId;
+
+    // If we're switching FROM a chat to a different one, extract memories from the old chat
+    if (prevId && prevId !== activeChatId) {
+      getMessages(prevId).then((messages) => {
+        if (messages.length >= 4) {
+          maybeExtractMemories(messages, prevId);
+        }
+      }).catch((err) => {
+        console.error("Failed to extract memories:", err);
+      });
+    }
+  }, [activeChatId]);
+
   const favoriteModelEntries = useLiveQuery(() => getFavoriteModels(), []);
   const recentModelEntries = useLiveQuery(() => getRecentModels(6), []);
 

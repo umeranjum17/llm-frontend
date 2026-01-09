@@ -215,6 +215,10 @@ export interface VectorDocument {
     projectId?: string;
     fileId?: string;
     timestamp?: number;
+    // Memory specific
+    type?: "memory" | "document";
+    memoryId?: string;
+    category?: string;
   };
 }
 
@@ -359,6 +363,28 @@ export class LuminaDB extends Dexie {
       agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
       prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
       vectorDocuments: "id",
+    });
+
+    // Version 8: Add indexing for vector documents to improve performance
+    this.version(8).stores({
+      projects: "id, name, createdAt, updatedAt",
+      projectFiles: "id, projectId, name, createdAt",
+      chats:
+        "id, projectId, title, modelId, createdAt, updatedAt, pinned, favorite, folderId, order",
+      messages: "id, chatId, role, createdAt, parentId",
+      apiKeys: "id, provider, createdAt, baseUrl",
+      settings: "id",
+      modelFavorites: "id, category, pinnedOrder, lastUsed",
+      userMemories: "id, category, source, createdAt, isActive",
+      folders: "id, name, createdAt, order",
+      tags: "id, name, createdAt, usageCount",
+      tagRules: "id, tagId, enabled, createdAt",
+      parameterPresets: "id, name, createdAt, isDefault",
+      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
+      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
+      // Add indexes for nested metadata fields using compound index syntax or flattened if needed (Dexie supports key paths)
+      // Note: Dexie supports "metadata.type", etc.
+      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
     });
   }
 }

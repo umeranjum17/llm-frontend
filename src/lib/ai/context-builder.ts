@@ -44,7 +44,10 @@ export async function buildContextMessages(
 
   // Add user memory context FIRST (personalizes all conversations)
   try {
-    const memoryContext = await getMemoryContext();
+    // Check if we have a user message to use for retrieval
+    const memoryQuery = userMessage;
+    const memoryContext = await getMemoryContext(memoryQuery);
+
     if (memoryContext) {
       messages.push({
         id: "memory-context",

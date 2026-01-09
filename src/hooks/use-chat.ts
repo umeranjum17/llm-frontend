@@ -375,6 +375,49 @@ export function useChat(chatId: string) {
       totalCost: currentTotalCost + cost,
       activeBranchLeafId: assistantMessage.id,
     });
+
+    // Auto-generate title after the first exchange
+    // We check if:
+    // 1. The chat title is likely the default "New Chat" (we'll check the DB/cache state ideally, but here we can try)
+    // 2. We just finished the first real assistant response (history length is small)
+    if (chat.title === "New Chat" && history.length <= 1) { // history is PRE-current-generation, so 0 or 1 items usually
+      // We can fire-and-forget this
+      (async () => {
+        try {
+          console.log("[Chat] Auto-generating title...");
+          const titleResponse = await fetch("/api/chat/title", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(apiKey?.key ? { "X-API-Key": apiKey.key } : {}),
+            },
+            body: JSON.stringify({
+              messages: [
+                ...llmMessages,
+                { role: "assistant", content: fullContent }
+              ],
+              modelId,
+              providerId,
+              providerBaseUrl: apiKey?.baseUrl,
+              apiKey: apiKey?.key
+            })
+          });
+
+          if (titleResponse.ok) {
+            const { title } = await titleResponse.json();
+            console.log("[Chat] Generated title:", title);
+            if (title && title.length > 0) {
+              await updateChat(chatId, { title });
+            }
+          } else {
+            console.error("[Chat] Failed to generate title:", titleResponse.status, titleResponse.statusText);
+          }
+        } catch (err) {
+          console.error("Failed to auto-generate title:", err);
+          // Silently fail, it's just a title
+        }
+      })();
+    }
   }, [chatId, getKeyForProvider, keys]);
 
   const sendMessage = async (content: MessageContent, attachments?: Array<{ name: string; content: string }>) => {

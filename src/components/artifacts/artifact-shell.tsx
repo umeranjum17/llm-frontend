@@ -23,7 +23,7 @@ export function ArtifactShell() {
         if (activeArtifact) {
             const executableLangs = ["javascript", "typescript", "jsx", "tsx"];
             const webLangs = ["html", "javascript", "typescript", "jsx", "tsx", "css"];
-            
+
             if (executableLangs.includes(activeArtifact.language)) {
                 setActiveTab("run");
             } else if (webLangs.includes(activeArtifact.language)) {
@@ -32,8 +32,8 @@ export function ArtifactShell() {
                 setActiveTab("code");
             }
         }
-    }, [activeArtifact?.id]);
-    
+    }, [activeArtifact]);
+
     const isExecutable = activeArtifact && ["javascript", "typescript", "jsx", "tsx"].includes(activeArtifact.language);
 
     const handleDownload = () => {

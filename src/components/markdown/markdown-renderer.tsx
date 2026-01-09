@@ -128,6 +128,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content }: Mark
           </p>
         ),
         img: ({ node, src, alt, ...props }) => (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={src}
             alt={alt}

@@ -1,5 +1,6 @@
 import { db, type UserMemory } from "@/lib/db/schema";
 import { getSettings } from "@/lib/db/queries";
+import { storeDocument, deleteDocuments, searchSimilar } from "@/lib/rag/vector-store";
 
 // ============= MEMORY QUERIES =============
 
@@ -11,10 +12,9 @@ export async function getAllMemories(): Promise<UserMemory[]> {
 }
 
 export async function getActiveMemories(): Promise<UserMemory[]> {
-    return await db.userMemories
-        .where("isActive")
-        .equals(1)
-        .toArray();
+    // Dexie doesn't index booleans well, so filter in memory
+    const all = await db.userMemories.toArray();
+    return all.filter((m) => m.isActive === true);
 }
 
 export async function getMemoriesByCategory(category: UserMemory["category"]): Promise<UserMemory[]> {
@@ -35,6 +35,21 @@ export async function addMemory(
         updatedAt: now,
     };
     await db.userMemories.add(newMemory);
+
+    // Sync to vector store for retrieval
+    if (newMemory.isActive) {
+        await storeDocument({
+            id: `memory:${newMemory.id}`,
+            text: newMemory.content,
+            metadata: {
+                type: "memory",
+                memoryId: newMemory.id,
+                category: newMemory.category,
+                timestamp: now,
+            },
+        }).catch(err => console.error("Failed to vectorise memory:", err));
+    }
+
     return newMemory;
 }
 
@@ -50,14 +65,38 @@ export async function addMemoryManual(content: string, category: UserMemory["cat
 
 export async function updateMemory(id: string, updates: Partial<UserMemory>): Promise<void> {
     await db.userMemories.update(id, { ...updates, updatedAt: Date.now() });
+
+    // Update vector store
+    const updated = await db.userMemories.get(id);
+    if (updated) {
+        if (updated.isActive) {
+            await storeDocument({
+                id: `memory:${updated.id}`,
+                text: updated.content,
+                metadata: {
+                    type: "memory",
+                    memoryId: updated.id,
+                    category: updated.category,
+                    timestamp: updated.updatedAt,
+                },
+            }).catch(err => console.error("Failed to update vector memory:", err));
+        } else {
+            // If inactive, remove from vector store
+            await deleteDocuments({ memoryId: id }).catch(console.error);
+        }
+    }
 }
 
 export async function deleteMemory(id: string): Promise<void> {
     await db.userMemories.delete(id);
+    await deleteDocuments({ memoryId: id }).catch(console.error);
 }
 
 export async function deleteAllMemories(): Promise<void> {
     await db.userMemories.clear();
+    // Ideally we would clear only memory vectors, but we don't have a bulk delete by type yet
+    // For now we will rely on syncing or manual cleanup if needed
+    // TODO: Add delete by type to vector store
 }
 
 export async function toggleMemoryActive(id: string): Promise<void> {
@@ -67,12 +106,40 @@ export async function toggleMemoryActive(id: string): Promise<void> {
     }
 }
 
+/**
+ * Sync all active memories to vector store
+ * (Useful for migration or fixing drift)
+ */
+export async function syncMemoriesToVectorStore(): Promise<number> {
+    const memories = await getActiveMemories();
+    let count = 0;
+
+    for (const mem of memories) {
+        try {
+            await storeDocument({
+                id: `memory:${mem.id}`,
+                text: mem.content,
+                metadata: {
+                    type: "memory",
+                    memoryId: mem.id,
+                    category: mem.category,
+                    timestamp: mem.updatedAt,
+                },
+            });
+            count++;
+        } catch (e) {
+            console.error("Failed to sync memory:", mem.id, e);
+        }
+    }
+    return count;
+}
+
 // ============= MEMORY CONTEXT =============
 
 /**
  * Get formatted memory context to inject into system prompts
  */
-export async function getMemoryContext(): Promise<string> {
+export async function getMemoryContext(query?: string): Promise<string> {
     const settings = await getSettings();
 
     // Check if memory is enabled
@@ -80,7 +147,42 @@ export async function getMemoryContext(): Promise<string> {
         return "";
     }
 
-    const memories = await getActiveMemories();
+    let memories: UserMemory[] = [];
+
+    if (query && query.trim().length > 2) {
+        // Semantic retrieval
+        try {
+            // Searh for relevant memories
+            const results = await searchSimilar(query, 5, 0.45, { type: "memory" });
+
+            // Filter results that are actually memories
+            const memoryIds = results
+                .filter(r => r.metadata?.type === "memory" && r.metadata?.memoryId)
+                .map(r => r.metadata!.memoryId!);
+
+            if (memoryIds.length > 0) {
+                // Fetch full objects to be safe
+                const dbMemories = await db.userMemories.bulkGet(memoryIds);
+                memories = dbMemories
+                    .filter((m): m is UserMemory => !!m && m.isActive)
+                    // Re-sort to match relevance
+                    .sort((a, b) => {
+                        const idxA = memoryIds.indexOf(a.id);
+                        const idxB = memoryIds.indexOf(b.id);
+                        return idxA - idxB;
+                    });
+            }
+        } catch (error) {
+            console.error("Memory retrieval failed, falling back to recent:", error);
+            const all = await getActiveMemories();
+            memories = all.slice(0, 10);
+        }
+    } else {
+        // Fallback for no query: return most recent 5 active memories
+        // This keeps the context "alive" without being overwhelming
+        const all = await getActiveMemories();
+        memories = all.slice(0, 5);
+    }
 
     if (memories.length === 0) {
         return "";
@@ -121,11 +223,10 @@ export async function getMemoryContext(): Promise<string> {
         return "";
     }
 
-    return `## User Information (from memory)
+    return `## Relevant User Memories
+The following facts about the user were retrieved based on the conversation context. Use them if relevant, otherwise ignore.
 
-${sections.join("\n\n")}
-
-Use this information to personalize your responses naturally, without explicitly stating you "remember" unless directly asked.`;
+${sections.join("\n\n")}`;
 }
 
 // ============= MEMORY CLEANUP =============
@@ -152,6 +253,9 @@ export async function cleanupExpiredMemories(): Promise<number> {
 
     if (idsToDelete.length > 0) {
         await db.userMemories.bulkDelete(idsToDelete);
+        for (const id of idsToDelete) {
+            await deleteDocuments({ memoryId: id }).catch(console.error);
+        }
     }
 
     return idsToDelete.length;
@@ -175,7 +279,11 @@ export async function enforceMemoryLimit(): Promise<number> {
     const toDelete = autoMemories.slice(0, allMemories.length - maxItems);
 
     if (toDelete.length > 0) {
-        await db.userMemories.bulkDelete(toDelete.map((m) => m.id));
+        const ids = toDelete.map((m) => m.id);
+        await db.userMemories.bulkDelete(ids);
+        for (const id of ids) {
+            await deleteDocuments({ memoryId: id }).catch(console.error);
+        }
     }
 
     return toDelete.length;

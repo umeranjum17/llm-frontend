@@ -312,7 +312,7 @@ export function InputArea({ chatId }: InputAreaProps) {
   };
 
   const handlePromptSelect = (prompt: Prompt) => {
-    incrementPromptUsage(prompt.id).catch(() => {});
+    incrementPromptUsage(prompt.id).catch(() => { });
     const vars = extractVariableNames(prompt.content);
     if (vars.length > 0) {
       setSelectedPrompt(prompt);
@@ -398,45 +398,46 @@ export function InputArea({ chatId }: InputAreaProps) {
       {/* Attachments Preview */}
       {(imageAttachments.length > 0 || attachments.length > 0) && (
         <div className="mb-2 flex flex-wrap gap-2 rounded-xl border bg-background/60 p-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/40">
-            {imageAttachments.map((img, i) => (
-              <div
-                key={`${img.dataUrl}-${i}`}
-                className="relative overflow-hidden rounded-md border bg-background"
+          {imageAttachments.map((img, i) => (
+            <div
+              key={`${img.dataUrl}-${i}`}
+              className="relative overflow-hidden rounded-md border bg-background"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={img.dataUrl}
+                alt={img.name}
+                className="h-16 w-16 object-cover"
+                loading="lazy"
+              />
+              <button
+                type="button"
+                onClick={() => removeImageAttachment(i)}
+                className="absolute right-1 top-1 rounded bg-background/80 p-0.5 text-muted-foreground hover:text-foreground"
+                title="Remove image"
               >
-                <img
-                  src={img.dataUrl}
-                  alt={img.name}
-                  className="h-16 w-16 object-cover"
-                  loading="lazy"
-                />
-                <button
-                  type="button"
-                  onClick={() => removeImageAttachment(i)}
-                  className="absolute right-1 top-1 rounded bg-background/80 p-0.5 text-muted-foreground hover:text-foreground"
-                  title="Remove image"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
 
-            {attachments.map((file, i) => (
-              <div
-                key={`${file.name}-${i}`}
-                className="flex items-center gap-1 bg-background border rounded-md px-2 py-1 text-xs"
+          {attachments.map((file, i) => (
+            <div
+              key={`${file.name}-${i}`}
+              className="flex items-center gap-1 bg-background border rounded-md px-2 py-1 text-xs"
+            >
+              <FileText className="h-3 w-3 text-muted-foreground" />
+              <span className="max-w-[150px] truncate">{file.name}</span>
+              <button
+                type="button"
+                onClick={() => removeAttachment(i)}
+                className="text-muted-foreground hover:text-foreground"
+                title="Remove file"
               >
-                <FileText className="h-3 w-3 text-muted-foreground" />
-                <span className="max-w-[150px] truncate">{file.name}</span>
-                <button
-                  type="button"
-                  onClick={() => removeAttachment(i)}
-                  className="text-muted-foreground hover:text-foreground"
-                  title="Remove file"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
         </div>
       )}
 

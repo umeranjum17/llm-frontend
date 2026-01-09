@@ -1,4 +1,8 @@
-import { pipeline, type FeatureExtractionPipeline } from "@xenova/transformers";
+import { pipeline, type FeatureExtractionPipeline, env } from "@xenova/transformers";
+
+// Skip local model checks to avoid 404s and network errors if models aren't manually downloaded
+env.allowLocalModels = false;
+env.useBrowserCache = true;
 
 let embeddingPipeline: FeatureExtractionPipeline | null = null;
 
@@ -29,7 +33,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
       pooling: "mean",
       normalize: true,
     });
-    
+
     // Convert tensor to array
     return Array.from(output.data);
   } catch (error) {
@@ -45,7 +49,7 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   try {
     const pipeline = await getEmbeddingPipeline();
     const embeddings: number[][] = [];
-    
+
     // Process in batches to avoid memory issues
     const batchSize = 10;
     for (let i = 0; i < texts.length; i += batchSize) {
@@ -60,7 +64,7 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
       );
       embeddings.push(...batchEmbeddings);
     }
-    
+
     return embeddings;
   } catch (error) {
     console.error("Error generating embeddings:", error);
@@ -75,17 +79,17 @@ export function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length) {
     throw new Error("Embeddings must have the same dimension");
   }
-  
+
   let dotProduct = 0;
   let normA = 0;
   let normB = 0;
-  
+
   for (let i = 0; i < a.length; i++) {
     dotProduct += a[i] * b[i];
     normA += a[i] * a[i];
     normB += b[i] * b[i];
   }
-  
+
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 

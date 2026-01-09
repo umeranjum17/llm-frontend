@@ -2,6 +2,9 @@ import { getSettings } from "@/lib/db/queries";
 import { addMemory } from "./memory-store";
 import type { Message, UserMemory } from "@/lib/db/schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
+import { db } from "@/lib/db/schema";
+import { pickBestProviderId } from "@/lib/ai/provider-routing";
+import { toast } from "sonner";
 
 const EXTRACTION_PROMPT = `Analyze this conversation and extract key facts about the user that would be useful to remember for future conversations.
 
@@ -78,18 +81,50 @@ export async function extractMemoriesFromConversation(
     const prompt = EXTRACTION_PROMPT.replace("{{CONVERSATION}}", conversationText);
 
     try {
-        // Call the extraction model
-        const modelId = settings.memoryModelId || "gpt-4o-mini";
+        // Get the extraction model - default to OpenRouter format
+        const modelId = settings.memoryModelId || "openai/gpt-4o-mini";
+
+        console.log("[Memory] Starting extraction for chat:", chatId, "with model:", modelId);
+
+        // Get available API keys to find a provider
+        const apiKeys = await db.apiKeys.toArray();
+        const llmProviderIds = apiKeys
+            .map((k) => k.provider)
+            .filter((p) =>
+                ["openrouter", "openai", "anthropic", "groq", "together"].includes(p) ||
+                p.startsWith("custom-openai:")
+            );
+
+        console.log("[Memory] Available providers:", llmProviderIds);
+
+        const providerId = pickBestProviderId({
+            modelId,
+            availableProviderIds: llmProviderIds,
+        });
+
+        if (!providerId) {
+            console.warn("No provider available for memory extraction");
+            return [];
+        }
+
+        const apiKeyEntry = apiKeys.find((k) => k.provider === providerId);
+        if (!apiKeyEntry) {
+            console.warn("No API key for memory extraction provider:", providerId);
+            return [];
+        }
 
         // Make API call to extract memories
         const response = await fetch("/api/chat", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                "X-API-Key": apiKeyEntry.key,
+            },
             body: JSON.stringify({
-                messages: [{ role: "user", content: prompt }],
+                providerId,
+                providerBaseUrl: apiKeyEntry.baseUrl,
                 modelId,
-                maxTokens: 500,
-                temperature: 0.1, // Low temperature for consistent extraction
+                messages: [{ role: "user", content: prompt }],
             }),
         });
 
@@ -108,7 +143,22 @@ export async function extractMemoriesFromConversation(
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            fullText += decoder.decode(value, { stream: true });
+
+            const chunk = decoder.decode(value, { stream: true });
+            // Parse SSE data
+            const lines = chunk.split("\n");
+            for (const line of lines) {
+                if (line.startsWith("data: ") && line !== "data: [DONE]") {
+                    try {
+                        const data = JSON.parse(line.slice(6));
+                        if (data.type === "text-delta" && data.textDelta) {
+                            fullText += data.textDelta;
+                        }
+                    } catch {
+                        // Ignore parse errors
+                    }
+                }
+            }
         }
 
         // Extract JSON from the response
@@ -156,6 +206,11 @@ export async function extractMemoriesFromConversation(
                 });
                 newMemories.push(newMem);
             }
+        }
+
+        // Show toast if we extracted memories
+        if (newMemories.length > 0) {
+            toast.success(`Learned ${newMemories.length} new fact${newMemories.length > 1 ? 's' : ''} about you`);
         }
 
         return newMemories;
