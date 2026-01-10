@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { getProjectFiles, getChatsByProject } from "@/lib/db/queries";
+import { getProjectFiles, getChatsByProject, getChatById, getLastMessage } from "@/lib/db/queries";
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 import { File, MessageSquare } from "lucide-react";
 import { getFileIcon } from "@/lib/utils/file-extractor";
+import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import type { ProjectFile, Chat } from "@/lib/db/schema";
+import { cn } from "@/lib/utils";
 
 interface AtMentionAutocompleteProps {
   projectId?: string;
@@ -30,6 +32,7 @@ export function AtMentionAutocomplete({
   const chats = useLiveQuery(() => getChatsByProject(projectId || ""), [projectId]);
 
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [hoveredItem, setHoveredItem] = useState<{ type: "file" | "chat"; id: string } | null>(null);
   const commandRef = useRef<HTMLDivElement>(null);
 
   // Filter items by query
@@ -98,40 +101,136 @@ export function AtMentionAutocomplete({
           {filteredFiles.length > 0 && (
             <CommandGroup heading="Files">
               {filteredFiles.map((file, index) => (
-                <CommandItem
+                <FilePreviewItem
                   key={file.id}
+                  file={file}
+                  index={index}
+                  selectedIndex={selectedIndex}
                   onSelect={() => onSelect("file", file.id, file.name)}
-                  className={selectedIndex === index ? "bg-accent" : ""}
-                >
-                  <span className="mr-2">{getFileIcon(file.name)}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate">{file.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {(file.size / 1024).toFixed(1)} KB
-                    </div>
-                  </div>
-                </CommandItem>
+                  onHover={() => setHoveredItem({ type: "file", id: file.id })}
+                  onLeave={() => setHoveredItem(null)}
+                />
               ))}
             </CommandGroup>
           )}
           {filteredChats.length > 0 && (
             <CommandGroup heading="Chats">
               {filteredChats.map((chat, index) => (
-                <CommandItem
+                <ChatPreviewItem
                   key={chat.id}
+                  chat={chat}
+                  index={filteredFiles.length + index}
+                  selectedIndex={selectedIndex}
                   onSelect={() => onSelect("chat", chat.id, chat.title)}
-                  className={
-                    selectedIndex === filteredFiles.length + index ? "bg-accent" : ""
-                  }
-                >
-                  <MessageSquare className="mr-2 h-4 w-4" />
-                  <div className="flex-1 min-w-0 truncate">{chat.title}</div>
-                </CommandItem>
+                  onHover={() => setHoveredItem({ type: "chat", id: chat.id })}
+                  onLeave={() => setHoveredItem(null)}
+                />
               ))}
             </CommandGroup>
           )}
         </CommandList>
       </Command>
+    </div>
+  );
+}
+
+interface FilePreviewItemProps {
+  file: ProjectFile;
+  index: number;
+  selectedIndex: number;
+  onSelect: () => void;
+  onHover: () => void;
+  onLeave: () => void;
+}
+
+function FilePreviewItem({ file, index, selectedIndex, onSelect, onHover, onLeave }: FilePreviewItemProps) {
+  const [showPreview, setShowPreview] = useState(false);
+  const preview = file.text ? (file.text.slice(0, 200) + (file.text.length > 200 ? "..." : "")) : null;
+
+  return (
+    <div className="relative group">
+      <CommandItem
+        onSelect={onSelect}
+        onMouseEnter={() => {
+          onHover();
+          setShowPreview(true);
+        }}
+        onMouseLeave={() => {
+          onLeave();
+          setShowPreview(false);
+        }}
+        className={cn(selectedIndex === index && "bg-accent")}
+      >
+        <span className="mr-2">{getFileIcon(file.name)}</span>
+        <div className="flex-1 min-w-0">
+          <div className="font-medium truncate">{file.name}</div>
+          <div className="text-xs text-muted-foreground">
+            {(file.size / 1024).toFixed(1)} KB
+          </div>
+        </div>
+      </CommandItem>
+      {showPreview && preview && (
+        <div 
+          className="absolute left-full ml-2 top-0 z-50 w-80 p-3 bg-popover border rounded-lg shadow-dropdown text-sm"
+          onMouseEnter={() => setShowPreview(true)}
+          onMouseLeave={() => setShowPreview(false)}
+        >
+          <div className="font-medium mb-2">{file.name}</div>
+          <div className="text-xs text-muted-foreground whitespace-pre-wrap line-clamp-6">
+            {preview}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ChatPreviewItemProps {
+  chat: Chat;
+  index: number;
+  selectedIndex: number;
+  onSelect: () => void;
+  onHover: () => void;
+  onLeave: () => void;
+}
+
+function ChatPreviewItem({ chat, index, selectedIndex, onSelect, onHover, onLeave }: ChatPreviewItemProps) {
+  const [showPreview, setShowPreview] = useState(false);
+  const lastMessage = useLiveQuery(() => showPreview ? getLastMessage(chat.id) : undefined, [chat.id, showPreview]);
+  const preview = lastMessage ? (() => {
+    const text = getTextFromMessageContent(lastMessage.content);
+    return text.slice(0, 200) + (text.length > 200 ? "..." : "");
+  })() : null;
+
+  return (
+    <div className="relative group">
+      <CommandItem
+        onSelect={onSelect}
+        onMouseEnter={() => {
+          onHover();
+          setShowPreview(true);
+        }}
+        onMouseLeave={() => {
+          onLeave();
+          setShowPreview(false);
+        }}
+        className={cn(selectedIndex === index && "bg-accent")}
+      >
+        <MessageSquare className="mr-2 h-4 w-4" />
+        <div className="flex-1 min-w-0 truncate">{chat.title}</div>
+      </CommandItem>
+      {showPreview && preview && (
+        <div 
+          className="absolute left-full ml-2 top-0 z-50 w-80 p-3 bg-popover border rounded-lg shadow-dropdown text-sm"
+          onMouseEnter={() => setShowPreview(true)}
+          onMouseLeave={() => setShowPreview(false)}
+        >
+          <div className="font-medium mb-2">{chat.title}</div>
+          <div className="text-xs text-muted-foreground whitespace-pre-wrap line-clamp-6">
+            {preview}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

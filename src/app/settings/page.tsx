@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Key, Palette, Keyboard, Download, Settings as SettingsIcon, Bot, FileText, Server, Search, Brain } from "lucide-react";
+import { ArrowLeft, Key, Palette, Keyboard, Download, Settings as SettingsIcon, Bot, FileText, Server, Search, Brain, Shield, BarChart3 } from "lucide-react";
 import { ApiKeysSettings } from "@/components/settings/api-keys-settings";
 import { ThemeSettings } from "@/components/settings/theme-settings";
 import { KeyboardShortcutsSettings } from "@/components/settings/keyboard-shortcuts-settings";
@@ -15,6 +15,8 @@ import { AgentsSettings } from "@/components/settings/agents-settings";
 import { PromptsSettings } from "@/components/settings/prompts-settings";
 import { LocalModelsSettings } from "@/components/settings/local-models-settings";
 import { MemorySettings } from "@/components/settings/memory-settings";
+import { TrustDashboard } from "@/components/settings/trust-dashboard";
+import { UsageAnalytics } from "@/components/settings/usage-analytics";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useSettingsStore } from "@/stores/settings-store";
 
@@ -33,7 +35,7 @@ export default function SettingsPage() {
   useEffect(() => {
     const tabParam = new URLSearchParams(window.location.search).get("tab");
     if (!tabParam) return;
-    const allowedTabs = ["general", "api-keys", "local-models", "memory", "theme", "shortcuts", "data", "agents", "prompts"];
+    const allowedTabs = ["general", "api-keys", "local-models", "memory", "theme", "shortcuts", "data", "agents", "prompts", "trust", "analytics"];
     if (allowedTabs.includes(tabParam)) setActiveTab(tabParam);
   }, []);
 
@@ -79,7 +81,7 @@ export default function SettingsPage() {
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-9 mb-8">
+            <TabsList className="grid w-full grid-cols-11 mb-8">
               <TabsTrigger value="general" className="gap-2">
                 <SettingsIcon className="h-4 w-4" />
                 General
@@ -115,6 +117,14 @@ export default function SettingsPage() {
               <TabsTrigger value="data" className="gap-2">
                 <Download className="h-4 w-4" />
                 Data
+              </TabsTrigger>
+              <TabsTrigger value="trust" className="gap-2">
+                <Shield className="h-4 w-4" />
+                Trust
+              </TabsTrigger>
+              <TabsTrigger value="analytics" className="gap-2">
+                <BarChart3 className="h-4 w-4" />
+                Analytics
               </TabsTrigger>
             </TabsList>
 
@@ -152,6 +162,14 @@ export default function SettingsPage() {
 
             <TabsContent value="data" className="space-y-6">
               <ExportImportSettings />
+            </TabsContent>
+
+            <TabsContent value="trust" className="space-y-6">
+              <TrustDashboard />
+            </TabsContent>
+
+            <TabsContent value="analytics" className="space-y-6">
+              <UsageAnalytics />
             </TabsContent>
           </Tabs>
         </div>

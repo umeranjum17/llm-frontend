@@ -107,6 +107,8 @@ export interface UserSettings {
   titleModelId?: string;             // Which model to use for title generation (deprecated, use titleModelIdsByProvider)
   titleModelIdsByProvider?: Record<string, string>; // Per-provider title generation models
   embeddingsProvider?: "openrouter" | "openai"; // Which provider to use for embeddings (default: openrouter)
+  onboardingCompleted?: boolean; // Whether user has completed onboarding
+  onboardingCompletedAt?: number; // Timestamp when onboarding was completed
 }
 
 export interface ModelFavorite {

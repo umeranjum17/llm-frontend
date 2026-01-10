@@ -33,6 +33,8 @@ import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { FolderDialog } from "./folder-dialog";
 import { BulkActions } from "./bulk-actions";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Search, Plus } from "lucide-react";
 
 import {
   DropdownMenu,
@@ -348,16 +350,35 @@ export function ChatList({ searchQuery }: ChatListProps) {
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center p-8 text-center">
-        <MessageSquare className="h-12 w-12 text-muted-foreground mb-4" />
-        <p className="text-muted-foreground">
-          {searchQuery ? "No chats found" : "No chats yet"}
-        </p>
-        <Button variant="ghost" size="sm" onClick={handleCreateFolder} className="mt-4 gap-2">
-          <FolderPlus className="h-4 w-4" />
-          Create Folder
-        </Button>
-      </div>
+      <EmptyState
+        icon={searchQuery ? Search : MessageSquare}
+        title={searchQuery ? "No chats found" : "No chats yet"}
+        description={
+          searchQuery
+            ? "Try adjusting your search terms or create a new chat."
+            : "Create your first chat to start conversing with AI models."
+        }
+        action={
+          searchQuery
+            ? undefined
+            : {
+                label: "New Chat",
+                onClick: () => {
+                  const event = new CustomEvent("lumina:new-chat");
+                  window.dispatchEvent(event);
+                },
+              }
+        }
+        secondaryAction={
+          !searchQuery
+            ? {
+                label: "Create Folder",
+                onClick: handleCreateFolder,
+              }
+            : undefined
+        }
+        className="h-full"
+      />
     );
   }
 

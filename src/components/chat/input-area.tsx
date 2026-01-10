@@ -391,7 +391,7 @@ export function InputArea({ chatId }: InputAreaProps) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="mx-auto max-w-3xl"
+      className="mx-auto max-w-3xl 2xl:max-w-4xl"
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
     >

@@ -82,6 +82,41 @@
       radial-gradient(1200px circle at 15% -20%, hsl(var(--primary) / 0.03), transparent 55%),
       radial-gradient(900px circle at 85% 10%, hsl(var(--ring) / 0.02), transparent 50%);
   }
+
+  /* Premium focus states */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+    transition: box-shadow 150ms ease-out;
+  }
+
+  /* Smooth transitions for all interactive elements */
+  button, a, input, textarea, select {
+    transition: all 150ms ease-out;
+  }
+
+  /* Premium button interactions */
+  button:not(:disabled) {
+    @apply transition-all duration-150 ease-out;
+  }
+
+  button:not(:disabled):hover {
+    transform: translateY(-1px);
+  }
+
+  button:not(:disabled):active {
+    transform: translateY(0);
+  }
+
+  /* Respect reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }
 
 ::selection {
@@ -176,4 +211,82 @@
 
 .prose hr {
   @apply my-6 border-border;
+}
+
+/* Premium utility classes */
+@layer utilities {
+  /* Typography scale utilities */
+  .text-xs-premium {
+    @apply text-xs leading-4 tracking-[0.01em];
+  }
+
+  .text-sm-premium {
+    @apply text-sm leading-5 tracking-[0.01em];
+  }
+
+  .text-base-premium {
+    @apply text-base leading-6 tracking-0;
+  }
+
+  .text-lg-premium {
+    @apply text-lg leading-7 tracking-[-0.01em];
+  }
+
+  .text-xl-premium {
+    @apply text-xl leading-8 tracking-[-0.02em];
+  }
+
+  .text-2xl-premium {
+    @apply text-2xl leading-10 tracking-[-0.02em];
+  }
+
+  /* Premium shadows */
+  .shadow-card {
+    box-shadow: 0 1px 3px 0 hsl(var(--foreground) / 0.08), 0 1px 2px -1px hsl(var(--foreground) / 0.08);
+  }
+
+  .shadow-modal {
+    box-shadow: 0 20px 25px -5px hsl(var(--foreground) / 0.15), 0 8px 10px -6px hsl(var(--foreground) / 0.1), 0 0 0 1px hsl(var(--border) / 0.5);
+  }
+
+  .shadow-dropdown {
+    box-shadow: 0 10px 15px -3px hsl(var(--foreground) / 0.12), 0 4px 6px -4px hsl(var(--foreground) / 0.08), 0 0 0 1px hsl(var(--border) / 0.5);
+  }
+
+  /* Premium transitions */
+  .transition-premium {
+    transition: all 150ms ease-out;
+  }
+
+  /* Focus ring utility */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+
+  /* Premium hover effects */
+  .hover-lift {
+    @apply transition-all duration-150 ease-out;
+  }
+
+  .hover-lift:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px -1px hsl(var(--foreground) / 0.1), 0 2px 4px -2px hsl(var(--foreground) / 0.1);
+  }
+
+  .hover-scale {
+    @apply transition-transform duration-150 ease-out;
+  }
+
+  .hover-scale:hover {
+    transform: scale(1.02);
+  }
+
+  /* Premium active states */
+  .active-scale {
+    @apply transition-transform duration-150 ease-out;
+  }
+
+  .active-scale:active {
+    transform: scale(0.98);
+  }
 }

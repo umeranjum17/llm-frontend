@@ -218,8 +218,17 @@ export function MessageList({ chatId, arenaModelId }: MessageListProps) {
   }, [allMessages, chatId, childrenByParent]);
 
   const handleFork = useCallback(async (messageId: string) => {
-    await updateChat(chatId, { activeBranchLeafId: messageId, hasBranches: true });
-  }, [chatId]);
+    // Fork: set the active branch to this message, creating a new branch point
+    const message = byId.get(messageId);
+    if (!message) return;
+    
+    // Update chat to point to this message as the active leaf
+    // This effectively creates a new branch from this point
+    await updateChat(chatId, { 
+      activeBranchLeafId: messageId, 
+      hasBranches: true 
+    });
+  }, [chatId, byId]);
 
   const handleAtBottomChange = useCallback((atBottom: boolean) => {
     setIsAtBottom(atBottom);

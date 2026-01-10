@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useTabsStore } from "@/stores/tabs-store";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRouter } from "next/navigation";
@@ -58,20 +59,42 @@ import { toast } from "sonner";
 
 import { getSettings } from "@/lib/db/queries";
 import Link from "next/link";
+import { EmptyState } from "@/components/ui/empty-state";
+import { MessageSquare } from "lucide-react";
+import { ChatTabs } from "./chat-tabs";
 
 export function ChatShell() {
   const router = useRouter();
-  const activeChatId = useUIStore((state) => state.activeChatId);
+  const uiActiveChatId = useUIStore((state) => state.activeChatId);
+  const setActiveChatId = useUIStore((state) => state.setActiveChatId);
+  const { tabs, activeTabId, addTab, setActiveTab } = useTabsStore();
+  // Use tab's active chat if tabs are enabled, otherwise use UI store
+  const activeChatId = tabs.length > 0 ? (activeTabId || tabs[0] || null) : uiActiveChatId;
+
+  // Sync UI store with tabs
+  useEffect(() => {
+    if (tabs.length > 0 && activeTabId) {
+      setActiveChatId(activeTabId);
+    } else if (tabs.length === 0 && uiActiveChatId) {
+      setActiveChatId(uiActiveChatId);
+    }
+  }, [activeTabId, tabs.length, uiActiveChatId, setActiveChatId]);
   const showArtifacts = useUIStore((state) => state.showArtifacts);
   const setShowArtifacts = useUIStore((state) => state.setShowArtifacts);
   const isArenaMode = useUIStore((state) => state.isArenaMode);
   const setIsArenaMode = useUIStore((state) => state.setIsArenaMode);
   const arenaModelIds = useUIStore((state) => state.arenaModelIds);
   const setArenaModelIds = useUIStore((state) => state.setArenaModelIds);
-  const setActiveChatId = useUIStore((state) => state.setActiveChatId);
   const getKeyForProvider = useApiKeysStore((s) => s.getKeyForProvider);
   const keys = useApiKeysStore((s) => s.keys);
   const models = useModelsStore((state) => state.models);
+
+  // Sync active chat to tabs when it changes
+  useEffect(() => {
+    if (activeChatId && !tabs.includes(activeChatId)) {
+      addTab(activeChatId);
+    }
+  }, [activeChatId, tabs, addTab]);
   const llmProviderIds = useMemo(
     () =>
       Array.from(
@@ -276,6 +299,7 @@ export function ChatShell() {
         providerId: providerId || undefined,
       });
       setActiveChatId(newChat.id);
+      addTab(newChat.id);
       toast.success("New chat created");
     } catch {
       toast.error("Could not create chat");
@@ -301,24 +325,26 @@ export function ChatShell() {
 
   if (!activeChatId) {
     return (
-      <div className="flex h-full flex-col items-center justify-center text-center p-8">
-        <h2 className="text-2xl font-bold mb-2">Welcome to Lumina</h2>
-        <p className="text-muted-foreground mb-6">
-          Select a chat from the sidebar or create a new one to get started
-        </p>
-        <Button
-          variant="outline"
-          className="sm:hidden"
-          onClick={() => window.dispatchEvent(new CustomEvent("lumina:open-sidebar"))}
-        >
-          Browse chats
-        </Button>
-      </div>
+      <EmptyState
+        icon={MessageSquare}
+        title="Welcome to Lumina"
+        description="Select a chat from the sidebar or create a new one to get started with your AI conversations."
+        action={{
+          label: "New Chat",
+          onClick: handleNewChat,
+        }}
+        secondaryAction={{
+          label: "Browse Chats",
+          onClick: () => window.dispatchEvent(new CustomEvent("lumina:open-sidebar")),
+        }}
+        className="h-full"
+      />
     );
   }
 
   return (
     <div className="flex h-full flex-col">
+      {tabs.length > 0 && <ChatTabs />}
       <ResizablePanelGroup direction="horizontal" className="h-full">
         <ResizablePanel defaultSize={showArtifacts ? 60 : 100} minSize={30}>
           <div className="flex h-full flex-col">

@@ -15,6 +15,7 @@ import { ChatShell } from "@/components/chat/chat-shell";
 import { ensureBuiltIns } from "@/lib/db/seed";
 import { useModelsStore } from "@/stores/models-store";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
 export default function Home() {
   const router = useRouter();
@@ -62,6 +63,16 @@ export default function Home() {
     return () => media.removeEventListener("change", update);
   }, []);
 
+  // Wide screen detection for ultra-wide optimization
+  const [isWideScreen, setIsWideScreen] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1920px)");
+    const update = () => setIsWideScreen(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
   useEffect(() => {
     const handler = () => setSidebarOpen(true);
     window.addEventListener("lumina:open-sidebar", handler as EventListener);
@@ -78,7 +89,10 @@ export default function Home() {
 
   return (
     <div className="h-screen p-0 sm:p-2">
-      <div className="h-full overflow-hidden rounded-none border-0 bg-background/70 shadow-[0_18px_70px_-40px_rgba(15,23,42,0.6)] backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:rounded-2xl sm:border">
+      <div className={cn(
+        "h-full overflow-hidden rounded-none border-0 bg-background/70 shadow-[0_18px_70px_-40px_rgba(15,23,42,0.6)] backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:rounded-2xl sm:border",
+        isWideScreen && "max-w-[2560px] mx-auto"
+      )}>
         {isMobile ? (
           <ChatShell />
         ) : (
@@ -93,11 +107,15 @@ export default function Home() {
               }, 300);
             }}
           >
-            <ResizablePanel defaultSize={sidebarWidth ?? 22} minSize={16} maxSize={32}>
+            <ResizablePanel 
+              defaultSize={isWideScreen ? (sidebarWidth ?? 18) : (sidebarWidth ?? 22)} 
+              minSize={isWideScreen ? 14 : 16} 
+              maxSize={isWideScreen ? 28 : 32}
+            >
               <Sidebar />
             </ResizablePanel>
             <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={75}>
+            <ResizablePanel defaultSize={isWideScreen ? 82 : 75}>
               <ChatShell />
             </ResizablePanel>
           </ResizablePanelGroup>

@@ -345,6 +345,18 @@ export async function updateSettings(updates: Partial<Omit<UserSettings, "id">>)
   await db.settings.update("default", { ...updates, updatedAt: Date.now() });
 }
 
+export async function markOnboardingCompleted() {
+  await updateSettings({
+    onboardingCompleted: true,
+    onboardingCompletedAt: Date.now(),
+  });
+}
+
+export async function isOnboardingCompleted(): Promise<boolean> {
+  const settings = await getSettings();
+  return settings.onboardingCompleted === true;
+}
+
 // ============= AGENT QUERIES =============
 
 export async function getAllAgents() {

@@ -13,7 +13,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useApiKeysStore } from "@/stores/api-keys-store";
-import { Plus, Trash2, Eye, EyeOff, Check, CheckCircle2, XCircle } from "lucide-react";
+import { Plus, Trash2, Eye, EyeOff, Check, CheckCircle2, XCircle, Shield, Lock, Activity } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { CUSTOM_OPENAI_PREFIX, getProviderConfig, isCustomOpenAIProvider } from "@/lib/providers";
 import { localDetector } from "@/lib/providers/local-detector";
