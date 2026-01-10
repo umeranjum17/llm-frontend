@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Key, Palette, Keyboard, Download, Settings as SettingsIcon, Bot, FileText, Server, Search, Brain, Shield, BarChart3 } from "lucide-react";
+import { ArrowLeft, Key, Palette, Keyboard, Download, Settings as SettingsIcon, Bot, FileText, Server, Search, Brain, Shield, BarChart3, Plug } from "lucide-react";
 import { ApiKeysSettings } from "@/components/settings/api-keys-settings";
 import { ThemeSettings } from "@/components/settings/theme-settings";
 import { KeyboardShortcutsSettings } from "@/components/settings/keyboard-shortcuts-settings";
@@ -17,6 +17,8 @@ import { LocalModelsSettings } from "@/components/settings/local-models-settings
 import { MemorySettings } from "@/components/settings/memory-settings";
 import { TrustDashboard } from "@/components/settings/trust-dashboard";
 import { UsageAnalytics } from "@/components/settings/usage-analytics";
+import { ConnectorsSettings } from "@/components/settings/connectors-settings";
+import { WorkflowSettings } from "@/components/settings/workflow-settings";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useSettingsStore } from "@/stores/settings-store";
 
@@ -35,7 +37,7 @@ export default function SettingsPage() {
   useEffect(() => {
     const tabParam = new URLSearchParams(window.location.search).get("tab");
     if (!tabParam) return;
-    const allowedTabs = ["general", "api-keys", "local-models", "memory", "theme", "shortcuts", "data", "agents", "prompts", "trust", "analytics"];
+    const allowedTabs = ["general", "api-keys", "local-models", "memory", "theme", "shortcuts", "data", "agents", "prompts", "trust", "analytics", "connectors"];
     if (allowedTabs.includes(tabParam)) setActiveTab(tabParam);
   }, []);
 
@@ -81,55 +83,67 @@ export default function SettingsPage() {
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-11 mb-8">
-              <TabsTrigger value="general" className="gap-2">
-                <SettingsIcon className="h-4 w-4" />
+            <TabsList className="flex flex-wrap gap-1 h-auto p-1 mb-8">
+              <TabsTrigger value="general" className="gap-1.5 text-xs">
+                <SettingsIcon className="h-3.5 w-3.5" />
                 General
               </TabsTrigger>
-              <TabsTrigger value="api-keys" className="gap-2">
-                <Key className="h-4 w-4" />
+              <TabsTrigger value="connectors" className="gap-1.5 text-xs">
+                <Plug className="h-3.5 w-3.5" />
+                Connectors
+              </TabsTrigger>
+              <TabsTrigger value="api-keys" className="gap-1.5 text-xs">
+                <Key className="h-3.5 w-3.5" />
                 API Keys
               </TabsTrigger>
-              <TabsTrigger value="local-models" className="gap-2">
-                <Server className="h-4 w-4" />
+              <TabsTrigger value="local-models" className="gap-1.5 text-xs">
+                <Server className="h-3.5 w-3.5" />
                 Local
               </TabsTrigger>
-              <TabsTrigger value="memory" className="gap-2">
-                <Brain className="h-4 w-4" />
+              <TabsTrigger value="memory" className="gap-1.5 text-xs">
+                <Brain className="h-3.5 w-3.5" />
                 Memory
               </TabsTrigger>
-              <TabsTrigger value="theme" className="gap-2">
-                <Palette className="h-4 w-4" />
+              <TabsTrigger value="theme" className="gap-1.5 text-xs">
+                <Palette className="h-3.5 w-3.5" />
                 Theme
               </TabsTrigger>
-              <TabsTrigger value="shortcuts" className="gap-2">
-                <Keyboard className="h-4 w-4" />
+              <TabsTrigger value="shortcuts" className="gap-1.5 text-xs">
+                <Keyboard className="h-3.5 w-3.5" />
                 Shortcuts
               </TabsTrigger>
-              <TabsTrigger value="agents" className="gap-2">
-                <Bot className="h-4 w-4" />
+              <TabsTrigger value="agents" className="gap-1.5 text-xs">
+                <Bot className="h-3.5 w-3.5" />
                 Agents
               </TabsTrigger>
-              <TabsTrigger value="prompts" className="gap-2">
-                <FileText className="h-4 w-4" />
+              <TabsTrigger value="prompts" className="gap-1.5 text-xs">
+                <FileText className="h-3.5 w-3.5" />
                 Prompts
               </TabsTrigger>
-              <TabsTrigger value="data" className="gap-2">
-                <Download className="h-4 w-4" />
+              <TabsTrigger value="data" className="gap-1.5 text-xs">
+                <Download className="h-3.5 w-3.5" />
                 Data
               </TabsTrigger>
-              <TabsTrigger value="trust" className="gap-2">
-                <Shield className="h-4 w-4" />
+              <TabsTrigger value="trust" className="gap-1.5 text-xs">
+                <Shield className="h-3.5 w-3.5" />
                 Trust
               </TabsTrigger>
-              <TabsTrigger value="analytics" className="gap-2">
-                <BarChart3 className="h-4 w-4" />
+              <TabsTrigger value="analytics" className="gap-1.5 text-xs">
+                <BarChart3 className="h-3.5 w-3.5" />
                 Analytics
+              </TabsTrigger>
+              <TabsTrigger value="workflows" className="gap-1.5 text-xs">
+                <div className="h-3.5 w-3.5 rounded bg-pink-500/20 text-pink-500 flex items-center justify-center text-[9px] font-bold">W</div>
+                Workflows
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value="general" className="space-y-6">
               <GeneralSettings />
+            </TabsContent>
+
+            <TabsContent value="connectors" className="space-y-6">
+              <ConnectorsSettings />
             </TabsContent>
 
             <TabsContent value="api-keys" className="space-y-6">

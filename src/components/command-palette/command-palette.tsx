@@ -22,6 +22,7 @@ import {
   FileText,
   RefreshCw,
   ArrowRightLeft,
+  GraduationCap,
 } from "lucide-react";
 import { useUIStore } from "@/stores/ui-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -215,6 +216,11 @@ export function CommandPalette() {
     setOpen(false);
   };
 
+  const handleShowTour = () => {
+    router.push("/onboarding");
+    setOpen(false);
+  };
+
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
       <CommandInput
@@ -266,6 +272,10 @@ export function CommandPalette() {
           <CommandItem onSelect={handleSettings}>
             <Settings className="mr-2 h-4 w-4" />
             <span>Settings</span>
+          </CommandItem>
+          <CommandItem onSelect={handleShowTour}>
+            <GraduationCap className="mr-2 h-4 w-4" />
+            <span>Show Onboarding Tour</span>
           </CommandItem>
         </CommandGroup>
 

@@ -7,16 +7,16 @@ import { Send, Loader2, Paperclip, X, FileText, Image as ImageIcon, Mic, Square,
 import { useChat } from "@/hooks/use-chat";
 import { useChatKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { TokenDisplay } from "./token-display";
-import { AtMentionAutocomplete } from "./at-mention-autocomplete";
-import { getAllPrompts, getChatById, incrementPromptUsage } from "@/lib/db/queries";
+import { getAllPrompts, getChatById, incrementPromptUsage, getProjectFiles, getChatsByProject, getAllAgents, getAllTags } from "@/lib/db/queries";
 import { toast } from "sonner";
 import type { MessageContentPart } from "@/lib/db/schema";
 import { PromptLibraryDialog } from "@/components/prompts/prompt-library-dialog";
+import { MentionTextarea } from "@/components/chat/mention-textarea";
+import { MentionItem } from "@/lib/mentions/types";
 import { VariableInputModal } from "@/components/prompts/variable-input-modal";
 import type { Prompt } from "@/lib/db/schema";
 import { extractVariableNames } from "@/lib/utils/prompt-variables";
 import { useVoiceInput } from "@/hooks/use-voice-input";
-import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 
 interface InputAreaProps {
   chatId: string;
@@ -56,16 +56,9 @@ export function InputArea({ chatId }: InputAreaProps) {
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<TextAttachment[]>([]);
   const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>([]);
-  const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [promptLibraryOpen, setPromptLibraryOpen] = useState(false);
   const [variableModalOpen, setVariableModalOpen] = useState(false);
   const [selectedPrompt, setSelectedPrompt] = useState<Prompt | null>(null);
-  const [autocompleteQuery, setAutocompleteQuery] = useState("");
-  const [autocompletePosition, setAutocompletePosition] = useState({ top: 0, left: 0 });
-  const [cursorPosition, setCursorPosition] = useState(0);
-  const [showSlashMenu, setShowSlashMenu] = useState(false);
-  const [slashQuery, setSlashQuery] = useState("");
-  const [slashIndex, setSlashIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { sendMessage, isLoading } = useChat(chatId);
@@ -75,33 +68,151 @@ export function InputArea({ chatId }: InputAreaProps) {
 
   const chat = useLiveQuery(() => getChatById(chatId), [chatId]);
   const prompts = useLiveQuery(() => getAllPrompts(), []);
+  const agents = useLiveQuery(() => getAllAgents(), []);
+  const tags = useLiveQuery(() => getAllTags(), []);
 
-  const filteredPrompts = useMemo(() => {
-    const list = prompts || [];
-    const q = slashQuery.trim().toLowerCase();
-    if (!showSlashMenu) return [];
-    if (!q) return list.slice(0, 8);
-    return list
-      .filter((p) =>
-        [p.title, p.description || "", p.content, ...(p.tags || [])]
-          .join(" ")
-          .toLowerCase()
-          .includes(q)
-      )
-      .slice(0, 8);
-  }, [prompts, slashQuery, showSlashMenu]);
+  // New: Fetch additional mention data
+  const files = useLiveQuery(() => (chat?.projectId ? getProjectFiles(chat.projectId) : []), [chat?.projectId]);
+  const otherChats = useLiveQuery(() => getChatsByProject(chat?.projectId || ""), [chat?.projectId]);
+
+  // Check connector statuses (client-side only for now)
+  const [activeConnectors, setActiveConnectors] = useState<string[]>([]);
+  useEffect(() => {
+    const checkConnectors = async () => {
+      const { availableConnectors } = await import("@/lib/connectors/registry");
+      const active = [];
+      for (const c of availableConnectors) {
+        if (await c.isConnected()) active.push(c);
+      }
+      setActiveConnectors(active.map(c => c.id));
+    };
+    checkConnectors();
+    // Poll every 5s to catch settings changes
+    const interval = setInterval(checkConnectors, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Construct mention items
+  const mentionItems = useMemo<MentionItem[]>(() => {
+    const items: MentionItem[] = [];
+
+    // Web Search
+    items.push({
+      id: "web-search",
+      type: "action", // Changed from 'agent' to avoid @agent:... formatting
+      label: "Web Search",
+      value: "@web:",
+      description: "Search the internet",
+      metadata: { type: "web" }
+    });
+
+    // Connectors
+    if (activeConnectors.includes("notion")) {
+      items.push({
+        id: "connector-notion",
+        type: "action",
+        label: "Search Notion",
+        value: "@notion:",
+        description: "Search your Notion workspace",
+        metadata: { type: "connector", connectorId: "notion" }
+      });
+    }
+
+    // Agents
+    if (agents) {
+      agents.forEach(a => {
+        if (!a.isActive) return;
+        items.push({
+          id: a.id,
+          type: "agent",
+          label: a.name,
+          value: `@agent:${a.id}[${a.name}]`,
+          description: a.description || "AI Assistant",
+          metadata: { agent: a }
+        });
+      });
+    }
+
+    // Prompts (mapped to commands or prompts)
+    if (prompts) {
+      prompts.forEach(p => {
+        items.push({
+          id: p.id,
+          type: "prompt",
+          label: p.title,
+          value: `@prompt:${p.id}[${p.title}]`, // Insert as reference
+          description: p.description || undefined,
+          metadata: { prompt: p }
+        });
+      });
+    }
+
+    // Files
+    if (files) {
+      files.forEach(f => {
+        items.push({
+          id: f.id,
+          type: "file",
+          label: f.name,
+          value: f.name, // The value insertion logic handles the format
+          description: `${(f.size / 1024).toFixed(1)}KB`,
+        });
+      });
+    }
+
+    // Chats
+    if (otherChats) {
+      otherChats.forEach(c => {
+        if (c.id === chatId) return; // Exclude current chat
+        items.push({
+          id: c.id,
+          type: "agent", // reusing agent icon for chat temporarily or we can add 'chat' type
+          label: c.title,
+          value: c.title,
+          description: "Chat history",
+        });
+      });
+    }
+
+    // Tags for '#'
+    if (tags) {
+      tags.forEach(t => {
+        items.push({
+          id: t.id,
+          type: "prompt", // using prompt icon (hash-like) for now or add 'tag' type
+          label: t.name,
+          value: `#${t.name}`,
+          description: `${t.usageCount || 0} uses`
+        });
+      });
+    }
+
+    return items;
+  }, [prompts, files, otherChats, chatId, agents, tags, activeConnectors]);
 
   // Handle submit function for keyboard shortcut
   const handleSubmitMessage = () => {
     if ((input.trim() || attachments.length > 0 || imageAttachments.length > 0) && !isLoading) {
-      const message = input.trim();
+      // Resolve prompt references
+      let resolvedMessage = input.trim();
+      const promptMatches = resolvedMessage.matchAll(/@prompt:([^\[]+)\[([^\]]+)\]/g);
+      for (const match of promptMatches) {
+        const promptId = match[1];
+        const prompt = prompts?.find(p => p.id === promptId);
+        if (prompt) {
+          // Replace the tag with the prompt content
+          resolvedMessage = resolvedMessage.replace(match[0], prompt.content);
+          incrementPromptUsage(promptId).catch(() => { });
+        }
+      }
+
+      const message = resolvedMessage;
       const currentAttachments = [...attachments]; // Capture current state
       const currentImages = [...imageAttachments];
 
       setInput("");
       setAttachments([]); // Clear state immediately
       setImageAttachments([]);
-      setShowSlashMenu(false);
 
       const contentParts: MessageContentPart[] = [
         ...(message ? [{ type: "text" as const, text: message }] : []),
@@ -118,7 +229,8 @@ export function InputArea({ chatId }: InputAreaProps) {
   // Register Cmd+Enter keyboard shortcut for sending message
   useChatKeyboardShortcuts(handleSubmitMessage);
 
-  // Auto-resize textarea
+  // Auto-resize textarea logic is now likely handled inside MentionTextarea or we need to pass a ref and keep it here
+  // Since MentionTextarea forwards ref, we can keep using it.
   useEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) {
@@ -232,14 +344,26 @@ export function InputArea({ chatId }: InputAreaProps) {
     if ((!input.trim() && attachments.length === 0 && imageAttachments.length === 0) || isLoading)
       return;
 
-    const message = input.trim();
+    // Resolve prompt references
+    let resolvedMessage = input.trim();
+    const promptMatches = resolvedMessage.matchAll(/@prompt:([^\[]+)\[([^\]]+)\]/g);
+    for (const match of promptMatches) {
+      const promptId = match[1];
+      const prompt = prompts?.find(p => p.id === promptId);
+      if (prompt) {
+        // Replace the tag with the prompt content
+        resolvedMessage = resolvedMessage.replace(match[0], prompt.content);
+        incrementPromptUsage(promptId).catch(() => { });
+      }
+    }
+
+    const message = resolvedMessage;
     const currentAttachments = [...attachments];
     const currentImages = [...imageAttachments];
 
     setInput("");
     setAttachments([]);
     setImageAttachments([]);
-    setShowSlashMenu(false);
 
     const contentParts: MessageContentPart[] = [
       ...(message ? [{ type: "text" as const, text: message }] : []),
@@ -254,113 +378,25 @@ export function InputArea({ chatId }: InputAreaProps) {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value;
-    const newCursorPos = e.target.selectionStart;
-
     setInput(newValue);
-    setCursorPosition(newCursorPos);
-
-    if (newValue.trimStart().startsWith("/")) {
-      const trimmed = newValue.trimStart();
-      const afterSlash = trimmed.slice(1);
-      setSlashQuery(afterSlash);
-      setShowSlashMenu(true);
-      setSlashIndex(0);
-      setShowAutocomplete(false);
-    } else {
-      setShowSlashMenu(false);
-    }
-
-    // Detect @ mention
-    const textBeforeCursor = newValue.slice(0, newCursorPos);
-    const atMatch = textBeforeCursor.match(/@(\w*)$/);
-
-    if (atMatch) {
-      // Show autocomplete
-      const query = atMatch[1];
-      setAutocompleteQuery(query);
-      setShowAutocomplete(true);
-
-      // Calculate position
-      const textarea = textareaRef.current;
-      if (textarea) {
-        const rect = textarea.getBoundingClientRect();
-        setAutocompletePosition({
-          top: rect.bottom + window.scrollY,
-          left: rect.left + window.scrollX,
-        });
-      }
-    } else {
-      setShowAutocomplete(false);
-    }
-  };
-
-  const handleAutocompleteSelect = (type: "file" | "chat", id: string, name: string) => {
-    const textBeforeCursor = input.slice(0, cursorPosition);
-    const textAfterCursor = input.slice(cursorPosition);
-    const textBeforeAt = textBeforeCursor.replace(/@\w*$/, "");
-
-    const reference = type === "file" ? `@file:${id}[${name}]` : `@chat:${id}[${name}]`;
-    const newInput = textBeforeAt + reference + " " + textAfterCursor;
-
-    setInput(newInput);
-    setShowAutocomplete(false);
-
-    // Focus textarea
-    setTimeout(() => {
-      textareaRef.current?.focus();
-    }, 0);
-  };
-
-  const handlePromptSelect = (prompt: Prompt) => {
-    incrementPromptUsage(prompt.id).catch(() => { });
-    const vars = extractVariableNames(prompt.content);
-    if (vars.length > 0) {
-      setSelectedPrompt(prompt);
-      setVariableModalOpen(true);
-    } else {
-      setInput(prompt.content);
-    }
-    setShowSlashMenu(false);
-    setSlashQuery("");
-    setSlashIndex(0);
-    setTimeout(() => textareaRef.current?.focus(), 0);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (showAutocomplete && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter")) {
-      // Let autocomplete handle these keys
-      return;
-    }
+    // MentionTextarea handles its own keys. We just handle Enter for submission here if it bubbles up.
+    // Actually MentionTextarea has a specific onEnter prop which calls this, but standard Bubbling
+    // means we might not need to do anything special if we just use onKeyDown
 
-    if (showSlashMenu && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter")) {
-      e.preventDefault();
-      if (filteredPrompts.length === 0) return;
-      if (e.key === "ArrowDown") {
-        setSlashIndex((prev) => (prev + 1) % filteredPrompts.length);
-      } else if (e.key === "ArrowUp") {
-        setSlashIndex((prev) => (prev - 1 + filteredPrompts.length) % filteredPrompts.length);
-      } else if (e.key === "Enter") {
-        const prompt = filteredPrompts[slashIndex];
-        if (prompt) handlePromptSelect(prompt);
-      }
-      return;
-    }
+    // However, if MentionTextarea handles the Enter (consumes it), it won't bubble or it will default prevent.
+    // If it doesn't handle it (menu closed), it calls onEnter prop.
+  };
 
-    if (e.key === "Escape" && showAutocomplete) {
+  const handleMentionTextareaEnter = (e: React.KeyboardEvent) => {
+    if (!e.shiftKey) {
       e.preventDefault();
-      setShowAutocomplete(false);
-      return;
-    }
-
-    if (e.key === "Escape" && showSlashMenu) {
-      e.preventDefault();
-      setShowSlashMenu(false);
-      return;
-    }
-
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit(e);
+      // We can call handleSubmit but we need to pass a synthetic event or just call logics.
+      // handleSubmit takes React.FormEvent.
+      const syntheticEvent = { preventDefault: () => { } } as React.FormEvent;
+      handleSubmit(syntheticEvent);
     }
   };
 
@@ -485,17 +521,19 @@ export function InputArea({ chatId }: InputAreaProps) {
         </Button>
 
         <div className="relative flex-1">
-          <textarea
+          <MentionTextarea
             ref={textareaRef}
+            mentionItems={mentionItems}
             value={input}
             onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
+            onEnter={handleMentionTextareaEnter}
             onPaste={handlePaste}
             placeholder="Message Lumina… (use @ to reference files or chats)"
             className="w-full resize-none bg-transparent px-2 py-2 pr-10 text-sm leading-6 focus:outline-none min-h-10 max-h-[200px] disabled:opacity-60"
             rows={1}
             disabled={isLoading}
           />
+
           {(imageAttachments.length > 0 || attachments.length > 0) && (
             <div className="pointer-events-none absolute right-2 top-2 flex items-center gap-2 text-muted-foreground">
               {imageAttachments.length > 0 ? (
@@ -510,45 +548,6 @@ export function InputArea({ chatId }: InputAreaProps) {
                   {attachments.length}
                 </span>
               ) : null}
-            </div>
-          )}
-
-          {showSlashMenu && (
-            <div className="absolute left-0 bottom-full z-30 mb-2 w-full overflow-hidden rounded-xl border bg-popover/95 shadow-lg backdrop-blur">
-              <div className="border-b px-3 py-2 text-xs text-muted-foreground">
-                Slash commands
-              </div>
-              <Command className="bg-transparent">
-                <CommandList className="max-h-[240px]">
-                  {filteredPrompts.length === 0 ? (
-                    <CommandEmpty className="py-6 text-center text-sm text-muted-foreground">
-                      No prompts found
-                    </CommandEmpty>
-                  ) : (
-                    <CommandGroup heading="Prompts">
-                      {filteredPrompts.map((prompt, index) => (
-                        <CommandItem
-                          key={prompt.id}
-                          onSelect={() => handlePromptSelect(prompt)}
-                          className={`${index === slashIndex ? "bg-accent/70" : ""} text-xs`}
-                        >
-                          <div className="flex w-full items-center gap-3">
-                            <div className="w-40 shrink-0 font-mono text-xs text-foreground/90">
-                              {toSlashCommand(prompt.title)}
-                            </div>
-                            <div className="flex-1 min-w-0 text-xs text-muted-foreground">
-                              {prompt.description || prompt.title}
-                            </div>
-                            {prompt.isFavorite ? (
-                              <Star className="h-3.5 w-3.5 text-yellow-500" />
-                            ) : null}
-                          </div>
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  )}
-                </CommandList>
-              </Command>
             </div>
           )}
         </div>
@@ -580,29 +579,14 @@ export function InputArea({ chatId }: InputAreaProps) {
         <TokenDisplay chatId={chatId} inputContent={input} />
       </div>
 
-      {/* Autocomplete */}
-      {showAutocomplete && (
-        <AtMentionAutocomplete
-          projectId={chat?.projectId}
-          onSelect={handleAutocompleteSelect}
-          onClose={() => setShowAutocomplete(false)}
-          position={autocompletePosition}
-          query={autocompleteQuery}
-        />
-      )}
-
       <PromptLibraryDialog
         open={promptLibraryOpen}
         onOpenChange={setPromptLibraryOpen}
         onSelect={(prompt) => {
-          const vars = extractVariableNames(prompt.content);
-          if (vars.length > 0) {
-            setSelectedPrompt(prompt);
-            setVariableModalOpen(true);
-            return;
-          }
-
-          setInput((prev) => (prev ? `${prev}\n\n${prompt.content}` : prompt.content));
+          // Unified behavior: Insert as reference chip, skip modal
+          incrementPromptUsage(prompt.id).catch(() => { });
+          const reference = `@prompt:${prompt.id}[${prompt.title}]`;
+          setInput((prev) => (prev ? `${prev} ${reference}` : reference));
           setTimeout(() => textareaRef.current?.focus(), 0);
         }}
       />

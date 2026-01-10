@@ -4,67 +4,69 @@
 
 @layer base {
   :root {
-    /* Warm neutral base with a calm blue-green accent (Grammarly/Notion-like) */
-    --background: 220 12% 97%;
-    --foreground: 220 22% 12%;
+    /* Light Mode - Crisp and Clean */
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
 
-    --card: 220 10% 99%;
-    --card-foreground: 220 22% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
 
-    --popover: 220 10% 99%;
-    --popover-foreground: 220 22% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
 
-    --primary: 200 36% 46%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 270 95% 75%; /* Purple Base */
+    --primary-foreground: 0 0% 98%;
 
-    --secondary: 220 10% 94%;
-    --secondary-foreground: 220 20% 16%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
 
-    --muted: 220 8% 95%;
-    --muted-foreground: 220 12% 44%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
 
-    --accent: 220 10% 93%;
-    --accent-foreground: 220 20% 16%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
 
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 220 10% 88%;
-    --input: 220 10% 88%;
-    --ring: 200 36% 46%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 270 95% 75%;
 
     --radius: 0.75rem;
   }
 
   .dark {
-    /* Warm charcoal (Claude-like) with the same accent */
-    --background: 220 14% 14%;
-    --foreground: 30 16% 95%;
+    /* Deep Charcoal Background (#0D0D0F) */
+    --background: 240 10% 5.5%;
+    --foreground: 0 0% 98%;
 
-    --card: 220 12% 16%;
-    --card-foreground: 30 16% 95%;
+    /* Glassmorphism Cards */
+    --card: 240 10% 7%; /* Slightly lighter overlay */
+    --card-foreground: 0 0% 98%;
 
-    --popover: 220 12% 16%;
-    --popover-foreground: 30 16% 95%;
+    --popover: 240 10% 7%;
+    --popover-foreground: 0 0% 98%;
 
-    --primary: 200 36% 50%;
-    --primary-foreground: 220 14% 14%;
+    /* Primary Purple Accents */
+    --primary: 270 95% 75%;
+    --primary-foreground: 240 10% 5.5%;
 
-    --secondary: 220 10% 20%;
-    --secondary-foreground: 30 16% 95%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
 
-    --muted: 220 10% 18%;
-    --muted-foreground: 220 10% 64%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
 
-    --accent: 220 10% 20%;
-    --accent-foreground: 30 16% 95%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
 
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 220 10% 22%;
-    --input: 220 10% 22%;
-    --ring: 200 36% 50%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 270 95% 75%;
   }
 }
 
@@ -78,9 +80,10 @@
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-image:
-      radial-gradient(1200px circle at 15% -20%, hsl(var(--primary) / 0.03), transparent 55%),
-      radial-gradient(900px circle at 85% 10%, hsl(var(--ring) / 0.02), transparent 50%);
+    /* Noise Texture Overlay */
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.03'/%3E%3C/svg%3E");
+    background-blend-mode: overlay;
+    background-attachment: fixed;
   }
 
   /* Premium focus states */
@@ -120,14 +123,15 @@
 }
 
 ::selection {
-  background: hsl(var(--primary) / 0.18);
+  background: hsl(var(--primary) / 0.3);
+  color: #fff;
 }
 
 /* Custom scrollbar */
 @layer utilities {
   .scrollbar-thin::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
   }
 
   .scrollbar-thin::-webkit-scrollbar-track {
@@ -135,11 +139,26 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    @apply bg-muted-foreground/20 rounded-full;
+    @apply bg-muted-foreground/20 rounded-full transition-colors;
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    @apply bg-muted-foreground/30;
+    @apply bg-muted-foreground/40;
+  }
+  
+  /* Primary Gradient Text */
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-[#FF6B9D] via-[#C084FC] to-[#60A5FA];
+  }
+
+  /* Primary Gradient Background */
+  .bg-primary-gradient {
+    @apply bg-gradient-to-r from-[#FF6B9D] via-[#C084FC] to-[#60A5FA];
+  }
+  
+  /* Glassmorphism */
+  .glass {
+    @apply bg-white/5 backdrop-blur-xl border border-white/10;
   }
 }
 

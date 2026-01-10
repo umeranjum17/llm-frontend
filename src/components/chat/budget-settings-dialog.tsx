@@ -23,13 +23,19 @@ import { cn } from "@/lib/utils";
 interface BudgetSettingsDialogProps {
   chatId: string;
   children?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function BudgetSettingsDialog({
   chatId,
   children,
+  open: controlledOpen,
+  onOpenChange,
 }: BudgetSettingsDialogProps) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [budgetInput, setBudgetInput] = useState("");
 
   const chat = useLiveQuery(() => getChatById(chatId), [chatId]);

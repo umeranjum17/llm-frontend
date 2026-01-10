@@ -51,8 +51,8 @@ export function CodeBlock({ language, code }: CodeBlockProps) {
 
   return (
     <div className="group relative my-4">
-      <div className="flex items-center justify-between rounded-t-lg bg-muted px-4 py-2 text-sm">
-        <span className="text-muted-foreground">{language || "text"}</span>
+      <div className="flex items-center justify-between rounded-t-lg bg-primary/5 border-b border-white/5 px-4 py-2 text-sm font-medium text-primary">
+        <span>{language || "text"}</span>
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"

@@ -196,17 +196,6 @@ export function FeatureShowcase({ onComplete, onSkip }: FeatureShowcaseProps) {
     <div className="relative flex min-h-screen flex-col items-center justify-center p-4">
       {/* Background gradient */}
       <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-muted/20" />
-      
-      {/* Skip button */}
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={onSkip}
-        className="absolute right-4 top-4 z-10"
-        aria-label="Skip tour"
-      >
-        <X className="h-4 w-4" />
-      </Button>
 
       <div className="relative z-10 w-full max-w-5xl">
         {/* Progress bar */}
@@ -215,7 +204,19 @@ export function FeatureShowcase({ onComplete, onSkip }: FeatureShowcaseProps) {
             <span>
               Step {currentStep + 1} of {FEATURE_STEPS.length}
             </span>
-            <span>{Math.round(progress)}%</span>
+            <div className="flex items-center gap-3">
+              <span>{Math.round(progress)}%</span>
+              {/* Skip button */}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onSkip}
+                className="h-7 w-7"
+                aria-label="Skip tour"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
             <motion.div

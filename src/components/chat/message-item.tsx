@@ -160,12 +160,17 @@ export const MessageItem = memo(function MessageItem({
           <div className="flex-1 min-w-0">
             <div
               className={cn(
-                "rounded-2xl border bg-card p-4 shadow-sm",
-                isUser && "bg-secondary"
+                "rounded-2xl border p-4",
+                isUser
+                  ? "bg-primary/10 border-primary/20"
+                  : "bg-card/40 backdrop-blur-sm border-border/50"
               )}
             >
               <div className="mb-2 flex items-center gap-2">
-                <span className="text-sm font-semibold">
+                <span className={cn(
+                  "text-sm font-semibold",
+                  isUser ? "text-primary" : "text-foreground"
+                )}>
                   {isUser ? "You" : "Assistant"}
                 </span>
                 <span className="text-xs text-muted-foreground">

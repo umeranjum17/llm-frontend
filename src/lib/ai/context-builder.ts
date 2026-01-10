@@ -8,9 +8,13 @@ export async function parseReferences(content: string): Promise<{
   cleanContent: string;
   fileReferences: Array<{ id: string; name: string }>;
   chatReferences: Array<{ id: string; name: string }>;
+  agentReferences: Array<{ id: string; name: string }>;
+  webReferences?: string[];
+  notionReferences?: string[];
 }> {
   const fileReferences: Array<{ id: string; name: string }> = [];
   const chatReferences: Array<{ id: string; name: string }> = [];
+  const agentReferences: Array<{ id: string; name: string }> = [];
 
   // Extract file references: @file:id[name]
   const fileMatches = content.matchAll(/@file:([^\[]+)\[([^\]]+)\]/g);
@@ -24,12 +28,35 @@ export async function parseReferences(content: string): Promise<{
     chatReferences.push({ id: match[1], name: match[2] });
   }
 
+  // Extract agent references: @agent:id[name]
+  const agentMatches = content.matchAll(/@agent:([^\[]+)\[([^\]]+)\]/g);
+  for (const match of agentMatches) {
+    agentReferences.push({ id: match[1], name: match[2] });
+  }
+
+  // Extract web references: @web:query
+  const webMatches = content.matchAll(/@web:([^\n]+)/g);
+  const webReferences: string[] = [];
+  for (const match of webMatches) {
+    webReferences.push(match[1]);
+  }
+
+  // Extract notion references: @notion:query
+  const notionMatches = content.matchAll(/@notion:([^\n]+)/g);
+  const notionReferences: string[] = [];
+  for (const match of notionMatches) {
+    notionReferences.push(match[1]);
+  }
+
   // Clean content (remove reference markup but keep names)
   let cleanContent = content;
   cleanContent = cleanContent.replace(/@file:[^\[]+\[([^\]]+)\]/g, "[$1]");
   cleanContent = cleanContent.replace(/@chat:[^\[]+\[([^\]]+)\]/g, "[$1]");
+  cleanContent = cleanContent.replace(/@agent:[^\[]+\[([^\]]+)\]/g, "@$1");
+  cleanContent = cleanContent.replace(/@web:([^\n]+)/g, "Search: $1");
+  cleanContent = cleanContent.replace(/@notion:([^\n]+)/g, "Notion Search: $1");
 
-  return { cleanContent, fileReferences, chatReferences };
+  return { cleanContent, fileReferences, chatReferences, agentReferences, webReferences, notionReferences };
 }
 
 export async function buildContextMessages(
@@ -46,7 +73,7 @@ export async function buildContextMessages(
   try {
     // Check if we have a user message to use for retrieval
     const memoryQuery = userMessage;
-    console.log("[Context] Fetching memory context for query:", memoryQuery?.slice(0, 50));
+    // console.log("[Context] Fetching memory context for query:", memoryQuery?.slice(0, 50));
     const memories = await searchMemories(memoryQuery);
 
     if (memories && memories.length > 0) {
@@ -60,7 +87,7 @@ export async function buildContextMessages(
         content: memoryContext,
         createdAt: Date.now(),
       });
-      console.log("[Context] Added memory context to messages");
+      // console.log("[Context] Added memory context to messages");
     }
   } catch (error) {
     console.error("[Context] Failed to load memory context:", error);
@@ -68,7 +95,42 @@ export async function buildContextMessages(
   }
 
   // Parse references from user message
-  const { cleanContent, fileReferences, chatReferences } = await parseReferences(userMessage);
+  const { cleanContent, fileReferences, chatReferences, agentReferences, webReferences, notionReferences } = await parseReferences(userMessage);
+
+  // Web Search
+  for (const query of (webReferences || [])) {
+    messages.push({
+      id: `web-search-${Date.now()}`,
+      chatId,
+      role: "system",
+      content: `PERFORMING WEB SEARCH FOR: "${query}"\n\n[System Note: Web search integration pending. In a real scenario, search results would be injected here.]\n\nSimulated Result:\n- Found 3 sources regarding "${query}"\n- Source A: ...\n- Source B: ...`,
+      createdAt: Date.now()
+    });
+  }
+
+  // Connector Search (Notion)
+  if (notionReferences && notionReferences.length > 0) {
+    try {
+      const { getConnector } = await import("@/lib/connectors/registry");
+      const notion = getConnector("notion");
+      if (notion && await notion.isConnected()) {
+        for (const query of notionReferences) {
+          const docs = await notion.search(query);
+          const docsText = docs.map(d => `- [${d.title}](${d.url}): ${d.snippet}`).join("\n");
+
+          messages.push({
+            id: `notion-search-${Date.now()}`,
+            chatId,
+            role: "system",
+            content: `SEARCHING CONNECTED NOTION WORKSPACE FOR: "${query}"\n\nFound Documents:\n${docsText}`,
+            createdAt: Date.now()
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Failed to perform notion search", error);
+    }
+  }
 
   // RAG retrieval if enabled
   if (options?.enableRAG) {
@@ -103,7 +165,7 @@ export async function buildContextMessages(
   // Get chat to access project
   const chat = await getChatById(chatId);
 
-  // Add agent system prompt if exists
+  // Add agent system prompt if exists (BASE AGENT from Chat Settings)
   if (chat?.agentId) {
     try {
       const agent = await getAgentById(chat.agentId);
@@ -118,6 +180,24 @@ export async function buildContextMessages(
       }
     } catch (error) {
       console.error("Failed to load agent:", error);
+    }
+  }
+
+  // Add INVOKED AGENTS (from @mentions) - These act as temporary persona overrides or supplements
+  for (const agentRef of agentReferences) {
+    try {
+      const agent = await getAgentById(agentRef.id);
+      if (agent && agent.systemPrompt) {
+        messages.push({
+          id: `invoked-agent-${agent.id}`,
+          chatId,
+          role: "system",
+          content: `INVOKED AGENT: ${agent.name}\nINSTRUCTIONS:\n${agent.systemPrompt}`,
+          createdAt: Date.now(),
+        });
+      }
+    } catch (error) {
+      console.error(`Failed to load invoked agent ${agentRef.name}:`, error);
     }
   }
 

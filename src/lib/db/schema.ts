@@ -228,6 +228,15 @@ export interface VectorDocument {
   };
 }
 
+export interface Workflow {
+  id: string;
+  name: string;
+  description?: string;
+  steps: any[]; // JSON array of steps
+  createdAt: number;
+  updatedAt: number;
+}
+
 // Database class
 export class LuminaDB extends Dexie {
   projects!: EntityTable<Project, "id">;
@@ -245,6 +254,7 @@ export class LuminaDB extends Dexie {
   agents!: EntityTable<Agent, "id">;
   prompts!: EntityTable<Prompt, "id">;
   vectorDocuments!: EntityTable<VectorDocument, "id">;
+  workflows!: EntityTable<Workflow, "id">;
 
   constructor() {
     super("LuminaDB");
@@ -388,9 +398,28 @@ export class LuminaDB extends Dexie {
       parameterPresets: "id, name, createdAt, isDefault",
       agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
       prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
-      // Add indexes for nested metadata fields using compound index syntax or flattened if needed (Dexie supports key paths)
-      // Note: Dexie supports "metadata.type", etc.
       vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
+    });
+
+    // Version 9: Add Workflows
+    this.version(9).stores({
+      projects: "id, name, createdAt, updatedAt",
+      projectFiles: "id, projectId, name, createdAt",
+      chats:
+        "id, projectId, title, modelId, createdAt, updatedAt, pinned, favorite, folderId, order",
+      messages: "id, chatId, role, createdAt, parentId",
+      apiKeys: "id, provider, createdAt, baseUrl",
+      settings: "id",
+      modelFavorites: "id, category, pinnedOrder, lastUsed",
+      userMemories: "id, category, source, createdAt, isActive",
+      folders: "id, name, createdAt, order",
+      tags: "id, name, createdAt, usageCount",
+      tagRules: "id, tagId, enabled, createdAt",
+      parameterPresets: "id, name, createdAt, isDefault",
+      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
+      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
+      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
+      workflows: "id, name, createdAt, updatedAt",
     });
   }
 }

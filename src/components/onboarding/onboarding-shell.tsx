@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { FeatureShowcase } from "./feature-showcase";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,22 +23,43 @@ type OnboardingStep = "welcome" | "features" | "setup" | "complete";
 
 export function OnboardingShell() {
   const router = useRouter();
-  const { addKey } = useApiKeysStore();
+  const { addKey, keys, isLoaded: keysLoaded } = useApiKeysStore();
   const [step, setStep] = useState<OnboardingStep>("welcome");
   const [apiKey, setApiKey] = useState("");
   const [provider, setProvider] = useState<(typeof PROVIDERS)[number]["id"]>("openrouter");
   const [isLoading, setIsLoading] = useState(false);
+
+  // If user already has API keys, skip welcome and go straight to features
+  useEffect(() => {
+    if (keysLoaded && keys.length > 0) {
+      setStep("features");
+    }
+  }, [keysLoaded, keys.length]);
 
   const handleStartTour = () => {
     setStep("features");
   };
 
   const handleSkipTour = () => {
-    setStep("setup");
+    // If user already has API keys, just redirect
+    if (keys.length > 0) {
+      markOnboardingCompleted().then(() => {
+        router.push("/");
+      });
+    } else {
+      setStep("setup");
+    }
   };
 
   const handleFeaturesComplete = () => {
-    setStep("setup");
+    // If user already has API keys, just mark onboarding as complete and redirect
+    if (keys.length > 0) {
+      markOnboardingCompleted().then(() => {
+        router.push("/");
+      });
+    } else {
+      setStep("setup");
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

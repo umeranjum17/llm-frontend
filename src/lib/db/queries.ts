@@ -634,3 +634,37 @@ export async function reorderFolders(folderIds: string[]) {
 export async function moveChatToFolder(chatId: string, folderId: string | null) {
   await db.chats.update(chatId, { folderId: folderId || undefined });
 }
+
+// ============= WORKFLOW QUERIES =============
+
+export async function getAllWorkflows() {
+  return await db.workflows.orderBy("createdAt").reverse().toArray();
+}
+
+export async function getWorkflowById(id: string) {
+  return await db.workflows.get(id);
+}
+
+export async function addWorkflow(workflow: Omit<import("./schema").Workflow, "id" | "createdAt" | "updatedAt">) {
+  const id = crypto.randomUUID();
+  const now = Date.now();
+  const newWorkflow: import("./schema").Workflow = {
+    ...workflow,
+    id,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await db.workflows.add(newWorkflow);
+  return newWorkflow;
+}
+
+export async function updateWorkflow(id: string, updates: Partial<Omit<import("./schema").Workflow, "id" | "createdAt">>) {
+  await db.workflows.update(id, {
+    ...updates,
+    updatedAt: Date.now(),
+  });
+}
+
+export async function deleteWorkflow(id: string) {
+  await db.workflows.delete(id);
+}

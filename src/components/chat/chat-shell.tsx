@@ -8,22 +8,18 @@ import { useRouter } from "next/navigation";
 import { useUIStore } from "@/stores/ui-store";
 import {
   createChat,
-  getAgentById,
   getChatById,
   getFavoriteModels,
   getRecentModels,
   updateChat,
   updateModelLastUsed,
-  getMessages,
 } from "@/lib/db/queries";
 import { MODELS, type Model, getModelById } from "@/lib/constants/models";
 import { MessageList } from "./message-list";
 import { InputArea } from "./input-area";
-import { ReasoningControl } from "./reasoning-control";
 import { ModelPickerDialog } from "@/components/model-picker/model-picker-dialog";
-import { ToolSelector } from "@/components/tools/tool-selector";
 import { BudgetSettingsDialog } from "./budget-settings-dialog";
-import { TagSelector } from "@/components/tags/tag-selector";
+import { ChatSettingsPopover } from "./chat-settings-popover";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -32,11 +28,7 @@ import {
   ChevronDown,
   PanelRightOpen,
   PanelRightClose,
-  Bot,
   Menu,
-  Plus,
-  Brain,
-  AlertCircle,
 } from "lucide-react";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { ArtifactShell } from "@/components/artifacts/artifact-shell";
@@ -56,9 +48,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-
-import { getSettings } from "@/lib/db/queries";
-import Link from "next/link";
 import { EmptyState } from "@/components/ui/empty-state";
 import { MessageSquare } from "lucide-react";
 import { ChatTabs } from "./chat-tabs";
@@ -113,6 +102,7 @@ export function ChatShell() {
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [arenaPickerOpen, setArenaPickerOpen] = useState<{ open: boolean, index: number }>({ open: false, index: 0 });
   const [agentPickerOpen, setAgentPickerOpen] = useState(false);
+  const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
 
   // Get current chat details
   const chat = useLiveQuery(
@@ -121,23 +111,6 @@ export function ChatShell() {
   );
 
   const currentModel = chat ? getModelById(chat.modelId) : undefined;
-  const currentAgent = useLiveQuery(
-    () => (chat?.agentId ? getAgentById(chat.agentId) : undefined),
-    [chat?.agentId]
-  );
-
-  // Get memory status
-  const settings = useLiveQuery(() => getSettings());
-  const memoryStatus = useMemo(() => {
-    if (!settings) return null;
-    if (settings.memoryEnabled === false) return "off";
-
-    // Check if embeddings are configured
-    const hasEmbeddingsKey = keys.some((k) => k.provider === "openai" || k.provider === "openrouter");
-    if (!hasEmbeddingsKey) return "not-configured";
-
-    return "on";
-  }, [settings, keys]);
 
   useEffect(() => {
     if (!chat?.providerId) return;
@@ -348,10 +321,10 @@ export function ChatShell() {
       <ResizablePanelGroup direction="horizontal" className="h-full">
         <ResizablePanel defaultSize={showArtifacts ? 60 : 100} minSize={30}>
           <div className="flex h-full flex-col">
-            {/* Header - Clean Two-Row Design */}
-            <header className="sticky top-0 z-20 border-b border-border/50 bg-gradient-to-b from-card/95 to-card/80 backdrop-blur-xl supports-[backdrop-filter]:bg-card/60 shadow-sm">
-              {/* Primary Row - Navigation & Title */}
-              <div className="flex items-center justify-between px-4 py-2.5">
+            {/* Header - Clean Single Row */}
+            <header className="sticky top-0 z-20 border-b border-border/50 bg-card/80 backdrop-blur-xl supports-[backdrop-filter]:bg-card/60">
+              <div className="flex items-center justify-between px-4 h-12">
+                {/* Left: Menu + Title (hide title when tabs are showing) */}
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <Button
                     variant="ghost"
@@ -362,60 +335,135 @@ export function ChatShell() {
                   >
                     <Menu className="h-4 w-4" />
                   </Button>
-                  <div className="flex items-center gap-3 min-w-0">
-                    <h1 className="text-base font-semibold truncate text-foreground/90">{chat?.title || "Chat"}</h1>
-                    {chat && (
-                      <TagSelector
-                        selectedTags={chat.tags || []}
-                        onTagsChange={(tags) => updateChat(activeChatId, { tags })}
-                      />
-                    )}
-                    {/* Memory Status Indicator */}
-                    {memoryStatus && (
-                      <div
-                        className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 active:scale-95 transition-all"
-                        onClick={async () => {
-                          if (memoryStatus === "not-configured") {
-                            router.push("/settings?tab=memory");
-                            return;
-                          }
-                          const newStatus = !settings?.memoryEnabled;
-                          await import("@/lib/db/queries").then(mod => mod.updateSettings({ memoryEnabled: newStatus }));
-                          toast.success(newStatus ? "Memory enabled" : "Memory disabled");
-                        }}
-                        title="Click to toggle memory"
-                      >
-                        {memoryStatus === "on" && (
-                          <Badge variant="outline" className="text-xs gap-1 bg-green-500/10 text-green-600 border-green-200 hover:bg-green-500/20">
-                            <Brain className="h-3 w-3" />
-                            Memory: On
-                          </Badge>
-                        )}
-                        {memoryStatus === "off" && (
-                          <Badge variant="outline" className="text-xs text-muted-foreground bg-muted hover:bg-muted/80">
-                            Memory: Off
-                          </Badge>
-                        )}
-                        {memoryStatus === "not-configured" && (
-                          <Badge variant="outline" className="text-xs gap-1 text-amber-600 border-amber-600/30 hover:bg-amber-50">
-                            <AlertCircle className="h-3 w-3" />
-                            Config Required
-                          </Badge>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  {tabs.length === 0 && (
+                    <h1 className="text-sm font-medium truncate text-foreground/90">{chat?.title || "Chat"}</h1>
+                  )}
                 </div>
+
+                {/* Right: Model Selector + Settings + Artifacts */}
                 <div className="flex items-center gap-1.5">
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="hidden sm:inline-flex gap-1.5 h-8 text-xs font-medium shadow-sm"
-                    onClick={handleNewChat}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    New
-                  </Button>
+                  {!isArenaMode && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 gap-2 px-3 text-xs font-medium border-border/50"
+                        >
+                          <div className="flex flex-col items-start leading-none">
+                            <span className="max-w-[120px] sm:max-w-[180px] truncate">{currentModel?.name || "Select Model"}</span>
+                            {providerId && (
+                              <span className="text-[10px] text-muted-foreground">
+                                {providerId === "openrouter" ? "OpenRouter" : providerLabel(providerId)}
+                              </span>
+                            )}
+                          </div>
+                          <ChevronDown className="h-3 w-3 opacity-60" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-80">
+                        {/* Provider Section */}
+                        {chat && providerId && (() => {
+                          const compatibleProviders = llmProviderIds
+                            .filter(pid => isModelIdCompatibleWithProviderId(pid, chat.modelId))
+                            .map(pid => ({ id: pid, label: providerLabel(pid) }))
+                            .sort((a, b) => a.label.localeCompare(b.label));
+
+                          if (compatibleProviders.length > 1) {
+                            return (
+                              <>
+                                <DropdownMenuLabel>Provider</DropdownMenuLabel>
+                                {compatibleProviders.map((p) => (
+                                  <DropdownMenuItem
+                                    key={p.id}
+                                    onClick={() => updateChat(activeChatId, { providerId: p.id })}
+                                    className="cursor-pointer"
+                                  >
+                                    <div className="flex w-full items-center gap-2">
+                                      <span>{p.label}</span>
+                                      {providerId === p.id && (
+                                        <Check className="ml-auto h-4 w-4 text-primary" />
+                                      )}
+                                    </div>
+                                  </DropdownMenuItem>
+                                ))}
+                                <DropdownMenuSeparator />
+                              </>
+                            );
+                          }
+                          return null;
+                        })()}
+
+                        <DropdownMenuLabel className="flex items-center justify-between">
+                          Quick Switch
+                          <span className="text-xs text-muted-foreground font-normal">Alt+1-9</span>
+                        </DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {quickSwitchModels.length > 0 ? (
+                          quickSwitchModels.map((model, idx) => (
+                            <DropdownMenuItem
+                              key={model.id}
+                              onClick={() => handleQuickModelChange(model.id)}
+                              className="cursor-pointer"
+                            >
+                              <div className="flex w-full items-center gap-2">
+                                <span className="w-5 h-5 rounded bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground shrink-0">
+                                  {idx + 1}
+                                </span>
+                                <span className="truncate flex-1">{model.name}</span>
+                                <span className="text-xs text-muted-foreground shrink-0">
+                                  {model.provider}
+                                </span>
+                                {chat?.modelId === model.id && (
+                                  <Check className="h-4 w-4 text-primary shrink-0" />
+                                )}
+                              </div>
+                            </DropdownMenuItem>
+                          ))
+                        ) : (
+                          <div className="px-4 py-3 text-sm text-muted-foreground text-center">
+                            No favorites or recent models.
+                            <br />
+                            Browse to add some!
+                          </div>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() => setModelPickerOpen(true)}
+                          className="cursor-pointer"
+                        >
+                          Browse all models
+                          <DropdownMenuShortcut>⌘M</DropdownMenuShortcut>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+
+                  {isArenaMode && (
+                    <Badge variant="secondary" className="h-8 px-3 text-xs font-medium">
+                      Arena Mode
+                    </Badge>
+                  )}
+
+                  {!providerId && !isArenaMode && (
+                    <Badge
+                      variant="destructive"
+                      className="h-8 text-xs font-medium px-3 cursor-pointer"
+                      onClick={() => router.push("/settings?tab=api-keys")}
+                      title="Configure a provider"
+                    >
+                      No provider
+                    </Badge>
+                  )}
+
+                  <ChatSettingsPopover
+                    chatId={activeChatId}
+                    onOpenAgentPicker={() => setAgentPickerOpen(true)}
+                    onOpenBudgetDialog={() => setBudgetDialogOpen(true)}
+                    isArenaMode={isArenaMode}
+                    onToggleArena={toggleArenaMode}
+                  />
+
                   <Button
                     variant="ghost"
                     size="icon"
@@ -425,186 +473,6 @@ export function ChatShell() {
                   >
                     {showArtifacts ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => router.push("/settings")}
-                    title="Settings"
-                  >
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Secondary Row - Model & Controls */}
-              <div className="flex items-center gap-2 px-4 pb-2.5 overflow-x-auto scrollbar-none">
-                {/* Provider/Model/Agent Group */}
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {!isArenaMode && (
-                    <>
-                      {/* Provider Selector - First */}
-                      {chat && (
-                        providerId ? (
-                          (() => {
-                            const compatibleProviders = llmProviderIds
-                              .filter(pid => isModelIdCompatibleWithProviderId(pid, chat.modelId))
-                              .map(pid => ({ id: pid, label: providerLabel(pid) }))
-                              .sort((a, b) => a.label.localeCompare(b.label));
-
-                            if (compatibleProviders.length <= 1) {
-                              return (
-                                <Badge variant="secondary" className="h-7 text-xs font-medium px-2.5 bg-secondary/70">
-                                  {providerId === "openrouter" ? "OpenRouter" : providerLabel(providerId)}
-                                </Badge>
-                              );
-                            }
-
-                            return (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    className="h-7 gap-1.5 px-2.5 text-xs font-medium bg-secondary/70 hover:bg-secondary"
-                                  >
-                                    {providerId === "openrouter" ? "OpenRouter" : providerLabel(providerId)}
-                                    <ChevronDown className="h-3 w-3 opacity-60" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="start">
-                                  <DropdownMenuLabel>Switch Provider</DropdownMenuLabel>
-                                  {compatibleProviders.map((p) => (
-                                    <DropdownMenuItem
-                                      key={p.id}
-                                      onClick={() => updateChat(activeChatId, { providerId: p.id })}
-                                      className="cursor-pointer"
-                                    >
-                                      <div className="flex w-full items-center gap-2">
-                                        <span>{p.label}</span>
-                                        {providerId === p.id && (
-                                          <Check className="ml-auto h-4 w-4 text-primary" />
-                                        )}
-                                      </div>
-                                    </DropdownMenuItem>
-                                  ))}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            );
-                          })()
-                        ) : (
-                          <Badge
-                            variant="destructive"
-                            className="h-7 text-xs font-medium px-2.5 cursor-pointer"
-                            onClick={() => router.push("/settings?tab=api-keys")}
-                            title="Configure a provider"
-                          >
-                            No provider
-                          </Badge>
-                        )
-                      )}
-
-                      {/* Model Selector - Second */}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 gap-1.5 px-2.5 text-xs font-medium border-border/50"
-                          >
-                            <span className="max-w-[140px] sm:max-w-[200px] truncate">{currentModel?.name || "Select Model"}</span>
-                            <ChevronDown className="h-3 w-3 opacity-60" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" className="w-80">
-                          <DropdownMenuLabel className="flex items-center justify-between">
-                            Quick Switch
-                            <span className="text-xs text-muted-foreground font-normal">Alt+1-9</span>
-                          </DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          {quickSwitchModels.length > 0 ? (
-                            quickSwitchModels.map((model, idx) => (
-                              <DropdownMenuItem
-                                key={model.id}
-                                onClick={() => handleQuickModelChange(model.id)}
-                                className="cursor-pointer"
-                              >
-                                <div className="flex w-full items-center gap-2">
-                                  <span className="w-5 h-5 rounded bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground shrink-0">
-                                    {idx + 1}
-                                  </span>
-                                  <span className="truncate flex-1">{model.name}</span>
-                                  <span className="text-xs text-muted-foreground shrink-0">
-                                    {model.provider}
-                                  </span>
-                                  {chat?.modelId === model.id && (
-                                    <Check className="h-4 w-4 text-primary shrink-0" />
-                                  )}
-                                </div>
-                              </DropdownMenuItem>
-                            ))
-                          ) : (
-                            <div className="px-4 py-3 text-sm text-muted-foreground text-center">
-                              No favorites or recent models.
-                              <br />
-                              Browse to add some!
-                            </div>
-                          )}
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => setModelPickerOpen(true)}
-                            className="cursor-pointer"
-                          >
-                            Browse all models
-                            <DropdownMenuShortcut>⌘M</DropdownMenuShortcut>
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-
-                      {/* Agent Selector - Third */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setAgentPickerOpen(true)}
-                        className="h-7 gap-1.5 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
-                        title="Select agent"
-                      >
-                        <Bot className="h-3.5 w-3.5" />
-                        <span className="hidden sm:inline max-w-[80px] truncate">
-                          {currentAgent ? (currentAgent.avatar ? `${currentAgent.avatar} ` : "") + currentAgent.name : "Default"}
-                        </span>
-                      </Button>
-                    </>
-                  )}
-                </div>
-
-                {/* Separator */}
-                <div className="hidden sm:block h-4 w-px bg-border/50 mx-1" />
-
-                {/* Controls Group */}
-                <div className="flex items-center gap-1 shrink-0">
-                  <Button
-                    variant={isArenaMode ? "default" : "ghost"}
-                    size="sm"
-                    onClick={toggleArenaMode}
-                    className={`h-7 text-xs font-medium px-2.5 ${isArenaMode ? "shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-                  >
-                    Arena
-                  </Button>
-
-                  {chat && (
-                    <>
-                      <ReasoningControl
-                        level={chat.reasoningLevel || "medium"}
-                        onChange={(level) => updateChat(activeChatId, { reasoningLevel: level })}
-                      />
-                      <ToolSelector
-                        enabledTools={chat.enabledTools || []}
-                        onToolsChange={(tools) => updateChat(activeChatId, { enabledTools: tools })}
-                      />
-                      <BudgetSettingsDialog chatId={activeChatId} />
-                    </>
-                  )}
                 </div>
               </div>
             </header>
@@ -687,6 +555,13 @@ export function ChatShell() {
           currentAgentId={chat.agentId}
         />
       )}
+
+      {/* Budget Settings Dialog */}
+      <BudgetSettingsDialog
+        chatId={activeChatId}
+        open={budgetDialogOpen}
+        onOpenChange={setBudgetDialogOpen}
+      />
     </div>
   );
 }

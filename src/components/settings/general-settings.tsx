@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,8 +17,10 @@ import { useModelsStore } from "@/stores/models-store";
 import { toast } from "sonner";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { PROVIDERS, isCustomOpenAIProvider, resolveProvider } from "@/lib/providers";
+import { GraduationCap } from "lucide-react";
 
 export function GeneralSettings() {
+  const router = useRouter();
   const {
     defaultModelId: savedDefaultModelId,
     defaultProviderId: savedDefaultProviderId,
@@ -179,6 +182,24 @@ export function GeneralSettings() {
         <div className="flex justify-end pt-4">
           <Button onClick={handleSave}>Save Changes</Button>
         </div>
+      </div>
+
+      {/* Onboarding Tour */}
+      <div className="space-y-4 border-t pt-6">
+        <div>
+          <h3 className="text-lg font-medium">Onboarding</h3>
+          <p className="text-sm text-muted-foreground">
+            Revisit the feature tour to learn about all of Lumina&apos;s capabilities
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => router.push("/onboarding")}
+          className="gap-2"
+        >
+          <GraduationCap className="h-4 w-4" />
+          Take Feature Tour
+        </Button>
       </div>
     </div>
   );

@@ -362,19 +362,19 @@ export function ChatList({ searchQuery }: ChatListProps) {
           searchQuery
             ? undefined
             : {
-                label: "New Chat",
-                onClick: () => {
-                  const event = new CustomEvent("lumina:new-chat");
-                  window.dispatchEvent(event);
-                },
-              }
+              label: "New Chat",
+              onClick: () => {
+                const event = new CustomEvent("lumina:new-chat");
+                window.dispatchEvent(event);
+              },
+            }
         }
         secondaryAction={
           !searchQuery
             ? {
-                label: "Create Folder",
-                onClick: handleCreateFolder,
-              }
+              label: "Create Folder",
+              onClick: handleCreateFolder,
+            }
             : undefined
         }
         className="h-full"
@@ -395,10 +395,10 @@ export function ChatList({ searchQuery }: ChatListProps) {
       onDragEnd={handleDragEnd}
     >
       <div className="flex h-full flex-col">
-        <div className="px-4 py-2 flex justify-between items-center border-b bg-background/40 backdrop-blur supports-[backdrop-filter]:bg-background/30">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Your Library</span>
-          <Button variant="ghost" size="icon" className="h-5 w-5" onClick={handleCreateFolder} title="New Folder">
-            <FolderPlus className="h-3.5 w-3.5" />
+        <div className="px-4 py-1.5 flex justify-between items-center">
+          <span className="text-[10px] font-medium text-muted-foreground/70">Chats</span>
+          <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground/70 hover:text-muted-foreground" onClick={handleCreateFolder} title="New Folder">
+            <FolderPlus className="h-3 w-3" />
           </Button>
         </div>
         {selectedChats.size > 0 && (
@@ -556,9 +556,9 @@ function SortableFolderItem({ folder, isExpanded, onToggle, chatCount = 0, onEdi
       }}
       style={style}
       className={cn(
-        "flex items-center gap-2 px-4 py-2 cursor-pointer hover:bg-accent/50 group transition-colors",
+        "flex items-center gap-2 px-3 py-1.5 mx-2 my-0.5 cursor-pointer hover:bg-accent/50 group rounded-lg transition-colors",
         isDragging && "opacity-50",
-        isOver && "bg-accent/80 ring-2 ring-primary ring-offset-2"
+        isOver && "bg-accent ring-1 ring-primary/50"
       )}
       onClick={onToggle}
       onMouseEnter={() => setIsHovered(true)}
@@ -567,16 +567,16 @@ function SortableFolderItem({ folder, isExpanded, onToggle, chatCount = 0, onEdi
       <button
         {...attributes}
         {...listeners}
-        className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors p-0.5"
+        className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors opacity-0 group-hover:opacity-100"
         onClick={(e) => e.stopPropagation()}
       >
         <GripVertical className="h-3 w-3" />
       </button>
-      {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-      <Folder className={cn("h-3.5 w-3.5", folder.color && `text-[${folder.color}]`)} style={folder.color ? { color: folder.color } : undefined} />
-      <span className="text-xs font-semibold truncate flex-1">{folder.name}</span>
+      {isExpanded ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+      <Folder className="h-3.5 w-3.5" style={folder.color ? { color: folder.color } : undefined} />
+      <span className="text-sm truncate flex-1">{folder.name}</span>
       {chatCount > 0 && (
-        <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+        <span className="text-[10px] text-muted-foreground/60">
           {chatCount}
         </span>
       )}
@@ -608,15 +608,14 @@ function NoFolderDropZone() {
     id: "no-folder",
   });
 
+  if (!isOver) return null;
+
   return (
     <div
       ref={setNodeRef}
-      className={cn(
-        "px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border/60 transition-colors",
-        isOver && "bg-accent/80 text-foreground"
-      )}
+      className="mx-2 px-3 py-2 text-xs text-muted-foreground bg-accent/60 rounded-lg transition-colors"
     >
-      {isOver ? "Drop here to remove from folder" : "No Folder"}
+      Drop here to remove from folder
     </div>
   );
 }
@@ -671,43 +670,35 @@ function SortableChatItem({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "group relative cursor-pointer border-b border-border/60 px-4 py-3 transition-colors hover:bg-accent/60",
-        isActive && "bg-background/60 before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-primary",
-        isSelected && "bg-accent/40 ring-2 ring-primary ring-offset-2",
-        isNested && "pl-8",
+        "group relative cursor-pointer px-3 py-2 mx-2 my-0.5 rounded-lg transition-colors hover:bg-accent/50",
+        isActive && "bg-accent",
+        isSelected && "bg-accent/60 ring-1 ring-primary/40",
+        isNested && "ml-6",
         isDragging && "opacity-50"
       )}
       onClick={onClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
           <button
             {...attributes}
             {...listeners}
-            className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors p-0.5 shrink-0"
+            className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors shrink-0 opacity-0 group-hover:opacity-100"
             onClick={(e) => e.stopPropagation()}
           >
             <GripVertical className="h-3 w-3" />
           </button>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              {chat.pinned && <Pin className="h-3 w-3 text-primary shrink-0" />}
-              {chat.favorite && <Star className="h-3 w-3 text-yellow-500 shrink-0" />}
-              {chat.hasBranches && <GitBranch className="h-3 w-3 text-muted-foreground shrink-0" />}
-              <h3 className="text-sm font-medium truncate">{chat.title}</h3>
+            <div className="flex items-center gap-1.5">
+              {chat.pinned && <Pin className="h-3 w-3 text-muted-foreground shrink-0" />}
+              {chat.favorite && <Star className="h-3 w-3 text-yellow-500/70 shrink-0" />}
+              <h3 className="text-sm truncate">{chat.title}</h3>
             </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="truncate">{chat.modelId}</span>
-              <span>•</span>
-              <span>{formatDistanceToNow(new Date(chat.updatedAt), { addSuffix: true })}</span>
+            <div className="text-[11px] text-muted-foreground/60 truncate">
+              {formatDistanceToNow(new Date(chat.updatedAt), { addSuffix: true })}
             </div>
-            {previewText && (
-              <p className="text-xs text-muted-foreground/80 truncate mt-0.5">
-                {previewText}{previewText.length >= 60 ? "..." : ""}
-              </p>
-            )}
           </div>
         </div>
 

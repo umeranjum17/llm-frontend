@@ -3,6 +3,7 @@ import { GeistSans } from "geist/font/sans";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { Toaster as SonnerToaster } from "sonner";
 import { CommandPalette } from "@/components/command-palette/command-palette";
+import { MobileNav } from "@/components/mobile-nav";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -42,6 +43,7 @@ export default function RootLayout({
         >
           {children}
           <CommandPalette />
+          <MobileNav />
           <SonnerToaster richColors closeButton />
         </ThemeProvider>
       </body>
