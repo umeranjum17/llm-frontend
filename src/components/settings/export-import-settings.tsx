@@ -11,9 +11,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Download, Upload, AlertTriangle, FileJson, FileText } from "lucide-react";
+import { Download, Upload, AlertTriangle, FileJson, FileText, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/db/schema";
+import { deleteAllChats } from "@/lib/db/queries";
 
 export function ExportImportSettings() {
   const [exportFormat, setExportFormat] = useState<"json" | "csv">("json");
@@ -106,6 +107,25 @@ export function ExportImportSettings() {
       toast.error("Failed to import data. Please check the file format.");
     } finally {
       setImporting(false);
+    }
+  };
+
+  const handleDeleteAllChats = async () => {
+    if (
+      !confirm(
+        "Are you sure you want to delete all chats? This will remove all conversations but keep your settings."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await deleteAllChats();
+      toast.success("All chats deleted");
+      setTimeout(() => window.location.reload(), 1000);
+    } catch (error) {
+      console.error("Delete chats error:", error);
+      toast.error("Failed to delete chats");
     }
   };
 
@@ -230,17 +250,33 @@ export function ExportImportSettings() {
           Danger Zone
         </h4>
 
-        <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">
-            Permanently delete all data from this device. This action cannot be undone.
-          </p>
-          <Button
-            variant="destructive"
-            onClick={handleClearAllData}
-            className="w-full"
-          >
-            Clear All Data
-          </Button>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              Delete all chat conversations but keep your settings and preferences.
+            </p>
+            <Button
+              variant="outline"
+              onClick={handleDeleteAllChats}
+              className="w-full border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete All Chats
+            </Button>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              Permanently delete all data from this device. This action cannot be undone.
+            </p>
+            <Button
+              variant="destructive"
+              onClick={handleClearAllData}
+              className="w-full"
+            >
+              Clear All Data
+            </Button>
+          </div>
         </div>
       </div>
     </div>

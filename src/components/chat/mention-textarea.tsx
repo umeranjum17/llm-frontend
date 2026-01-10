@@ -14,8 +14,7 @@ interface MentionTextareaProps extends React.TextareaHTMLAttributes<HTMLTextArea
 export const MentionTextarea = forwardRef<HTMLTextAreaElement, MentionTextareaProps>(
     ({ className, mentionItems, value, onChange, onKeyDown, onEnter, onMentionSelect, ...props }, ref) => {
         const textareaRef = useRef<HTMLTextAreaElement>(null);
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const _ = useImperativeHandle(ref, () => textareaRef.current!);
+        useImperativeHandle(ref, () => textareaRef.current!);
 
         const {
             isOpen,

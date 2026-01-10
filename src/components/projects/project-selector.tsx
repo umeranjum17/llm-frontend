@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Plus, FolderOpen, ChevronDown, Settings2 } from "lucide-react";
+import { Plus, FolderOpen, ChevronDown, Settings2, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getAllProjects } from "@/lib/db/queries";
+import { getAllProjects, ensureDefaultProject, DEFAULT_PROJECT_ID } from "@/lib/db/queries";
 import { ProjectDialog } from "./project-dialog";
 import { Badge } from "@/components/ui/badge";
 
@@ -29,12 +29,20 @@ export function ProjectSelector({
 
   const projects = useLiveQuery(() => getAllProjects(), []);
 
+  // Ensure default project exists on mount
+  useEffect(() => {
+    ensureDefaultProject();
+  }, []);
+
   const currentProject = projects?.find((p) => p.id === currentProjectId);
 
+  // If no project selected, default to Personal
   useEffect(() => {
     if (!projects) return;
-    if (currentProjectId && !currentProject) {
-      onProjectChange(undefined);
+    if (!currentProjectId) {
+      onProjectChange(DEFAULT_PROJECT_ID);
+    } else if (!currentProject) {
+      onProjectChange(DEFAULT_PROJECT_ID);
     }
   }, [projects, currentProjectId, currentProject, onProjectChange]);
 
@@ -48,41 +56,57 @@ export function ProjectSelector({
     setDialogOpen(true);
   };
 
+  // Sort projects: Personal first, then by updatedAt
+  const sortedProjects = projects?.slice().sort((a, b) => {
+    if (a.id === DEFAULT_PROJECT_ID) return -1;
+    if (b.id === DEFAULT_PROJECT_ID) return 1;
+    return b.updatedAt - a.updatedAt;
+  });
+
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" className="gap-2">
-            <FolderOpen className="h-4 w-4" />
-            <span className="text-sm">
-              {currentProject?.name || "No Project"}
+          <Button variant="ghost" size="sm" className="gap-2 h-8 px-2">
+            {currentProjectId === DEFAULT_PROJECT_ID ? (
+              <User className="h-4 w-4 text-muted-foreground" />
+            ) : currentProject?.color ? (
+              <div
+                className="h-3 w-3 rounded-full"
+                style={{ backgroundColor: currentProject.color }}
+              />
+            ) : (
+              <FolderOpen className="h-4 w-4" />
+            )}
+            <span className="text-sm truncate max-w-[120px]">
+              {currentProject?.name || "Personal"}
             </span>
-            <ChevronDown className="h-4 w-4" />
+            <ChevronDown className="h-3 w-3 text-muted-foreground" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-64">
-          <DropdownMenuItem onClick={() => onProjectChange(undefined)}>
-            <span className="font-medium">No Project</span>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          {projects && projects.length > 0 ? (
-            projects.map((project) => (
+        <DropdownMenuContent align="start" className="w-56">
+          {sortedProjects && sortedProjects.length > 0 ? (
+            sortedProjects.map((project) => (
               <DropdownMenuItem
                 key={project.id}
                 onClick={() => onProjectChange(project.id)}
                 className="flex items-center justify-between"
               >
                 <div className="flex items-center gap-2">
-                  {project.color && (
+                  {project.id === DEFAULT_PROJECT_ID ? (
+                    <User className="h-4 w-4 text-muted-foreground" />
+                  ) : project.color ? (
                     <div
                       className="h-3 w-3 rounded-full"
                       style={{ backgroundColor: project.color }}
                     />
+                  ) : (
+                    <FolderOpen className="h-4 w-4 text-muted-foreground" />
                   )}
                   <span>{project.name}</span>
                 </div>
                 {project.id === currentProjectId && (
-                  <Badge variant="secondary" className="text-xs">
+                  <Badge variant="secondary" className="text-xs h-5">
                     Active
                   </Badge>
                 )}
@@ -90,7 +114,7 @@ export function ProjectSelector({
             ))
           ) : (
             <div className="px-2 py-4 text-center text-sm text-muted-foreground">
-              No projects yet
+              Loading...
             </div>
           )}
           <DropdownMenuSeparator />

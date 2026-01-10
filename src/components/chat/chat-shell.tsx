@@ -13,10 +13,13 @@ import {
   getRecentModels,
   updateChat,
   updateModelLastUsed,
+  getMessages,
 } from "@/lib/db/queries";
 import { MODELS, type Model, getModelById } from "@/lib/constants/models";
 import { MessageList } from "./message-list";
 import { InputArea } from "./input-area";
+import { TagList } from "./tag-list";
+import { useAutoTags } from "@/hooks/use-auto-tags";
 import { ModelPickerDialog } from "@/components/model-picker/model-picker-dialog";
 import { BudgetSettingsDialog } from "./budget-settings-dialog";
 import { ChatSettingsPopover } from "./chat-settings-popover";
@@ -109,6 +112,11 @@ export function ChatShell() {
     () => (activeChatId ? getChatById(activeChatId) : undefined),
     [activeChatId]
   );
+
+  const messages = useLiveQuery(() => (activeChatId ? getMessages(activeChatId) : undefined), [activeChatId]);
+
+  // Auto-tagging hook
+  useAutoTags(activeChatId || "", messages || [], chat?.tags);
 
   const currentModel = chat ? getModelById(chat.modelId) : undefined;
 
@@ -336,7 +344,12 @@ export function ChatShell() {
                     <Menu className="h-4 w-4" />
                   </Button>
                   {tabs.length === 0 && (
-                    <h1 className="text-sm font-medium truncate text-foreground/90">{chat?.title || "Chat"}</h1>
+                    <div className="flex flex-col min-w-0">
+                      <h1 className="text-sm font-medium truncate text-foreground/90">{chat?.title || "Chat"}</h1>
+                      {chat?.tags && chat.tags.length > 0 && (
+                        <TagList tagIds={chat.tags} size="sm" className="mt-0.5" />
+                      )}
+                    </div>
                   )}
                 </div>
 

@@ -24,23 +24,28 @@ export function Sidebar() {
   useSidebarKeyboardShortcuts();
 
   const handleNewChat = async () => {
-    // Import dynamically to avoid circular dependencies
-    const { createChat } = await import("@/lib/db/queries");
-    const { defaultProviderId, defaultModelId, defaultModelIdsByProvider } =
-      useSettingsStore.getState();
-    const { providerId, modelId } = getDefaultChatConfig({
-      defaultProviderId,
-      defaultModelId,
-      defaultModelIdsByProvider,
-    });
+    try {
+      // Import dynamically to avoid circular dependencies
+      const { createChat } = await import("@/lib/db/queries");
+      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider } =
+        useSettingsStore.getState();
+      const { providerId, modelId } = getDefaultChatConfig({
+        defaultProviderId,
+        defaultModelId,
+        defaultModelIdsByProvider,
+      });
 
-    const newChat = await createChat({
-      title: "New Chat",
-      modelId,
-      providerId: providerId || undefined,
-    });
+      const newChat = await createChat({
+        title: "New Chat",
+        modelId,
+        providerId: providerId || undefined,
+        projectId: currentProjectId,
+      });
 
-    setActiveChatId(newChat.id);
+      setActiveChatId(newChat.id);
+    } catch (error) {
+      console.error("Failed to create new chat:", error);
+    }
   };
 
   return (

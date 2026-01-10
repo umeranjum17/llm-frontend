@@ -7,7 +7,9 @@ import { Send, Loader2, Paperclip, X, FileText, Image as ImageIcon, Mic, Square,
 import { useChat } from "@/hooks/use-chat";
 import { useChatKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { TokenDisplay } from "./token-display";
-import { getAllPrompts, getChatById, incrementPromptUsage, getProjectFiles, getChatsByProject, getAllAgents, getAllTags } from "@/lib/db/queries";
+import { getAllPrompts, getChatById, incrementPromptUsage, getProjectFiles, getChatsByProject, getAllAgents, getAllTags, getMessages } from "@/lib/db/queries";
+import { countMessagesTokens, countTokens } from "@/lib/utils/token-counter";
+import { getModelById } from "@/lib/constants/models";
 import { toast } from "sonner";
 import type { MessageContentPart } from "@/lib/db/schema";
 import { PromptLibraryDialog } from "@/components/prompts/prompt-library-dialog";
@@ -576,7 +578,13 @@ export function InputArea({ chatId }: InputAreaProps) {
             ? `Listening: “${voiceDraft}”`
             : "Enter to send • Shift+Enter for new line"}
         </span>
-        <TokenDisplay chatId={chatId} inputContent={input} />
+        {chat && (
+          <TokenCalculator
+            chatId={chatId}
+            inputContent={input}
+            modelId={chat.modelId}
+          />
+        )}
       </div>
 
       <PromptLibraryDialog
@@ -608,5 +616,35 @@ export function InputArea({ chatId }: InputAreaProps) {
         />
       ) : null}
     </form>
+  );
+}
+
+function TokenCalculator({
+  chatId,
+  inputContent,
+  modelId,
+}: {
+  chatId: string;
+  inputContent: string;
+  modelId: string;
+}) {
+  const messages = useLiveQuery(() => getMessages(chatId), [chatId]);
+  const model = getModelById(modelId);
+
+  const usedTokens = useMemo(() => {
+    if (!messages) return 0;
+    const history = countMessagesTokens(messages);
+    const current = countTokens(inputContent);
+    return history + current;
+  }, [messages, inputContent]);
+
+  if (!model) return null;
+
+  return (
+    <TokenDisplay
+      usedTokens={usedTokens}
+      totalTokens={model.contextLength}
+      modelName={model.name}
+    />
   );
 }

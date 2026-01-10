@@ -4,7 +4,7 @@ import { useState, memo, useMemo } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";  // Need to import or use a basic textarea
-import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download } from "lucide-react";
+import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download, ThumbsUp, ThumbsDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
 import type { Message } from "@/lib/db/schema";
@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import type { SearchResult, WebSearchResponse } from "@/lib/tools/web-search";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { getImagesFromMessageContent, getTextFromMessageContent, isMessageContentParts } from "@/lib/utils/message-content";
+import { updateMessage } from "@/lib/db/queries";
 
 type ToolCallLike = {
   id?: string;
@@ -133,6 +134,16 @@ export const MessageItem = memo(function MessageItem({
     if (onEdit) {
       onEdit(message.id, editContent);
       setIsEditing(false);
+    }
+  };
+
+  const handleRate = async (rating: "up" | "down") => {
+    if (message.rating === rating) {
+      // Toggle off if clicking same rating
+      // @ts-ignore - dexie update allows undefined but typescript might complain if strict
+      await updateMessage(message.id, { rating: undefined });
+    } else {
+      await updateMessage(message.id, { rating });
     }
   };
 
@@ -439,10 +450,32 @@ export const MessageItem = memo(function MessageItem({
                   <Pencil className="h-4 w-4" />
                 </Button>
               )}
+              {isAssistant && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => handleRate("up")}
+                    title="Good response"
+                  >
+                    <ThumbsUp className={cn("h-4 w-4", message.rating === "up" && "fill-current text-green-500")} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => handleRate("down")}
+                    title="Bad response"
+                  >
+                    <ThumbsDown className={cn("h-4 w-4", message.rating === "down" && "fill-current text-red-500")} />
+                  </Button>
+                </>
+              )}
             </div>
           )}
         </div>
       </div>
-    </div>
+    </div >
   );
 });

@@ -10,14 +10,19 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { WorkflowEditorDialog } from "./workflow-editor-dialog";
 
+import { WorkflowRunnerDialog } from "@/components/agents/workflow-runner-dialog";
 import { getAllWorkflows } from "@/lib/db/queries";
 
 export function WorkflowSettings() {
     const workflows = useLiveQuery(() => getAllWorkflows(), []);
     const [isEditorOpen, setIsEditorOpen] = useState(false);
 
+    // Runner state
+    const [runningWorkflow, setRunningWorkflow] = useState<any>(null);
+
     return (
         <div className="space-y-6">
+            {/* ... header ... */}
             <div className="flex items-start justify-between gap-4">
                 <div>
                     <h3 className="text-lg font-medium">Agent Workflows</h3>
@@ -32,7 +37,7 @@ export function WorkflowSettings() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {workflows?.map((workflow) => (
+                {workflows?.map((workflow: any) => (
                     <Card key={workflow.id} className="cursor-pointer hover:border-primary/50 transition-colors">
                         <CardHeader className="pb-3">
                             <div className="flex justify-between items-start">
@@ -45,8 +50,13 @@ export function WorkflowSettings() {
                         </CardHeader>
                         <CardContent>
                             <div className="flex items-center justify-between mt-2">
-                                <Badge variant="secondary">{workflow.steps} Steps</Badge>
-                                <Button variant="outline" size="sm" className="gap-2 h-8">
+                                <Badge variant="secondary">{workflow.steps?.length || 0} Steps</Badge>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="gap-2 h-8"
+                                    onClick={() => setRunningWorkflow(workflow)}
+                                >
                                     <Play className="h-3 w-3" />
                                     Run
                                 </Button>
@@ -57,6 +67,12 @@ export function WorkflowSettings() {
             </div>
 
             <WorkflowEditorDialog open={isEditorOpen} onOpenChange={setIsEditorOpen} />
+
+            <WorkflowRunnerDialog
+                workflow={runningWorkflow}
+                open={!!runningWorkflow}
+                onOpenChange={(open) => !open && setRunningWorkflow(null)}
+            />
         </div>
     );
 }

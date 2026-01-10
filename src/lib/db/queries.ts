@@ -1,4 +1,48 @@
 import { db, type Chat, type Message, type Project, type ProjectFile, type ModelFavorite, type ApiKey, type UserSettings, type Agent, type Prompt } from "./schema";
+import { getTextFromMessageContent } from "@/lib/utils/message-content";
+
+// ============= DEFAULT PROJECT =============
+
+export const DEFAULT_PROJECT_ID = "personal";
+export const DEFAULT_PROJECT_NAME = "Personal";
+
+/**
+ * Ensures the default "Personal" project exists.
+ * This project cannot be deleted and is where chats go by default.
+ */
+export async function ensureDefaultProject(): Promise<Project> {
+  const existing = await db.projects.get(DEFAULT_PROJECT_ID);
+  if (existing) return existing;
+
+  const now = Date.now();
+  const defaultProject: Project = {
+    id: DEFAULT_PROJECT_ID,
+    name: DEFAULT_PROJECT_NAME,
+    createdAt: now,
+    updatedAt: now,
+    color: "#6b7280", // gray
+  };
+  await db.projects.add(defaultProject);
+  return defaultProject;
+}
+
+/**
+ * Get chat count for a project
+ */
+export async function getProjectChatCount(projectId: string): Promise<number> {
+  return await db.chats.where("projectId").equals(projectId).count();
+}
+
+/**
+ * Move all chats from one project to another
+ */
+export async function moveChatsToProject(fromProjectId: string, toProjectId: string): Promise<number> {
+  const chats = await db.chats.where("projectId").equals(fromProjectId).toArray();
+  for (const chat of chats) {
+    await db.chats.update(chat.id, { projectId: toProjectId, updatedAt: Date.now() });
+  }
+  return chats.length;
+}
 
 // ============= CHAT QUERIES =============
 
@@ -46,9 +90,14 @@ export async function getFavoriteChats() {
 }
 
 export async function createChat(chat: Omit<Chat, "id" | "createdAt" | "updatedAt">) {
+  // Ensure the default project exists
+  await ensureDefaultProject();
+
   const now = Date.now();
   const newChat: Chat = {
     ...chat,
+    // Default to Personal project if no projectId provided
+    projectId: chat.projectId || DEFAULT_PROJECT_ID,
     id: crypto.randomUUID(),
     createdAt: now,
     updatedAt: now,
@@ -66,6 +115,13 @@ export async function deleteChat(id: string) {
   await db.messages.where("chatId").equals(id).delete();
   // Delete the chat
   await db.chats.delete(id);
+}
+
+export async function deleteAllChats() {
+  // Delete all messages
+  await db.messages.clear();
+  // Delete all chats
+  await db.chats.clear();
 }
 
 export async function searchChats(query: string) {
@@ -218,16 +274,37 @@ export async function updateProject(id: string, updates: Partial<Project>) {
   await db.projects.update(id, { ...updates, updatedAt: Date.now() });
 }
 
-export async function deleteProject(id: string) {
+export async function deleteProject(id: string, cascadeDeleteChats: boolean = true): Promise<{ deletedChats: number }> {
+  // Prevent deleting the default project
+  if (id === DEFAULT_PROJECT_ID) {
+    throw new Error("Cannot delete the default Personal project");
+  }
+
   // Delete all files in this project
   await db.projectFiles.where("projectId").equals(id).delete();
-  // Unlink chats from this project
+
+  // Get chats in this project
   const chats = await db.chats.where("projectId").equals(id).toArray();
-  for (const chat of chats) {
-    await db.chats.update(chat.id, { projectId: undefined });
+  let deletedChats = 0;
+
+  if (cascadeDeleteChats) {
+    // Delete all chats and their messages
+    for (const chat of chats) {
+      await db.messages.where("chatId").equals(chat.id).delete();
+      await db.chats.delete(chat.id);
+      deletedChats++;
+    }
+  } else {
+    // Move chats to the default project
+    for (const chat of chats) {
+      await db.chats.update(chat.id, { projectId: DEFAULT_PROJECT_ID });
+    }
   }
+
   // Delete the project
   await db.projects.delete(id);
+
+  return { deletedChats };
 }
 
 // ============= PROJECT FILE QUERIES =============
@@ -424,6 +501,18 @@ export async function searchPrompts(query: string) {
   if (!q) return await getAllPrompts();
   return await db.prompts
     .filter((p) => p.title.toLowerCase().includes(q) || p.content.toLowerCase().includes(q))
+    .toArray();
+}
+
+export async function searchMessages(query: string) {
+  const lowerQuery = query.toLowerCase();
+
+  // Create a fast filter that checks text content
+  return await db.messages
+    .filter(msg => {
+      const content = getTextFromMessageContent(msg.content);
+      return content.toLowerCase().includes(lowerQuery);
+    })
     .toArray();
 }
 

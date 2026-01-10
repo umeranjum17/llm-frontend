@@ -74,6 +74,7 @@ export interface Message {
   cost?: number; // Cost in USD for this message
   isIncomplete?: boolean; // Response was cut off mid-stream
   canContinue?: boolean; // Can continue this response
+  rating?: "up" | "down";
 }
 
 export interface ApiKey {
@@ -408,6 +409,27 @@ export class LuminaDB extends Dexie {
       chats:
         "id, projectId, title, modelId, createdAt, updatedAt, pinned, favorite, folderId, order",
       messages: "id, chatId, role, createdAt, parentId",
+      apiKeys: "id, provider, createdAt, baseUrl",
+      settings: "id",
+      modelFavorites: "id, category, pinnedOrder, lastUsed",
+      userMemories: "id, category, source, createdAt, isActive",
+      folders: "id, name, createdAt, order",
+      tags: "id, name, createdAt, usageCount",
+      tagRules: "id, tagId, enabled, createdAt",
+      parameterPresets: "id, name, createdAt, isDefault",
+      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
+      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
+      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
+      workflows: "id, name, createdAt, updatedAt",
+    });
+
+    // Version 10: Add message ratings
+    this.version(10).stores({
+      projects: "id, name, createdAt, updatedAt",
+      projectFiles: "id, projectId, name, createdAt",
+      chats:
+        "id, projectId, title, modelId, createdAt, updatedAt, pinned, favorite, folderId, order",
+      messages: "id, chatId, role, createdAt, parentId, rating",
       apiKeys: "id, provider, createdAt, baseUrl",
       settings: "id",
       modelFavorites: "id, category, pinnedOrder, lastUsed",

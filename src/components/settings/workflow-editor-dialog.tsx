@@ -8,8 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Trash, GripVertical, ArrowDown } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { getAllAgents } from "@/lib/db/queries";
+import { getAllAgents, addWorkflow } from "@/lib/db/queries";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
 
 interface WorkflowStep {
     id: string;
@@ -44,9 +45,6 @@ export function WorkflowEditorDialog({ open, onOpenChange }: WorkflowEditorDialo
     const updateStep = (id: string, field: keyof WorkflowStep, value: string) => {
         setSteps(steps.map(s => s.id === id ? { ...s, [field]: value } : s));
     };
-
-    import { addWorkflow } from "@/lib/db/queries";
-    import { toast } from "sonner";
 
     // ...
 

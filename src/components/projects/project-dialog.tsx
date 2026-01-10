@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -21,8 +21,9 @@ import {
   createProject,
   updateProject,
   getProjectById,
-  deleteProject,
+  DEFAULT_PROJECT_ID,
 } from "@/lib/db/queries";
+import { DeleteProjectDialog } from "./delete-project-dialog";
 
 interface ProjectDialogProps {
   open: boolean;
@@ -54,6 +55,8 @@ export function ProjectDialog({
   projectId,
   onSuccess,
 }: ProjectDialogProps) {
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
   const {
     register,
     handleSubmit,
@@ -76,6 +79,8 @@ export function ProjectDialog({
     () => (projectId ? getProjectById(projectId) : undefined),
     [projectId]
   );
+
+  const isDefaultProject = projectId === DEFAULT_PROJECT_ID;
 
   // Load project data when editing
   useEffect(() => {
@@ -119,104 +124,121 @@ export function ProjectDialog({
     }
   };
 
-  const handleDelete = async () => {
-    if (!projectId) return;
-    if (!confirm("Delete this project? All files will be removed.")) return;
+  const handleDeleteClick = () => {
+    setDeleteDialogOpen(true);
+  };
 
-    try {
-      await deleteProject(projectId);
-      onOpenChange(false);
-    } catch (error) {
-      console.error("Failed to delete project:", error);
-    }
+  const handleDeleted = () => {
+    setDeleteDialogOpen(false);
+    onOpenChange(false);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>
-            {projectId ? "Edit Project" : "New Project"}
-          </DialogTitle>
-          <DialogDescription>
-            Projects help organize chats and provide default context
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {projectId ? "Edit Project" : "New Project"}
+            </DialogTitle>
+            <DialogDescription>
+              Projects help organize chats and provide default context
+            </DialogDescription>
+          </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Project Name</Label>
-            <Input
-              id="name"
-              {...register("name")}
-              placeholder="My Project"
-            />
-            {errors.name && (
-              <p className="text-xs text-destructive">{errors.name.message}</p>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Project Name</Label>
+              <Input
+                id="name"
+                {...register("name")}
+                placeholder="My Project"
+                disabled={isDefaultProject}
+              />
+              {errors.name && (
+                <p className="text-xs text-destructive">{errors.name.message}</p>
+              )}
+              {isDefaultProject && (
+                <p className="text-xs text-muted-foreground">
+                  The Personal project cannot be renamed or deleted
+                </p>
+              )}
+            </div>
+
+            {!isDefaultProject && (
+              <div className="space-y-2">
+                <Label>Project Color</Label>
+                <div className="flex gap-2">
+                  {PRESET_COLORS.map((presetColor) => (
+                    <button
+                      key={presetColor}
+                      type="button"
+                      onClick={() => setValue("color", presetColor)}
+                      className="h-8 w-8 rounded-full border-2 transition-transform hover:scale-110"
+                      style={{
+                        backgroundColor: presetColor,
+                        borderColor: color === presetColor ? "#000" : "transparent",
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
             )}
-          </div>
 
-          <div className="space-y-2">
-            <Label>Project Color</Label>
-            <div className="flex gap-2">
-              {PRESET_COLORS.map((presetColor) => (
-                <button
-                  key={presetColor}
+            <div className="space-y-2">
+              <Label htmlFor="systemPrompt">
+                System Prompt (Optional)
+              </Label>
+              <Textarea
+                id="systemPrompt"
+                {...register("systemPrompt")}
+                placeholder="You are a helpful assistant..."
+                rows={6}
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                This prompt will be automatically included in all chats within this project
+              </p>
+            </div>
+
+            <DialogFooter className="flex items-center justify-between">
+              {projectId && !isDefaultProject && (
+                <Button
                   type="button"
-                  onClick={() => setValue("color", presetColor)}
-                  className="h-8 w-8 rounded-full border-2 transition-transform hover:scale-110"
-                  style={{
-                    backgroundColor: presetColor,
-                    borderColor: color === presetColor ? "#000" : "transparent",
-                  }}
-                />
-              ))}
-            </div>
-          </div>
+                  variant="destructive"
+                  onClick={handleDeleteClick}
+                  disabled={isSubmitting}
+                >
+                  Delete Project
+                </Button>
+              )}
+              <div className="flex gap-2 ml-auto">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onOpenChange(false)}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? "Saving..." : projectId ? "Save" : "Create"}
+                </Button>
+              </div>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
-          <div className="space-y-2">
-            <Label htmlFor="systemPrompt">
-              System Prompt (Optional)
-            </Label>
-            <Textarea
-              id="systemPrompt"
-              {...register("systemPrompt")}
-              placeholder="You are a helpful assistant..."
-              rows={6}
-              className="font-mono text-sm"
-            />
-            <p className="text-xs text-muted-foreground">
-              This prompt will be automatically included in all chats within this project
-            </p>
-          </div>
-
-          <DialogFooter className="flex items-center justify-between">
-            {projectId && (
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={handleDelete}
-                disabled={isSubmitting}
-              >
-                Delete Project
-              </Button>
-            )}
-            <div className="flex gap-2 ml-auto">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={isSubmitting}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Saving..." : projectId ? "Save" : "Create"}
-              </Button>
-            </div>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+      {projectId && project && (
+        <DeleteProjectDialog
+          open={deleteDialogOpen}
+          onOpenChange={setDeleteDialogOpen}
+          projectId={projectId}
+          projectName={project.name}
+          onDeleted={handleDeleted}
+        />
+      )}
+    </>
   );
 }

@@ -35,6 +35,8 @@ import { FolderDialog } from "./folder-dialog";
 import { BulkActions } from "./bulk-actions";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Search, Plus } from "lucide-react";
+import { TagList } from "@/components/chat/tag-list";
+import { PromptLibraryDialog } from "@/components/prompts/prompt-library-dialog";
 
 import {
   DropdownMenu,

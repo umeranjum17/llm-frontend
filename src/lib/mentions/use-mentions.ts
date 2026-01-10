@@ -1,5 +1,5 @@
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import Fuse from "fuse.js";
 import { MentionItem, MentionType } from "./types";
 
@@ -15,10 +15,10 @@ export function useMentions({ items, triggerChars = ["@", "#", "/"] }: UseMentio
     const [filteredItems, setFilteredItems] = useState<MentionItem[]>([]);
     const [triggerChar, setTriggerChar] = useState<string | null>(null);
 
-    const fuse = new Fuse(items, {
+    const fuse = useMemo(() => new Fuse(items, {
         keys: ["label", "value", "description", "type"],
         threshold: 0.3,
-    });
+    }), [items]);
 
     useEffect(() => {
         if (!query) {
@@ -29,7 +29,7 @@ export function useMentions({ items, triggerChars = ["@", "#", "/"] }: UseMentio
         const results = fuse.search(query);
         setFilteredItems(results.map((r) => r.item).slice(0, 10));
         setActiveIndex(0);
-    }, [query, items]);
+    }, [query, items, fuse]);
 
     const handleKeyDown = useCallback(
         (e: React.KeyboardEvent, onSelect: (item: MentionItem) => void) => {

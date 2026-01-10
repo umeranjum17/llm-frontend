@@ -185,6 +185,10 @@ export default function SettingsPage() {
             <TabsContent value="analytics" className="space-y-6">
               <UsageAnalytics />
             </TabsContent>
+
+            <TabsContent value="workflows" className="space-y-6">
+              <WorkflowSettings />
+            </TabsContent>
           </Tabs>
         </div>
       </div>
