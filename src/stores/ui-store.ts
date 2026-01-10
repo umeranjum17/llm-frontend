@@ -17,6 +17,7 @@ interface UIState {
   activeArtifact: Artifact | null;
   isArenaMode: boolean;
   arenaModelIds: string[];
+  isFocusMode: boolean;
 
   // Actions
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -28,6 +29,7 @@ interface UIState {
   setActiveArtifact: (artifact: Artifact | null) => void;
   setIsArenaMode: (enabled: boolean) => void;
   setArenaModelIds: (ids: string[]) => void;
+  setIsFocusMode: (enabled: boolean) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -40,6 +42,7 @@ export const useUIStore = create<UIState>((set) => ({
   activeArtifact: null,
   isArenaMode: false,
   arenaModelIds: [],
+  isFocusMode: false,
 
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   setActiveChatId: (chatId) => set({ activeChatId: chatId }),
@@ -50,4 +53,5 @@ export const useUIStore = create<UIState>((set) => ({
   setActiveArtifact: (artifact) => set({ activeArtifact: artifact }),
   setIsArenaMode: (enabled) => set({ isArenaMode: enabled }),
   setArenaModelIds: (ids) => set({ arenaModelIds: ids }),
+  setIsFocusMode: (enabled) => set({ isFocusMode: enabled }),
 }));

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -16,6 +16,7 @@ import { ensureBuiltIns } from "@/lib/db/seed";
 import { useModelsStore } from "@/stores/models-store";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { useUIStore } from "@/stores/ui-store";
 
 export default function Home() {
   const router = useRouter();
@@ -25,6 +26,7 @@ export default function Home() {
   const sidebarSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const isFocusMode = useUIStore((state) => state.isFocusMode);
 
   // Register global keyboard shortcuts
   useKeyboardShortcuts();
@@ -45,7 +47,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    loadModels().catch(() => {});
+    loadModels().catch(() => { });
   }, [loadModels]);
 
   useEffect(() => {
@@ -93,8 +95,10 @@ export default function Home() {
         "h-full overflow-hidden rounded-none border-0 bg-background/70 shadow-[0_18px_70px_-40px_rgba(15,23,42,0.6)] backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:rounded-2xl sm:border",
         isWideScreen && "max-w-[2560px] mx-auto"
       )}>
-        {isMobile ? (
-          <ChatShell />
+        {isMobile || isFocusMode ? (
+          <div className={cn("h-full", isFocusMode && "max-w-4xl mx-auto px-4 sm:px-0")}>
+            <ChatShell />
+          </div>
         ) : (
           <ResizablePanelGroup
             direction="horizontal"
@@ -103,13 +107,13 @@ export default function Home() {
               if (typeof next !== "number") return;
               if (sidebarSaveTimeout.current) clearTimeout(sidebarSaveTimeout.current);
               sidebarSaveTimeout.current = setTimeout(() => {
-                updateSidebarWidth(next).catch(() => {});
+                updateSidebarWidth(next).catch(() => { });
               }, 300);
             }}
           >
-            <ResizablePanel 
-              defaultSize={isWideScreen ? (sidebarWidth ?? 18) : (sidebarWidth ?? 22)} 
-              minSize={isWideScreen ? 14 : 16} 
+            <ResizablePanel
+              defaultSize={isWideScreen ? (sidebarWidth ?? 18) : (sidebarWidth ?? 22)}
+              minSize={isWideScreen ? 14 : 16}
               maxSize={isWideScreen ? 28 : 32}
             >
               <Sidebar />

@@ -1,4 +1,4 @@
-import { db, type Chat, type Message, type Project, type ProjectFile, type ModelFavorite, type ApiKey, type UserSettings, type Agent, type Prompt } from "./schema";
+import { db, type Chat, type Message, type Project, type ProjectFile, type ModelFavorite, type ApiKey, type UserSettings, type Agent, type Prompt, type ModelAlias } from "./schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 
 // ============= DEFAULT PROJECT =============
@@ -238,6 +238,10 @@ export async function updateMessage(id: string, updates: Partial<Message>) {
 
 export async function deleteMessage(id: string) {
   await db.messages.delete(id);
+}
+
+export async function updateMessageRating(id: string, rating: "up" | "down" | null) {
+  await db.messages.update(id, { rating: rating ?? undefined });
 }
 
 export async function deleteMessagesAfter(chatId: string, timestamp: number) {
@@ -756,4 +760,33 @@ export async function updateWorkflow(id: string, updates: Partial<Omit<import(".
 
 export async function deleteWorkflow(id: string) {
   await db.workflows.delete(id);
+}
+
+// ============= MODEL ALIAS QUERIES =============
+
+export async function getAllModelAliases() {
+  return await db.modelAliases.toArray();
+}
+
+export async function getModelAlias(modelId: string) {
+  return await db.modelAliases.get(modelId);
+}
+
+export async function updateModelAlias(modelId: string, alias: string, systemPrompt?: string) {
+  const now = Date.now();
+  const existing = await db.modelAliases.get(modelId);
+  if (existing) {
+    await db.modelAliases.update(modelId, { alias, systemPrompt, updatedAt: now });
+  } else {
+    await db.modelAliases.add({
+      id: modelId,
+      alias,
+      systemPrompt,
+      updatedAt: now,
+    });
+  }
+}
+
+export async function deleteModelAlias(modelId: string) {
+  await db.modelAliases.delete(modelId);
 }

@@ -1,0 +1,67 @@
+import { updateChat } from "@/lib/db/queries";
+import { pickBestProviderId } from "@/lib/ai/provider-routing";
+import { db } from "@/lib/db/schema";
+import type { ApiKey } from "@/lib/db/schema";
+import type { Message } from "ai";
+
+export interface SummarizeOptions {
+    chatId: string;
+    messages: Message[];
+    keys: ApiKey[];
+}
+
+export async function generateAndApplySummary({ chatId, messages, keys }: SummarizeOptions) {
+    try {
+        const chat = await db.chats.get(chatId);
+        if (!chat) {
+            console.log("[AutoSummary] Chat not found in DB");
+            return null;
+        }
+
+        // Resolve providerId
+        const availableProviderIds = keys.map((k) => k.provider);
+        const providerId = chat.providerId || pickBestProviderId({
+            modelId: chat.modelId,
+            availableProviderIds,
+        });
+
+        // Get API key for the chat's provider
+        const apiKeyEntry = keys.find((k) => k.provider === providerId);
+        const apiKey = apiKeyEntry?.key;
+
+        if (!apiKey) {
+            console.log(`[AutoSummary] No API key found for provider ${providerId} (model: ${chat.modelId}). Skipping.`);
+            return null;
+        }
+
+        console.log("[AutoSummary] Fetching summary from API...");
+        const response = await fetch("/api/chat/summarize", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                messages: messages.slice(-10), // Send last 10 messages
+                providerId,
+                modelId: chat.modelId,
+                apiKey,
+                providerBaseUrl: apiKeyEntry?.baseUrl,
+            }),
+        });
+
+        if (!response.ok) {
+            console.error("[AutoSummary] API error:", response.status);
+            return null;
+        }
+
+        const { summary } = await response.json();
+        console.log("[AutoSummary] Received summary:", summary);
+
+        if (summary) {
+            await updateChat(chatId, { summary });
+        }
+
+        return summary;
+    } catch (error) {
+        console.error("Auto-summarization error:", error);
+        return null;
+    }
+}

@@ -19,6 +19,7 @@ import { TrustDashboard } from "@/components/settings/trust-dashboard";
 import { UsageAnalytics } from "@/components/settings/usage-analytics";
 import { ConnectorsSettings } from "@/components/settings/connectors-settings";
 import { WorkflowSettings } from "@/components/settings/workflow-settings";
+import { ModelAliasSettings } from "@/components/settings/model-alias-settings";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useSettingsStore } from "@/stores/settings-store";
 
@@ -37,7 +38,7 @@ export default function SettingsPage() {
   useEffect(() => {
     const tabParam = new URLSearchParams(window.location.search).get("tab");
     if (!tabParam) return;
-    const allowedTabs = ["general", "api-keys", "local-models", "memory", "theme", "shortcuts", "data", "agents", "prompts", "trust", "analytics", "connectors"];
+    const allowedTabs = ["general", "api-keys", "local-models", "memory", "theme", "shortcuts", "data", "agents", "prompts", "trust", "analytics", "connectors", "aliases"];
     if (allowedTabs.includes(tabParam)) setActiveTab(tabParam);
   }, []);
 
@@ -136,6 +137,10 @@ export default function SettingsPage() {
                 <div className="h-3.5 w-3.5 rounded bg-pink-500/20 text-pink-500 flex items-center justify-center text-[9px] font-bold">W</div>
                 Workflows
               </TabsTrigger>
+              <TabsTrigger value="aliases" className="gap-1.5 text-xs">
+                <SettingsIcon className="h-3.5 w-3.5" />
+                Aliases
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="general" className="space-y-6">
@@ -188,6 +193,10 @@ export default function SettingsPage() {
 
             <TabsContent value="workflows" className="space-y-6">
               <WorkflowSettings />
+            </TabsContent>
+
+            <TabsContent value="aliases" className="space-y-6">
+              <ModelAliasSettings />
             </TabsContent>
           </Tabs>
         </div>

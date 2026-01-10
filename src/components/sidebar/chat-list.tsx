@@ -63,6 +63,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface ChatListProps {
   searchQuery: string;
@@ -668,107 +674,118 @@ function SortableChatItem({
   };
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        "group relative cursor-pointer px-3 py-2 mx-2 my-0.5 rounded-lg transition-colors hover:bg-accent/50",
-        isActive && "bg-accent",
-        isSelected && "bg-accent/60 ring-1 ring-primary/40",
-        isNested && "ml-6",
-        isDragging && "opacity-50"
-      )}
-      onClick={onClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <button
-            {...attributes}
-            {...listeners}
-            className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors shrink-0 opacity-0 group-hover:opacity-100"
-            onClick={(e) => e.stopPropagation()}
+    <TooltipProvider>
+      <Tooltip delayDuration={500}>
+        <TooltipTrigger asChild>
+          <div
+            ref={setNodeRef}
+            style={style}
+            className={cn(
+              "group relative cursor-pointer px-3 py-2 mx-2 my-0.5 rounded-lg transition-colors hover:bg-accent/50",
+              isActive && "bg-accent",
+              isSelected && "bg-accent/60 ring-1 ring-primary/40",
+              isNested && "ml-6",
+              isDragging && "opacity-50"
+            )}
+            onClick={onClick}
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
           >
-            <GripVertical className="h-3 w-3" />
-          </button>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5">
-              {chat.pinned && <Pin className="h-3 w-3 text-muted-foreground shrink-0" />}
-              {chat.favorite && <Star className="h-3 w-3 text-yellow-500/70 shrink-0" />}
-              <h3 className="text-sm truncate">{chat.title}</h3>
-            </div>
-            <div className="text-[11px] text-muted-foreground/60 truncate">
-              {formatDistanceToNow(new Date(chat.updatedAt), { addSuffix: true })}
-            </div>
-          </div>
-        </div>
-
-        {/* Actions (shown on hover) */}
-        {(isHovered || isActive) && (
-          <div className="flex items-center gap-1 shrink-0">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={onTogglePin}
-              title={chat.pinned ? "Unpin" : "Pin"}
-            >
-              <Pin className={cn("h-3 w-3", chat.pinned && "fill-current")} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={onToggleFavorite}
-              title={chat.favorite ? "Unfavorite" : "Favorite"}
-            >
-              <Star className={cn("h-3 w-3", chat.favorite && "fill-current text-yellow-500")} />
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
-                  title="Move to Folder"
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <button
+                  {...attributes}
+                  {...listeners}
+                  className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors shrink-0 opacity-0 group-hover:opacity-100"
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <Folder className="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Move to Folder</DropdownMenuLabel>
-                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onMoveToFolder(null); }}>
-                  No Folder
-                </DropdownMenuItem>
-                {folders.length > 0 && <DropdownMenuSeparator />}
-                {folders.map((folder) => (
-                  <DropdownMenuItem
-                    key={folder.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onMoveToFolder(folder.id);
-                      toast.success(`Moved to ${folder.name}`);
-                    }}
+                  <GripVertical className="h-3 w-3" />
+                </button>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    {chat.pinned && <Pin className="h-3 w-3 text-muted-foreground shrink-0" />}
+                    {chat.favorite && <Star className="h-3 w-3 text-yellow-500/70 shrink-0" />}
+                    <h3 className="text-sm truncate">{chat.title}</h3>
+                  </div>
+                  <div className="text-[11px] text-muted-foreground/60 truncate">
+                    {formatDistanceToNow(new Date(chat.updatedAt), { addSuffix: true })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions (shown on hover) */}
+              {(isHovered || isActive) && (
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={onTogglePin}
+                    title={chat.pinned ? "Unpin" : "Pin"}
                   >
-                    <Folder className="h-3.5 w-3.5 mr-2" style={folder.color ? { color: folder.color } : undefined} />
-                    {folder.name}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={onDelete}
-              title="Delete"
-            >
-              <Trash2 className="h-3 w-3" />
-            </Button>
+                    <Pin className={cn("h-3 w-3", chat.pinned && "fill-current")} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={onToggleFavorite}
+                    title={chat.favorite ? "Unfavorite" : "Favorite"}
+                  >
+                    <Star className={cn("h-3 w-3", chat.favorite && "fill-current text-yellow-500")} />
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        title="Move to Folder"
+                      >
+                        <Folder className="h-3 w-3" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuLabel>Move to Folder</DropdownMenuLabel>
+                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onMoveToFolder(null); }}>
+                        No Folder
+                      </DropdownMenuItem>
+                      {folders.length > 0 && <DropdownMenuSeparator />}
+                      {folders.map((folder) => (
+                        <DropdownMenuItem
+                          key={folder.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onMoveToFolder(folder.id);
+                            toast.success(`Moved to ${folder.name}`);
+                          }}
+                        >
+                          <Folder className="h-3.5 w-3.5 mr-2" style={folder.color ? { color: folder.color } : undefined} />
+                          {folder.name}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={onDelete}
+                    title="Delete"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
+        </TooltipTrigger>
+        {chat.summary && (
+          <TooltipContent side="right" className="max-w-[300px] text-xs">
+            {chat.summary}
+          </TooltipContent>
         )}
-      </div>
-    </div>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

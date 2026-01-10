@@ -10,10 +10,13 @@ import { Loader2, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Message } from "@/lib/db/schema";
 import { BranchNavigator } from "./branch-navigator";
+import { useSuggestedResponses } from "@/hooks/use-suggested-responses";
+import { SuggestedResponses } from "./suggested-responses";
 
 interface MessageListProps {
   chatId: string;
   arenaModelId?: string; // Optional filter for Arena Mode
+  onSendMessage?: (content: string) => void;
 }
 
 function buildMaps(allMessages: Message[]) {
@@ -115,7 +118,7 @@ const MessageRow = memo(function MessageRow({
   );
 });
 
-export function MessageList({ chatId, arenaModelId }: MessageListProps) {
+export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageListProps) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const { continueResponse, continuingMessageId, editMessage, regenerateAssistant } = useChat(chatId);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -131,6 +134,12 @@ export function MessageList({ chatId, arenaModelId }: MessageListProps) {
     if (!allMessages) return { byId: new Map<string, Message>(), childrenByParent: new Map<string, Message[]>() };
     return buildMaps(allMessages);
   }, [allMessages]);
+
+  const { suggestions, isLoading: suggestionsLoading, setSuggestions } = useSuggestedResponses(
+    chatId,
+    allMessages || [],
+    !arenaModelId // Suggestions only in normal mode for now
+  );
 
   const activeLeafId = chat?.activeBranchLeafId;
 
@@ -221,12 +230,12 @@ export function MessageList({ chatId, arenaModelId }: MessageListProps) {
     // Fork: set the active branch to this message, creating a new branch point
     const message = byId.get(messageId);
     if (!message) return;
-    
+
     // Update chat to point to this message as the active leaf
     // This effectively creates a new branch from this point
-    await updateChat(chatId, { 
-      activeBranchLeafId: messageId, 
-      hasBranches: true 
+    await updateChat(chatId, {
+      activeBranchLeafId: messageId,
+      hasBranches: true
     });
   }, [chatId, byId]);
 
@@ -299,6 +308,20 @@ export function MessageList({ chatId, arenaModelId }: MessageListProps) {
         alignToBottom
         atBottomStateChange={handleAtBottomChange}
         className="scrollbar-thin"
+        components={{
+          Footer: () => (
+            <div className="mx-auto max-w-3xl px-4 pb-4">
+              <SuggestedResponses
+                suggestions={suggestions}
+                isLoading={suggestionsLoading}
+                onSelect={(s) => {
+                  onSendMessage?.(s);
+                  setSuggestions([]);
+                }}
+              />
+            </div>
+          )
+        }}
       />
 
       {/* New Messages Indicator */}

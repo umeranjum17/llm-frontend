@@ -89,9 +89,20 @@ export function InputArea({ chatId }: InputAreaProps) {
       setActiveConnectors(active.map(c => c.id));
     };
     checkConnectors();
+
+    const handleExternalSend = (e: any) => {
+      if (e.detail?.content) {
+        handleSubmit(undefined, e.detail.content);
+      }
+    };
+    window.addEventListener("lumina:send-message", handleExternalSend as EventListener);
+
     // Poll every 5s to catch settings changes
     const interval = setInterval(checkConnectors, 5000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("lumina:send-message", handleExternalSend as EventListener);
+    };
   }, []);
 
   // Construct mention items
@@ -341,13 +352,14 @@ export function InputArea({ chatId }: InputAreaProps) {
     setImageAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if ((!input.trim() && attachments.length === 0 && imageAttachments.length === 0) || isLoading)
+  const handleSubmit = async (e?: React.FormEvent, overrideContent?: string) => {
+    e?.preventDefault();
+    const finalInput = overrideContent ?? input;
+    if ((!finalInput.trim() && attachments.length === 0 && imageAttachments.length === 0) || isLoading)
       return;
 
     // Resolve prompt references
-    let resolvedMessage = input.trim();
+    let resolvedMessage = finalInput.trim();
     const promptMatches = resolvedMessage.matchAll(/@prompt:([^\[]+)\[([^\]]+)\]/g);
     for (const match of promptMatches) {
       const promptId = match[1];
@@ -631,20 +643,32 @@ function TokenCalculator({
   const messages = useLiveQuery(() => getMessages(chatId), [chatId]);
   const model = getModelById(modelId);
 
-  const usedTokens = useMemo(() => {
-    if (!messages) return 0;
-    const history = countMessagesTokens(messages);
-    const current = countTokens(inputContent);
-    return history + current;
+  const { historyTokens, draftTokens } = useMemo(() => {
+    if (!messages) return { historyTokens: 0, draftTokens: 0 };
+    return {
+      historyTokens: countMessagesTokens(messages),
+      draftTokens: countTokens(inputContent),
+    };
   }, [messages, inputContent]);
 
   if (!model) return null;
 
+  const totalUsed = historyTokens + draftTokens;
+  const isHighUsage = totalUsed > model.contextLength * 0.85;
+
   return (
-    <TokenDisplay
-      usedTokens={usedTokens}
-      totalTokens={model.contextLength}
-      modelName={model.name}
-    />
+    <div className="flex flex-col items-end gap-1">
+      {isHighUsage && (
+        <span className="text-[10px] text-destructive animate-pulse font-medium">
+          Context nearly full - consider summarizing
+        </span>
+      )}
+      <TokenDisplay
+        historyTokens={historyTokens}
+        draftTokens={draftTokens}
+        totalTokens={model.contextLength}
+        modelName={model.name}
+      />
+    </div>
   );
 }

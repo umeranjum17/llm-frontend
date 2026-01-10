@@ -1,7 +1,7 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { Settings, Bot, Brain, Wrench, DollarSign, Swords, Tag, Check } from "lucide-react";
+import { Settings, Bot, Brain, Wrench, DollarSign, Swords, Tag, Check, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { getAgentById, getAllTags, getSettings, updateSettings, updateChat, getChatById, getMessages } from "@/lib/db/queries";
 import { toast } from "sonner";
+import { useChatSummary } from "@/hooks/use-chat-summary";
 
 type ReasoningLevel = "low" | "medium" | "high" | "xhigh";
 
@@ -57,6 +58,8 @@ export function ChatSettingsPopover({
   const enabledTools = chat?.enabledTools || [];
   const selectedTags = chat?.tags || [];
   const calculatedCost = messages?.reduce((sum, msg) => sum + (msg.cost || 0), 0) || 0;
+
+  const { generateSummary, isGenerating } = useChatSummary();
 
   const toggleMemory = async () => {
     const newStatus = !memoryEnabled;
@@ -228,6 +231,20 @@ export function ChatSettingsPopover({
             </div>
           </>
         )}
+
+        <DropdownMenuSeparator />
+
+        {/* Summarize */}
+        <button
+          onClick={() => generateSummary(chatId, messages || [])}
+          disabled={isGenerating}
+          className="w-full flex items-center justify-between px-2 py-1.5 text-sm hover:bg-accent rounded-sm transition-colors disabled:opacity-50"
+        >
+          <div className="flex items-center gap-2">
+            <FileText className="h-4 w-4 text-muted-foreground" />
+            <span>{isGenerating ? "Summarizing..." : "Summarize Chat"}</span>
+          </div>
+        </button>
       </DropdownMenuContent>
     </DropdownMenu>
   );

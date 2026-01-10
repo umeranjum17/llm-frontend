@@ -10,7 +10,9 @@ import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { toast } from "sonner";
 import { isModelIdCompatibleWithProviderId, pickBestProviderId, providerLabel } from "@/lib/ai/provider-routing";
 import { addMemory, searchMemories } from "@/lib/memory";
+import { generateAndApplySummary } from "@/lib/ai/summarization";
 import { getSettings } from "@/lib/db/queries";
+import type { Message } from "ai";
 
 function cleanReferencesForLLM(content: string) {
   return content
@@ -531,6 +533,19 @@ export function useChat(chatId: string) {
 
     // Schedule memory extraction after assistant response
     scheduleMemoryExtraction();
+
+    // Auto-summarize every 10 messages
+    const updatedMessages = await getMessages(chatId);
+    if (updatedMessages.length > 0 && updatedMessages.length % 10 === 0) {
+      // Map to ai Messages for the utility
+      const aiMessages: Message[] = updatedMessages.map(m => ({
+        id: m.id,
+        role: m.role as any,
+        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+        createdAt: new Date(m.createdAt)
+      }));
+      generateAndApplySummary({ chatId, messages: aiMessages, keys }).catch(console.error);
+    }
   }, [chatId, getKeyForProvider, keys, scheduleMemoryExtraction]);
 
   const sendMessage = async (content: MessageContent, attachments?: Array<{ name: string; content: string }>) => {

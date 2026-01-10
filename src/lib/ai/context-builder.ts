@@ -1,4 +1,4 @@
-import { getProjectFileById, getMessages, getChatById, getAgentById } from "@/lib/db/queries";
+import { getProjectFileById, getMessages, getChatById, getAgentById, getModelAlias } from "@/lib/db/queries";
 import type { Message } from "@/lib/db/schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { retrieveContext } from "@/lib/rag/retrieval";
@@ -162,8 +162,26 @@ export async function buildContextMessages(
     }
   }
 
-  // Get chat to access project
+  // Get chat to access project and model
   const chat = await getChatById(chatId);
+
+  // Add model alias system prompt if exists
+  if (chat?.modelId) {
+    try {
+      const alias = await getModelAlias(chat.modelId);
+      if (alias?.systemPrompt) {
+        messages.push({
+          id: `system-model-alias-${chat.modelId}`,
+          chatId,
+          role: "system",
+          content: alias.systemPrompt,
+          createdAt: Date.now(),
+        });
+      }
+    } catch (error) {
+      console.error("Failed to load model alias:", error);
+    }
+  }
 
   // Add agent system prompt if exists (BASE AGENT from Chat Settings)
   if (chat?.agentId) {

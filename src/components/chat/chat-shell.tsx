@@ -14,12 +14,15 @@ import {
   updateChat,
   updateModelLastUsed,
   getMessages,
+  getAllModelAliases,
 } from "@/lib/db/queries";
 import { MODELS, type Model, getModelById } from "@/lib/constants/models";
 import { MessageList } from "./message-list";
 import { InputArea } from "./input-area";
 import { TagList } from "./tag-list";
+import { cn } from "@/lib/utils";
 import { useAutoTags } from "@/hooks/use-auto-tags";
+import { useChatSummary } from "@/hooks/use-chat-summary";
 import { ModelPickerDialog } from "@/components/model-picker/model-picker-dialog";
 import { BudgetSettingsDialog } from "./budget-settings-dialog";
 import { ChatSettingsPopover } from "./chat-settings-popover";
@@ -32,6 +35,8 @@ import {
   PanelRightOpen,
   PanelRightClose,
   Menu,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { ArtifactShell } from "@/components/artifacts/artifact-shell";
@@ -77,6 +82,8 @@ export function ChatShell() {
   const setIsArenaMode = useUIStore((state) => state.setIsArenaMode);
   const arenaModelIds = useUIStore((state) => state.arenaModelIds);
   const setArenaModelIds = useUIStore((state) => state.setArenaModelIds);
+  const isFocusMode = useUIStore((state) => state.isFocusMode);
+  const setIsFocusMode = useUIStore((state) => state.setIsFocusMode);
   const getKeyForProvider = useApiKeysStore((s) => s.getKeyForProvider);
   const keys = useApiKeysStore((s) => s.keys);
   const models = useModelsStore((state) => state.models);
@@ -115,8 +122,20 @@ export function ChatShell() {
 
   const messages = useLiveQuery(() => (activeChatId ? getMessages(activeChatId) : undefined), [activeChatId]);
 
+  // Map messages to match ai SDK Message type (createdAt as Date)
+  const aiMessages = useMemo(() => {
+    if (!messages) return [];
+    return messages.map((m) => ({
+      ...m,
+      createdAt: new Date(m.createdAt),
+    })) as any[];
+  }, [messages]);
+
   // Auto-tagging hook
-  useAutoTags(activeChatId || "", messages || [], chat?.tags);
+  useAutoTags(activeChatId || "", aiMessages, chat?.tags);
+
+  // Auto-summary hook
+  useChatSummary(activeChatId || "", aiMessages, chat?.summary);
 
   const currentModel = chat ? getModelById(chat.modelId) : undefined;
 
@@ -126,11 +145,15 @@ export function ChatShell() {
     updateChat(chat.id, { providerId: undefined }).catch(() => { });
   }, [chat?.id, chat?.modelId, chat?.providerId]);
 
-  // Memory extraction: When switching away from a chat, extract memories from it
-
-
   const favoriteModelEntries = useLiveQuery(() => getFavoriteModels(), []);
   const recentModelEntries = useLiveQuery(() => getRecentModels(6), []);
+  const modelAliases = useLiveQuery(() => getAllModelAliases(), []);
+
+  const modelAliasMap = useMemo(() => {
+    const map = new Map<string, string>();
+    (modelAliases || []).forEach(a => map.set(a.id, a.alias));
+    return map;
+  }, [modelAliases]);
 
   const allModels = models.length > 0 ? models : MODELS;
   const modelMap = useMemo(
@@ -332,7 +355,7 @@ export function ChatShell() {
             {/* Header - Clean Single Row */}
             <header className="sticky top-0 z-20 border-b border-border/50 bg-card/80 backdrop-blur-xl supports-[backdrop-filter]:bg-card/60">
               <div className="flex items-center justify-between px-4 h-12">
-                {/* Left: Menu + Title (hide title when tabs are showing) */}
+                {/* Left: Menu + Title */}
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <Button
                     variant="ghost"
@@ -355,7 +378,7 @@ export function ChatShell() {
 
                 {/* Right: Model Selector + Settings + Artifacts */}
                 <div className="flex items-center gap-1.5">
-                  {!isArenaMode && (
+                  {!isArenaMode && chat && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
@@ -364,7 +387,9 @@ export function ChatShell() {
                           className="h-8 gap-2 px-3 text-xs font-medium border-border/50"
                         >
                           <div className="flex flex-col items-start leading-none">
-                            <span className="max-w-[120px] sm:max-w-[180px] truncate">{currentModel?.name || "Select Model"}</span>
+                            <span className="max-w-[120px] sm:max-w-[180px] truncate">
+                              {modelAliasMap.get(chat.modelId) || currentModel?.name || "Select Model"}
+                            </span>
                             {providerId && (
                               <span className="text-[10px] text-muted-foreground">
                                 {providerId === "openrouter" ? "OpenRouter" : providerLabel(providerId)}
@@ -376,70 +401,80 @@ export function ChatShell() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-80">
                         {/* Provider Section */}
-                        {chat && providerId && (() => {
-                          const compatibleProviders = llmProviderIds
-                            .filter(pid => isModelIdCompatibleWithProviderId(pid, chat.modelId))
-                            .map(pid => ({ id: pid, label: providerLabel(pid) }))
-                            .sort((a, b) => a.label.localeCompare(b.label));
+                        {providerId && (
+                          <div className="space-y-3">
+                            <div className="p-3 pb-0">
+                              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Provider</span>
+                            </div>
+                            <div className="grid grid-cols-1 gap-1 px-1">
+                              {(() => {
+                                const compatibleProviders = llmProviderIds
+                                  .filter(pid => isModelIdCompatibleWithProviderId(pid, chat.modelId))
+                                  .map(pid => ({ id: pid, label: providerLabel(pid) }))
+                                  .sort((a, b) => a.label.localeCompare(b.label));
 
-                          if (compatibleProviders.length > 1) {
-                            return (
-                              <>
-                                <DropdownMenuLabel>Provider</DropdownMenuLabel>
-                                {compatibleProviders.map((p) => (
-                                  <DropdownMenuItem
-                                    key={p.id}
-                                    onClick={() => updateChat(activeChatId, { providerId: p.id })}
-                                    className="cursor-pointer"
-                                  >
-                                    <div className="flex w-full items-center gap-2">
-                                      <span>{p.label}</span>
-                                      {providerId === p.id && (
-                                        <Check className="ml-auto h-4 w-4 text-primary" />
-                                      )}
-                                    </div>
-                                  </DropdownMenuItem>
-                                ))}
-                                <DropdownMenuSeparator />
-                              </>
-                            );
-                          }
-                          return null;
-                        })()}
-
-                        <DropdownMenuLabel className="flex items-center justify-between">
-                          Quick Switch
-                          <span className="text-xs text-muted-foreground font-normal">Alt+1-9</span>
-                        </DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        {quickSwitchModels.length > 0 ? (
-                          quickSwitchModels.map((model, idx) => (
-                            <DropdownMenuItem
-                              key={model.id}
-                              onClick={() => handleQuickModelChange(model.id)}
-                              className="cursor-pointer"
-                            >
-                              <div className="flex w-full items-center gap-2">
-                                <span className="w-5 h-5 rounded bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground shrink-0">
-                                  {idx + 1}
-                                </span>
-                                <span className="truncate flex-1">{model.name}</span>
-                                <span className="text-xs text-muted-foreground shrink-0">
-                                  {model.provider}
-                                </span>
-                                {chat?.modelId === model.id && (
-                                  <Check className="h-4 w-4 text-primary shrink-0" />
-                                )}
-                              </div>
-                            </DropdownMenuItem>
-                          ))
-                        ) : (
-                          <div className="px-4 py-3 text-sm text-muted-foreground text-center">
-                            No favorites or recent models.
-                            <br />
-                            Browse to add some!
+                                if (compatibleProviders.length > 1) {
+                                  return (
+                                    <>
+                                      {compatibleProviders.map((p) => (
+                                        <DropdownMenuItem
+                                          key={p.id}
+                                          onClick={() => activeChatId && updateChat(activeChatId, { providerId: p.id })}
+                                          className="cursor-pointer"
+                                        >
+                                          <div className="flex w-full items-center gap-2">
+                                            <span>{p.label}</span>
+                                            {providerId === p.id && (
+                                              <Check className="ml-auto h-4 w-4 text-primary" />
+                                            )}
+                                          </div>
+                                        </DropdownMenuItem>
+                                      ))}
+                                      <DropdownMenuSeparator />
+                                    </>
+                                  );
+                                }
+                                return null;
+                              })()}
+                            </div>
                           </div>
                         )}
+
+                        <div className="px-1">
+                          <DropdownMenuLabel className="flex items-center justify-between">
+                            Quick Switch
+                            <span className="text-xs text-muted-foreground font-normal">Alt+1-9</span>
+                          </DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {quickSwitchModels.length > 0 ? (
+                            quickSwitchModels.map((model, idx) => (
+                              <DropdownMenuItem
+                                key={model.id}
+                                onClick={() => handleQuickModelChange(model.id)}
+                                className="cursor-pointer"
+                              >
+                                <div className="flex w-full items-center gap-2">
+                                  <span className="w-5 h-5 rounded bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground shrink-0">
+                                    {idx + 1}
+                                  </span>
+                                  <span className="truncate flex-1">{model.name}</span>
+                                  <span className="text-xs text-muted-foreground shrink-0">
+                                    {model.provider}
+                                  </span>
+                                  {chat?.modelId === model.id && (
+                                    <Check className="h-4 w-4 text-primary shrink-0" />
+                                  )}
+                                </div>
+                              </DropdownMenuItem>
+                            ))
+                          ) : (
+                            <div className="px-4 py-3 text-sm text-muted-foreground text-center">
+                              No favorites or recent models.
+                              <br />
+                              Browse to add some!
+                            </div>
+                          )}
+                        </div>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           onClick={() => setModelPickerOpen(true)}
@@ -476,6 +511,16 @@ export function ChatShell() {
                     isArenaMode={isArenaMode}
                     onToggleArena={toggleArenaMode}
                   />
+
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={cn("h-8 w-8", isFocusMode && "text-primary")}
+                    onClick={() => setIsFocusMode(!isFocusMode)}
+                    title={isFocusMode ? "Exit Focus Mode" : "Enter Focus Mode"}
+                  >
+                    {isFocusMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                  </Button>
 
                   <Button
                     variant="ghost"
@@ -519,7 +564,12 @@ export function ChatShell() {
                   </ResizablePanel>
                 </ResizablePanelGroup>
               ) : (
-                <MessageList chatId={activeChatId} />
+                <MessageList
+                  chatId={activeChatId}
+                  onSendMessage={(content) => {
+                    window.dispatchEvent(new CustomEvent("lumina:send-message", { detail: { content } }));
+                  }}
+                />
               )}
             </div>
 
@@ -548,7 +598,7 @@ export function ChatShell() {
           currentModelId={chat.modelId}
           onSelectModel={handleModelChange}
           currentProviderId={chat.providerId}
-          onSelectProviderId={(providerId) => updateChat(activeChatId, { providerId })}
+          onSelectProviderId={(providerId) => activeChatId && updateChat(activeChatId, { providerId })}
         />
       )}
 

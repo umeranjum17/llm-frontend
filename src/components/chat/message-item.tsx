@@ -3,8 +3,8 @@
 import { useState, memo, useMemo } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";  // Need to import or use a basic textarea
-import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download, ThumbsUp, ThumbsDown, Volume2, VolumeX } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
 import type { Message } from "@/lib/db/schema";
@@ -14,6 +14,7 @@ import type { SearchResult, WebSearchResponse } from "@/lib/tools/web-search";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { getImagesFromMessageContent, getTextFromMessageContent, isMessageContentParts } from "@/lib/utils/message-content";
 import { updateMessage } from "@/lib/db/queries";
+import { useVoiceOutput } from "@/hooks/use-voice-output";
 
 type ToolCallLike = {
   id?: string;
@@ -64,6 +65,7 @@ export const MessageItem = memo(function MessageItem({
   const [editContent, setEditContent] = useState(getTextFromMessageContent(message.content));
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
+  const { speak, stop, isPlaying } = useVoiceOutput();
 
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
@@ -215,6 +217,22 @@ export const MessageItem = memo(function MessageItem({
                     <MarkdownRenderer content={textContent} />
                   ) : (
                     <p className="whitespace-pre-wrap">{textContent}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Message Metadata (Tokens/Cost) */}
+              {!isEditing && isAssistant && (message.inputTokens || message.outputTokens) && (
+                <div className="mt-3 flex items-center gap-3 text-[10px] text-muted-foreground/60 font-medium border-t border-border/30 pt-2">
+                  <div className="flex gap-1.5">
+                    <span>In: <span className="text-muted-foreground">{message.inputTokens?.toLocaleString() || 0}</span></span>
+                    <span>Out: <span className="text-muted-foreground">{message.outputTokens?.toLocaleString() || 0}</span></span>
+                    <span className="font-bold opacity-80">Total: <span className="text-muted-foreground">{((message.inputTokens || 0) + (message.outputTokens || 0)).toLocaleString()}</span></span>
+                  </div>
+                  {message.cost && (
+                    <div className="ml-auto bg-primary/5 px-1.5 py-0.5 rounded border border-primary/10 text-primary/70">
+                      ${message.cost.toFixed(4)}
+                    </div>
                   )}
                 </div>
               )}
@@ -417,6 +435,17 @@ export const MessageItem = memo(function MessageItem({
                   <Copy className="h-4 w-4" />
                 )}
               </Button>
+              {isAssistant && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn("h-8 w-8 text-muted-foreground", isPlaying && "text-primary")}
+                  onClick={() => isPlaying ? stop() : speak(textContent)}
+                  title={isPlaying ? "Stop" : "Read aloud"}
+                >
+                  {isPlaying ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                </Button>
+              )}
               {canFork && (
                 <Button
                   variant="ghost"

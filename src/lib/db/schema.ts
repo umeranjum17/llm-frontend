@@ -40,6 +40,7 @@ export interface Chat {
   totalCost?: number; // Running total cost in USD
   activeBranchLeafId?: string; // Currently selected conversation leaf
   hasBranches?: boolean; // Quick indicator for sidebar/UI
+  summary?: string; // AI-generated summary of the conversation
 }
 
 export type MessageContentPart =
@@ -238,6 +239,13 @@ export interface Workflow {
   updatedAt: number;
 }
 
+export interface ModelAlias {
+  id: string; // modelId
+  alias: string;
+  systemPrompt?: string;
+  updatedAt: number;
+}
+
 // Database class
 export class LuminaDB extends Dexie {
   projects!: EntityTable<Project, "id">;
@@ -256,6 +264,7 @@ export class LuminaDB extends Dexie {
   prompts!: EntityTable<Prompt, "id">;
   vectorDocuments!: EntityTable<VectorDocument, "id">;
   workflows!: EntityTable<Workflow, "id">;
+  modelAliases!: EntityTable<ModelAlias, "id">;
 
   constructor() {
     super("LuminaDB");
@@ -442,6 +451,47 @@ export class LuminaDB extends Dexie {
       prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
       vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
       workflows: "id, name, createdAt, updatedAt",
+    });
+    // Version 11: Add summary to chats
+    this.version(11).stores({
+      projects: "id, name, createdAt, updatedAt",
+      projectFiles: "id, projectId, name, createdAt",
+      chats:
+        "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order",
+      messages: "id, chatId, role, createdAt, parentId, rating",
+      apiKeys: "id, provider, createdAt, baseUrl",
+      settings: "id",
+      modelFavorites: "id, category, pinnedOrder, lastUsed",
+      userMemories: "id, category, source, createdAt, isActive",
+      folders: "id, name, createdAt, order",
+      tags: "id, name, createdAt, usageCount",
+      tagRules: "id, tagId, enabled, createdAt",
+      parameterPresets: "id, name, createdAt, isDefault",
+      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
+      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
+      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
+      workflows: "id, name, createdAt, updatedAt",
+    });
+    // Version 12: Add model aliases
+    this.version(12).stores({
+      projects: "id, name, createdAt, updatedAt",
+      projectFiles: "id, projectId, name, createdAt",
+      chats:
+        "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order",
+      messages: "id, chatId, role, createdAt, parentId, rating",
+      apiKeys: "id, provider, createdAt, baseUrl",
+      settings: "id",
+      modelFavorites: "id, category, pinnedOrder, lastUsed",
+      userMemories: "id, category, source, createdAt, isActive",
+      folders: "id, name, createdAt, order",
+      tags: "id, name, createdAt, usageCount",
+      tagRules: "id, tagId, enabled, createdAt",
+      parameterPresets: "id, name, createdAt, isDefault",
+      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
+      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
+      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
+      workflows: "id, name, createdAt, updatedAt",
+      modelAliases: "id, alias, updatedAt",
     });
   }
 }
