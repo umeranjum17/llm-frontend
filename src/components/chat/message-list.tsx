@@ -37,9 +37,10 @@ function buildMaps(allMessages: Message[]) {
   return { byId, childrenByParent };
 }
 
-function getBranchPath(allMessages: Message[], leafId?: string) {
+function getBranchPath(allMessages: Message[], leafId?: string, byIdMap?: Map<string, Message>) {
   if (allMessages.length === 0) return [];
-  const { byId } = buildMaps(allMessages);
+  // Use provided map if available, otherwise compute it
+  const byId = byIdMap ?? buildMaps(allMessages).byId;
   const fallbackLeaf = allMessages[allMessages.length - 1];
   let cursor = leafId ? byId.get(leafId) : fallbackLeaf;
   if (!cursor) cursor = fallbackLeaf;
@@ -133,11 +134,11 @@ export function MessageList({ chatId, arenaModelId }: MessageListProps) {
 
   const activeLeafId = chat?.activeBranchLeafId;
 
-  // Memoize branch path computation
+  // Memoize branch path computation (reuse byId to avoid duplicate buildMaps)
   const branchPath = useMemo(() => {
     if (!allMessages) return undefined;
-    return getBranchPath(allMessages, activeLeafId);
-  }, [allMessages, activeLeafId]);
+    return getBranchPath(allMessages, activeLeafId, byId);
+  }, [allMessages, activeLeafId, byId]);
 
   // Memoize final messages list
   const messages = useMemo(() => {

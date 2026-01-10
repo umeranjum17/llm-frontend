@@ -100,10 +100,13 @@ export function getModelCapabilities(modelId: string): ModelCapabilities {
  */
 export function isImageGenerationModel(modelId: string): boolean {
   const lowerModelId = modelId.toLowerCase();
+
+  // Check ID patterns for known image generation models
   const imagePatterns = [
     "dall-e",
     "dalle",
     "gpt-image",
+    "gpt-5-image",   // OpenAI GPT-5 Image models
     "gpt-s",
     "stable-diffusion",
     "sdxl",
@@ -111,8 +114,23 @@ export function isImageGenerationModel(modelId: string): boolean {
     "imagen",
     "flux",
     "ideogram",
+    // Gemini image generation models
+    "gemini-2.5-flash-image",
+    "gemini-3-pro-image",
+    "-image-preview",  // Catches preview variants
   ];
-  return imagePatterns.some((pattern) => lowerModelId.includes(pattern));
+
+  if (imagePatterns.some((pattern) => lowerModelId.includes(pattern))) {
+    return true;
+  }
+
+  // Also check the model's category from dynamic data
+  const model = getModelById(modelId);
+  if (model?.category?.includes("image-generation")) {
+    return true;
+  }
+
+  return false;
 }
 
 // Default capabilities for unknown models (kept for backward compatibility)

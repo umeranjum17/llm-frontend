@@ -16,7 +16,7 @@ import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Star, Check, ChevronRight, ChevronDown, RefreshCcw, TrendingUp, Code, Zap, DollarSign, Brain, BookOpen, Eye, Wrench, Sparkles } from "lucide-react";
+import { Search, Star, Check, ChevronRight, ChevronDown, RefreshCcw, TrendingUp, Code, Zap, DollarSign, Brain, BookOpen, Eye, Wrench, Sparkles, Palette } from "lucide-react";
 import { type Model, getModelById } from "@/lib/constants/models";
 import { cn } from "@/lib/utils";
 import { Virtuoso } from "react-virtuoso";
@@ -204,6 +204,7 @@ export function ModelPickerDialog({
       "fast": ["fast"],
       "vision": ["vision"],
       "budget": ["cheap", "fast"],
+      "image-gen": ["image-generation"],
     };
 
     // Get search matches using fuzzy search
@@ -234,6 +235,11 @@ export function ModelPickerDialog({
         // For deep-thinking, also match models with reasoning support
         if (selectedCategory === "deep-thinking" && model.supportsReasoning) {
           matchesCategory = true;
+        }
+        // For image-gen, ALSO check the isImageGeneration capability (use OR logic)
+        if (selectedCategory === "image-gen" && !matchesCategory) {
+          const caps = getModelCapabilities(model.id);
+          matchesCategory = caps.isImageGeneration;
         }
       }
 
@@ -320,6 +326,15 @@ export function ModelPickerDialog({
     () => ruleEngine.getRecommendedModelsForUseCase("cost-effective", availableModelsForRecs).slice(0, 5),
     [availableModelsForRecs, ruleEngine]
   );
+  const imageGenModels = useMemo(
+    () => availableModelsForRecs
+      .filter(m => {
+        const caps = getModelCapabilities(m.id);
+        return caps.isImageGeneration || m.category.includes("image-generation");
+      })
+      .slice(0, 5),
+    [availableModelsForRecs]
+  );
 
   // Convert favorite/recent IDs to full model objects
   const favoriteModelObjects = useMemo(() => {
@@ -355,6 +370,7 @@ export function ModelPickerDialog({
     { id: "fast", label: "Fast" },
     { id: "vision", label: "Vision" },
     { id: "budget", label: "Cheap" },
+    { id: "image-gen", label: "Image Gen" },
   ];
 
   const handleSelectModel = async (modelId: string) => {
@@ -390,7 +406,7 @@ export function ModelPickerDialog({
 
   type ListItem =
     | { kind: "message"; message: string }
-    | { kind: "heading"; title: string; icon?: "star" | "code" | "research" | "deep-thinking" | "fast" | "value" }
+    | { kind: "heading"; title: string; icon?: "star" | "code" | "research" | "deep-thinking" | "fast" | "value" | "image-gen" }
     | { kind: "model"; model: Model; forceFavorite?: boolean };
 
   const listItems: ListItem[] = useMemo(() => {
@@ -462,6 +478,10 @@ export function ModelPickerDialog({
         items.push({ kind: "heading", title: "Best Value", icon: "value" });
         for (const model of valueModels) items.push({ kind: "model", model });
       }
+      if (imageGenModels.length > 0) {
+        items.push({ kind: "heading", title: "Best for Image Generation", icon: "image-gen" });
+        for (const model of imageGenModels) items.push({ kind: "model", model });
+      }
     }
 
 
@@ -496,6 +516,7 @@ export function ModelPickerDialog({
     selectedApiProvider,
     sortedModels,
     valueModels,
+    imageGenModels,
     localModels,
   ]);
 
@@ -587,14 +608,26 @@ export function ModelPickerDialog({
                 </Select>
 
                 <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-9 w-9 rounded-lg text-muted-foreground hover:text-foreground"
-                  onClick={() => loadModels({ refresh: true })}
+                  variant="outline"
+                  size="sm"
+                  className="h-9 px-3 rounded-lg text-muted-foreground hover:text-foreground gap-2"
+                  onClick={async () => {
+                    const result = await loadModels({ refresh: true });
+                    if (result.success) {
+                      toast.success(`Model catalog refreshed`, {
+                        description: `${result.count} models loaded`,
+                      });
+                    } else {
+                      toast.error("Failed to refresh models", {
+                        description: result.error,
+                      });
+                    }
+                  }}
                   disabled={modelsLoading}
-                  title="Refresh models"
+                  title="Refresh model catalog from providers"
                 >
                   <RefreshCcw className={cn("h-4 w-4", modelsLoading && "animate-spin")} />
+                  <span className="text-xs">Refresh</span>
                 </Button>
               </div>
             </div>
@@ -627,6 +660,7 @@ export function ModelPickerDialog({
                   if (item.icon === "deep-thinking") return <Brain className="h-3.5 w-3.5 text-purple-500" />;
                   if (item.icon === "fast") return <Zap className="h-3.5 w-3.5 text-orange-500" />;
                   if (item.icon === "value") return <DollarSign className="h-3.5 w-3.5 text-green-500" />;
+                  if (item.icon === "image-gen") return <Palette className="h-3.5 w-3.5 text-pink-500" />;
                   return null;
                 })();
 

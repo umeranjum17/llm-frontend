@@ -2,7 +2,7 @@ import { getProjectFileById, getMessages, getChatById, getAgentById } from "@/li
 import type { Message } from "@/lib/db/schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { retrieveContext } from "@/lib/rag/retrieval";
-import { getMemoryContext } from "@/lib/memory";
+import { searchMemories } from "@/lib/memory";
 
 export async function parseReferences(content: string): Promise<{
   cleanContent: string;
@@ -46,9 +46,13 @@ export async function buildContextMessages(
   try {
     // Check if we have a user message to use for retrieval
     const memoryQuery = userMessage;
-    const memoryContext = await getMemoryContext(memoryQuery);
+    console.log("[Context] Fetching memory context for query:", memoryQuery?.slice(0, 50));
+    const memories = await searchMemories(memoryQuery);
 
-    if (memoryContext) {
+    if (memories && memories.length > 0) {
+      // Format memories into a single context string
+      const memoryContext = "Active Memories:\n" + memories.map((m: any) => `- ${m.memory}`).join("\n");
+
       messages.push({
         id: "memory-context",
         chatId,
@@ -56,9 +60,10 @@ export async function buildContextMessages(
         content: memoryContext,
         createdAt: Date.now(),
       });
+      console.log("[Context] Added memory context to messages");
     }
   } catch (error) {
-    console.error("Failed to load memory context:", error);
+    console.error("[Context] Failed to load memory context:", error);
     // Continue without memory if it fails
   }
 

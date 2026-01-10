@@ -17,6 +17,8 @@ export interface ProviderModelResponse {
   };
   architecture?: {
     modality?: string;
+    input_modalities?: string[];
+    output_modalities?: string[];
   };
   [key: string]: any;
 }

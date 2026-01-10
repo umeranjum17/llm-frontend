@@ -99,10 +99,14 @@ export interface UserSettings {
   updatedAt: number;
   // Memory settings
   memoryEnabled?: boolean;           // Master toggle for memory feature
-  memoryModelId?: string;            // Which model to use for extraction
+  memoryModelId?: string;            // Which model to use for extraction (deprecated, use memoryModelIdsByProvider)
+  memoryModelIdsByProvider?: Record<string, string>; // Per-provider memory extraction models
   memoryRetentionDays?: number;      // null/undefined = forever, or days to keep
   memoryAutoExtract?: boolean;       // Auto-learn from conversations
   memoryMaxItems?: number;           // Limit total memories
+  titleModelId?: string;             // Which model to use for title generation (deprecated, use titleModelIdsByProvider)
+  titleModelIdsByProvider?: Record<string, string>; // Per-provider title generation models
+  embeddingsProvider?: "openrouter" | "openai"; // Which provider to use for embeddings (default: openrouter)
 }
 
 export interface ModelFavorite {

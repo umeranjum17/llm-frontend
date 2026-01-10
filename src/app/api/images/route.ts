@@ -1,4 +1,3 @@
-import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
 import { resolveProvider, isCustomOpenAIProvider } from "@/lib/providers";
 
@@ -62,22 +61,178 @@ export async function POST(req: Request) {
             return new Response("No API key provided", { status: 401 });
         }
 
-        // Build the base URL for image generation
-        const baseUrl = resolved.baseUrl || "https://api.openai.com/v1";
-        const imagesEndpoint = `${baseUrl}/images/generations`;
-
         // Normalize model ID (strip provider prefix if present)
         const normalizedModelId = modelId.includes("/")
             ? modelId.split("/").pop()!
             : modelId;
 
-        // Make the image generation request
+        // Check if this is a DALL-E model (requires OpenAI direct API, not OpenRouter)
+        const isDalleModel = normalizedModelId.toLowerCase().includes("dall-e") ||
+            normalizedModelId.toLowerCase().includes("dalle");
+
+        // DALL-E models need OpenAI's dedicated /images/generations endpoint
+        // They cannot be used via OpenRouter's chat/completions
+        if (isDalleModel && providerId === "openrouter") {
+            return new Response(
+                JSON.stringify({
+                    error: "DALL-E models require an OpenAI API key. Please add your OpenAI key in Settings and select 'OpenAI' as the provider."
+                }),
+                { status: 400, headers: { "Content-Type": "application/json" } }
+            );
+        }
+
+        // OpenRouter uses chat/completions endpoint with modalities for image generation
+        // This works for OpenRouter-native image models (GPT-5 Image, Gemini Flash Image, etc.)
+        if (providerId === "openrouter" && !isDalleModel) {
+            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${apiKey}`,
+                    "HTTP-Referer": "https://lumina.ai",
+                    "X-Title": "Lumina",
+                },
+                body: JSON.stringify({
+                    model: modelId, // OpenRouter needs full model ID
+                    messages: [
+                        {
+                            role: "user",
+                            content: prompt,
+                        }
+                    ],
+                    // Request image output
+                    modalities: ["image", "text"],
+                }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                const errorMessage = (errorData as any)?.error?.message || response.statusText;
+                return new Response(
+                    JSON.stringify({ error: `Image generation failed: ${errorMessage}` }),
+                    { status: response.status, headers: { "Content-Type": "application/json" } }
+                );
+            }
+
+            const data = await response.json();
+            console.log("OpenRouter image response:", JSON.stringify(data, null, 2));
+
+            const choice = (data as any).choices?.[0];
+            const content = choice?.message?.content;
+
+            console.log("Content type:", typeof content, "Array?:", Array.isArray(content));
+            console.log("Content value:", JSON.stringify(content)?.slice(0, 200));
+
+            // Extract images from the response
+            const images: Array<{ url: string; revisedPrompt?: string }> = [];
+
+            // Helper function to recursively find all b64_json values in an object
+            function findBase64Images(obj: any, found: string[] = []): string[] {
+                if (!obj || typeof obj !== 'object') return found;
+
+                if (obj.b64_json && typeof obj.b64_json === 'string') {
+                    found.push(obj.b64_json);
+                }
+                if (obj.url && typeof obj.url === 'string' && (obj.url.startsWith('http') || obj.url.startsWith('data:'))) {
+                    found.push(obj.url);
+                }
+
+                if (Array.isArray(obj)) {
+                    for (const item of obj) {
+                        findBase64Images(item, found);
+                    }
+                } else {
+                    for (const key of Object.keys(obj)) {
+                        findBase64Images(obj[key], found);
+                    }
+                }
+                return found;
+            }
+
+            // First, try to find images anywhere in the response
+            const foundImages = findBase64Images(data);
+            console.log("Found images via recursive search:", foundImages.length);
+
+            for (const img of foundImages) {
+                if (img.startsWith('data:') || img.startsWith('http')) {
+                    images.push({ url: img });
+                } else {
+                    // It's a base64 string without the data URL prefix
+                    images.push({ url: `data:image/png;base64,${img}` });
+                }
+            }
+
+            if (Array.isArray(content)) {
+                // Content is an array of parts (text, image_url, etc.)
+                for (const part of content) {
+                    if (part.type === "image_url" && part.image_url?.url) {
+                        images.push({ url: part.image_url.url });
+                    } else if (part.type === "image" && part.image?.url) {
+                        // Alternative format: { type: "image", image: { url: "..." } }
+                        images.push({ url: part.image.url });
+                    } else if (part.type === "image" && part.image?.base64) {
+                        // Base64 format: { type: "image", image: { base64: "...", media_type: "..." } }
+                        const mediaType = part.image.media_type || "image/png";
+                        images.push({ url: `data:${mediaType};base64,${part.image.base64}` });
+                    } else if (part.type === "image" && typeof part.data === "string") {
+                        // Gemini format: { type: "image", data: "base64..." }
+                        images.push({ url: `data:image/png;base64,${part.data}` });
+                    } else if (part.type === "image_url" && typeof part.url === "string") {
+                        // Direct URL format
+                        images.push({ url: part.url });
+                    } else if (part.b64_json && typeof part.b64_json === "string") {
+                        // OpenRouter b64_json format: { b64_json: "...", index: 0 }
+                        images.push({ url: `data:image/png;base64,${part.b64_json}` });
+                    } else if (part.url && typeof part.url === "string") {
+                        // Direct URL in content array: { url: "https://..." }
+                        images.push({ url: part.url });
+                    }
+                }
+            } else if (typeof content === "string" && content.startsWith("data:image")) {
+                // Content is a base64 data URL
+                images.push({ url: content });
+            }
+
+            // Check for images in alternative locations
+            if (images.length === 0) {
+                // Check for inline_data (Gemini format)
+                const parts = choice?.message?.parts;
+                if (Array.isArray(parts)) {
+                    for (const part of parts) {
+                        if (part.inline_data?.data) {
+                            const mimeType = part.inline_data.mime_type || "image/png";
+                            images.push({ url: `data:${mimeType};base64,${part.inline_data.data}` });
+                        }
+                    }
+                }
+            }
+
+            if (images.length === 0) {
+                console.error("No images found in response. Content:", JSON.stringify(content, null, 2));
+                return new Response(
+                    JSON.stringify({
+                        error: "No images generated",
+                        debug: { contentType: typeof content, isArray: Array.isArray(content), content: content?.slice?.(0, 500) || content }
+                    }),
+                    { status: 500, headers: { "Content-Type": "application/json" } }
+                );
+            }
+
+            return new Response(
+                JSON.stringify({ images, model: modelId }),
+                { headers: { "Content-Type": "application/json" } }
+            );
+        }
+
+        // OpenAI and compatible providers use /images/generations endpoint
+        const baseUrl = resolved.baseUrl || "https://api.openai.com/v1";
+        const imagesEndpoint = `${baseUrl}/images/generations`;
+
         const response = await fetch(imagesEndpoint, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${apiKey}`,
-                ...(providerId === "openrouter" ? { "HTTP-Referer": "https://lumina.ai" } : {}),
             },
             body: JSON.stringify({
                 model: normalizedModelId,
@@ -86,7 +241,7 @@ export async function POST(req: Request) {
                 quality,
                 style,
                 n,
-                response_format: "url", // Get URL instead of base64 for faster response
+                response_format: "url",
             }),
         });
 
@@ -102,7 +257,6 @@ export async function POST(req: Request) {
         const data = await response.json();
         const images = (data as any).data || [];
 
-        // Return the generated images
         return new Response(
             JSON.stringify({
                 images: images.map((img: any) => ({

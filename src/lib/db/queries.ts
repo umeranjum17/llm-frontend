@@ -91,6 +91,41 @@ export async function getLastMessage(chatId: string) {
   return messages[messages.length - 1];
 }
 
+/**
+ * Batch fetch last messages for multiple chats efficiently.
+ * Avoids N+1 query problem when displaying chat list.
+ */
+export async function getLastMessagesForChats(chatIds: string[]): Promise<Map<string, Message | undefined>> {
+  if (chatIds.length === 0) return new Map();
+
+  // Get all messages for these chats in one query
+  const allMessages = await db.messages
+    .where("chatId")
+    .anyOf(chatIds)
+    .toArray();
+
+  // Group by chatId and find the last one for each
+  const byChat = new Map<string, Message[]>();
+  for (const msg of allMessages) {
+    const arr = byChat.get(msg.chatId) || [];
+    arr.push(msg);
+    byChat.set(msg.chatId, arr);
+  }
+
+  const result = new Map<string, Message | undefined>();
+  for (const chatId of chatIds) {
+    const messages = byChat.get(chatId) || [];
+    if (messages.length > 0) {
+      messages.sort((a, b) => a.createdAt - b.createdAt);
+      result.set(chatId, messages[messages.length - 1]);
+    } else {
+      result.set(chatId, undefined);
+    }
+  }
+
+  return result;
+}
+
 export async function getMessagesForBranch(chatId: string, leafMessageId?: string) {
   const messages = await getMessages(chatId);
   if (messages.length === 0) return [];

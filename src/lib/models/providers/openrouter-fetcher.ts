@@ -47,10 +47,17 @@ export class OpenRouterFetcher implements ProviderFetcher {
     const json = await response.json();
     const models = (json.data || []) as ProviderModelResponse[];
 
-    return models
+    const result = models
       .map((m) => {
-        const modality = (m.architecture?.modality || "").toLowerCase();
-        const supportsVision = modality.includes("image");
+        const inputModalities = m.architecture?.input_modalities || [];
+        const outputModalities = m.architecture?.output_modalities || [];
+
+        // Vision = model accepts images as input
+        const supportsVision = inputModalities.includes("image");
+
+        // Image generation = model outputs images
+        const isImageGeneration = outputModalities.includes("image");
+
         const supportsReasoning =
           m.id.includes("/o1") ||
           m.id.includes("/o3") ||
@@ -59,14 +66,17 @@ export class OpenRouterFetcher implements ProviderFetcher {
         const inputCost = parseUsdPer1M(m.pricing?.prompt);
         const outputCost = parseUsdPer1M(m.pricing?.completion);
 
+        // Determine category based on output modalities
+        const category: string[] = isImageGeneration ? ["image-generation"] : [];
+
         return {
           id: m.id,
           name: m.name || m.id,
           provider: deriveProvider(m.id),
-          contextLength: m.context_length || 0,
+          contextLength: isImageGeneration ? 0 : (m.context_length || 0),
           inputCost,
           outputCost,
-          category: [], // Will be filled by rule engine
+          category,
           supportsVision,
           supportsReasoning,
           description: m.description,
@@ -74,6 +84,13 @@ export class OpenRouterFetcher implements ProviderFetcher {
         } as Model;
       })
       .filter((m) => !!m.id);
+
+    // Log image generation models found
+    const imageGenModels = result.filter(m => m.category.includes("image-generation"));
+    console.log("[OpenRouter] Total models:", result.length);
+    console.log("[OpenRouter] Image generation models:", imageGenModels.length, imageGenModels.map(m => m.id));
+
+    return result;
   }
 }
 

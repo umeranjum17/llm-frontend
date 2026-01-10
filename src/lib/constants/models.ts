@@ -70,6 +70,28 @@ export const MODELS: Model[] = [
     outputCost: 0.4,
     category: ["balanced", "open-source"],
   },
+  // Image Generation Models - OpenAI (via direct API only, these are fallbacks)
+  // OpenRouter image models are detected dynamically via output_modalities
+  {
+    id: "openai/dall-e-3",
+    name: "DALL-E 3",
+    provider: "OpenAI",
+    contextLength: 0,
+    inputCost: 40.0,
+    outputCost: 0,
+    category: ["image-generation"],
+    description: "OpenAI's advanced image generation (requires OpenAI API key)",
+  },
+  {
+    id: "openai/dall-e-2",
+    name: "DALL-E 2",
+    provider: "OpenAI",
+    contextLength: 0,
+    inputCost: 20.0,
+    outputCost: 0,
+    category: ["image-generation"],
+    description: "OpenAI's previous generation (requires OpenAI API key)",
+  },
 ];
 
 let dynamicModels: Model[] | null = null;
@@ -79,7 +101,16 @@ export function setDynamicModels(models: Model[] | null) {
 }
 
 export function getAllModels(): Model[] {
-  return dynamicModels && dynamicModels.length > 0 ? dynamicModels : MODELS;
+  const baseModels = dynamicModels && dynamicModels.length > 0 ? dynamicModels : MODELS;
+
+  // Always ensure hardcoded image generation models are included
+  // (since they may not be returned by all provider APIs)
+  const imageGenModels = MODELS.filter(m => m.category.includes("image-generation"));
+  const existingIds = new Set(baseModels.map(m => m.id));
+
+  const missingImageModels = imageGenModels.filter(m => !existingIds.has(m.id));
+
+  return [...baseModels, ...missingImageModels];
 }
 
 export function getModelById(modelId: string): Model | undefined {

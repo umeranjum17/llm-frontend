@@ -34,6 +34,8 @@ import {
   Bot,
   Menu,
   Plus,
+  Brain,
+  AlertCircle,
 } from "lucide-react";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { ArtifactShell } from "@/components/artifacts/artifact-shell";
@@ -53,7 +55,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { maybeExtractMemories } from "@/lib/memory";
+
+import { getSettings } from "@/lib/db/queries";
+import Link from "next/link";
 
 export function ChatShell() {
   const router = useRouter();
@@ -99,6 +103,19 @@ export function ChatShell() {
     [chat?.agentId]
   );
 
+  // Get memory status
+  const settings = useLiveQuery(() => getSettings());
+  const memoryStatus = useMemo(() => {
+    if (!settings) return null;
+    if (settings.memoryEnabled === false) return "off";
+
+    // Check if embeddings are configured
+    const hasEmbeddingsKey = keys.some((k) => k.provider === "openai" || k.provider === "openrouter");
+    if (!hasEmbeddingsKey) return "not-configured";
+
+    return "on";
+  }, [settings, keys]);
+
   useEffect(() => {
     if (!chat?.providerId) return;
     if (isModelIdCompatibleWithProviderId(chat.providerId, chat.modelId)) return;
@@ -106,22 +123,7 @@ export function ChatShell() {
   }, [chat?.id, chat?.modelId, chat?.providerId]);
 
   // Memory extraction: When switching away from a chat, extract memories from it
-  const previousChatIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    const prevId = previousChatIdRef.current;
-    previousChatIdRef.current = activeChatId;
 
-    // If we're switching FROM a chat to a different one, extract memories from the old chat
-    if (prevId && prevId !== activeChatId) {
-      getMessages(prevId).then((messages) => {
-        if (messages.length >= 4) {
-          maybeExtractMemories(messages, prevId);
-        }
-      }).catch((err) => {
-        console.error("Failed to extract memories:", err);
-      });
-    }
-  }, [activeChatId]);
 
   const favoriteModelEntries = useLiveQuery(() => getFavoriteModels(), []);
   const recentModelEntries = useLiveQuery(() => getRecentModels(6), []);
@@ -341,6 +343,40 @@ export function ChatShell() {
                         selectedTags={chat.tags || []}
                         onTagsChange={(tags) => updateChat(activeChatId, { tags })}
                       />
+                    )}
+                    {/* Memory Status Indicator */}
+                    {memoryStatus && (
+                      <div
+                        className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 active:scale-95 transition-all"
+                        onClick={async () => {
+                          if (memoryStatus === "not-configured") {
+                            router.push("/settings?tab=memory");
+                            return;
+                          }
+                          const newStatus = !settings?.memoryEnabled;
+                          await import("@/lib/db/queries").then(mod => mod.updateSettings({ memoryEnabled: newStatus }));
+                          toast.success(newStatus ? "Memory enabled" : "Memory disabled");
+                        }}
+                        title="Click to toggle memory"
+                      >
+                        {memoryStatus === "on" && (
+                          <Badge variant="outline" className="text-xs gap-1 bg-green-500/10 text-green-600 border-green-200 hover:bg-green-500/20">
+                            <Brain className="h-3 w-3" />
+                            Memory: On
+                          </Badge>
+                        )}
+                        {memoryStatus === "off" && (
+                          <Badge variant="outline" className="text-xs text-muted-foreground bg-muted hover:bg-muted/80">
+                            Memory: Off
+                          </Badge>
+                        )}
+                        {memoryStatus === "not-configured" && (
+                          <Badge variant="outline" className="text-xs gap-1 text-amber-600 border-amber-600/30 hover:bg-amber-50">
+                            <AlertCircle className="h-3 w-3" />
+                            Config Required
+                          </Badge>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>

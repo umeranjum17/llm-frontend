@@ -1,7 +1,7 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useUIStore } from "@/stores/ui-store";
-import { addMessage, updateChat, getChatById, updateMessage, getMessagesForBranch, getLastMessage, getMessageById, chatHasBranches, incrementAgentUsage } from "@/lib/db/queries";
+import { addMessage, updateChat, getChatById, updateMessage, getMessagesForBranch, getLastMessage, getMessageById, chatHasBranches, incrementAgentUsage, getMessages } from "@/lib/db/queries";
 import { buildContextMessages } from "@/lib/ai/context-builder";
 import { estimateCost } from "@/lib/utils/token-counter";
 import type { MessageContent } from "@/lib/db/schema";
@@ -9,6 +9,8 @@ import { getImagesFromMessageContent, getTextFromMessageContent, mapTextInMessag
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { toast } from "sonner";
 import { isModelIdCompatibleWithProviderId, pickBestProviderId, providerLabel } from "@/lib/ai/provider-routing";
+import { addMemory, searchMemories } from "@/lib/memory";
+import { getSettings } from "@/lib/db/queries";
 
 function cleanReferencesForLLM(content: string) {
   return content
@@ -116,6 +118,75 @@ export function useChat(chatId: string) {
   const [continuingMessageId, setContinuingMessageId] = useState<string | null>(null);
   const { keys, getKeyForProvider } = useApiKeysStore();
   const { isArenaMode, arenaModelIds } = useUIStore();
+  const extractionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Schedule memory extraction after assistant response (debounced)
+  const scheduleMemoryExtraction = useCallback(async () => {
+    // Clear any pending extraction
+    if (extractionTimeoutRef.current) {
+      clearTimeout(extractionTimeoutRef.current);
+    }
+
+    // Debounce: wait 20 seconds after last assistant response
+    extractionTimeoutRef.current = setTimeout(async () => {
+      try {
+        const settings = await getSettings();
+        const autoExtract = settings?.memoryAutoExtract ?? true; // Default to true
+        if (!settings?.memoryEnabled || !autoExtract) return;
+
+        const messages = await getMessages(chatId);
+        if (messages.length >= 2) {
+          // Get last exchange (User + Assistant)
+          const recentMessages = messages.slice(-2).map(m => ({
+            role: m.role,
+            content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+          }));
+          await addMemory(recentMessages);
+          console.log("[Chat] Sent recent interaction to Mem0 for learning");
+        }
+      } catch (err) {
+        console.error("[Chat] Failed to extract memories:", err);
+      }
+    }, 20000); // 20 second debounce
+  }, [chatId]);
+
+  // Flush pending extraction on page hide
+  useEffect(() => {
+    const handlePageHide = () => {
+      if (extractionTimeoutRef.current) {
+        clearTimeout(extractionTimeoutRef.current);
+        // Flush immediately
+        getMessages(chatId).then(async (messages) => {
+          const settings = await getSettings();
+          const autoExtract = settings?.memoryAutoExtract ?? true;
+          if (settings?.memoryEnabled && autoExtract && messages.length >= 2) {
+            const recentMessages = messages.slice(-2).map(m => ({
+              role: m.role,
+              content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+            }));
+            addMemory(recentMessages).catch(console.error);
+          }
+        }).catch(console.error);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        handlePageHide();
+      }
+    };
+
+    window.addEventListener("pagehide", handlePageHide);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (extractionTimeoutRef.current) {
+        clearTimeout(extractionTimeoutRef.current);
+      }
+    };
+  }, [chatId]);
 
   const generateResponse = useCallback(async (
     messageContent: MessageContent,
@@ -207,12 +278,30 @@ export function useChat(chatId: string) {
       getTextFromMessageContent(messageContent),
       chatId
     );
+
+    // Retrieve Memories from Mem0
+    const userQuery = getTextFromMessageContent(messageContent);
+    const settings = await getSettings();
+    let relevantMemories = "";
+
+    if (settings?.memoryEnabled) {
+      try {
+        const memories = await searchMemories(userQuery);
+        if (memories && memories.length > 0) {
+          const facts = memories.map((m: any) => ` - ${m.memory}`).join("\n");
+          relevantMemories = `\nActive Memories:\n${facts}\n`;
+          console.log("[Chat] Injected memories:", memories.length);
+        }
+      } catch (err) {
+        console.error("[Chat] Failed to search memories:", err);
+      }
+    }
     const history = await getMessagesForBranch(chatId, parentUserMessageId);
 
     const llmMessages = [
       ...contextMessages.map((m) => ({
         role: m.role as "system" | "user" | "assistant",
-        content: m.content,
+        content: m.content + (m.role === "system" ? relevantMemories : ""), // Inject memories into system prompt if possible, or append to context
       })),
       ...(attachments || []).map((file) => ({
         role: "system" as const,
@@ -385,6 +474,26 @@ export function useChat(chatId: string) {
       (async () => {
         try {
           console.log("[Chat] Auto-generating title...");
+
+          // Read title model settings from IndexedDB (client-side only!)
+          const { getSettings } = await import("@/lib/db/queries");
+          const settings = await getSettings();
+
+          const DEFAULT_TITLE_MODELS: Record<string, string> = {
+            openrouter: "openai/gpt-4o-mini",
+            openai: "gpt-4o-mini",
+            anthropic: "claude-3-haiku-20240307",
+            groq: "llama-3.1-8b-instant",
+          };
+
+          const titleModelId =
+            settings?.titleModelIdsByProvider?.[providerId] ||
+            settings?.titleModelId ||
+            DEFAULT_TITLE_MODELS[providerId] ||
+            "gpt-4o-mini";
+
+          console.log("[Chat] Using title model:", titleModelId);
+
           const titleResponse = await fetch("/api/chat/title", {
             method: "POST",
             headers: {
@@ -399,7 +508,8 @@ export function useChat(chatId: string) {
               modelId,
               providerId,
               providerBaseUrl: apiKey?.baseUrl,
-              apiKey: apiKey?.key
+              apiKey: apiKey?.key,
+              titleModelId, // Pass the configured model from settings
             })
           });
 
@@ -418,7 +528,10 @@ export function useChat(chatId: string) {
         }
       })();
     }
-  }, [chatId, getKeyForProvider, keys]);
+
+    // Schedule memory extraction after assistant response
+    scheduleMemoryExtraction();
+  }, [chatId, getKeyForProvider, keys, scheduleMemoryExtraction]);
 
   const sendMessage = async (content: MessageContent, attachments?: Array<{ name: string; content: string }>) => {
     setIsLoading(true);

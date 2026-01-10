@@ -104,6 +104,14 @@ export class ModelAggregator {
   applyRules(models: Model[]): Model[] {
     return models.map((model) => {
       const categories = this.ruleEngine.categorizeModel(model);
+
+      // Preserve image-generation category from fetcher if present
+      // (fetchers know which models output images from the API response)
+      const hasImageGen = model.category.includes("image-generation");
+      if (hasImageGen && !categories.includes("image-generation")) {
+        categories.push("image-generation");
+      }
+
       return {
         ...model,
         category: categories,

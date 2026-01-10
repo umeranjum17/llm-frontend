@@ -23,7 +23,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { MessageSquare, Pin, Star, Trash2, Folder, ChevronDown, ChevronRight, FolderPlus, GitBranch, GripVertical, MoreVertical, Edit2, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getAllChats, deleteChat, updateChat, getAllFolders, createFolder, reorderChats, reorderFolders, moveChatToFolder, updateFolder, deleteFolder, getLastMessage, getChatById, getAllTags } from "@/lib/db/queries";
+import { getAllChats, deleteChat, updateChat, getAllFolders, createFolder, reorderChats, reorderFolders, moveChatToFolder, updateFolder, deleteFolder, getLastMessagesForChats, getChatById, getAllTags } from "@/lib/db/queries";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { useUIStore } from "@/stores/ui-store";
 import { useChatSearch } from "@/hooks/use-search";
@@ -88,6 +88,13 @@ export function ChatList({ searchQuery }: ChatListProps) {
   const chats = useLiveQuery(() => getAllChats(), []);
   const folders = useLiveQuery(() => getAllFolders(), []);
   const tags = useLiveQuery(() => getAllTags(), []);
+
+  // Batch fetch last messages for all chats (avoids N+1 queries)
+  const allChatIds = chats?.map(c => c.id) || [];
+  const lastMessagesMap = useLiveQuery(
+    () => getLastMessagesForChats(allChatIds),
+    [allChatIds.join(',')]
+  );
 
   // Use fuzzy search with Fuse.js
   const filteredChats = useChatSearch(chats || [], searchQuery);
@@ -356,8 +363,8 @@ export function ChatList({ searchQuery }: ChatListProps) {
 
   // Get sortable IDs for folders and chats
   const folderIds = folders.map(f => `folder-${f.id}`);
-  const chatIds = items.filter(i => i.type === "chat").map(i => `chat-${i.chat.id}`);
-  const sortableIds = [...folderIds, ...chatIds, "no-folder"];
+  const sortableChatIds = items.filter(i => i.type === "chat").map(i => `chat-${i.chat.id}`);
+  const sortableIds = [...folderIds, ...sortableChatIds, "no-folder"];
 
   return (
     <DndContext
@@ -413,6 +420,7 @@ export function ChatList({ searchQuery }: ChatListProps) {
                   <SortableChatItem
                     key={item.chat.id}
                     chat={item.chat}
+                    lastMessage={lastMessagesMap?.get(item.chat.id)}
                     isActive={item.chat.id === activeChatId}
                     isSelected={selectedChats.has(item.chat.id)}
                     isNested={!!item.chat.folderId}
@@ -594,6 +602,7 @@ function NoFolderDropZone() {
 
 interface SortableChatItemProps {
   chat: Chat;
+  lastMessage?: import("@/lib/db/schema").Message;
   isActive: boolean;
   isSelected?: boolean;
   isNested?: boolean;
@@ -607,6 +616,7 @@ interface SortableChatItemProps {
 
 function SortableChatItem({
   chat,
+  lastMessage,
   isActive,
   isSelected = false,
   isNested,
@@ -618,7 +628,6 @@ function SortableChatItem({
   onMoveToFolder,
 }: SortableChatItemProps) {
   const [isHovered, setIsHovered] = useState(false);
-  const lastMessage = useLiveQuery(() => getLastMessage(chat.id), [chat.id]);
   const {
     attributes,
     listeners,

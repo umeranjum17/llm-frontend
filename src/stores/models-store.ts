@@ -6,6 +6,19 @@ type ModelsPayload = { fetchedAt: number; models: Model[] };
 const LS_KEY = "lumina:models-cache:v1";
 const CACHE_TTL_MS = 60 * 60_000; // 1 hour
 
+// Get hardcoded image generation models that should always be included
+function getImageGenModels(): Model[] {
+  return MODELS.filter(m => m.category.includes("image-generation"));
+}
+
+// Merge image generation models into any model list
+function mergeWithImageModels(models: Model[]): Model[] {
+  const imageModels = getImageGenModels();
+  const existingIds = new Set(models.map(m => m.id));
+  const missingImageModels = imageModels.filter(m => !existingIds.has(m.id));
+  return [...models, ...missingImageModels];
+}
+
 function readCache(): ModelsPayload | null {
   try {
     const raw = localStorage.getItem(LS_KEY);
@@ -29,6 +42,14 @@ function writeCache(payload: ModelsPayload) {
   }
 }
 
+function clearCache() {
+  try {
+    localStorage.removeItem(LS_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 interface ModelsState {
   isLoaded: boolean;
   isLoading: boolean;
@@ -36,7 +57,8 @@ interface ModelsState {
   models: Model[];
   fetchedAt?: number;
 
-  loadModels: (opts?: { refresh?: boolean }) => Promise<void>;
+  loadModels: (opts?: { refresh?: boolean }) => Promise<{ success: boolean; count?: number; error?: string }>;
+  clearModelsCache: () => void;
 }
 
 export const useModelsStore = create<ModelsState>((set, get) => ({
@@ -44,9 +66,22 @@ export const useModelsStore = create<ModelsState>((set, get) => ({
   isLoading: false,
   models: MODELS,
 
+  clearModelsCache: () => {
+    clearCache();
+  },
+
   loadModels: async (opts) => {
     const refresh = !!opts?.refresh;
-    if (get().isLoading) return;
+
+    // If already loading and not a refresh request, skip
+    if (get().isLoading && !refresh) {
+      return { success: true, count: get().models.length };
+    }
+
+    // For refresh, clear the cache first
+    if (refresh) {
+      clearCache();
+    }
 
     set({ isLoading: true, error: undefined });
 
@@ -54,37 +89,62 @@ export const useModelsStore = create<ModelsState>((set, get) => ({
       if (!refresh) {
         const cached = readCache();
         if (cached && cached.models.length > 0) {
+          const mergedModels = mergeWithImageModels(cached.models);
           set({
-            models: cached.models,
+            models: mergedModels,
             fetchedAt: cached.fetchedAt,
             isLoaded: true,
             isLoading: false,
           });
-          setDynamicModels(cached.models);
-          return;
+          setDynamicModels(mergedModels);
+          return { success: true, count: mergedModels.length };
         }
       }
 
-      const url = refresh ? "/api/models?refresh=1" : "/api/models";
-      const res = await fetch(url, { method: "GET" });
-      if (!res.ok) throw new Error(`Failed to load models (${res.status})`);
+      // Add cache-busting for refresh requests
+      const url = refresh
+        ? `/api/models?refresh=1&_t=${Date.now()}`
+        : "/api/models";
+      const res = await fetch(url, {
+        method: "GET",
+        cache: refresh ? "no-store" : "default",
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => "Unknown error");
+        throw new Error(`Failed to load models (${res.status}): ${errorText}`);
+      }
 
       const payload = (await res.json()) as ModelsPayload;
-      if (!payload || !Array.isArray(payload.models)) throw new Error("Invalid models payload");
+      if (!payload || !Array.isArray(payload.models)) {
+        throw new Error("Invalid models payload");
+      }
+
+      console.log("[ModelsStore] Received models from API:", payload.models.length);
+      const imageGenCount = payload.models.filter(m => m.category?.includes("image-generation")).length;
+      console.log("[ModelsStore] Image generation models from API:", imageGenCount);
 
       writeCache(payload);
+      const mergedModels = payload.models.length > 0
+        ? mergeWithImageModels(payload.models)
+        : MODELS;
+
+      console.log("[ModelsStore] After merge, total models:", mergedModels.length);
+
       set({
-        models: payload.models.length > 0 ? payload.models : MODELS,
+        models: mergedModels,
         fetchedAt: payload.fetchedAt,
         isLoaded: true,
         isLoading: false,
+        error: undefined,
       });
-      setDynamicModels(payload.models);
+      setDynamicModels(mergedModels);
+      return { success: true, count: mergedModels.length };
     } catch (e) {
       const message = e instanceof Error ? e.message : "Failed to load models";
       set({ error: message, isLoaded: true, isLoading: false, models: MODELS });
       setDynamicModels(null);
+      return { success: false, error: message };
     }
   },
 }));
-

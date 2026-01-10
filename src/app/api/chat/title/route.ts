@@ -2,13 +2,26 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { generateText } from "ai";
 
+// Smart defaults per provider for title generation (cheap, fast models)
+const DEFAULT_TITLE_MODELS: Record<string, string> = {
+    openrouter: "openai/gpt-4o-mini", // Using OpenAI model via OpenRouter
+    openai: "gpt-4o-mini",
+    anthropic: "claude-3-haiku-20240307",
+    groq: "llama-3.1-8b-instant",
+};
+
 export async function POST(req: Request) {
     try {
-        const { messages, providerId, providerBaseUrl, modelId, apiKey } = await req.json();
+        const { messages, providerId, providerBaseUrl, modelId, apiKey, titleModelId } = await req.json();
 
         if (!messages || messages.length === 0) {
             return new Response("No messages provided", { status: 400 });
         }
+
+        // Use the titleModelId passed from client, or fall back to provider default
+        const configuredTitleModel = titleModelId || DEFAULT_TITLE_MODELS[providerId] || "gpt-4o-mini";
+
+        console.log(`[Title] Using model ${configuredTitleModel} for provider ${providerId}`);
 
         // Construct the model instance
         let titleModel;
@@ -19,17 +32,17 @@ export async function POST(req: Request) {
                 apiKey: apiKey || process.env.OPENAI_API_KEY,
                 baseURL: providerBaseUrl
             });
-            titleModel = openai("gpt-4o-mini");
+            titleModel = openai(configuredTitleModel);
         } else if (providerId === "anthropic") {
             const anthropic = createAnthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY });
-            titleModel = anthropic("claude-3-haiku-20240307");
+            titleModel = anthropic(configuredTitleModel);
         } else if (providerId === "openrouter") {
             const openrouter = createOpenAI({
                 apiKey: apiKey || process.env.OPENROUTER_API_KEY,
                 baseURL: "https://openrouter.ai/api/v1",
             });
-            // Use a stable, cheap model on OpenRouter
-            titleModel = openrouter("google/gemini-flash-1.5");
+            // Use configured model or default to cheapest option
+            titleModel = openrouter(configuredTitleModel);
         } else {
             // Fallback for custom providers or google (via openai-compatible if needed)
             // Default to a generic OpenAI-compatible client
@@ -38,7 +51,7 @@ export async function POST(req: Request) {
                 baseURL: providerBaseUrl
             });
             // If modelId is something helpful, use it, otherwise fallback might fail
-            titleModel = generic(modelId || "gpt-3.5-turbo");
+            titleModel = generic(modelId || configuredTitleModel);
         }
 
         console.log("[Title] Generating title using provider:", providerId);
