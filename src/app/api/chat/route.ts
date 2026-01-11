@@ -5,6 +5,8 @@ import { z } from "zod";
 import { webSearch } from "@/lib/tools/web-search";
 import { normalizeModelIdForProviderId } from "@/lib/ai/provider-routing";
 import { isCustomOpenAIProvider, resolveProvider } from "@/lib/providers";
+import { McpManager } from "@/lib/mcp/mcp-manager";
+import type { McpServer } from "@/lib/db/schema";
 
 export const runtime = "edge";
 
@@ -52,6 +54,7 @@ const ChatRequestSchema = z.object({
       baseUrl: z.string().optional(),
     })
     .optional(),
+  mcpServers: z.array(z.any()).optional(), // Config for MCP servers
 });
 
 function dataUrlBase64SizeBytes(dataUrl: string): number | null {
@@ -89,6 +92,7 @@ export async function POST(req: Request) {
       messages,
       enabledTools = [],
       webSearch: webSearchConfig,
+      mcpServers = [],
     } = parsedBody.data;
     const apiKey = req.headers.get("X-API-Key");
 
@@ -176,13 +180,34 @@ export async function POST(req: Request) {
       }
       : undefined;
 
+    // Load MCP Tools (use singleton for connection pooling)
+    const mcpManager = McpManager.getInstance();
+    let mcpTools: Record<string, any> = {};
+
+    if (mcpServers && mcpServers.length > 0) {
+      try {
+        // Filter for enabled servers if not already done on client, 
+        // though client should probably send only enabled ones or the backend checks 'enabled' prop
+        const enabledMcpServers = (mcpServers as McpServer[]).filter(s => s.enabled);
+        mcpTools = await mcpManager.getTools(enabledMcpServers);
+        console.log(`[MCP] Loaded ${Object.keys(mcpTools).length} external tools`);
+      } catch (e) {
+        console.error("[MCP] Failed to load tools:", e);
+      }
+    }
+
+    const allTools = {
+      ...tools,
+      ...mcpTools,
+    };
+
     // Stream the response
     const coreMessages = [...toolInstructionMessages, ...messages] as unknown as CoreMessage[];
 
     const result = streamText({
       model,
       messages: coreMessages,
-      tools,
+      tools: allTools,
       maxSteps: 5, // Enable multi-step agentic behavior
     });
 

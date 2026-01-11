@@ -1,4 +1,4 @@
-import { db, type Chat, type Message, type Project, type ProjectFile, type ModelFavorite, type ApiKey, type UserSettings, type Agent, type Prompt, type ModelAlias } from "./schema";
+import { db, type Chat, type Message, type Project, type ProjectFile, type ModelFavorite, type ApiKey, type UserSettings, type Agent, type Prompt, type ModelAlias, type McpServer } from "./schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 
 // ============= DEFAULT PROJECT =============
@@ -130,6 +130,37 @@ export async function searchChats(query: string) {
   return await db.chats
     .filter((chat) => chat.title.toLowerCase().includes(lowerQuery))
     .toArray();
+}
+
+export interface MessageSearchResult extends Message {
+  chatTitle?: string;
+}
+
+export async function searchMessages(query: string): Promise<MessageSearchResult[]> {
+  const lowerQuery = query.toLowerCase();
+
+  // Find messages matching content
+  const messages = await db.messages
+    .filter(msg => {
+      // Only search text content of user/assistant messages
+      if (msg.role !== 'user' && msg.role !== 'assistant') return false;
+
+      const content = getTextFromMessageContent(msg.content);
+      return content.toLowerCase().includes(lowerQuery);
+    })
+    .reverse()
+    .limit(20)
+    .toArray();
+
+  // Fetch chat titles for context
+  const chatIds = [...new Set(messages.map(m => m.chatId))];
+  const chats = await db.chats.where('id').anyOf(chatIds).toArray();
+  const chatMap = new Map(chats.map(c => [c.id, c]));
+
+  return messages.map(msg => ({
+    ...msg,
+    chatTitle: chatMap.get(msg.chatId)?.title
+  }));
 }
 
 // ============= MESSAGE QUERIES =============
@@ -508,17 +539,6 @@ export async function searchPrompts(query: string) {
     .toArray();
 }
 
-export async function searchMessages(query: string) {
-  const lowerQuery = query.toLowerCase();
-
-  // Create a fast filter that checks text content
-  return await db.messages
-    .filter(msg => {
-      const content = getTextFromMessageContent(msg.content);
-      return content.toLowerCase().includes(lowerQuery);
-    })
-    .toArray();
-}
 
 export async function getPromptsByCategory(category: string) {
   return await db.prompts.where("category").equals(category).toArray();
@@ -789,4 +809,65 @@ export async function updateModelAlias(modelId: string, alias: string, systemPro
 
 export async function deleteModelAlias(modelId: string) {
   await db.modelAliases.delete(modelId);
+}
+// MCP Servers
+export async function getEnabledMcpServers() {
+  return await db.mcpServers.where('enabled').equals(1).toArray();
+}
+
+export async function getAllMcpServers() {
+  return await db.mcpServers.toArray();
+}
+
+export async function getMcpServerById(id: string) {
+  return await db.mcpServers.get(id);
+}
+
+export async function addMcpServer(server: Omit<McpServer, 'createdAt' | 'updatedAt'>) {
+  const now = Date.now();
+  await db.mcpServers.add({
+    ...server,
+    createdAt: now,
+    updatedAt: now,
+  } as McpServer);
+}
+
+export async function updateMcpServer(id: string, updates: Partial<McpServer>) {
+  await db.mcpServers.update(id, {
+    ...updates,
+    updatedAt: Date.now(),
+  });
+}
+
+export async function updateMcpServerConnectionStatus(
+  id: string,
+  status: 'connected' | 'disconnected' | 'error',
+  error?: string,
+  tools?: any[]
+) {
+  await db.mcpServers.update(id, {
+    status,
+    error,
+    tools,
+    lastConnectedAt: status === 'connected' ? Date.now() : undefined,
+    updatedAt: Date.now(),
+  });
+}
+
+export async function updateMcpServerToolPolicy(id: string, disabledTools: string[]) {
+  const server = await db.mcpServers.get(id);
+  if (!server) return;
+
+  // When tool policy changes, clear the cached tools to force re-fetch
+  // This ensures the disabled tools are immediately reflected
+  await db.mcpServers.update(id, {
+    toolPolicy: { disabledTools },
+    tools: undefined, // Clear cache - will be refetched on next connection
+    status: 'disconnected', // Mark as disconnected to trigger reconnection
+    updatedAt: Date.now(),
+  });
+}
+
+export async function deleteMcpServer(id: string) {
+  await db.mcpServers.delete(id);
 }

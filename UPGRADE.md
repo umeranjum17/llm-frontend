@@ -460,18 +460,16 @@ Complete the voice experience. Voice input without voice output feels incomplete
 - [x] Full-text message search with filters
 - [x] Message ratings (thumbs up/down)
 - [x] Context window visualization
-- [ ] Auto-tagging
-- [ ] Conversation summarization
+- [x] Auto-tagging
+- [x] Conversation summarization
 
 ### Phase 2: Core Features (4-5 weeks)
-- [ ] Text-to-Speech output
+- [x] MCP Client Support (Connect to external tools)
 - [ ] Enhanced analytics with charts
 - [ ] Focus mode & UI customization
-- [ ] Model aliases & per-model prompts
 - [ ] Suggested responses
 
 ### Phase 3: Platform (6-8 weeks)
-- [ ] Plugin system foundation
 - [ ] Cloud sync (user's own storage)
 - [ ] Document export (PDF/Word/MD)
 - [ ] API playground & debug mode
@@ -481,6 +479,8 @@ Complete the voice experience. Voice input without voice output feels incomplete
 - [ ] Team collaboration
 - [ ] Desktop app (Electron/Tauri)
 - [ ] Browser extension
+- [ ] Text-to-Speech output
+- [ ] Model aliases & per-model prompts
 - [ ] Audio transcription (Whisper)
 - [ ] Real-time collaboration
 

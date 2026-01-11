@@ -15,6 +15,10 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { getImagesFromMessageContent, getTextFromMessageContent, isMessageContentParts } from "@/lib/utils/message-content";
 import { updateMessage } from "@/lib/db/queries";
 import { useVoiceOutput } from "@/hooks/use-voice-output";
+import { parseArtifactFences } from "@/lib/utils/artifact-fence-parser";
+import { useUIStore } from "@/stores/ui-store";
+import { nanoid } from "nanoid";
+import { Code2 } from "lucide-react";
 
 type ToolCallLike = {
   id?: string;
@@ -66,11 +70,15 @@ export const MessageItem = memo(function MessageItem({
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
   const { speak, stop, isPlaying } = useVoiceOutput();
+  const { setActiveArtifact, setShowArtifacts } = useUIStore();
 
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
   const images = getImagesFromMessageContent(message.content);
   const textContent = getTextFromMessageContent(message.content);
+  const artifactFiles = useMemo(() => isAssistant ? parseArtifactFences(textContent) : [], [isAssistant, textContent]);
+  const hasMultipleFiles = artifactFiles.length > 0;
+
   const canEdit = isUser && onEdit && !isMessageContentParts(message.content);
   const canFork = isUser && !!onFork;
   const canRegenerate = isAssistant && !!onRegenerate;
@@ -147,6 +155,27 @@ export const MessageItem = memo(function MessageItem({
     } else {
       await updateMessage(message.id, { rating });
     }
+  };
+
+  const handleOpenProject = () => {
+    if (artifactFiles.length === 0) return;
+
+    // Convert array to map
+    const filesRecord: Record<string, string> = {};
+    artifactFiles.forEach(f => {
+      filesRecord[f.path] = f.code;
+    });
+
+    setActiveArtifact({
+      id: nanoid(),
+      title: "Generated Project",
+      code: "", // Multi-file projects don't have single code
+      language: "project",
+      type: "project",
+      files: filesRecord,
+      template: "react" // Default to react, or logic to infer
+    });
+    setShowArtifacts(true);
   };
 
   // Don't render system messages in the UI
@@ -304,6 +333,21 @@ export const MessageItem = memo(function MessageItem({
                     </DialogContent>
                   </Dialog>
                 </>
+              )}
+
+              {/* Multi-file project button */}
+              {!isEditing && isAssistant && hasMultipleFiles && (
+                <div className="mt-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleOpenProject}
+                    className="gap-2"
+                  >
+                    <Code2 className="h-4 w-4" />
+                    Open Project ({artifactFiles.length} files)
+                  </Button>
+                </div>
               )}
 
               {/* Continue button for incomplete responses */}

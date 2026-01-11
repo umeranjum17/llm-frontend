@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useUIStore } from "@/stores/ui-store";
-import { addMessage, updateChat, getChatById, updateMessage, getMessagesForBranch, getLastMessage, getMessageById, chatHasBranches, incrementAgentUsage, getMessages } from "@/lib/db/queries";
+import { addMessage, updateChat, getChatById, updateMessage, getMessagesForBranch, getLastMessage, getMessageById, chatHasBranches, incrementAgentUsage, getMessages, getEnabledMcpServers } from "@/lib/db/queries";
 import { buildContextMessages } from "@/lib/ai/context-builder";
 import { estimateCost } from "@/lib/utils/token-counter";
 import type { MessageContent } from "@/lib/db/schema";
@@ -346,6 +346,7 @@ export function useChat(chatId: string) {
         messages: llmMessages,
         enabledTools,
         webSearch: webSearchConfig,
+        mcpServers: await getEnabledMcpServers(),
       }),
     });
 

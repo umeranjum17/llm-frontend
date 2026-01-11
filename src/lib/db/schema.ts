@@ -239,6 +239,42 @@ export interface Workflow {
   updatedAt: number;
 }
 
+
+export interface ToolPolicy {
+  disabledTools: string[]; // List of disabled tool names (denylist approach)
+}
+
+export interface McpServer {
+  id: string;
+  name: string;
+  url: string; // SSE endpoint
+  apiKey?: string; // Optional API key for authentication
+  description?: string;
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+  lastConnectedAt?: number;
+  status?: "connected" | "disconnected" | "error";
+  error?: string;
+  tools?: any[]; // Cached tools list
+
+  // Tool governance
+  toolPolicy?: ToolPolicy; // Per-tool enable/disable policy
+  toolCaps?: number; // Maximum number of tools to inject (safety limit)
+
+  // Marketplace fields
+  type: "sse" | "stdio";
+  collection: "curated" | "custom";
+  logoUrl?: string;
+  author?: string;
+  kind?: "hub" | "connector" | "tool"; // Integration kind
+
+  // Stdio fields
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+}
+
 export interface ModelAlias {
   id: string; // modelId
   alias: string;
@@ -265,6 +301,7 @@ export class LuminaDB extends Dexie {
   vectorDocuments!: EntityTable<VectorDocument, "id">;
   workflows!: EntityTable<Workflow, "id">;
   modelAliases!: EntityTable<ModelAlias, "id">;
+  mcpServers!: EntityTable<McpServer, "id">;
 
   constructor() {
     super("LuminaDB");
@@ -492,6 +529,29 @@ export class LuminaDB extends Dexie {
       vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
       workflows: "id, name, createdAt, updatedAt",
       modelAliases: "id, alias, updatedAt",
+    });
+
+    // Version 13: Add MCP Servers
+    this.version(13).stores({
+      projects: "id, name, createdAt, updatedAt",
+      projectFiles: "id, projectId, name, createdAt",
+      chats:
+        "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order",
+      messages: "id, chatId, role, createdAt, parentId, rating",
+      apiKeys: "id, provider, createdAt, baseUrl",
+      settings: "id",
+      modelFavorites: "id, category, pinnedOrder, lastUsed",
+      userMemories: "id, category, source, createdAt, isActive",
+      folders: "id, name, createdAt, order",
+      tags: "id, name, createdAt, usageCount",
+      tagRules: "id, tagId, enabled, createdAt",
+      parameterPresets: "id, name, createdAt, isDefault",
+      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
+      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
+      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
+      workflows: "id, name, createdAt, updatedAt",
+      modelAliases: "id, alias, updatedAt",
+      mcpServers: "id, enabled, createdAt",
     });
   }
 }

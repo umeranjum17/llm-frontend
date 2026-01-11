@@ -20,6 +20,7 @@ import { UsageAnalytics } from "@/components/settings/usage-analytics";
 import { ConnectorsSettings } from "@/components/settings/connectors-settings";
 import { WorkflowSettings } from "@/components/settings/workflow-settings";
 import { ModelAliasSettings } from "@/components/settings/model-alias-settings";
+import { IntegrationsMarketplace } from "@/components/settings/integrations-marketplace";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useSettingsStore } from "@/stores/settings-store";
 
@@ -93,6 +94,10 @@ export default function SettingsPage() {
                 <Plug className="h-3.5 w-3.5" />
                 Connectors
               </TabsTrigger>
+              <TabsTrigger value="mcp" className="gap-1.5 text-xs">
+                <Plug className="h-3.5 w-3.5" />
+                Plugins
+              </TabsTrigger>
               <TabsTrigger value="api-keys" className="gap-1.5 text-xs">
                 <Key className="h-3.5 w-3.5" />
                 API Keys
@@ -149,6 +154,10 @@ export default function SettingsPage() {
 
             <TabsContent value="connectors" className="space-y-6">
               <ConnectorsSettings />
+            </TabsContent>
+
+            <TabsContent value="mcp" className="space-y-6">
+              <IntegrationsMarketplace />
             </TabsContent>
 
             <TabsContent value="api-keys" className="space-y-6">

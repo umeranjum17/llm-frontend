@@ -3,8 +3,12 @@ import { create } from "zustand";
 export interface Artifact {
   id: string;
   title: string;
-  code: string;
+  code: string; // Main code or readme
   language: string;
+  type: 'code' | 'image' | 'video' | 'html' | 'markdown' | 'csv' | 'sheet' | 'chart' | 'docx' | 'project';
+  files?: Record<string, string>; // path -> content
+  template?: string; // e.g. 'react', 'node', 'vite'
+  entry?: string; // e.g. '/App.tsx'
 }
 
 interface UIState {

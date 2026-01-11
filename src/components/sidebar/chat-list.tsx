@@ -21,7 +21,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { MessageSquare, Pin, Star, Trash2, Folder, ChevronDown, ChevronRight, FolderPlus, GitBranch, GripVertical, MoreVertical, Edit2, Copy } from "lucide-react";
+import { MessageSquare, Pin, Star, Trash2, Folder, ChevronDown, ChevronRight, FolderPlus, GripVertical, MoreVertical, Edit2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getAllChats, deleteChat, updateChat, getAllFolders, createFolder, reorderChats, reorderFolders, moveChatToFolder, updateFolder, deleteFolder, getLastMessagesForChats, getChatById, getAllTags } from "@/lib/db/queries";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
@@ -34,9 +34,7 @@ import { toast } from "sonner";
 import { FolderDialog } from "./folder-dialog";
 import { BulkActions } from "./bulk-actions";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Search, Plus } from "lucide-react";
-import { TagList } from "@/components/chat/tag-list";
-import { PromptLibraryDialog } from "@/components/prompts/prompt-library-dialog";
+import { Search } from "lucide-react";
 
 import {
   DropdownMenu,
@@ -46,13 +44,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -107,7 +98,7 @@ export function ChatList({ searchQuery }: ChatListProps) {
   );
 
   // Use fuzzy search with Fuse.js
-  const filteredChats = useChatSearch(chats || [], searchQuery);
+  const { chats: filteredChats, matches: messageMatches } = useChatSearch(chats || [], searchQuery);
 
   const handleChatClick = (chatId: string, index: number, e: React.MouseEvent) => {
     if (e.metaKey || e.ctrlKey) {
@@ -445,11 +436,13 @@ export function ChatList({ searchQuery }: ChatListProps) {
                 }
 
                 const chatIndex = items.filter(i => i.type === "chat").findIndex(i => i.type === "chat" && i.chat.id === item.chat.id);
+                const matches = messageMatches.get(item.chat.id);
                 return (
                   <SortableChatItem
                     key={item.chat.id}
                     chat={item.chat}
                     lastMessage={lastMessagesMap?.get(item.chat.id)}
+                    searchMatches={matches}
                     isActive={item.chat.id === activeChatId}
                     isSelected={selectedChats.has(item.chat.id)}
                     isNested={!!item.chat.folderId}
@@ -631,6 +624,7 @@ function NoFolderDropZone() {
 interface SortableChatItemProps {
   chat: Chat;
   lastMessage?: import("@/lib/db/schema").Message;
+  searchMatches?: import("@/lib/db/queries").MessageSearchResult[];
   isActive: boolean;
   isSelected?: boolean;
   isNested?: boolean;
@@ -645,6 +639,7 @@ interface SortableChatItemProps {
 function SortableChatItem({
   chat,
   lastMessage,
+  searchMatches,
   isActive,
   isSelected = false,
   isNested,
@@ -665,7 +660,10 @@ function SortableChatItem({
     isDragging,
   } = useSortable({ id: `chat-${chat.id}` });
 
-  const previewText = lastMessage ? getTextFromMessageContent(lastMessage.content).slice(0, 60) : "";
+  // Use search match snippet if available, otherwise last message
+  const previewText = searchMatches && searchMatches.length > 0
+    ? getTextFromMessageContent(searchMatches[0].content).slice(0, 60)
+    : lastMessage ? getTextFromMessageContent(lastMessage.content).slice(0, 60) : "";
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -708,7 +706,7 @@ function SortableChatItem({
                     <h3 className="text-sm truncate">{chat.title}</h3>
                   </div>
                   <div className="text-[11px] text-muted-foreground/60 truncate">
-                    {formatDistanceToNow(new Date(chat.updatedAt), { addSuffix: true })}
+                    {previewText || formatDistanceToNow(new Date(chat.updatedAt), { addSuffix: true })}
                   </div>
                 </div>
               </div>
