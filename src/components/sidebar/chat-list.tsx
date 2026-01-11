@@ -70,6 +70,8 @@ type ListItem = { type: "folder"; folder: FolderType } | { type: "chat"; chat: C
 export function ChatList({ searchQuery }: ChatListProps) {
   const activeChatId = useUIStore((state) => state.activeChatId);
   const setActiveChatId = useUIStore((state) => state.setActiveChatId);
+  const secondaryChatId = useUIStore((state) => state.secondaryChatId);
+  const isSplitView = useUIStore((state) => state.isSplitView);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draggedItem, setDraggedItem] = useState<ListItem | null>(null);
@@ -101,7 +103,15 @@ export function ChatList({ searchQuery }: ChatListProps) {
   const { chats: filteredChats, matches: messageMatches } = useChatSearch(chats || [], searchQuery);
 
   const handleChatClick = (chatId: string, index: number, e: React.MouseEvent) => {
-    if (e.metaKey || e.ctrlKey) {
+    const isSplitView = useUIStore.getState().isSplitView;
+    const setSecondaryChatId = useUIStore.getState().setSecondaryChatId;
+
+    if (e.altKey && isSplitView) {
+      // Alt+Click in split view: Set as secondary chat
+      setSecondaryChatId(chatId);
+      setSelectedChats(new Set());
+      setLastSelectedIndex(null);
+    } else if (e.metaKey || e.ctrlKey) {
       // Cmd/Ctrl+Click: Toggle selection
       setSelectedChats(prev => {
         const next = new Set(prev);
@@ -444,6 +454,7 @@ export function ChatList({ searchQuery }: ChatListProps) {
                     lastMessage={lastMessagesMap?.get(item.chat.id)}
                     searchMatches={matches}
                     isActive={item.chat.id === activeChatId}
+                    isSecondary={isSplitView && item.chat.id === secondaryChatId}
                     isSelected={selectedChats.has(item.chat.id)}
                     isNested={!!item.chat.folderId}
                     onClick={(e) => handleChatClick(item.chat.id, chatIndex, e)}
@@ -575,7 +586,7 @@ function SortableFolderItem({ folder, isExpanded, onToggle, chatCount = 0, onEdi
       </button>
       {isExpanded ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
       <Folder className="h-3.5 w-3.5" style={folder.color ? { color: folder.color } : undefined} />
-      <span className="text-sm truncate flex-1">{folder.name}</span>
+      <span className="text-xs font-medium truncate flex-1">{folder.name}</span>
       {chatCount > 0 && (
         <span className="text-[10px] text-muted-foreground/60">
           {chatCount}
@@ -626,6 +637,7 @@ interface SortableChatItemProps {
   lastMessage?: import("@/lib/db/schema").Message;
   searchMatches?: import("@/lib/db/queries").MessageSearchResult[];
   isActive: boolean;
+  isSecondary?: boolean;
   isSelected?: boolean;
   isNested?: boolean;
   onClick: (e: React.MouseEvent) => void;
@@ -641,6 +653,7 @@ function SortableChatItem({
   lastMessage,
   searchMatches,
   isActive,
+  isSecondary = false,
   isSelected = false,
   isNested,
   onClick,
@@ -679,8 +692,9 @@ function SortableChatItem({
             ref={setNodeRef}
             style={style}
             className={cn(
-              "group relative cursor-pointer px-3 py-2 mx-2 my-0.5 rounded-lg transition-colors hover:bg-accent/50",
+              "group relative cursor-pointer px-2 py-1.5 mx-2 my-0.5 rounded-lg transition-colors hover:bg-accent/50",
               isActive && "bg-accent",
+              isSecondary && "bg-accent/40 ring-1 ring-primary/30",
               isSelected && "bg-accent/60 ring-1 ring-primary/40",
               isNested && "ml-6",
               isDragging && "opacity-50"
@@ -689,58 +703,56 @@ function SortableChatItem({
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
           >
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                <button
-                  {...attributes}
-                  {...listeners}
-                  className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors shrink-0 opacity-0 group-hover:opacity-100"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <GripVertical className="h-3 w-3" />
-                </button>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    {chat.pinned && <Pin className="h-3 w-3 text-muted-foreground shrink-0" />}
-                    {chat.favorite && <Star className="h-3 w-3 text-yellow-500/70 shrink-0" />}
-                    <h3 className="text-sm truncate">{chat.title}</h3>
-                  </div>
-                  <div className="text-[11px] text-muted-foreground/60 truncate">
-                    {previewText || formatDistanceToNow(new Date(chat.updatedAt), { addSuffix: true })}
-                  </div>
+            <div className="flex items-center gap-1 min-w-0 w-full">
+              <button
+                {...attributes}
+                {...listeners}
+                className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors shrink-0 opacity-0 group-hover:opacity-100"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <GripVertical className="h-3 w-3" />
+              </button>
+              <div className="flex-1 min-w-0 overflow-hidden">
+                <div className="flex items-center gap-1 min-w-0">
+                  {chat.pinned && <Pin className="h-2.5 w-2.5 text-muted-foreground shrink-0" />}
+                  {chat.favorite && <Star className="h-2.5 w-2.5 text-yellow-500/70 shrink-0" />}
+                  <h3 className="text-xs font-medium truncate flex-1 min-w-0">{chat.title}</h3>
+                </div>
+                <div className="text-[10px] text-muted-foreground/60 truncate">
+                  {previewText || formatDistanceToNow(new Date(chat.updatedAt), { addSuffix: true })}
                 </div>
               </div>
 
               {/* Actions (shown on hover) */}
               {(isHovered || isActive) && (
-                <div className="flex items-center gap-1 shrink-0">
+                <div className="flex items-center gap-0.5 shrink-0">
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6"
+                    className="h-5 w-5"
                     onClick={onTogglePin}
                     title={chat.pinned ? "Unpin" : "Pin"}
                   >
-                    <Pin className={cn("h-3 w-3", chat.pinned && "fill-current")} />
+                    <Pin className={cn("h-2.5 w-2.5", chat.pinned && "fill-current")} />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6"
+                    className="h-5 w-5"
                     onClick={onToggleFavorite}
                     title={chat.favorite ? "Unfavorite" : "Favorite"}
                   >
-                    <Star className={cn("h-3 w-3", chat.favorite && "fill-current text-yellow-500")} />
+                    <Star className={cn("h-2.5 w-2.5", chat.favorite && "fill-current text-yellow-500")} />
                   </Button>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-6 w-6"
+                        className="h-5 w-5"
                         title="Move to Folder"
                       >
-                        <Folder className="h-3 w-3" />
+                        <Folder className="h-2.5 w-2.5" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
@@ -767,11 +779,11 @@ function SortableChatItem({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6"
+                    className="h-5 w-5"
                     onClick={onDelete}
                     title="Delete"
                   >
-                    <Trash2 className="h-3 w-3" />
+                    <Trash2 className="h-2.5 w-2.5" />
                   </Button>
                 </div>
               )}

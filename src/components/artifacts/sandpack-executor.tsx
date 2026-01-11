@@ -63,7 +63,7 @@ const customTheme = {
   },
   syntax: {
     plain: "hsl(var(--foreground))",
-    comment: { color: "hsl(var(--muted-foreground))", fontStyle: "italic" },
+    comment: { color: "hsl(var(--muted-foreground))", fontStyle: "italic" as const },
     keyword: "hsl(280, 100%, 70%)",
     tag: "hsl(350, 80%, 65%)",
     punctuation: "hsl(var(--muted-foreground))",
@@ -272,7 +272,53 @@ export function SandpackExecutor({
   }, [language, template, files]);
 
   const sandpackFiles = useMemo((): SandpackFiles => {
-    if (files && Object.keys(files).length > 0) return files;
+    // Helper to detect CSS imports in code and add missing CSS files
+    const addMissingCssFiles = (filesObj: Record<string, string>): SandpackFiles => {
+      const result: SandpackFiles = { ...filesObj };
+
+      // Common CSS files that React templates expect
+      const defaultCssFiles: Record<string, string> = {
+        "/App.css": "/* App styles */\n",
+        "/index.css": "/* Global styles */\n",
+        "/styles.css": "/* Styles */\n",
+        "/src/App.css": "/* App styles */\n",
+        "/src/index.css": "/* Global styles */\n",
+      };
+
+      // Check all JS/TS files for CSS imports
+      const cssImportRegex = /import\s+['"]([^'"]+\.css)['"]/g;
+
+      for (const [path, content] of Object.entries(filesObj)) {
+        if (typeof content !== 'string') continue;
+        if (!path.match(/\.(js|jsx|ts|tsx)$/)) continue;
+
+        let match;
+        while ((match = cssImportRegex.exec(content)) !== null) {
+          const importPath = match[1];
+          // Resolve relative path
+          const dir = path.substring(0, path.lastIndexOf('/'));
+          let resolvedPath = importPath.startsWith('./')
+            ? `${dir}/${importPath.substring(2)}`
+            : importPath.startsWith('/')
+              ? importPath
+              : `${dir}/${importPath}`;
+
+          // Normalize path
+          resolvedPath = resolvedPath.replace(/\/+/g, '/');
+
+          // Add empty CSS if not present
+          if (!result[resolvedPath]) {
+            result[resolvedPath] = defaultCssFiles[resolvedPath] || "/* Auto-generated */\n";
+          }
+        }
+      }
+
+      return result;
+    };
+
+    if (files && Object.keys(files).length > 0) {
+      return addMissingCssFiles(files);
+    }
 
     const isTs = sandpackTemplate.includes("ts");
     const isVue = sandpackTemplate.includes("vue");
@@ -281,9 +327,13 @@ export function SandpackExecutor({
     if (sandpackTemplate === "vanilla") return { "/index.js": code };
     if (sandpackTemplate === "vanilla-ts") return { "/index.ts": code };
 
-    return {
+    // For React, also add App.css by default
+    const baseFiles: Record<string, string> = {
       [isTs ? "/App.tsx" : "/App.js"]: code,
+      "/App.css": "/* App styles */\n",
     };
+
+    return addMissingCssFiles(baseFiles);
   }, [files, code, sandpackTemplate]);
 
   const containerClasses = cn(

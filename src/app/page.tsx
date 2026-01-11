@@ -17,6 +17,7 @@ import { useModelsStore } from "@/stores/models-store";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
+import { getAllChats } from "@/lib/db/queries";
 
 export default function Home() {
   const router = useRouter();
@@ -56,6 +57,25 @@ export default function Home() {
       router.push("/onboarding");
     }
   }, [keysLoaded, keys, router]);
+
+  // Auto-load the most recent chat on app startup
+  useEffect(() => {
+    const loadRecentChat = async () => {
+      const activeChatId = useUIStore.getState().activeChatId;
+      if (activeChatId) return; // Already has an active chat
+
+      const chats = await getAllChats();
+      if (chats.length > 0) {
+        // Get the most recent chat (first one after sorting by updatedAt)
+        const mostRecentChat = chats[0];
+        useUIStore.getState().setActiveChatId(mostRecentChat.id);
+      }
+    };
+
+    if (keysLoaded && keys.length > 0) {
+      loadRecentChat();
+    }
+  }, [keysLoaded, keys.length]);
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 768px)");
@@ -112,9 +132,9 @@ export default function Home() {
             }}
           >
             <ResizablePanel
-              defaultSize={isWideScreen ? (sidebarWidth ?? 18) : (sidebarWidth ?? 22)}
-              minSize={isWideScreen ? 14 : 16}
-              maxSize={isWideScreen ? 28 : 32}
+              defaultSize={isWideScreen ? (sidebarWidth ?? 16) : (sidebarWidth ?? 18)}
+              minSize={isWideScreen ? 12 : 14}
+              maxSize={isWideScreen ? 26 : 30}
             >
               <Sidebar />
             </ResizablePanel>

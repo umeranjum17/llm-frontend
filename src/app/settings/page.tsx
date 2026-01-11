@@ -20,7 +20,7 @@ import { UsageAnalytics } from "@/components/settings/usage-analytics";
 import { ConnectorsSettings } from "@/components/settings/connectors-settings";
 import { WorkflowSettings } from "@/components/settings/workflow-settings";
 import { ModelAliasSettings } from "@/components/settings/model-alias-settings";
-import { IntegrationsMarketplace } from "@/components/settings/integrations-marketplace";
+import { McpMarketplace } from "@/components/settings/mcp-marketplace";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useSettingsStore } from "@/stores/settings-store";
 
@@ -157,7 +157,7 @@ export default function SettingsPage() {
             </TabsContent>
 
             <TabsContent value="mcp" className="space-y-6">
-              <IntegrationsMarketplace />
+              <McpMarketplace />
             </TabsContent>
 
             <TabsContent value="api-keys" className="space-y-6">

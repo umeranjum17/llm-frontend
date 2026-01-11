@@ -273,6 +273,7 @@ export interface McpServer {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
+  category?: string; // For marketplace filtering: search, code, data, security
 }
 
 export interface ModelAlias {

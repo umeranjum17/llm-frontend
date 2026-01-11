@@ -8,7 +8,9 @@ import { isCustomOpenAIProvider, resolveProvider } from "@/lib/providers";
 import { McpManager } from "@/lib/mcp/mcp-manager";
 import type { McpServer } from "@/lib/db/schema";
 
-export const runtime = "edge";
+// Node.js runtime required for MCP SDK SSE transport
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const ImageDetailSchema = z.enum(["auto", "low", "high"]);
 

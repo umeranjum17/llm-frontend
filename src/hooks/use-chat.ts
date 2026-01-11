@@ -141,7 +141,7 @@ export function useChat(chatId: string) {
           // Get last exchange (User + Assistant)
           const recentMessages = messages.slice(-2).map(m => ({
             role: m.role,
-            content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+            content: typeof m.content === 'string' ? m.content : getTextFromMessageContent(m.content)
           }));
           await addMemory(recentMessages);
           console.log("[Chat] Sent recent interaction to Mem0 for learning");
@@ -164,7 +164,7 @@ export function useChat(chatId: string) {
           if (settings?.memoryEnabled && autoExtract && messages.length >= 2) {
             const recentMessages = messages.slice(-2).map(m => ({
               role: m.role,
-              content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+              content: typeof m.content === 'string' ? m.content : getTextFromMessageContent(m.content)
             }));
             addMemory(recentMessages).catch(console.error);
           }

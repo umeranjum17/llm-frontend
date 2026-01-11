@@ -62,7 +62,7 @@ function ChatTab({ chatId, isActive, onSelect, onClose }: ChatTabProps) {
       {...attributes}
       {...listeners}
     >
-      <span className="truncate text-sm font-medium flex-1 min-w-0">
+      <span className="truncate text-xs font-medium flex-1 min-w-0">
         {chat?.title || "Untitled"}
       </span>
       <Button

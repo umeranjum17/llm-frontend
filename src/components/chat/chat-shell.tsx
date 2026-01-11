@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
-import { useTabsStore } from "@/stores/tabs-store";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRouter } from "next/navigation";
@@ -37,6 +36,7 @@ import {
   Menu,
   Maximize2,
   Minimize2,
+  Columns2,
 } from "lucide-react";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { ArtifactShell } from "@/components/artifacts/artifact-shell";
@@ -58,24 +58,15 @@ import {
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { MessageSquare } from "lucide-react";
-import { ChatTabs } from "./chat-tabs";
 
 export function ChatShell() {
   const router = useRouter();
-  const uiActiveChatId = useUIStore((state) => state.activeChatId);
+  const activeChatId = useUIStore((state) => state.activeChatId);
   const setActiveChatId = useUIStore((state) => state.setActiveChatId);
-  const { tabs, activeTabId, addTab, setActiveTab } = useTabsStore();
-  // Use tab's active chat if tabs are enabled, otherwise use UI store
-  const activeChatId = tabs.length > 0 ? (activeTabId || tabs[0] || null) : uiActiveChatId;
-
-  // Sync UI store with tabs
-  useEffect(() => {
-    if (tabs.length > 0 && activeTabId) {
-      setActiveChatId(activeTabId);
-    } else if (tabs.length === 0 && uiActiveChatId) {
-      setActiveChatId(uiActiveChatId);
-    }
-  }, [activeTabId, tabs.length, uiActiveChatId, setActiveChatId]);
+  const secondaryChatId = useUIStore((state) => state.secondaryChatId);
+  const setSecondaryChatId = useUIStore((state) => state.setSecondaryChatId);
+  const isSplitView = useUIStore((state) => state.isSplitView);
+  const setIsSplitView = useUIStore((state) => state.setIsSplitView);
   const showArtifacts = useUIStore((state) => state.showArtifacts);
   const setShowArtifacts = useUIStore((state) => state.setShowArtifacts);
   const isArenaMode = useUIStore((state) => state.isArenaMode);
@@ -88,12 +79,6 @@ export function ChatShell() {
   const keys = useApiKeysStore((s) => s.keys);
   const models = useModelsStore((state) => state.models);
 
-  // Sync active chat to tabs when it changes
-  useEffect(() => {
-    if (activeChatId && !tabs.includes(activeChatId)) {
-      addTab(activeChatId);
-    }
-  }, [activeChatId, tabs, addTab]);
   const llmProviderIds = useMemo(
     () =>
       Array.from(
@@ -303,10 +288,22 @@ export function ChatShell() {
         providerId: providerId || undefined,
       });
       setActiveChatId(newChat.id);
-      addTab(newChat.id);
       toast.success("New chat created");
     } catch {
       toast.error("Could not create chat");
+    }
+  };
+
+  const toggleSplitView = () => {
+    if (isSplitView) {
+      // Disable split view
+      setIsSplitView(false);
+      setSecondaryChatId(null);
+      toast.success("Split view disabled");
+    } else {
+      // Enable split view - set secondary to the most recent different chat
+      setIsSplitView(true);
+      toast.success("Split view enabled - Alt+Click a chat to select it for the second panel");
     }
   };
 
@@ -348,7 +345,6 @@ export function ChatShell() {
 
   return (
     <div className="flex h-full flex-col">
-      {tabs.length > 0 && <ChatTabs />}
       <ResizablePanelGroup direction="horizontal" className="h-full">
         <ResizablePanel defaultSize={showArtifacts ? 60 : 100} minSize={30}>
           <div className="flex h-full flex-col">
@@ -366,14 +362,12 @@ export function ChatShell() {
                   >
                     <Menu className="h-4 w-4" />
                   </Button>
-                  {tabs.length === 0 && (
-                    <div className="flex flex-col min-w-0">
-                      <h1 className="text-sm font-medium truncate text-foreground/90">{chat?.title || "Chat"}</h1>
-                      {chat?.tags && chat.tags.length > 0 && (
-                        <TagList tagIds={chat.tags} size="sm" className="mt-0.5" />
-                      )}
-                    </div>
-                  )}
+                  <div className="flex flex-col min-w-0">
+                    <h1 className="text-sm font-medium truncate text-foreground/90">{chat?.title || "Chat"}</h1>
+                    {chat?.tags && chat.tags.length > 0 && (
+                      <TagList tagIds={chat.tags} size="sm" className="mt-0.5" />
+                    )}
+                  </div>
                 </div>
 
                 {/* Right: Model Selector + Settings + Artifacts */}
@@ -515,6 +509,16 @@ export function ChatShell() {
                   <Button
                     variant="ghost"
                     size="icon"
+                    className={cn("h-8 w-8", isSplitView && "text-primary")}
+                    onClick={toggleSplitView}
+                    title={isSplitView ? "Exit Split View" : "Split View"}
+                  >
+                    <Columns2 className="h-4 w-4" />
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     className={cn("h-8 w-8", isFocusMode && "text-primary")}
                     onClick={() => setIsFocusMode(!isFocusMode)}
                     title={isFocusMode ? "Exit Focus Mode" : "Enter Focus Mode"}
@@ -561,6 +565,35 @@ export function ChatShell() {
                       </div>
                       <MessageList chatId={activeChatId} arenaModelId={arenaModelIds[1]} />
                     </div>
+                  </ResizablePanel>
+                </ResizablePanelGroup>
+              ) : isSplitView ? (
+                <ResizablePanelGroup direction="horizontal" className="h-full">
+                  <ResizablePanel defaultSize={50} minSize={30}>
+                    <MessageList
+                      chatId={activeChatId}
+                      onSendMessage={(content) => {
+                        window.dispatchEvent(new CustomEvent("lumina:send-message", { detail: { content } }));
+                      }}
+                    />
+                  </ResizablePanel>
+                  <ResizableHandle withHandle />
+                  <ResizablePanel defaultSize={50} minSize={30}>
+                    {secondaryChatId ? (
+                      <MessageList
+                        chatId={secondaryChatId}
+                        onSendMessage={(content) => {
+                          window.dispatchEvent(new CustomEvent("lumina:send-message", { detail: { content } }));
+                        }}
+                      />
+                    ) : (
+                      <EmptyState
+                        icon={MessageSquare}
+                        title="Select a chat"
+                        description="Click on a chat from the sidebar to view it here"
+                        className="h-full"
+                      />
+                    )}
                   </ResizablePanel>
                 </ResizablePanelGroup>
               ) : (
