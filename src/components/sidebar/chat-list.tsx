@@ -674,9 +674,14 @@ function SortableChatItem({
   } = useSortable({ id: `chat-${chat.id}` });
 
   // Use search match snippet if available, otherwise last message
-  const previewText = searchMatches && searchMatches.length > 0
-    ? getTextFromMessageContent(searchMatches[0].content).slice(0, 60)
-    : lastMessage ? getTextFromMessageContent(lastMessage.content).slice(0, 60) : "";
+  const rawPreview = searchMatches && searchMatches.length > 0
+    ? getTextFromMessageContent(searchMatches[0].content)
+    : lastMessage
+      ? getTextFromMessageContent(lastMessage.content)
+      : "";
+
+  const previewText =
+    rawPreview.length > 120 ? `${rawPreview.slice(0, 120).trimEnd()}…` : rawPreview;
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -692,7 +697,7 @@ function SortableChatItem({
             ref={setNodeRef}
             style={style}
             className={cn(
-              "group relative cursor-pointer px-2 py-1.5 mx-2 my-0.5 rounded-lg transition-colors hover:bg-accent/50",
+              "group relative cursor-pointer px-2.5 py-2 mx-2 my-0.5 rounded-lg transition-colors hover:bg-accent/60",
               isActive && "bg-accent",
               isSecondary && "bg-accent/40 ring-1 ring-primary/30",
               isSelected && "bg-accent/60 ring-1 ring-primary/40",
@@ -716,77 +721,82 @@ function SortableChatItem({
                 <div className="flex items-center gap-1 min-w-0">
                   {chat.pinned && <Pin className="h-2.5 w-2.5 text-muted-foreground shrink-0" />}
                   {chat.favorite && <Star className="h-2.5 w-2.5 text-yellow-500/70 shrink-0" />}
-                  <h3 className="text-xs font-medium truncate flex-1 min-w-0">{chat.title}</h3>
+                  <h3 className="text-xs font-medium truncate flex-1 min-w-0" title={chat.title}>
+                    {chat.title}
+                  </h3>
                 </div>
-                <div className="text-[10px] text-muted-foreground/60 truncate">
-                  {previewText || formatDistanceToNow(new Date(chat.updatedAt), { addSuffix: true })}
+                <div className="text-[10px] text-muted-foreground/70 truncate leading-tight">
+                  {previewText || `Updated ${formatDistanceToNow(new Date(chat.updatedAt), { addSuffix: true })}`}
                 </div>
               </div>
 
               {/* Actions (shown on hover) */}
-              {(isHovered || isActive) && (
-                <div className="flex items-center gap-0.5 shrink-0">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5"
-                    onClick={onTogglePin}
-                    title={chat.pinned ? "Unpin" : "Pin"}
-                  >
-                    <Pin className={cn("h-2.5 w-2.5", chat.pinned && "fill-current")} />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5"
-                    onClick={onToggleFavorite}
-                    title={chat.favorite ? "Unfavorite" : "Favorite"}
-                  >
-                    <Star className={cn("h-2.5 w-2.5", chat.favorite && "fill-current text-yellow-500")} />
-                  </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5"
-                        title="Move to Folder"
+              <div
+                className={cn(
+                  "flex items-center gap-0.5 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100",
+                  (isHovered || isActive) && "opacity-100"
+                )}
+              >
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5"
+                  onClick={onTogglePin}
+                  title={chat.pinned ? "Unpin" : "Pin"}
+                >
+                  <Pin className={cn("h-2.5 w-2.5", chat.pinned && "fill-current")} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5"
+                  onClick={onToggleFavorite}
+                  title={chat.favorite ? "Unfavorite" : "Favorite"}
+                >
+                  <Star className={cn("h-2.5 w-2.5", chat.favorite && "fill-current text-yellow-500")} />
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5"
+                      title="Move to Folder"
+                    >
+                      <Folder className="h-2.5 w-2.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuLabel>Move to Folder</DropdownMenuLabel>
+                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onMoveToFolder(null); }}>
+                      No Folder
+                    </DropdownMenuItem>
+                    {folders.length > 0 && <DropdownMenuSeparator />}
+                    {folders.map((folder) => (
+                      <DropdownMenuItem
+                        key={folder.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onMoveToFolder(folder.id);
+                          toast.success(`Moved to ${folder.name}`);
+                        }}
                       >
-                        <Folder className="h-2.5 w-2.5" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Move to Folder</DropdownMenuLabel>
-                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onMoveToFolder(null); }}>
-                        No Folder
+                        <Folder className="h-3.5 w-3.5 mr-2" style={folder.color ? { color: folder.color } : undefined} />
+                        {folder.name}
                       </DropdownMenuItem>
-                      {folders.length > 0 && <DropdownMenuSeparator />}
-                      {folders.map((folder) => (
-                        <DropdownMenuItem
-                          key={folder.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onMoveToFolder(folder.id);
-                            toast.success(`Moved to ${folder.name}`);
-                          }}
-                        >
-                          <Folder className="h-3.5 w-3.5 mr-2" style={folder.color ? { color: folder.color } : undefined} />
-                          {folder.name}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5"
-                    onClick={onDelete}
-                    title="Delete"
-                  >
-                    <Trash2 className="h-2.5 w-2.5" />
-                  </Button>
-                </div>
-              )}
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5"
+                  onClick={onDelete}
+                  title="Delete"
+                >
+                  <Trash2 className="h-2.5 w-2.5" />
+                </Button>
+              </div>
             </div>
           </div>
         </TooltipTrigger>

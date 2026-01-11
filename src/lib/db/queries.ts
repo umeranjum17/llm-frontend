@@ -48,15 +48,21 @@ export async function moveChatsToProject(fromProjectId: string, toProjectId: str
 
 export async function getAllChats() {
   const chats = await db.chats.toArray();
-  // Sort by: pinned first, then by order (if set), then by updatedAt
+  // Sort by: pinned first, then manual order when both have it, otherwise recency
   return chats.sort((a, b) => {
     if (a.pinned && !b.pinned) return -1;
     if (!a.pinned && b.pinned) return 1;
-    if (a.order !== undefined && b.order !== undefined) {
-      return a.order - b.order;
+
+    const aHasOrder = a.order !== undefined;
+    const bHasOrder = b.order !== undefined;
+
+    if (aHasOrder && bHasOrder) {
+      if (a.order !== b.order) return (a.order ?? 0) - (b.order ?? 0);
+      // stable within ordered items: newest first
+      return b.updatedAt - a.updatedAt;
     }
-    if (a.order !== undefined) return -1;
-    if (b.order !== undefined) return 1;
+
+    // Default to newest first so fresh chats rise to the top
     return b.updatedAt - a.updatedAt;
   });
 }
@@ -812,7 +818,7 @@ export async function deleteModelAlias(modelId: string) {
 }
 // MCP Servers
 export async function getEnabledMcpServers() {
-  return await db.mcpServers.where('enabled').equals(1).toArray();
+  return await db.mcpServers.filter(server => server.enabled === true).toArray();
 }
 
 export async function getAllMcpServers() {

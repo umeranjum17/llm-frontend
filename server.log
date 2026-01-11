@@ -1,0 +1,125 @@
+
+> lumina@0.1.0 dev
+> next dev
+
+   ▲ Next.js 15.5.9
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.1.84:3000
+   - Experiments (use with caution):
+     ⨯ reactCompiler
+
+ ✓ Starting...
+ ○ (pwa) PWA support is disabled.
+ ✓ Ready in 2.1s
+ ○ Compiling / ...
+ ✓ Compiled / in 4.2s (3385 modules)
+(node:53323) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+ GET / 200 in 5486ms
+ GET / 200 in 62ms
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 1868ms (3415 modules)
+ GET /icons/icon-144x144.png 404 in 2244ms
+ ○ Compiling /api/chat/suggested ...
+[OpenRouter] Total models: 349
+[OpenRouter] Image generation models: 5 [
+  'google/gemini-3-pro-image-preview',
+  'openai/gpt-5-image-mini',
+  'openai/gpt-5-image',
+  'google/gemini-2.5-flash-image',
+  'google/gemini-2.5-flash-image-preview'
+]
+[API/models] Fetched models from providers: 355
+[API/models] Image generation models: 5
+ GET /api/models 200 in 2896ms
+ ✓ Compiled /api/chat/suggested in 754ms (3475 modules)
+ POST /api/chat/suggested 200 in 2092ms
+ ○ Compiling /api/chat ...
+ ✓ Compiled /api/chat in 1359ms (3647 modules)
+ POST /api/chat 200 in 3759ms
+ ○ Compiling /api/chat/title ...
+ ✓ Compiled /api/chat/title in 1055ms (3649 modules)
+[Title] Using model openai/gpt-4o-mini for provider openrouter
+[Title] Generating title using provider: openrouter
+[Title] Generated title: Title of Google Homepage
+ POST /api/chat/title 200 in 1914ms
+ ○ Compiling /settings ...
+ ✓ Compiled /settings in 5.3s (4850 modules)
+ GET /settings 200 in 5465ms
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 654ms (4855 modules)
+ GET /icons/icon-144x144.png 404 in 1000ms
+ ○ Compiling /api/mcp/test ...
+ ✓ Compiled /api/mcp/test in 1295ms (4852 modules)
+[MCP] Using streamableHttp transport for Test Connection (https://backend.composio.dev/v3/mcp/e5462cbd-252b-4af7-a396-a4adb67bbb1f/mcp?user_id=pg-test-1076a694-4923-4e38-815b-8dae31bda4a6)
+[MCP] Establishing connection to Test Connection (Attempt 1)...
+[MCP] Successfully connected to Test Connection
+ POST /api/mcp/test 200 in 4255ms
+ GET / 200 in 127ms
+ GET /icons/icon-144x144.png 404 in 369ms
+ ○ Compiling /api/chat/suggested ...
+ ✓ Compiled /api/chat/suggested in 515ms (2480 modules)
+ POST /api/chat/suggested 200 in 2709ms
+ GET / 200 in 971ms
+ GET /icons/icon-144x144.png 404 in 71ms
+ POST /api/chat/suggested 200 in 1324ms
+ ○ Compiling /api/chat ...
+ ✓ Compiled /api/chat in 1051ms (2470 modules)
+ ○ Compiling /api/tags/generate ...
+ ✓ Compiled /api/tags/generate in 1564ms (4850 modules)
+[Tags] Using model openai/gpt-4o-mini for provider openrouter
+[Tags] Using model openai/gpt-4o-mini for provider openrouter
+[Tags] Raw model output: ["web scraping", "html parsing", "h1 tag"]
+[Tags] Cleaned text: ["web scraping", "html parsing", "h1 tag"]
+[Tags] Final Generated: [ 'web scraping', 'html parsing', 'h1 tag' ]
+ POST /api/tags/generate 200 in 2832ms
+ POST /api/chat 200 in 6116ms
+[Tags] Raw model output: ["web scraping", "html", "h1 tag"]
+[Tags] Cleaned text: ["web scraping", "html", "h1 tag"]
+[Tags] Final Generated: [ 'web scraping', 'html', 'h1 tag' ]
+ POST /api/tags/generate 200 in 6592ms
+ POST /api/chat 200 in 3622ms
+ GET / 200 in 1191ms
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 1470ms (4853 modules)
+ GET /icons/icon-144x144.png 404 in 1840ms
+ ○ Compiling /api/chat/suggested ...
+ ✓ Compiled /api/chat/suggested in 624ms (2473 modules)
+ POST /api/chat/suggested 200 in 1830ms
+ POST /api/chat 200 in 2403ms
+ ○ Compiling /api/chat/title ...
+ ✓ Compiled /api/chat/title in 892ms (2472 modules)
+[Title] Using model openai/gpt-4o-mini for provider openrouter
+[Title] Generating title using provider: openrouter
+[Title] Generated title: Title of Google Homepage
+ POST /api/chat/title 200 in 1685ms
+ ✓ Compiled in 534ms (2235 modules)
+ ✓ Compiled in 1704ms (2392 modules)
+ GET / 200 in 165ms
+ GET / 200 in 36ms
+ GET / 200 in 25ms
+ ✓ Compiled /_not-found in 480ms (4618 modules)
+ GET /icons/icon-144x144.png 404 in 870ms
+ GET /icons/icon-144x144.png 404 in 109ms
+ GET /icons/icon-144x144.png 404 in 60ms
+ GET / 200 in 801ms
+ GET /icons/icon-144x144.png 404 in 59ms
+ ✓ Compiled /api/chat/suggested in 447ms (2301 modules)
+ POST /api/chat/suggested 200 in 2518ms
+ ○ Compiling /api/chat ...
+ ✓ Compiled /api/chat in 940ms (2473 modules)
+ GET / 200 in 314ms
+ GET / 200 in 37ms
+ GET / 200 in 40ms
+ GET / 200 in 34ms
+ GET /icons/icon-144x144.png 404 in 311ms
+ GET /icons/icon-144x144.png 404 in 116ms
+ GET /icons/icon-144x144.png 404 in 114ms
+ GET /icons/icon-144x144.png 404 in 63ms
+ POST /api/chat 200 in 4715ms
+ ○ Compiling /api/chat/title ...
+ ✓ Compiled /api/chat/title in 868ms (2475 modules)
+[Title] Using model openai/gpt-4o-mini for provider openrouter
+[Title] Generating title using provider: openrouter
+[Title] Generated title: First Heading on Example Domain
+ POST /api/chat/title 200 in 1524ms

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { webSearch } from "@/lib/tools/web-search";
 import { normalizeModelIdForProviderId } from "@/lib/ai/provider-routing";
 import { isCustomOpenAIProvider, resolveProvider } from "@/lib/providers";
-import { McpManager } from "@/lib/mcp/mcp-manager";
+import { McpManager, type ToolMetadata } from "@/lib/mcp/mcp-manager";
 import type { McpServer } from "@/lib/db/schema";
 
 // Node.js runtime required for MCP SDK SSE transport
@@ -156,15 +156,7 @@ export async function POST(req: Request) {
       return openai(normalizedModelId);
     })();
 
-    const toolInstructionMessages = enabledTools.includes("web-search")
-      ? [
-        {
-          role: "system" as const,
-          content:
-            "If you use webSearch, call it as many times as needed (within the step limit), then include a final `Sources` section with numbered markdown links to the URLs you relied on. If you did not use webSearch, do not add a Sources section.",
-        },
-      ]
-      : [];
+
 
     // Build tools object
     const tools = enabledTools.includes("web-search")
@@ -185,13 +177,16 @@ export async function POST(req: Request) {
     // Load MCP Tools (use singleton for connection pooling)
     const mcpManager = McpManager.getInstance();
     let mcpTools: Record<string, any> = {};
+    let mcpMetadata: ToolMetadata[] = [];
 
     if (mcpServers && mcpServers.length > 0) {
       try {
         // Filter for enabled servers if not already done on client, 
         // though client should probably send only enabled ones or the backend checks 'enabled' prop
         const enabledMcpServers = (mcpServers as McpServer[]).filter(s => s.enabled);
-        mcpTools = await mcpManager.getTools(enabledMcpServers);
+        const { tools: loadedTools, metadata } = await mcpManager.getTools(enabledMcpServers);
+        mcpTools = loadedTools;
+        mcpMetadata = metadata;
         console.log(`[MCP] Loaded ${Object.keys(mcpTools).length} external tools`);
       } catch (e) {
         console.error("[MCP] Failed to load tools:", e);
@@ -203,8 +198,30 @@ export async function POST(req: Request) {
       ...mcpTools,
     };
 
+    // Build instruction messages for tools
+    const toolInstructions: CoreMessage[] = [];
+
+    if (enabledTools.includes("web-search")) {
+      toolInstructions.push({
+        role: "system",
+        content: "If you use webSearch, call it as many times as needed (within the step limit), then include a final `Sources` section with numbered markdown links to the URLs you relied on. If you did not use webSearch, do not add a Sources section.",
+      });
+    }
+
+    // Add MCP tool instructions if any MCP tools are loaded
+    if (mcpMetadata.length > 0) {
+      const dynamicInstructions = mcpManager.buildToolInstructions(mcpMetadata);
+
+      toolInstructions.push({
+        role: "system",
+        content: dynamicInstructions,
+      });
+
+      console.log(`[MCP] Added dynamic tool instructions for ${mcpMetadata.length} tools`);
+    }
+
     // Stream the response
-    const coreMessages = [...toolInstructionMessages, ...messages] as unknown as CoreMessage[];
+    const coreMessages = [...toolInstructions, ...messages] as unknown as CoreMessage[];
 
     const result = streamText({
       model,
