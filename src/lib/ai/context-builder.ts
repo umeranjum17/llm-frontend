@@ -1,4 +1,4 @@
-import { getProjectFileById, getMessages, getChatById, getAgentById, getModelAlias } from "@/lib/db/queries";
+import { getProjectFileById, getMessages, getChatById, getAgentById, getModelAlias, getSettings } from "@/lib/db/queries";
 import type { Message } from "@/lib/db/schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { retrieveContext } from "@/lib/rag/retrieval";
@@ -70,28 +70,31 @@ export async function buildContextMessages(
   const messages: Message[] = [];
 
   // Add user memory context FIRST (personalizes all conversations)
-  try {
-    // Check if we have a user message to use for retrieval
-    const memoryQuery = userMessage;
-    // console.log("[Context] Fetching memory context for query:", memoryQuery?.slice(0, 50));
-    const memories = await searchMemories(memoryQuery);
+  // Check if memory is enabled before making API calls (default to true if not set)
+  const settings = await getSettings();
+  const memoryEnabled = settings?.memoryEnabled ?? true;
+  if (memoryEnabled) {
+    try {
+      const memoryQuery = userMessage;
+      const memories = await searchMemories(memoryQuery);
 
-    if (memories && memories.length > 0) {
-      // Format memories into a single context string
-      const memoryContext = "Active Memories:\n" + memories.map((m: any) => `- ${m.memory}`).join("\n");
+      if (memories && memories.length > 0) {
+        // Format memories into a single context string
+        const memoryContext = "Active Memories:\n" + memories.map((m: any) => `- ${m.memory}`).join("\n");
 
-      messages.push({
-        id: "memory-context",
-        chatId,
-        role: "system",
-        content: memoryContext,
-        createdAt: Date.now(),
-      });
-      // console.log("[Context] Added memory context to messages");
+        messages.push({
+          id: "memory-context",
+          chatId,
+          role: "system",
+          content: memoryContext,
+          createdAt: Date.now(),
+        });
+        console.log("[Context] Injected memories:", memories.length);
+      }
+    } catch (error) {
+      console.error("[Context] Failed to load memory context:", error);
+      // Continue without memory if it fails
     }
-  } catch (error) {
-    console.error("[Context] Failed to load memory context:", error);
-    // Continue without memory if it fails
   }
 
   // Parse references from user message

@@ -18,6 +18,7 @@ interface SettingsState extends Partial<UserSettings> {
   updateShortcuts: (shortcuts: Record<string, string>) => Promise<void>;
   updateSidebarWidth: (width: number) => Promise<void>;
   updateCurrentProject: (projectId: string | undefined) => Promise<void>;
+  updateAutoTagging: (enabled: boolean) => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -26,6 +27,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   defaultModelIdsByProvider: {},
   enabledTools: [],
   shortcuts: {},
+  autoTaggingEnabled: false,
 
   loadSettings: async () => {
     const settings = await getSettings();
@@ -73,5 +75,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateCurrentProject: async (projectId) => {
     await updateSettings({ currentProjectId: projectId });
     set({ currentProjectId: projectId });
+  },
+
+  updateAutoTagging: async (enabled) => {
+    await updateSettings({ autoTaggingEnabled: enabled });
+    set({ autoTaggingEnabled: enabled });
   },
 }));

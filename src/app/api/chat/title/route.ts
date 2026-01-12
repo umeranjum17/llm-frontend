@@ -56,32 +56,71 @@ export async function POST(req: Request) {
 
         console.log("[Title] Generating title using provider:", providerId);
 
-        const { text } = await generateText({
+        // Request usage data from OpenRouter
+        const providerOptions: Record<string, any> = {};
+        if (providerId === "openrouter") {
+            providerOptions.openrouter = { usage: { include: true } };
+        }
+
+        // Build conversation summary for title generation
+        const conversationPreview = messages.slice(0, 3).map((m: any) => {
+            const content = typeof m.content === 'string' ? m.content : '[Complex Content]';
+            return `${m.role}: ${content.slice(0, 200)}`;
+        }).join('\n');
+
+        const { text, usage } = await generateText({
             model: titleModel,
             messages: [
                 {
-                    role: "system",
-                    content: `You are a helpful assistant. Generate a short, concise title (max 6 words) for the following conversation. 
-Do not include quotation marks or "Title:" prefix. Just the title text.
-Examples:
-- "Debugging React Hooks"
-- "Python Async Tutorial"
-- "Recipe for Chocolate Cake"`,
+                    role: "user",
+                    content: `Generate a short title (3-6 words) for this conversation. Reply with ONLY the title, nothing else.
+
+Conversation:
+${conversationPreview}
+
+Title:`,
                 },
-                // We only need the first few messages
-                ...messages.slice(0, 3).map((m: any) => ({
-                    role: m.role,
-                    content: typeof m.content === 'string' ? m.content : '[Complex Content]'
-                }))
             ],
-            maxTokens: 20,
-            temperature: 0.3,
+            maxTokens: 30,
+            temperature: 0.5,
+            providerOptions,
         });
 
-        const title = text.trim().replace(/^["']|["']$/g, "");
-        console.log("[Title] Generated title:", title);
+        // Clean up the title - remove quotes, "Title:" prefix, newlines
+        let title = text.trim()
+            .replace(/^["']|["']$/g, "")
+            .replace(/^title:\s*/i, "")
+            .replace(/\n.*/g, "") // Take only first line
+            .trim();
 
-        return new Response(JSON.stringify({ title }), {
+        // Fallback if title is empty or too short
+        if (!title || title.length < 2) {
+            // Try to extract something meaningful from the first user message
+            const firstUserMsg = messages.find((m: any) => m.role === 'user');
+            if (firstUserMsg) {
+                const content = typeof firstUserMsg.content === 'string'
+                    ? firstUserMsg.content
+                    : '';
+                // Take first 50 chars and truncate at word boundary
+                title = content.slice(0, 50).replace(/\s+\S*$/, '').trim() || "New Chat";
+            } else {
+                title = "New Chat";
+            }
+        }
+
+        // Extract cost from usage if available
+        const cost = (usage as any)?.cost ?? 0;
+        const inputTokens = usage?.promptTokens ?? 0;
+        const outputTokens = usage?.completionTokens ?? 0;
+
+        console.log("[Title] Generated title:", title, `(cost: $${cost}, tokens: ${inputTokens}/${outputTokens})`);
+
+        return new Response(JSON.stringify({
+            title,
+            cost,
+            inputTokens,
+            outputTokens,
+        }), {
             headers: { "Content-Type": "application/json" },
         });
     } catch (error) {

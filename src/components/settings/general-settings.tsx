@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { PROVIDERS, isCustomOpenAIProvider, resolveProvider } from "@/lib/providers";
 import { GraduationCap } from "lucide-react";
+import { BackgroundModelsCard } from "./background-models-card";
 
 export function GeneralSettings() {
   const router = useRouter();
@@ -42,7 +43,7 @@ export function GeneralSettings() {
   }, [savedDefaultProviderId, savedDefaultModelIdsByProvider]);
 
   useEffect(() => {
-    loadModels().catch(() => {});
+    loadModels().catch(() => { });
   }, [loadModels]);
 
   const providerOptions = useMemo(() => {
@@ -182,6 +183,11 @@ export function GeneralSettings() {
         <div className="flex justify-end pt-4">
           <Button onClick={handleSave}>Save Changes</Button>
         </div>
+      </div>
+
+      {/* Background Models */}
+      <div className="border-t pt-6">
+        <BackgroundModelsCard />
       </div>
 
       {/* Onboarding Tour */}

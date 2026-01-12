@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -22,9 +22,8 @@ import { getAllChats } from "@/lib/db/queries";
 export default function Home() {
   const router = useRouter();
   const { loadKeys, isLoaded: keysLoaded, keys } = useApiKeysStore();
-  const { loadSettings, isLoaded: settingsLoaded, sidebarWidth, updateSidebarWidth } = useSettingsStore();
+  const { loadSettings, isLoaded: settingsLoaded } = useSettingsStore();
   const loadModels = useModelsStore((s) => s.loadModels);
-  const sidebarSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const isFocusMode = useUIStore((state) => state.isFocusMode);
@@ -122,25 +121,29 @@ export default function Home() {
         ) : (
           <ResizablePanelGroup
             direction="horizontal"
-            onLayout={(sizes) => {
-              const next = sizes?.[0];
-              if (typeof next !== "number") return;
-              if (sidebarSaveTimeout.current) clearTimeout(sidebarSaveTimeout.current);
-              sidebarSaveTimeout.current = setTimeout(() => {
-                updateSidebarWidth(next).catch(() => { });
-              }, 300);
-            }}
+            className="h-full min-w-0"
+            autoSaveId="lumina-main-layout"
           >
             <ResizablePanel
-              defaultSize={isWideScreen ? (sidebarWidth ?? 16) : (sidebarWidth ?? 18)}
-              minSize={isWideScreen ? 12 : 14}
-              maxSize={isWideScreen ? 26 : 30}
+              id="sidebar"
+              order={1}
+              defaultSize={isWideScreen ? 16 : 20}
+              minSize={isWideScreen ? 12 : 15}
+              maxSize={isWideScreen ? 26 : 32}
+              className="min-w-0 overflow-hidden"
             >
               <Sidebar />
             </ResizablePanel>
             <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={isWideScreen ? 82 : 75}>
-              <ChatShell />
+            <ResizablePanel
+              id="main"
+              order={2}
+              defaultSize={isWideScreen ? 84 : 80}
+              className="min-w-0"
+            >
+              <div className="h-full min-w-0">
+                <ChatShell />
+              </div>
             </ResizablePanel>
           </ResizablePanelGroup>
         )}

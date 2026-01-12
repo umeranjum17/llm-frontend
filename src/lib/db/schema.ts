@@ -73,6 +73,7 @@ export interface Message {
   inputTokens?: number; // Tokens in the request
   outputTokens?: number; // Tokens in the response
   cost?: number; // Cost in USD for this message
+  costIsEstimated?: boolean; // True when tokens/cost were locally estimated (provider usage unavailable)
   isIncomplete?: boolean; // Response was cut off mid-stream
   canContinue?: boolean; // Can continue this response
   rating?: "up" | "down";
@@ -111,6 +112,8 @@ export interface UserSettings {
   embeddingsProvider?: "openrouter" | "openai"; // Which provider to use for embeddings (default: openrouter)
   onboardingCompleted?: boolean; // Whether user has completed onboarding
   onboardingCompletedAt?: number; // Timestamp when onboarding was completed
+  // Auto-tagging settings
+  autoTaggingEnabled?: boolean;      // Whether to auto-generate tags for new chats (default: false)
 }
 
 export interface ModelFavorite {

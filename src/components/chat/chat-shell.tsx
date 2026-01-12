@@ -25,6 +25,7 @@ import { useChatSummary } from "@/hooks/use-chat-summary";
 import { ModelPickerDialog } from "@/components/model-picker/model-picker-dialog";
 import { BudgetSettingsDialog } from "./budget-settings-dialog";
 import { ChatSettingsPopover } from "./chat-settings-popover";
+import { ToolQuickToggle } from "./tool-quick-toggle";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -78,6 +79,7 @@ export function ChatShell() {
   const getKeyForProvider = useApiKeysStore((s) => s.getKeyForProvider);
   const keys = useApiKeysStore((s) => s.keys);
   const models = useModelsStore((state) => state.models);
+  const autoTaggingEnabled = useSettingsStore((state) => state.autoTaggingEnabled);
 
   const llmProviderIds = useMemo(
     () =>
@@ -117,7 +119,7 @@ export function ChatShell() {
   }, [messages]);
 
   // Auto-tagging hook
-  useAutoTags(activeChatId || "", aiMessages, chat?.tags);
+  useAutoTags(activeChatId || "", aiMessages, chat?.tags, autoTaggingEnabled ?? false);
 
   // Auto-summary hook
   useChatSummary(activeChatId || "", aiMessages, chat?.summary);
@@ -497,6 +499,8 @@ export function ChatShell() {
                       No provider
                     </Badge>
                   )}
+
+                  <ToolQuickToggle />
 
                   <ChatSettingsPopover
                     chatId={activeChatId}

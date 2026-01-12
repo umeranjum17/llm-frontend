@@ -1,11 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Plus, Search, Settings } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUIStore } from "@/stores/ui-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { ProjectSelector } from "@/components/projects/project-selector";
@@ -14,7 +13,6 @@ import { useSidebarKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { getDefaultChatConfig } from "@/lib/ai/default-chat";
 
 export function Sidebar() {
-  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const currentProjectId = useSettingsStore((state) => state.currentProjectId);
   const updateCurrentProject = useSettingsStore((state) => state.updateCurrentProject);
@@ -49,20 +47,20 @@ export function Sidebar() {
   };
 
   return (
-    <div className="flex h-full flex-col border-r bg-background/30 backdrop-blur-xl supports-[backdrop-filter]:bg-background/20">
+    <div className="flex h-full w-full min-w-0 flex-col border-r bg-background/30 backdrop-blur-xl supports-[backdrop-filter]:bg-background/20 overflow-x-hidden">
       {/* Header */}
       <div className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
         <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3">
           <h2 className="text-lg font-semibold tracking-tight">Lumina</h2>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => router.push("/settings")}
-            title="Settings"
-          >
-            <Settings className="h-4 w-4" />
-          </Button>
+          <Link href="/settings" prefetch title="Settings">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
+          </Link>
         </div>
         <div className="px-3 sm:px-4 pb-3">
           <ProjectSelector
@@ -96,9 +94,9 @@ export function Sidebar() {
       </div>
 
       {/* Chat List */}
-      <ScrollArea className="flex-1">
+      <div className="flex-1 min-h-0 overflow-hidden">
         <ChatList searchQuery={searchQuery} />
-      </ScrollArea>
+      </div>
     </div>
   );
 }

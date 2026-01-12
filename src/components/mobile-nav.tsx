@@ -1,14 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { MessageSquare, Plus, Settings, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Sidebar } from "@/components/sidebar/sidebar";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 export function MobileNav() {
-    const router = useRouter();
     const [open, setOpen] = useState(false);
 
     const handleNewChat = () => {
@@ -30,14 +29,15 @@ export function MobileNav() {
                     </SheetContent>
                 </Sheet>
 
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-10 w-10 rounded-xl text-muted-foreground hover:bg-white/10 hover:text-white"
-                    onClick={() => router.push("/")}
-                >
-                    <MessageSquare className="h-5 w-5" />
-                </Button>
+                <Link href="/" prefetch>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-10 w-10 rounded-xl text-muted-foreground hover:bg-white/10 hover:text-white"
+                    >
+                        <MessageSquare className="h-5 w-5" />
+                    </Button>
+                </Link>
 
                 <Button
                     variant="default"
@@ -48,14 +48,15 @@ export function MobileNav() {
                     <Plus className="h-5 w-5" />
                 </Button>
 
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-10 w-10 rounded-xl text-muted-foreground hover:bg-white/10 hover:text-white"
-                    onClick={() => router.push("/settings")}
-                >
-                    <Settings className="h-5 w-5" />
-                </Button>
+                <Link href="/settings" prefetch>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-10 w-10 rounded-xl text-muted-foreground hover:bg-white/10 hover:text-white"
+                    >
+                        <Settings className="h-5 w-5" />
+                    </Button>
+                </Link>
 
                 <div className="w-10" /> {/* Spacer for visual balance */}
             </div>

@@ -19,6 +19,7 @@ import { VariableInputModal } from "@/components/prompts/variable-input-modal";
 import type { Prompt } from "@/lib/db/schema";
 import { extractVariableNames } from "@/lib/utils/prompt-variables";
 import { useVoiceInput } from "@/hooks/use-voice-input";
+import { PromptQuickSelect } from "@/components/chat/prompt-quick-select";
 
 interface InputAreaProps {
   chatId: string;
@@ -533,6 +534,15 @@ export function InputArea({ chatId }: InputAreaProps) {
             <Mic className="h-5 w-5 text-muted-foreground" />
           )}
         </Button>
+
+        <PromptQuickSelect
+          onSelect={(prompt) => {
+            incrementPromptUsage(prompt.id).catch(() => {});
+            const reference = `@prompt:${prompt.id}[${prompt.title}]`;
+            setInput((prev) => (prev ? `${prev} ${reference}` : reference));
+            setTimeout(() => textareaRef.current?.focus(), 0);
+          }}
+        />
 
         <div className="relative flex-1">
           <MentionTextarea

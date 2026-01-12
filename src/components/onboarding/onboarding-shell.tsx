@@ -2,279 +2,132 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { FeatureShowcase } from "./feature-showcase";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sparkles, Shield, ArrowRight, CheckCircle2 } from "lucide-react";
-import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useRouter } from "next/navigation";
+import { useApiKeysStore } from "@/stores/api-keys-store";
 import { markOnboardingCompleted } from "@/lib/db/queries";
 
-const PROVIDERS = [
-  { id: "openrouter", name: "OpenRouter", placeholder: "sk-or-...", url: "https://openrouter.ai/keys" },
-  { id: "openai", name: "OpenAI", placeholder: "sk-...", url: "https://platform.openai.com/api-keys" },
-  { id: "anthropic", name: "Anthropic", placeholder: "sk-ant-...", url: "https://console.anthropic.com/settings/keys" },
-] as const;
+// Step components
+import { ProviderStep } from "./steps/provider-step";
+import { MemoryStep } from "./steps/memory-step";
+import { McpStep } from "./steps/mcp-step";
+import { SummaryStep } from "./steps/summary-step";
 
-type OnboardingStep = "welcome" | "features" | "setup" | "complete";
+type OnboardingStep = "provider" | "memory" | "mcp" | "summary";
+
+const STEPS: OnboardingStep[] = ["provider", "memory", "mcp", "summary"];
 
 export function OnboardingShell() {
   const router = useRouter();
-  const { addKey, keys, isLoaded: keysLoaded } = useApiKeysStore();
-  const [step, setStep] = useState<OnboardingStep>("welcome");
-  const [apiKey, setApiKey] = useState("");
-  const [provider, setProvider] = useState<(typeof PROVIDERS)[number]["id"]>("openrouter");
-  const [isLoading, setIsLoading] = useState(false);
+  const { keys, isLoaded: keysLoaded } = useApiKeysStore();
+  const [currentStep, setCurrentStep] = useState<OnboardingStep>("provider");
+  const [configuredFeatures, setConfiguredFeatures] = useState({
+    provider: "",
+    memory: false,
+    mcp: false,
+  });
 
-  // If user already has API keys, skip welcome and go straight to features
+  // If user already has API keys, skip to memory step
   useEffect(() => {
     if (keysLoaded && keys.length > 0) {
-      setStep("features");
+      setConfiguredFeatures(prev => ({ ...prev, provider: keys[0].provider }));
+      setCurrentStep("memory");
     }
-  }, [keysLoaded, keys.length]);
+  }, [keysLoaded, keys]);
 
-  const handleStartTour = () => {
-    setStep("features");
+  const handleProviderComplete = (providerId: string) => {
+    setConfiguredFeatures(prev => ({ ...prev, provider: providerId }));
+    setCurrentStep("memory");
   };
 
-  const handleSkipTour = () => {
-    // If user already has API keys, just redirect
-    if (keys.length > 0) {
-      markOnboardingCompleted().then(() => {
-        router.push("/");
-      });
-    } else {
-      setStep("setup");
-    }
+  const handleMemoryComplete = () => {
+    setConfiguredFeatures(prev => ({ ...prev, memory: true }));
+    setCurrentStep("mcp");
   };
 
-  const handleFeaturesComplete = () => {
-    // If user already has API keys, just mark onboarding as complete and redirect
-    if (keys.length > 0) {
-      markOnboardingCompleted().then(() => {
-        router.push("/");
-      });
-    } else {
-      setStep("setup");
-    }
+  const handleMemorySkip = () => {
+    setCurrentStep("mcp");
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!apiKey.trim()) return;
-
-    setIsLoading(true);
-    try {
-      const selected = PROVIDERS.find((p) => p.id === provider);
-      await addKey(provider, apiKey, selected?.name);
-      await markOnboardingCompleted();
-      setStep("complete");
-      setTimeout(() => {
-        router.push("/");
-      }, 2000);
-    } catch (error) {
-      console.error("Failed to add API key:", error);
-    } finally {
-      setIsLoading(false);
-    }
+  const handleMcpComplete = () => {
+    setConfiguredFeatures(prev => ({ ...prev, mcp: true }));
+    setCurrentStep("summary");
   };
 
-  const selected = PROVIDERS.find((p) => p.id === provider) ?? PROVIDERS[0];
+  const handleMcpSkip = () => {
+    setCurrentStep("summary");
+  };
+
+  const handleComplete = async () => {
+    await markOnboardingCompleted();
+    router.push("/");
+  };
+
+  const goToStep = (step: OnboardingStep) => {
+    setCurrentStep(step);
+  };
+
+  const currentStepIndex = STEPS.indexOf(currentStep);
+  const progress = ((currentStepIndex + 1) / STEPS.length) * 100;
 
   return (
-    <AnimatePresence mode="wait">
-      {step === "welcome" && (
-        <motion.div
-          key="welcome"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="flex min-h-screen items-center justify-center p-4 bg-gradient-to-b from-background to-muted/20"
-        >
-          <Card className="w-full max-w-2xl">
-            <CardHeader className="text-center pb-8">
+    <div className="min-h-screen flex flex-col bg-gradient-to-b from-background via-background to-muted/20">
+      {/* Progress Bar */}
+      {currentStep !== "summary" && (
+        <div className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b">
+          <div className="container max-w-2xl mx-auto px-4 py-3">
+            <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
+              <span>Step {currentStepIndex + 1} of {STEPS.length}</span>
+              <span>{Math.round(progress)}% complete</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
               <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.5 }}
-                className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10"
-              >
-                <Sparkles className="h-8 w-8 text-primary" />
-              </motion.div>
-              <CardTitle className="text-3xl mb-2">Welcome to Lumina</CardTitle>
-              <CardDescription className="text-base">
-                The premium BYOK AI frontend for power users
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid gap-4 md:grid-cols-3">
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 }}
-                  className="flex flex-col items-center text-center p-4 rounded-lg border bg-muted/30"
-                >
-                  <Shield className="h-6 w-6 text-primary mb-2" />
-                  <h3 className="font-semibold mb-1">Privacy First</h3>
-                  <p className="text-xs text-muted-foreground">
-                    All data stored locally. Your API keys are encrypted.
-                  </p>
-                </motion.div>
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                  className="flex flex-col items-center text-center p-4 rounded-lg border bg-muted/30"
-                >
-                  <Sparkles className="h-6 w-6 text-primary mb-2" />
-                  <h3 className="font-semibold mb-1">100+ Models</h3>
-                  <p className="text-xs text-muted-foreground">
-                    Access models from OpenAI, Anthropic, Google, and more.
-                  </p>
-                </motion.div>
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3 }}
-                  className="flex flex-col items-center text-center p-4 rounded-lg border bg-muted/30"
-                >
-                  <ArrowRight className="h-6 w-6 text-primary mb-2" />
-                  <h3 className="font-semibold mb-1">Powerful Features</h3>
-                  <p className="text-xs text-muted-foreground">
-                    Agents, prompts, branching, cost tracking, and more.
-                  </p>
-                </motion.div>
-              </div>
-              <Button onClick={handleStartTour} className="w-full gap-2" size="lg">
-                Take Feature Tour
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-              <Button
-                onClick={handleSkipTour}
-                variant="ghost"
-                className="w-full"
-              >
-                Skip and Setup API Key
-              </Button>
-            </CardContent>
-          </Card>
-        </motion.div>
+                className="h-full bg-primary"
+                initial={{ width: 0 }}
+                animate={{ width: `${progress}%` }}
+                transition={{ duration: 0.3 }}
+              />
+            </div>
+          </div>
+        </div>
       )}
 
-      {step === "features" && (
-        <motion.div
-          key="features"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        >
-          <FeatureShowcase onComplete={handleFeaturesComplete} onSkip={handleSkipTour} />
-        </motion.div>
-      )}
+      {/* Step Content */}
+      <div className="flex-1 flex items-center justify-center p-4 sm:p-6">
+        <AnimatePresence mode="wait">
+          {currentStep === "provider" && (
+            <ProviderStep
+              key="provider"
+              onComplete={handleProviderComplete}
+            />
+          )}
 
-      {step === "setup" && (
-        <motion.div
-          key="setup"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="flex min-h-screen items-center justify-center p-4 bg-gradient-to-b from-background to-muted/20"
-        >
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Shield className="h-5 w-5 text-primary" />
-                Setup API Key
-              </CardTitle>
-              <CardDescription>
-                Connect your API key to start chatting. Your key is encrypted and stored locally.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="provider">Provider</Label>
-                  <Select value={provider} onValueChange={(v) => setProvider(v as (typeof PROVIDERS)[number]["id"])}>
-                    <SelectTrigger id="provider">
-                      <SelectValue placeholder="Select provider" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PROVIDERS.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="apiKey">{selected.name} API Key</Label>
-                  <Input
-                    id="apiKey"
-                    type="password"
-                    placeholder={selected.placeholder}
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    required
-                  />
-                  <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                    <div className="flex items-start gap-2 text-xs">
-                      <Shield className="h-3 w-3 text-green-600 mt-0.5 shrink-0" />
-                      <span className="text-muted-foreground">
-                        Your API key is encrypted and stored locally. We never see or store your keys.
-                      </span>
-                    </div>
-                    <div className="text-xs">
-                      <span className="text-muted-foreground">Get your key from </span>
-                      <a
-                        href={selected.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline font-medium"
-                      >
-                        {selected.url.replace(/^https?:\/\//, "")}
-                      </a>
-                    </div>
-                  </div>
-                </div>
-                <Button type="submit" className="w-full gap-2" disabled={isLoading} size="lg">
-                  {isLoading ? "Saving..." : "Continue"}
-                  {!isLoading && <ArrowRight className="h-4 w-4" />}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        </motion.div>
-      )}
+          {currentStep === "memory" && (
+            <MemoryStep
+              key="memory"
+              onComplete={handleMemoryComplete}
+              onBack={() => goToStep("provider")}
+              onSkip={handleMemorySkip}
+            />
+          )}
 
-      {step === "complete" && (
-        <motion.div
-          key="complete"
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="flex min-h-screen items-center justify-center p-4"
-        >
-          <Card className="w-full max-w-md text-center">
-            <CardHeader>
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 0.2, type: "spring" }}
-                className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10"
-              >
-                <CheckCircle2 className="h-8 w-8 text-green-600" />
-              </motion.div>
-              <CardTitle>All Set!</CardTitle>
-              <CardDescription>
-                Your API key has been saved securely. Redirecting to the app...
-              </CardDescription>
-            </CardHeader>
-          </Card>
-        </motion.div>
-      )}
-    </AnimatePresence>
+          {currentStep === "mcp" && (
+            <McpStep
+              key="mcp"
+              onComplete={handleMcpComplete}
+              onBack={() => goToStep("memory")}
+              onSkip={handleMcpSkip}
+            />
+          )}
+
+          {currentStep === "summary" && (
+            <SummaryStep
+              key="summary"
+              onComplete={handleComplete}
+              configuredFeatures={configuredFeatures}
+            />
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
   );
 }

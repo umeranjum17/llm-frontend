@@ -12,7 +12,9 @@ import {
   DragOverlay,
   DragStartEvent,
   useDroppable,
+  MeasuringStrategy,
 } from "@dnd-kit/core";
+import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import {
   arrayMove,
   SortableContext,
@@ -83,7 +85,7 @@ export function ChatList({ searchQuery }: ChatListProps) {
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
@@ -239,13 +241,14 @@ export function ChatList({ searchQuery }: ChatListProps) {
 
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
-    setActiveId(active.id as string);
+    const activeIdStr = active.id as string;
+    setActiveId(activeIdStr);
 
-    // Find the dragged item
+    // Find the dragged item - IDs are prefixed with "folder-" or "chat-"
     const allItems = buildItemsList();
     const item = allItems.find(i =>
-      (i.type === "folder" && i.folder.id === active.id) ||
-      (i.type === "chat" && i.chat.id === active.id)
+      (i.type === "folder" && `folder-${i.folder.id}` === activeIdStr) ||
+      (i.type === "chat" && `chat-${i.chat.id}` === activeIdStr)
     );
     setDraggedItem(item || null);
   };
@@ -402,8 +405,14 @@ export function ChatList({ searchQuery }: ChatListProps) {
       collisionDetection={closestCenter}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      modifiers={[restrictToVerticalAxis]}
+      measuring={{
+        droppable: {
+          strategy: MeasuringStrategy.Always,
+        },
+      }}
     >
-      <div className="flex h-full flex-col">
+      <div className="flex h-full min-w-0 flex-col overflow-x-hidden">
         <div className="px-4 py-1.5 flex justify-between items-center">
           <span className="text-[10px] font-medium text-muted-foreground/70">Chats</span>
           <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground/70 hover:text-muted-foreground" onClick={handleCreateFolder} title="New Folder">
@@ -424,11 +433,11 @@ export function ChatList({ searchQuery }: ChatListProps) {
             tags={tags || []}
           />
         )}
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 min-h-0 min-w-0">
           <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-            <div>
+            <div className="pb-4 min-w-0">
               {/* No-folder drop zone for moving chats out of folders */}
-              <NoFolderDropZone />
+              <NoFolderDropZone isDragging={!!draggedItem} />
               {items.map((item, index) => {
                 if (item.type === "folder") {
                   const folderChatCount = chats?.filter(c => c.folderId === item.folder.id).length || 0;
@@ -473,13 +482,13 @@ export function ChatList({ searchQuery }: ChatListProps) {
           {draggedItem && (
             <div className="opacity-50">
               {draggedItem.type === "folder" ? (
-                <div className="flex items-center gap-2 px-4 py-2">
-                  <Folder className="h-3.5 w-3.5 text-primary" />
-                  <span className="text-xs font-semibold">{draggedItem.folder.name}</span>
+                <div className="flex items-center gap-2 px-4 py-2 bg-background border rounded-lg shadow-sm w-[200px]">
+                  <Folder className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <span className="text-xs font-semibold truncate">{draggedItem.folder.name}</span>
                 </div>
               ) : (
-                <div className="px-4 py-3 border-b">
-                  <div className="text-sm font-medium">{draggedItem.chat.title}</div>
+                <div className="px-4 py-3 border rounded-lg bg-background shadow-sm w-[240px]">
+                  <div className="text-sm font-medium truncate">{draggedItem.chat.title}</div>
                 </div>
               )}
             </div>
@@ -568,7 +577,7 @@ function SortableFolderItem({ folder, isExpanded, onToggle, chatCount = 0, onEdi
       }}
       style={style}
       className={cn(
-        "flex items-center gap-2 px-3 py-1.5 mx-2 my-0.5 cursor-pointer hover:bg-accent/50 group rounded-lg transition-colors",
+        "flex max-w-full min-w-0 items-center gap-2 overflow-hidden px-3 py-1.5 mx-2 my-0.5 cursor-pointer hover:bg-accent/50 group rounded-lg transition-colors select-none",
         isDragging && "opacity-50",
         isOver && "bg-accent ring-1 ring-primary/50"
       )}
@@ -579,14 +588,14 @@ function SortableFolderItem({ folder, isExpanded, onToggle, chatCount = 0, onEdi
       <button
         {...attributes}
         {...listeners}
-        className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors opacity-0 group-hover:opacity-100"
+        className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors opacity-30 group-hover:opacity-100 touch-none select-none"
         onClick={(e) => e.stopPropagation()}
       >
         <GripVertical className="h-3 w-3" />
       </button>
       {isExpanded ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
       <Folder className="h-3.5 w-3.5" style={folder.color ? { color: folder.color } : undefined} />
-      <span className="text-xs font-medium truncate flex-1">{folder.name}</span>
+      <span className="text-xs font-medium truncate flex-1 min-w-0">{folder.name}</span>
       {chatCount > 0 && (
         <span className="text-[10px] text-muted-foreground/60">
           {chatCount}
@@ -615,17 +624,21 @@ function SortableFolderItem({ folder, isExpanded, onToggle, chatCount = 0, onEdi
   );
 }
 
-function NoFolderDropZone() {
+function NoFolderDropZone({ isDragging }: { isDragging: boolean }) {
   const { setNodeRef, isOver } = useDroppable({
     id: "no-folder",
   });
 
-  if (!isOver) return null;
+  if (!isDragging && !isOver) return null;
 
   return (
     <div
       ref={setNodeRef}
-      className="mx-2 px-3 py-2 text-xs text-muted-foreground bg-accent/60 rounded-lg transition-colors"
+      className={cn(
+        "mx-2 px-3 py-2 text-xs text-muted-foreground bg-accent/60 rounded-lg transition-colors mb-2 border border-dashed border-transparent",
+        isOver && "border-primary/50 bg-accent",
+        !isOver && isDragging && "opacity-50"
+      )}
     >
       Drop here to remove from folder
     </div>
@@ -691,33 +704,34 @@ function SortableChatItem({
 
   return (
     <TooltipProvider>
-      <Tooltip delayDuration={500}>
-        <TooltipTrigger asChild>
-          <div
-            ref={setNodeRef}
-            style={style}
-            className={cn(
-              "group relative cursor-pointer px-2.5 py-2 mx-2 my-0.5 rounded-lg transition-colors hover:bg-accent/60",
-              isActive && "bg-accent",
-              isSecondary && "bg-accent/40 ring-1 ring-primary/30",
-              isSelected && "bg-accent/60 ring-1 ring-primary/40",
-              isNested && "ml-6",
-              isDragging && "opacity-50"
-            )}
-            onClick={onClick}
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
+      <div
+        ref={setNodeRef}
+        style={style}
+        className={cn(
+          "group relative cursor-pointer px-2.5 py-2 mx-2 my-0.5 rounded-lg transition-colors hover:bg-accent/60 select-none max-w-full min-w-0 overflow-hidden",
+          isActive && "bg-accent",
+          isSecondary && "bg-accent/40 ring-1 ring-primary/30",
+          isSelected && "bg-accent/60 ring-1 ring-primary/40",
+          isNested && "ml-6",
+          isDragging && "opacity-50"
+        )}
+        onClick={onClick}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        <div className="flex items-center gap-1 min-w-0 w-full max-w-full overflow-hidden">
+          <button
+            {...attributes}
+            {...listeners}
+            className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors shrink-0 opacity-30 group-hover:opacity-100 touch-none select-none"
+            onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-1 min-w-0 w-full">
-              <button
-                {...attributes}
-                {...listeners}
-                className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors shrink-0 opacity-0 group-hover:opacity-100"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <GripVertical className="h-3 w-3" />
-              </button>
-              <div className="flex-1 min-w-0 overflow-hidden">
+            <GripVertical className="h-3 w-3" />
+          </button>
+
+          <Tooltip delayDuration={500}>
+            <TooltipTrigger asChild>
+              <div className="flex-1 min-w-0 w-0 overflow-hidden">
                 <div className="flex items-center gap-1 min-w-0">
                   {chat.pinned && <Pin className="h-2.5 w-2.5 text-muted-foreground shrink-0" />}
                   {chat.favorite && <Star className="h-2.5 w-2.5 text-yellow-500/70 shrink-0" />}
@@ -725,87 +739,110 @@ function SortableChatItem({
                     {chat.title}
                   </h3>
                 </div>
-                <div className="text-[10px] text-muted-foreground/70 truncate leading-tight">
+                <div className="text-[10px] text-muted-foreground/70 leading-tight truncate">
                   {previewText || `Updated ${formatDistanceToNow(new Date(chat.updatedAt), { addSuffix: true })}`}
                 </div>
               </div>
+            </TooltipTrigger>
+            {chat.summary && (
+              <TooltipContent side="right" className="max-w-[300px] text-xs">
+                {chat.summary}
+              </TooltipContent>
+            )}
+          </Tooltip>
 
-              {/* Actions (shown on hover) */}
-              <div
-                className={cn(
-                  "flex items-center gap-0.5 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100",
-                  (isHovered || isActive) && "opacity-100"
-                )}
-              >
+          {/* Actions (shown on hover) */}
+          <div
+            className={cn(
+              "flex items-center gap-0.5 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100",
+              (isHovered || isActive) && "opacity-100"
+            )}
+          >
+            <Tooltip>
+              <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-5 w-5"
                   onClick={onTogglePin}
-                  title={chat.pinned ? "Unpin" : "Pin"}
                 >
                   <Pin className={cn("h-2.5 w-2.5", chat.pinned && "fill-current")} />
                 </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {chat.pinned ? "Unpin" : "Pin"}
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-5 w-5"
                   onClick={onToggleFavorite}
-                  title={chat.favorite ? "Unfavorite" : "Favorite"}
                 >
                   <Star className={cn("h-2.5 w-2.5", chat.favorite && "fill-current text-yellow-500")} />
                 </Button>
-                <DropdownMenu>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {chat.favorite ? "Unfavorite" : "Favorite"}
+              </TooltipContent>
+            </Tooltip>
+
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
                   <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                     <Button
                       variant="ghost"
                       size="icon"
                       className="h-5 w-5"
-                      title="Move to Folder"
                     >
                       <Folder className="h-2.5 w-2.5" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuLabel>Move to Folder</DropdownMenuLabel>
-                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onMoveToFolder(null); }}>
-                      No Folder
-                    </DropdownMenuItem>
-                    {folders.length > 0 && <DropdownMenuSeparator />}
-                    {folders.map((folder) => (
-                      <DropdownMenuItem
-                        key={folder.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onMoveToFolder(folder.id);
-                          toast.success(`Moved to ${folder.name}`);
-                        }}
-                      >
-                        <Folder className="h-3.5 w-3.5 mr-2" style={folder.color ? { color: folder.color } : undefined} />
-                        {folder.name}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                </TooltipTrigger>
+                <TooltipContent side="top">Move to Folder</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Move to Folder</DropdownMenuLabel>
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onMoveToFolder(null); }}>
+                  No Folder
+                </DropdownMenuItem>
+                {folders.length > 0 && <DropdownMenuSeparator />}
+                {folders.map((folder) => (
+                  <DropdownMenuItem
+                    key={folder.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onMoveToFolder(folder.id);
+                      toast.success(`Moved to ${folder.name}`);
+                    }}
+                  >
+                    <Folder className="h-3.5 w-3.5 mr-2" style={folder.color ? { color: folder.color } : undefined} />
+                    <span className="truncate flex-1">{folder.name}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-5 w-5"
                   onClick={onDelete}
-                  title="Delete"
                 >
                   <Trash2 className="h-2.5 w-2.5" />
                 </Button>
-              </div>
-            </div>
+              </TooltipTrigger>
+              <TooltipContent side="top">Delete</TooltipContent>
+            </Tooltip>
           </div>
-        </TooltipTrigger>
-        {chat.summary && (
-          <TooltipContent side="right" className="max-w-[300px] text-xs">
-            {chat.summary}
-          </TooltipContent>
-        )}
-      </Tooltip>
+        </div>
+      </div>
     </TooltipProvider>
   );
 }

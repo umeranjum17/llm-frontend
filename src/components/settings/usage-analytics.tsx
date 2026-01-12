@@ -1,18 +1,21 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { getAllChats, getMessages } from "@/lib/db/queries";
+import { getAllChats, getMessages, updateMessage, updateChat } from "@/lib/db/queries";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { TrendingUp, DollarSign, MessageSquare, BarChart3, Download, PieChart as PieChartIcon } from "lucide-react";
+import { TrendingUp, DollarSign, MessageSquare, BarChart3, Download, PieChart as PieChartIcon, RefreshCw } from "lucide-react";
 import { format, subDays, isSameDay } from "date-fns";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { estimateCost } from "@/lib/utils/token-counter";
+import { toast } from "sonner";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   Cell, PieChart, Pie, Sector, AreaChart, Area
 } from "recharts";
 
 export function UsageAnalytics() {
+  const [isRecalculating, setIsRecalculating] = useState(false);
   const chats = useLiveQuery(() => getAllChats(), []);
   const allMessages = useLiveQuery(
     async () => {
@@ -75,6 +78,56 @@ export function UsageAnalytics() {
     };
   }, [chats, allMessages]);
 
+  const handleRecalculateCosts = async () => {
+    if (!chats || !allMessages || isRecalculating) return;
+
+    setIsRecalculating(true);
+    try {
+      let updatedCount = 0;
+      let totalRecalculated = 0;
+
+      for (const chat of chats) {
+        const chatMessages = allMessages.filter(m => m.chatId === chat.id);
+        let chatTotalCost = 0;
+
+        for (const message of chatMessages) {
+          // Only recalculate assistant messages that have token counts
+          if (message.role === "assistant" && (message.inputTokens || message.outputTokens)) {
+            const newCost = estimateCost(
+              message.inputTokens || 0,
+              message.outputTokens || 0,
+              message.modelId || chat.modelId,
+              undefined
+            );
+
+            // Update if cost changed
+            if (newCost !== (message.cost || 0)) {
+              await updateMessage(message.id, { cost: newCost, costIsEstimated: true });
+              updatedCount++;
+            }
+
+            chatTotalCost += newCost;
+          } else if (message.cost) {
+            chatTotalCost += message.cost;
+          }
+        }
+
+        // Update chat total cost
+        if (chatTotalCost !== (chat.totalCost || 0)) {
+          await updateChat(chat.id, { totalCost: chatTotalCost });
+          totalRecalculated++;
+        }
+      }
+
+      toast.success(`Recalculated costs for ${updatedCount} messages across ${totalRecalculated} chats`);
+    } catch (error) {
+      console.error("Failed to recalculate costs:", error);
+      toast.error("Failed to recalculate costs");
+    } finally {
+      setIsRecalculating(false);
+    }
+  };
+
   if (!stats) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -112,10 +165,22 @@ export function UsageAnalytics() {
             Track your API usage and costs
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={handleExport} className="gap-2">
-          <Download className="h-4 w-4" />
-          Export Data
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRecalculateCosts}
+            disabled={isRecalculating}
+            className="gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isRecalculating ? "animate-spin" : ""}`} />
+            {isRecalculating ? "Recalculating..." : "Recalculate Costs"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleExport} className="gap-2">
+            <Download className="h-4 w-4" />
+            Export Data
+          </Button>
+        </div>
       </div>
 
       {/* Overview Stats */}

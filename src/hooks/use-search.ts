@@ -5,8 +5,7 @@ import { searchMessages, type MessageSearchResult } from "@/lib/db/queries";
 
 export function useChatSearch(chats: Chat[], searchQuery: string) {
   const [messageMatches, setMessageMatches] = useState<MessageSearchResult[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [isSearching, setIsSearching] = useState(false);
+  const [_isSearching, setIsSearching] = useState(false);
 
   // Configure Fuse.js for fuzzy search on Titles
   const fuse = useMemo(() => {

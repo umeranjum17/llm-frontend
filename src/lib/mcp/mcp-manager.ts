@@ -13,7 +13,130 @@ export interface ToolMetadata {
 }
 
 /**
- * Safety guard: Validate that URL is HTTPS and not localhost/private IP
+ * Some providers (notably Google/Gemini via OpenRouter) enforce strict tool/function naming:
+ * - Must start with a letter or underscore
+ * - Allowed chars: a-zA-Z0-9 _ . : -
+ * - Max length: 64
+ *
+ * MCP server IDs (e.g. nanoid) can start with digits, and tool names can contain invalid chars
+ * or be too long. We generate a safe, deterministic name with a short hash to avoid collisions.
+ */
+function fnv1a32(input: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    // 32-bit FNV-1a prime
+    hash = (hash * 0x01000193) >>> 0;
+  }
+  return hash >>> 0;
+}
+
+function sanitizeToolFunctionName(raw: string): string {
+  // Replace invalid chars with underscore
+  let name = raw.replace(/[^a-zA-Z0-9_.:-]/g, "_");
+  // Must start with a letter or underscore
+  if (!/^[a-zA-Z_]/.test(name)) {
+    name = `mcp_${name}`;
+  }
+  // Hard cap length
+  if (name.length > 64) {
+    name = name.slice(0, 64);
+  }
+  return name;
+}
+
+function buildSafeMcpToolName(serverId: string, toolName: string): string {
+  const hash = fnv1a32(`${serverId}::${toolName}`).toString(36);
+  // Keep tool name reasonably readable, but bounded.
+  const toolPart = sanitizeToolFunctionName(toolName).slice(0, 40);
+  return sanitizeToolFunctionName(`mcp_${hash}_${toolPart}`);
+}
+
+/**
+ * Convert JSON Schema to Zod schema for proper AI SDK compatibility.
+ * This ensures tool parameters are properly typed instead of using generic z.record(z.any()).
+ *
+ * IMPORTANT: Azure OpenAI requires ALL properties to be in the 'required' array.
+ * We make all properties required at the Zod level - for optional parameters,
+ * the LLM should pass appropriate default values.
+ */
+function jsonSchemaToZod(schema: any, isTopLevel: boolean = true): z.ZodTypeAny {
+  // Fallback for missing or invalid schemas
+  if (!schema || typeof schema !== 'object') {
+    return z.string().describe("Any value");
+  }
+
+  // Handle object type (most common for tool parameters)
+  if (schema.type === "object" || schema.properties) {
+    const properties = schema.properties || {};
+
+    const shape: Record<string, z.ZodTypeAny> = {};
+    for (const [key, prop] of Object.entries(properties)) {
+      const propSchema = prop as any;
+
+      // Skip properties without a type field - Azure requires all properties to have a type
+      if (!propSchema || (typeof propSchema === 'object' && !propSchema.type && !propSchema.properties && !propSchema.enum)) {
+        console.warn(`[MCP] Skipping property '${key}' without type definition`);
+        continue;
+      }
+
+      let zodType = jsonSchemaToZod(propSchema, false);
+
+      // Add description if available
+      if (propSchema.description) {
+        zodType = zodType.describe(propSchema.description);
+      }
+
+      // Azure requires ALL properties in required array, so we make all properties required
+      // Do NOT call .optional() - this ensures proper Azure compatibility
+      shape[key] = zodType;
+    }
+
+    // Return strict object - Azure requires additionalProperties: false
+    return z.object(shape).strict();
+  }
+
+  // Handle primitive types
+  switch (schema.type) {
+    case "string":
+      if (schema.enum && Array.isArray(schema.enum) && schema.enum.length > 0) {
+        return z.enum(schema.enum as [string, ...string[]]);
+      }
+      return z.string();
+
+    case "number":
+    case "integer":
+      return z.number();
+
+    case "boolean":
+      return z.boolean();
+
+    case "array":
+      const itemSchema = schema.items ? jsonSchemaToZod(schema.items, false) : z.string();
+      return z.array(itemSchema);
+
+    case "null":
+      return z.null();
+
+    default:
+      // Handle anyOf/oneOf by taking the first option (simplified)
+      if (schema.anyOf && Array.isArray(schema.anyOf) && schema.anyOf.length > 0) {
+        return jsonSchemaToZod(schema.anyOf[0], false);
+      }
+      if (schema.oneOf && Array.isArray(schema.oneOf) && schema.oneOf.length > 0) {
+        return jsonSchemaToZod(schema.oneOf[0], false);
+      }
+
+      // For unknown types or missing type field, default to string (Azure requires a type)
+      // This handles properties without a 'type' key
+      console.warn('[MCP] Unknown schema type, defaulting to string:', JSON.stringify(schema));
+      return z.string().describe(schema.description || "Value");
+  }
+}
+
+/**
+ * Safety guard: Validate that URL is a valid Composio URL.
+ * STRICT: Only allows *.composio.dev domains.
  */
 function validateRemoteUrl(urlString: string): { valid: boolean; error?: string } {
   try {
@@ -24,33 +147,9 @@ function validateRemoteUrl(urlString: string): { valid: boolean; error?: string 
       return { valid: false, error: 'Only HTTPS URLs are allowed for remote MCP servers' };
     }
 
-    // Block localhost
-    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '::1') {
-      return { valid: false, error: 'Localhost URLs are not allowed for security reasons' };
-    }
-
-    // Block private IP ranges (basic check)
-    if (
-      url.hostname.startsWith('192.168.') ||
-      url.hostname.startsWith('10.') ||
-      url.hostname.startsWith('172.16.') ||
-      url.hostname.startsWith('172.17.') ||
-      url.hostname.startsWith('172.18.') ||
-      url.hostname.startsWith('172.19.') ||
-      url.hostname.startsWith('172.20.') ||
-      url.hostname.startsWith('172.21.') ||
-      url.hostname.startsWith('172.22.') ||
-      url.hostname.startsWith('172.23.') ||
-      url.hostname.startsWith('172.24.') ||
-      url.hostname.startsWith('172.25.') ||
-      url.hostname.startsWith('172.26.') ||
-      url.hostname.startsWith('172.27.') ||
-      url.hostname.startsWith('172.28.') ||
-      url.hostname.startsWith('172.29.') ||
-      url.hostname.startsWith('172.30.') ||
-      url.hostname.startsWith('172.31.')
-    ) {
-      return { valid: false, error: 'Private IP addresses are not allowed' };
+    // STRICT: Only allow composio.dev subdomains
+    if (!url.hostname.endsWith('composio.dev') || (!url.hostname.endsWith('.composio.dev') && url.hostname !== 'composio.dev')) {
+      return { valid: false, error: 'Security restriction: Only composio.dev domains are allowed.' };
     }
 
     return { valid: true };
@@ -68,6 +167,12 @@ function validateRemoteUrl(urlString: string): { valid: boolean; error?: string 
 function detectTransportType(url: string): 'sse' | 'streamableHttp' {
   const urlLower = url.toLowerCase();
 
+  // Explicit SSE endpoint wins, even for Composio domains.
+  // Some Composio docs/registry entries use /sse, which must use SSE transport.
+  if (urlLower.includes('/sse')) {
+    return 'sse';
+  }
+
   // Composio and similar modern MCP servers use Streamable HTTP
   if (urlLower.includes('composio.dev')) {
     return 'streamableHttp';
@@ -82,10 +187,20 @@ function detectTransportType(url: string): 'sse' | 'streamableHttp' {
   return 'sse';
 }
 
+interface CachedTools {
+  tools: Record<string, any>;
+  metadata: ToolMetadata[];
+  timestamp: number;
+}
+
 export class McpManager {
   private clients: Map<string, Client> = new Map();
   private readonly DEFAULT_TOOL_CAP = 50; // Maximum tools per server by default
   private static instance: McpManager | null = null;
+
+  // Tools cache: key is a hash of enabled server IDs, value is the cached tools
+  private toolsCache: Map<string, CachedTools> = new Map();
+  private readonly TOOLS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache TTL
 
   /**
    * Get the singleton instance of McpManager
@@ -103,11 +218,46 @@ export class McpManager {
   private readonly TIMEOUT_MS = 10000; // 10s timeout for MCP operations
 
   /**
+   * Generate a unique key for a server connection
+   * Includes server ID and API key hash to ensure different users don't share connections
+   */
+  private getServerConnectionKey(server: McpServer): string {
+    const apiKeyHash = server.apiKey ? fnv1a32(server.apiKey).toString(36) : 'nokey';
+    return `${server.id}:${apiKeyHash}`;
+  }
+
+  /**
+   * Generate a cache key from enabled servers configuration
+   * Includes server IDs, API key hashes, and tool policies to ensure per-user caching
+   */
+  private generateCacheKey(servers: McpServer[]): string {
+    const enabledServers = servers
+      .filter(s => s.enabled)
+      .map(s => {
+        const apiKeyHash = s.apiKey ? fnv1a32(s.apiKey).toString(36) : 'nokey';
+        return `${s.id}:${apiKeyHash}:${s.toolCaps || this.DEFAULT_TOOL_CAP}:${(s.toolPolicy?.disabledTools || []).sort().join(',')}`;
+      })
+      .sort()
+      .join('|');
+    return enabledServers;
+  }
+
+  /**
    * Create transport based on URL pattern
    */
   private createTransport(server: McpServer) {
     const transportType = detectTransportType(server.url);
-    const headers = server.apiKey ? { Authorization: `Bearer ${server.apiKey}` } : undefined;
+
+    // Build headers based on server configuration
+    // Composio uses x-api-key header, others use Authorization Bearer
+    let headers: Record<string, string> | undefined;
+    if (server.apiKey) {
+      if (server.url.includes('composio.dev')) {
+        headers = { 'x-api-key': server.apiKey };
+      } else {
+        headers = { 'Authorization': `Bearer ${server.apiKey}` };
+      }
+    }
 
     console.log(`[MCP] Using ${transportType} transport for ${server.name} (${server.url})`);
 
@@ -197,8 +347,11 @@ export class McpManager {
   }
 
   async connect(server: McpServer): Promise<Client> {
-    if (this.clients.has(server.id)) {
-      const client = this.clients.get(server.id);
+    // Use composite key including API key hash to prevent cross-user connection sharing
+    const connectionKey = this.getServerConnectionKey(server);
+
+    if (this.clients.has(connectionKey)) {
+      const client = this.clients.get(connectionKey);
       if (client) return client;
     }
 
@@ -210,7 +363,7 @@ export class McpManager {
       }
 
       const client = await this.connectWithRetry(server);
-      this.clients.set(server.id, client);
+      this.clients.set(connectionKey, client);
       return client;
     } catch (error) {
       const userMessage = this.formatErrorMessage(error, server);
@@ -246,6 +399,16 @@ export class McpManager {
   }
 
   async getTools(servers: McpServer[]): Promise<{ tools: Record<string, any>; metadata: ToolMetadata[] }> {
+    // Check cache first
+    const cacheKey = this.generateCacheKey(servers);
+    const cached = this.toolsCache.get(cacheKey);
+
+    if (cached && (Date.now() - cached.timestamp) < this.TOOLS_CACHE_TTL_MS) {
+      console.log(`[MCP] Using cached tools (${cached.metadata.length} tools, age: ${Math.round((Date.now() - cached.timestamp) / 1000)}s)`);
+      return { tools: cached.tools, metadata: cached.metadata };
+    }
+
+    console.log(`[MCP] Cache miss or expired, fetching tools...`);
     const allTools: Record<string, any> = {};
     const metadata: ToolMetadata[] = [];
 
@@ -285,8 +448,9 @@ export class McpManager {
             break;
           }
 
-          // Namespace tools with server ID to avoid collisions
-          const fullName = `${server.id}/${tool.name}`;
+          // Build a provider-safe tool/function name.
+          // We also keep server/tool metadata for UX (display names) separately.
+          const fullName = buildSafeMcpToolName(server.id, tool.name);
 
           metadata.push({
             fullName,
@@ -296,37 +460,54 @@ export class McpManager {
             inputSchema: tool.inputSchema,
           });
 
+          // Convert JSON Schema to Zod for proper AI SDK compatibility
+          console.log(`[MCP] Converting schema for ${tool.name}:`, JSON.stringify(tool.inputSchema).substring(0, 200));
+          const zodParameters = jsonSchemaToZod(tool.inputSchema);
+          console.log(`[MCP] Converted to Zod schema for ${tool.name}`);
+
           allTools[fullName] = {
-            description: tool.description,
-            parameters: z.record(z.any()), // Use z.record(z.any()) to allow all tool inputs as passed through
+            description: tool.description || "MCP tool",
+            parameters: zodParameters,
             execute: async (args: any) => {
-              try {
-                console.log(`[MCP] Executing ${tool.name} on ${server.name} with args:`, JSON.stringify(args));
+              console.log(`[MCP] Executing ${tool.name} on ${server.name} with args:`, JSON.stringify(args));
 
-                const execTimeoutPromise = new Promise((_, reject) =>
-                  setTimeout(() => reject(new Error(`Execution timeout after 30s`)), 30000)
-                );
+              const execTimeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error(`Execution timeout after 30s`)), 30000)
+              );
 
-                const result = await Promise.race([
-                  client.callTool({
-                    name: tool.name,
-                    arguments: args,
-                  }),
-                  execTimeoutPromise
-                ]);
+              const result = await Promise.race([
+                client.callTool({
+                  name: tool.name,
+                  arguments: args,
+                }),
+                execTimeoutPromise
+              ]) as any;
 
-                console.log(`[MCP] Tool ${tool.name} completed successfully`);
-                return result;
-              } catch (error) {
-                console.error(`[MCP] Tool execution failed for ${tool.name}:`, error);
-                return {
-                  content: [{
-                    type: "text" as const,
-                    text: `Error executing ${tool.name}: ${error instanceof Error ? error.message : 'Unknown error'}`
-                  }],
-                  isError: true
-                };
+              console.log(`[MCP] Tool ${tool.name} completed successfully`);
+
+              // Extract text content from MCP result format
+              // MCP returns: { content: [{ type: "text", text: "..." }], isError: boolean }
+              if (result?.content && Array.isArray(result.content)) {
+                const textParts = result.content
+                  .filter((c: any) => c.type === "text" && c.text)
+                  .map((c: any) => c.text);
+
+                if (textParts.length > 0) {
+                  const extractedText = textParts.join("\n");
+                  // If it looks like JSON, try to parse and return as object for better model interpretation
+                  if (extractedText.trim().startsWith("{") || extractedText.trim().startsWith("[")) {
+                    try {
+                      return JSON.parse(extractedText);
+                    } catch {
+                      return extractedText;
+                    }
+                  }
+                  return extractedText;
+                }
               }
+
+              // Return raw result if we can't extract text content
+              return result;
             }
           };
 
@@ -339,7 +520,23 @@ export class McpManager {
       }
     }
 
+    // Cache the result
+    this.toolsCache.set(cacheKey, {
+      tools: allTools,
+      metadata,
+      timestamp: Date.now()
+    });
+    console.log(`[MCP] Cached ${metadata.length} tools`);
+
     return { tools: allTools, metadata };
+  }
+
+  /**
+   * Invalidate tools cache (call when server config changes)
+   */
+  invalidateToolsCache() {
+    this.toolsCache.clear();
+    console.log(`[MCP] Tools cache invalidated`);
   }
 
   /**
@@ -354,7 +551,7 @@ export class McpManager {
       return acc;
     }, {} as Record<string, ToolMetadata[]>);
 
-    let instructions = "You have access to the following external tools via MCP plugins. USE THE FULL NAMESPACED TOOL NAME (e.g., server_id/tool_name).\n\n";
+    let instructions = "You have access to the following external tools via MCP plugins. Use the exact tool name shown (provider-safe).\n\n";
 
     for (const [serverName, tools] of Object.entries(groupedByServer)) {
       instructions += `## ${serverName}\n`;
@@ -380,5 +577,6 @@ export class McpManager {
       }
     }
     this.clients.clear();
+    this.toolsCache.clear();
   }
 }

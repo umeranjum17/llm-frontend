@@ -45,6 +45,7 @@ export function CodeBlock({ language, code }: CodeBlockProps) {
       title: language ? `${language.charAt(0).toUpperCase() + language.slice(1)} Code` : "Code Snippet",
       code,
       language: language || "text",
+      type: 'code',
     });
     setShowArtifacts(true);
   };

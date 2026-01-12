@@ -14,7 +14,8 @@
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
 
-    --primary: 270 95% 75%; /* Purple Base */
+    --primary: 270 95% 75%;
+    /* Purple Base */
     --primary-foreground: 0 0% 98%;
 
     --secondary: 240 4.8% 95.9%;
@@ -42,7 +43,8 @@
     --foreground: 0 0% 98%;
 
     /* Glassmorphism Cards */
-    --card: 240 10% 7%; /* Slightly lighter overlay */
+    --card: 240 10% 7%;
+    /* Slightly lighter overlay */
     --card-foreground: 0 0% 98%;
 
     --popover: 240 10% 7%;
@@ -74,6 +76,7 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
@@ -93,7 +96,11 @@
   }
 
   /* Smooth transitions for all interactive elements */
-  button, a, input, textarea, select {
+  button,
+  a,
+  input,
+  textarea,
+  select {
     transition: all 150ms ease-out;
   }
 
@@ -112,6 +119,7 @@
 
   /* Respect reduced motion */
   @media (prefers-reduced-motion: reduce) {
+
     *,
     *::before,
     *::after {
@@ -145,7 +153,7 @@
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     @apply bg-muted-foreground/40;
   }
-  
+
   /* Primary Gradient Text */
   .text-gradient {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-[#FF6B9D] via-[#C084FC] to-[#60A5FA];
@@ -155,10 +163,20 @@
   .bg-primary-gradient {
     @apply bg-gradient-to-r from-[#FF6B9D] via-[#C084FC] to-[#60A5FA];
   }
-  
+
   /* Glassmorphism */
   .glass {
     @apply bg-white/5 backdrop-blur-xl border border-white/10;
+  }
+
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
   }
 }
 
@@ -196,7 +214,8 @@
   @apply my-3 leading-7;
 }
 
-.prose ul, .prose ol {
+.prose ul,
+.prose ol {
   @apply my-3 ml-6;
 }
 
@@ -234,6 +253,7 @@
 
 /* Premium utility classes */
 @layer utilities {
+
   /* Typography scale utilities */
   .text-xs-premium {
     @apply text-xs leading-4 tracking-[0.01em];

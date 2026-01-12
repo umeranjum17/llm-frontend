@@ -52,11 +52,14 @@ export async function generateAndApplySummary({ chatId, messages, keys }: Summar
             return null;
         }
 
-        const { summary } = await response.json();
-        console.log("[AutoSummary] Received summary:", summary);
+        const { summary, cost: summaryCost } = await response.json();
+        console.log("[AutoSummary] Received summary:", summary, summaryCost ? `(cost: $${summaryCost})` : "");
 
         if (summary) {
-            await updateChat(chatId, { summary });
+            // Add summarization cost to chat total
+            const currentChat = await db.chats.get(chatId);
+            const newTotalCost = (currentChat?.totalCost || 0) + (summaryCost || 0);
+            await updateChat(chatId, { summary, totalCost: newTotalCost });
         }
 
         return summary;

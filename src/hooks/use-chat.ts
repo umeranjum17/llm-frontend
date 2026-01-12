@@ -3,13 +3,13 @@ import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useUIStore } from "@/stores/ui-store";
 import { addMessage, updateChat, getChatById, updateMessage, getMessagesForBranch, getLastMessage, getMessageById, chatHasBranches, incrementAgentUsage, getMessages, getEnabledMcpServers } from "@/lib/db/queries";
 import { buildContextMessages } from "@/lib/ai/context-builder";
-import { estimateCost } from "@/lib/utils/token-counter";
+import { countMessagesTokens, countTokens, estimateCost } from "@/lib/utils/token-counter";
 import type { MessageContent } from "@/lib/db/schema";
 import { getImagesFromMessageContent, getTextFromMessageContent, mapTextInMessageContent } from "@/lib/utils/message-content";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { toast } from "sonner";
 import { isModelIdCompatibleWithProviderId, pickBestProviderId, providerLabel } from "@/lib/ai/provider-routing";
-import { addMemory, searchMemories } from "@/lib/memory";
+import { addMemory } from "@/lib/memory";
 import { generateAndApplySummary } from "@/lib/ai/summarization";
 import { getSettings } from "@/lib/db/queries";
 import type { Message } from "ai";
@@ -281,29 +281,13 @@ export function useChat(chatId: string) {
       chatId
     );
 
-    // Retrieve Memories from Mem0
-    const userQuery = getTextFromMessageContent(messageContent);
-    const settings = await getSettings();
-    let relevantMemories = "";
-
-    if (settings?.memoryEnabled) {
-      try {
-        const memories = await searchMemories(userQuery);
-        if (memories && memories.length > 0) {
-          const facts = memories.map((m: any) => ` - ${m.memory}`).join("\n");
-          relevantMemories = `\nActive Memories:\n${facts}\n`;
-          console.log("[Chat] Injected memories:", memories.length);
-        }
-      } catch (err) {
-        console.error("[Chat] Failed to search memories:", err);
-      }
-    }
+    // Memories are already loaded by buildContextMessages() - no duplicate call needed
     const history = await getMessagesForBranch(chatId, parentUserMessageId);
 
     const llmMessages = [
       ...contextMessages.map((m) => ({
         role: m.role as "system" | "user" | "assistant",
-        content: m.content + (m.role === "system" ? relevantMemories : ""), // Inject memories into system prompt if possible, or append to context
+        content: m.content,
       })),
       ...(attachments || []).map((file) => ({
         role: "system" as const,
@@ -360,8 +344,11 @@ export function useChat(chatId: string) {
     let fullContent = "";
     let inputTokens: number | undefined;
     let outputTokens: number | undefined;
+    let actualCost: number | undefined; // Actual cost from provider (OpenRouter, etc.)
+    let costIsEstimated = false;
     const toolCalls: any[] = [];
     const toolResults: any[] = [];
+    const toolTimings: Record<string, { start?: number; end?: number }> = {};
 
     if (!reader) {
       throw new Error("No response body");
@@ -384,6 +371,44 @@ export function useChat(chatId: string) {
 
         try {
           const parsed = JSON.parse(data);
+
+          const extractUsage = (value: any): { inTok?: number; outTok?: number; cost?: number } => {
+            if (!value || typeof value !== "object") return {};
+            const usage = (value.usage && typeof value.usage === "object") ? value.usage : value;
+
+            const toNum = (v: any) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+
+            // OpenRouter returns cost in experimental_providerMetadata.openrouter
+            const providerMeta = value.experimental_providerMetadata?.openrouter ||
+                                 value.providerMetadata?.openrouter ||
+                                 value.response?.providerMetadata?.openrouter ||
+                                 {};
+
+            return {
+              inTok:
+                toNum(usage.promptTokens) ??
+                toNum(usage.prompt_tokens) ??
+                toNum(usage.inputTokens) ??
+                toNum(usage.input_tokens) ??
+                toNum(usage.prompt_tokens_total) ??
+                toNum(usage.input_tokens_total),
+              outTok:
+                toNum(usage.completionTokens) ??
+                toNum(usage.completion_tokens) ??
+                toNum(usage.outputTokens) ??
+                toNum(usage.output_tokens) ??
+                toNum(usage.completion_tokens_total) ??
+                toNum(usage.output_tokens_total),
+              // Actual cost from provider (OpenRouter returns this in providerMetadata)
+              cost:
+                toNum(providerMeta.cost) ??
+                toNum(providerMeta.total_cost) ??
+                toNum(usage.cost) ??
+                toNum(usage.total_cost) ??
+                toNum(value.cost),
+            };
+          };
+
           if (parsed.type === "text-delta" && typeof parsed.textDelta === "string") {
             fullContent += parsed.textDelta;
 
@@ -394,10 +419,13 @@ export function useChat(chatId: string) {
           }
 
           if (parsed.type === "tool-call") {
+            const now = Date.now();
+            toolTimings[parsed.toolCallId] = { start: now };
             toolCalls.push({
               id: parsed.toolCallId,
               name: parsed.toolName,
               args: parsed.args,
+              startTime: now, // Add start time
             });
             await updateMessage(assistantMessage.id, {
               toolCalls: [...toolCalls],
@@ -405,25 +433,37 @@ export function useChat(chatId: string) {
           }
 
           if (parsed.type === "tool-result") {
+            const now = Date.now();
+            if (toolTimings[parsed.toolCallId]) {
+              toolTimings[parsed.toolCallId].end = now;
+            }
             toolResults.push({
               id: parsed.toolCallId,
               name: parsed.toolName,
               args: parsed.args,
               result: parsed.result,
+              endTime: now, // Add end time
             });
             await updateMessage(assistantMessage.id, {
               toolResults: [...toolResults],
             });
           }
 
-          // Extract token usage if available (usually on finish/step-finish)
-          if (
-            parsed.usage &&
-            typeof parsed.usage.promptTokens === "number" &&
-            typeof parsed.usage.completionTokens === "number"
-          ) {
-            inputTokens = parsed.usage.promptTokens;
-            outputTokens = parsed.usage.completionTokens;
+          // Extract token usage if available (format varies by provider/AI SDK version)
+          // Prefer last-seen values (usage often arrives only at end).
+          const u = extractUsage(parsed);
+          if (typeof u.inTok === "number") inputTokens = u.inTok;
+          if (typeof u.outTok === "number") outputTokens = u.outTok;
+          if (typeof u.cost === "number") actualCost = u.cost;
+
+          // Debug: Log any usage data we find
+          if (u.inTok || u.outTok || u.cost) {
+            console.log("[Chat] Stream usage data:", { inputTokens: u.inTok, outputTokens: u.outTok, cost: u.cost, raw: parsed });
+          }
+
+          // Log step-finish and finish events for debugging (these contain usage/cost)
+          if (parsed.type === "step-finish" || parsed.type === "finish") {
+            console.log(`[Chat] ${parsed.type} event:`, JSON.stringify(parsed, null, 2));
           }
 
           // Handle error events that can appear in the stream (from ai SDK v4)
@@ -441,8 +481,44 @@ export function useChat(chatId: string) {
       }
     }
 
-    // Calculate cost
-    const cost = estimateCost(inputTokens || 0, outputTokens || 0, chat.modelId);
+    // If provider didn't supply usage, fall back to local estimation so cost isn't stuck at 0.
+    if (typeof inputTokens !== "number" || typeof outputTokens !== "number") {
+      try {
+        // llmMessages is the actual request payload we sent to the server.
+        // Map it into Message-like objects so token-counter utilities can be reused.
+        const approxInput = countMessagesTokens(
+          llmMessages.map((m, idx) => ({
+            id: `req_${idx}`,
+            chatId,
+            role: m.role,
+            content: m.content as any,
+            createdAt: Date.now(),
+          }))
+        );
+        const approxOutput = countTokens(fullContent || "");
+        inputTokens = typeof inputTokens === "number" ? inputTokens : approxInput;
+        outputTokens = typeof outputTokens === "number" ? outputTokens : approxOutput;
+        costIsEstimated = true;
+      } catch {
+        // If estimation fails for any reason, fall back to 0/0 (cost will be 0).
+        inputTokens = inputTokens || 0;
+        outputTokens = outputTokens || 0;
+      }
+    }
+
+    // Use actual cost from provider if available, otherwise estimate
+    let cost: number;
+    console.log(`[Chat] Cost calculation - model: ${modelId}, provider: ${providerId}, actualCost: ${actualCost}, tokens: ${inputTokens}/${outputTokens}`);
+
+    if (typeof actualCost === "number" && actualCost > 0) {
+      cost = actualCost;
+      costIsEstimated = false;
+      console.log(`[Chat] Using actual cost from provider: $${cost.toFixed(6)}`);
+    } else {
+      cost = estimateCost(inputTokens || 0, outputTokens || 0, modelId, providerId);
+      // costIsEstimated is already true if we fell back to local token counting
+      console.log(`[Chat] Using estimated cost: $${cost.toFixed(6)} (model: ${modelId})`);
+    }
 
     // Detect incomplete response (ends abruptly, no punctuation, or very long)
     const isIncomplete =
@@ -455,6 +531,7 @@ export function useChat(chatId: string) {
       inputTokens: inputTokens || 0,
       outputTokens: outputTokens || 0,
       cost,
+      costIsEstimated: costIsEstimated || undefined,
       isIncomplete,
       canContinue: isIncomplete,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
@@ -517,10 +594,13 @@ export function useChat(chatId: string) {
           });
 
           if (titleResponse.ok) {
-            const { title } = await titleResponse.json();
-            console.log("[Chat] Generated title:", title);
+            const { title, cost: titleCost } = await titleResponse.json();
+            console.log("[Chat] Generated title:", title, titleCost ? `(cost: $${titleCost})` : "");
             if (title && title.length > 0) {
-              await updateChat(chatId, { title });
+              // Add title generation cost to chat total
+              const chatForCost = await getChatById(chatId);
+              const newTotalCost = (chatForCost?.totalCost || 0) + (titleCost || 0);
+              await updateChat(chatId, { title, totalCost: newTotalCost });
             }
           } else {
             console.error("[Chat] Failed to generate title:", titleResponse.status, titleResponse.statusText);

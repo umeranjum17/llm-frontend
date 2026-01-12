@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -23,18 +23,20 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
     Collapsible,
     CollapsibleContent,
     CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import {
-    Plug,
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
     Plus,
     Trash2,
-    Search,
-    Server,
     CheckCircle2,
     XCircle,
     Loader2,
@@ -43,13 +45,14 @@ import {
     Wrench,
     Clock,
     Zap,
-    Globe,
-    Code,
-    Database,
-    Shield,
+    ExternalLink,
+    ShieldCheck,
+    Plug,
+    KeyRound,
+    Eye,
+    EyeOff,
 } from "lucide-react";
 import { db, type McpServer } from "@/lib/db/schema";
-import { MCP_REGISTRY } from "@/lib/mcp/registry";
 import { toast } from "sonner";
 import { nanoid } from "nanoid";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -58,33 +61,55 @@ import { cn } from "@/lib/utils";
 // Connection status type
 type ConnectionStatus = "idle" | "connecting" | "connected" | "error";
 
-interface ServerWithStatus extends McpServer {
-    connectionStatus?: ConnectionStatus;
-    tools?: Array<{ name: string; description?: string }>;
-    latency?: number;
-    error?: string;
+// Composio SVG Icon component (fallback for when external icon fails)
+function ComposioIcon({ className }: { className?: string }) {
+    return (
+        <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            className={className}
+        >
+            <rect width="24" height="24" rx="6" fill="url(#composio-gradient)" />
+            <path
+                d="M12 6L18 10V14L12 18L6 14V10L12 6Z"
+                stroke="white"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+            <path
+                d="M12 10V14"
+                stroke="white"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+            />
+            <path
+                d="M8 8L12 10L16 8"
+                stroke="white"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+            <defs>
+                <linearGradient id="composio-gradient" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+                    <stop stopColor="#8B5CF6" />
+                    <stop offset="1" stopColor="#6366F1" />
+                </linearGradient>
+            </defs>
+        </svg>
+    );
 }
-
-// Category definitions with icons
-const CATEGORIES = [
-    { id: "all", label: "All", icon: Globe },
-    { id: "search", label: "Search", icon: Search },
-    { id: "code", label: "Code", icon: Code },
-    { id: "data", label: "Data", icon: Database },
-    { id: "security", label: "Security", icon: Shield },
-] as const;
 
 export function McpMarketplace() {
     const installedServers = useLiveQuery(() => db.mcpServers.toArray()) || [];
-    const [activeTab, setActiveTab] = useState("installed");
-    const [searchQuery, setSearchQuery] = useState("");
-    const [selectedCategory, setSelectedCategory] = useState<string>("all");
     const [isAddingOpen, setIsAddingOpen] = useState(false);
-    const [newServer, setNewServer] = useState<Partial<McpServer>>({
-        name: "",
+
+    // Default to Composio configuration
+    const [newConnection, setNewConnection] = useState({
+        name: "Composio Tools",
         url: "",
         apiKey: "",
-        type: "sse",
     });
 
     // Connection status tracking
@@ -94,6 +119,9 @@ export function McpMarketplace() {
 
     // Expanded tools view
     const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set());
+
+    // API key visibility
+    const [visibleApiKeys, setVisibleApiKeys] = useState<Set<string>>(new Set());
 
     // Test connection for a server
     const testConnection = useCallback(async (server: McpServer) => {
@@ -156,53 +184,49 @@ export function McpMarketplace() {
         }
     }, []);
 
-    const handleInstall = async (registryItem: Partial<McpServer>) => {
-        try {
-            const newId = nanoid();
-            await db.mcpServers.add({
-                id: newId,
-                name: registryItem.name!,
-                url: registryItem.url!,
-                apiKey: "",
-                description: registryItem.description,
-                enabled: true,
-                type: registryItem.type || "sse",
-                collection: "curated",
-                logoUrl: registryItem.logoUrl,
-                author: registryItem.author,
-                category: registryItem.category,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-            });
-            toast.success(`Installed ${registryItem.name}`, {
-                description: "Configure your API key to start using it.",
-            });
-            setActiveTab("installed");
-        } catch (error) {
-            toast.error("Failed to install server");
+    const handleAddComposio = async () => {
+        if (!newConnection.name) {
+            toast.error("Name is required");
+            return;
         }
-    };
 
-    const handleAddCustom = async () => {
-        if (!newServer.name || !newServer.url) {
-            toast.error("Name and URL are required");
+        if (!newConnection.url) {
+            toast.error("MCP URL is required");
+            return;
+        }
+
+        if (!newConnection.apiKey) {
+            toast.error("API Key is required");
+            return;
+        }
+
+        // Validate Composio domain (Composio-only policy)
+        if (!newConnection.url.includes("composio.dev")) {
+            toast.error("Only Composio MCP URLs are supported");
             return;
         }
 
         try {
             await db.mcpServers.add({
                 id: nanoid(),
-                ...(newServer as any),
+                name: newConnection.name,
+                url: newConnection.url,
+                apiKey: newConnection.apiKey,
+                description: "Composio tool integration",
                 enabled: true,
-                collection: "custom",
+                type: "sse",
+                collection: "curated",
+                logoUrl: "https://composio.dev/favicon.ico",
+                author: "Composio",
+                category: "automation",
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
             });
-            toast.success("Custom server added");
+            toast.success("Composio connection added");
             setIsAddingOpen(false);
-            setNewServer({ name: "", url: "", apiKey: "", type: "sse" });
+            setNewConnection({ name: "Composio Tools", url: "", apiKey: "" });
         } catch (error) {
-            toast.error("Failed to add server");
+            toast.error("Failed to add connection");
         }
     };
 
@@ -217,13 +241,15 @@ export function McpMarketplace() {
     };
 
     const handleDelete = async (id: string) => {
-        await db.mcpServers.delete(id);
-        setServerStatuses((prev) => {
-            const next = { ...prev };
-            delete next[id];
-            return next;
-        });
-        toast.success("Server removed");
+        if (confirm("Are you sure you want to remove this connection?")) {
+            await db.mcpServers.delete(id);
+            setServerStatuses((prev) => {
+                const next = { ...prev };
+                delete next[id];
+                return next;
+            });
+            toast.success("Connection removed");
+        }
     };
 
     const handleUpdateApiKey = async (id: string, apiKey: string) => {
@@ -242,260 +268,334 @@ export function McpMarketplace() {
         });
     };
 
-    const getStatusIcon = (status: ConnectionStatus) => {
+    const toggleApiKeyVisibility = (id: string) => {
+        setVisibleApiKeys((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
+    };
+
+    const getStatusBadge = (status: ConnectionStatus) => {
         switch (status) {
             case "connected":
-                return <CheckCircle2 className="h-4 w-4 text-green-500" />;
+                return (
+                    <Badge variant="default" className="bg-green-500/20 text-green-500 border-green-500/30 hover:bg-green-500/30">
+                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                        Connected
+                    </Badge>
+                );
             case "connecting":
-                return <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />;
+                return (
+                    <Badge variant="secondary" className="bg-amber-500/20 text-amber-500 border-amber-500/30">
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                        Connecting
+                    </Badge>
+                );
             case "error":
-                return <XCircle className="h-4 w-4 text-red-500" />;
+                return (
+                    <Badge variant="destructive" className="bg-red-500/20 text-red-500 border-red-500/30">
+                        <XCircle className="h-3 w-3 mr-1" />
+                        Error
+                    </Badge>
+                );
             default:
-                return <div className="h-4 w-4 rounded-full bg-muted-foreground/30" />;
+                return (
+                    <Badge variant="outline" className="text-muted-foreground">
+                        <div className="h-2 w-2 rounded-full bg-muted-foreground/50 mr-1.5" />
+                        Not tested
+                    </Badge>
+                );
         }
     };
 
-    const filteredInstalled = installedServers.filter(
-        (s) =>
-            s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            s.description?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-
-    const filteredRegistry = MCP_REGISTRY.filter(
-        (r) =>
-            (r.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                r.description?.toLowerCase().includes(searchQuery.toLowerCase())) &&
-            !installedServers.some((i) => i.name === r.name) &&
-            (selectedCategory === "all" || r.category === selectedCategory)
-    );
-
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-lg font-semibold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
-                        MCP Marketplace
-                    </h2>
-                    <p className="text-sm text-muted-foreground">
-                        Extend Lumina with powerful tools from external servers.
-                    </p>
+        <TooltipProvider>
+            <div className="space-y-6 max-w-4xl mx-auto">
+                {/* Header */}
+                <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-1">
+                        <h2 className="text-2xl font-bold flex items-center gap-3">
+                            <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/25">
+                                <Plug className="h-5 w-5 text-white" />
+                            </div>
+                            Composio Integrations
+                        </h2>
+                        <p className="text-muted-foreground text-sm max-w-lg">
+                            Connect your favorite tools (GitHub, Gmail, Slack, etc.) safely via Composio.
+                        </p>
+                    </div>
+                    <Dialog open={isAddingOpen} onOpenChange={setIsAddingOpen}>
+                        <DialogTrigger asChild>
+                            <Button className="gap-2 shadow-lg shadow-primary/20">
+                                <Plus className="h-4 w-4" />
+                                New Connection
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-lg">
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2">
+                                    <ComposioIcon className="h-5 w-5" />
+                                    Add Composio Connection
+                                </DialogTitle>
+                                <DialogDescription>
+                                    Paste the MCP URL and API key from your Composio dashboard.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-5 py-4">
+                                {/* Quick Start Guide */}
+                                <div className="p-4 bg-gradient-to-br from-violet-500/10 to-indigo-500/10 rounded-xl border border-violet-500/20 space-y-3">
+                                    <div className="font-medium flex items-center gap-2 text-sm">
+                                        <ExternalLink className="h-4 w-4 text-violet-500" />
+                                        Quick Start
+                                    </div>
+                                    <ol className="list-decimal list-inside space-y-1.5 text-sm text-muted-foreground ml-1">
+                                        <li>
+                                            Sign up at{" "}
+                                            <a
+                                                href="https://composio.dev"
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="text-violet-500 hover:underline font-medium"
+                                            >
+                                                composio.dev
+                                            </a>
+                                        </li>
+                                        <li>Connect your tools (Gmail, GitHub, etc.)</li>
+                                        <li>Create an MCP config and copy the details</li>
+                                    </ol>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label>Connection Name</Label>
+                                    <Input
+                                        placeholder="e.g. My Work Tools"
+                                        value={newConnection.name}
+                                        onChange={(e) =>
+                                            setNewConnection({ ...newConnection, name: e.target.value })
+                                        }
+                                        className="h-10"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>MCP URL</Label>
+                                    <Input
+                                        placeholder="https://backend.composio.dev/v3/mcp/..."
+                                        value={newConnection.url}
+                                        onChange={(e) =>
+                                            setNewConnection({ ...newConnection, url: e.target.value })
+                                        }
+                                        className="h-10 font-mono text-sm"
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Use the &quot;HTTP&quot; endpoint from your Composio MCP config
+                                    </p>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>API Key</Label>
+                                    <Input
+                                        type="password"
+                                        placeholder="ak_..."
+                                        value={newConnection.apiKey}
+                                        onChange={(e) =>
+                                            setNewConnection({ ...newConnection, apiKey: e.target.value })
+                                        }
+                                        className="h-10 font-mono text-sm"
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Sent as <code className="bg-muted px-1.5 py-0.5 rounded text-[11px]">x-api-key</code> header
+                                    </p>
+                                </div>
+                            </div>
+                            <DialogFooter className="gap-2 sm:gap-0">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setIsAddingOpen(false)}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button onClick={handleAddComposio} className="gap-2">
+                                    <Plug className="h-4 w-4" />
+                                    Connect
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
                 </div>
 
-                <Dialog open={isAddingOpen} onOpenChange={setIsAddingOpen}>
-                    <DialogTrigger asChild>
-                        <Button className="gap-2 shadow-lg shadow-primary/20">
-                            <Plus className="h-4 w-4" />
-                            Add Custom
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-md">
-                        <DialogHeader>
-                            <DialogTitle>Add Custom MCP Server</DialogTitle>
-                            <DialogDescription>
-                                Connect to any SSE-compatible MCP server URL.
-                            </DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4 py-4">
-                            <div className="space-y-2">
-                                <Label>Name</Label>
-                                <Input
-                                    placeholder="My Custom Tools"
-                                    value={newServer.name}
-                                    onChange={(e) =>
-                                        setNewServer({ ...newServer, name: e.target.value })
-                                    }
-                                />
+                {/* Connections List */}
+                <div className="space-y-4">
+                    {installedServers.length === 0 ? (
+                        <Card className="border-dashed">
+                            <div className="flex flex-col items-center justify-center text-center p-12">
+                                <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-violet-500/20 to-indigo-500/20 flex items-center justify-center mb-5 border border-violet-500/20">
+                                    <ComposioIcon className="h-8 w-8" />
+                                </div>
+                                <h3 className="font-semibold text-lg mb-2">No connections yet</h3>
+                                <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-6">
+                                    Add a Composio connection to give your assistant access to tools like Google Calendar, GitHub, Slack, and 150+ more.
+                                </p>
+                                <Button onClick={() => setIsAddingOpen(true)} className="gap-2">
+                                    <Plus className="h-4 w-4" />
+                                    Add your first connection
+                                </Button>
                             </div>
-                            <div className="space-y-2">
-                                <Label>Server URL (SSE Endpoint)</Label>
-                                <Input
-                                    placeholder="https://api.example.com/mcp/sse"
-                                    value={newServer.url}
-                                    onChange={(e) =>
-                                        setNewServer({ ...newServer, url: e.target.value })
-                                    }
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>API Key (Optional)</Label>
-                                <Input
-                                    type="password"
-                                    placeholder="sk-..."
-                                    value={newServer.apiKey}
-                                    onChange={(e) =>
-                                        setNewServer({ ...newServer, apiKey: e.target.value })
-                                    }
-                                />
-                            </div>
-                        </div>
-                        <DialogFooter>
-                            <Button
-                                variant="outline"
-                                onClick={() => setIsAddingOpen(false)}
-                            >
-                                Cancel
-                            </Button>
-                            <Button onClick={handleAddCustom}>Add Server</Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
-            </div>
-
-            {/* Search */}
-            <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                    placeholder="Search plugins..."
-                    className="pl-9 bg-muted/30 border-muted"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                />
-            </div>
-
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="bg-muted/50">
-                    <TabsTrigger value="installed" className="gap-2">
-                        <Plug className="h-3.5 w-3.5" />
-                        Installed
-                        {installedServers.length > 0 && (
-                            <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
-                                {installedServers.length}
-                            </Badge>
-                        )}
-                    </TabsTrigger>
-                    <TabsTrigger value="registry" className="gap-2">
-                        <Server className="h-3.5 w-3.5" />
-                        Registry
-                    </TabsTrigger>
-                </TabsList>
-
-                {/* Installed Servers */}
-                <TabsContent value="installed" className="space-y-4 mt-4">
-                    {filteredInstalled.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-                            <Plug className="h-12 w-12 mb-4 opacity-30" />
-                            <p className="font-medium">No plugins installed</p>
-                            <p className="text-sm opacity-70">
-                                Browse the Registry to discover powerful tools.
-                            </p>
-                            <Button
-                                variant="outline"
-                                className="mt-4"
-                                onClick={() => setActiveTab("registry")}
-                            >
-                                Browse Registry
-                            </Button>
-                        </div>
+                        </Card>
                     ) : (
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                            {filteredInstalled.map((server) => {
-                                const status = serverStatuses[server.id];
-                                const isExpanded = expandedServers.has(server.id);
+                        installedServers.map((server) => {
+                            const status = serverStatuses[server.id];
+                            const isExpanded = expandedServers.has(server.id);
+                            const isApiKeyVisible = visibleApiKeys.has(server.id);
 
-                                return (
-                                    <Card
-                                        key={server.id}
-                                        className={cn(
-                                            "flex flex-col transition-all duration-300 overflow-hidden",
-                                            "hover:shadow-lg hover:shadow-primary/5",
-                                            server.enabled
-                                                ? "border-primary/20 bg-gradient-to-br from-background to-primary/5"
-                                                : "opacity-60"
-                                        )}
-                                    >
-                                        <CardHeader className="flex-row gap-4 space-y-0 pb-2">
-                                            <div className="h-12 w-12 shrink-0 rounded-xl bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center overflow-hidden shadow-inner">
-                                                {server.logoUrl ? (
-                                                    /* eslint-disable-next-line @next/next/no-img-element */
-                                                    <img
-                                                        src={server.logoUrl}
-                                                        alt={server.name}
-                                                        className="h-full w-full object-cover"
-                                                    />
-                                                ) : (
-                                                    <Plug className="h-5 w-5 text-muted-foreground" />
-                                                )}
+                            return (
+                                <Card
+                                    key={server.id}
+                                    className={cn(
+                                        "overflow-hidden transition-all duration-200",
+                                        server.enabled
+                                            ? "border-border/80 shadow-sm hover:shadow-md hover:border-violet-500/30"
+                                            : "opacity-60 border-dashed"
+                                    )}
+                                >
+                                    <CardHeader className="pb-3">
+                                        <div className="flex items-start gap-4">
+                                            {/* Icon */}
+                                            <div className="h-12 w-12 shrink-0 rounded-xl bg-gradient-to-br from-violet-500/20 to-indigo-500/20 flex items-center justify-center border border-violet-500/20">
+                                                <ComposioIcon className="h-7 w-7" />
                                             </div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2">
-                                                    <CardTitle className="text-base truncate">
+
+                                            {/* Title & Status */}
+                                            <div className="flex-1 min-w-0 space-y-1">
+                                                <div className="flex items-center gap-3">
+                                                    <CardTitle className="text-base font-semibold truncate">
                                                         {server.name}
                                                     </CardTitle>
-                                                    {getStatusIcon(status?.status || "idle")}
+                                                    {getStatusBadge(status?.status || "idle")}
                                                 </div>
-                                                <CardDescription className="text-xs truncate flex items-center gap-2">
-                                                    {server.url}
+                                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                                    <Badge variant="secondary" className="gap-1 text-[10px] h-5 font-normal">
+                                                        <ShieldCheck className="h-3 w-3" />
+                                                        Composio Secure
+                                                    </Badge>
                                                     {status?.latency && (
-                                                        <Badge variant="outline" className="text-[10px] h-4">
-                                                            <Clock className="h-2.5 w-2.5 mr-1" />
+                                                        <Badge variant="outline" className="gap-1 text-[10px] h-5 font-normal">
+                                                            <Clock className="h-3 w-3" />
                                                             {status.latency}ms
                                                         </Badge>
                                                     )}
-                                                </CardDescription>
+                                                </div>
                                             </div>
-                                        </CardHeader>
 
-                                        <CardContent className="flex-1 pb-2">
-                                            <p className="text-sm text-muted-foreground line-clamp-2">
-                                                {server.description || "No description provided."}
-                                            </p>
-
-                                            {/* API Key Input */}
-                                            <div className="mt-3 space-y-1.5">
-                                                <Label className="text-xs text-muted-foreground">
-                                                    API Key
-                                                </Label>
-                                                <Input
-                                                    type="password"
-                                                    placeholder="Enter API key..."
-                                                    value={server.apiKey || ""}
-                                                    onChange={(e) =>
-                                                        handleUpdateApiKey(server.id, e.target.value)
-                                                    }
-                                                    className="h-8 text-xs bg-muted/30"
+                                            {/* Toggle */}
+                                            <div className="flex items-center gap-3">
+                                                <Switch
+                                                    checked={server.enabled}
+                                                    onCheckedChange={(c) => handleToggle(server.id, c)}
+                                                    aria-label="Toggle connection"
                                                 />
                                             </div>
+                                        </div>
+                                    </CardHeader>
 
-                                            {/* Tools Discovery */}
-                                            {status?.tools && status.tools.length > 0 && (
-                                                <Collapsible
-                                                    open={isExpanded}
-                                                    onOpenChange={() => toggleExpanded(server.id)}
-                                                    className="mt-3"
+                                    <CardContent className="pb-3 pt-0 space-y-3">
+                                        {/* API Key Field - Collapsible */}
+                                        <Collapsible>
+                                            <CollapsibleTrigger asChild>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="w-full justify-between h-8 text-xs px-3 hover:bg-muted/50 text-muted-foreground"
                                                 >
-                                                    <CollapsibleTrigger asChild>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="w-full justify-between h-8 text-xs"
-                                                        >
-                                                            <span className="flex items-center gap-2">
-                                                                <Wrench className="h-3 w-3" />
-                                                                {status.tools.length} Tools Available
-                                                            </span>
-                                                            <ChevronDown
-                                                                className={cn(
-                                                                    "h-3 w-3 transition-transform",
-                                                                    isExpanded && "rotate-180"
+                                                    <span className="flex items-center gap-2">
+                                                        <KeyRound className="h-3.5 w-3.5" />
+                                                        Update API Key
+                                                    </span>
+                                                    <ChevronDown className="h-3.5 w-3.5" />
+                                                </Button>
+                                            </CollapsibleTrigger>
+                                            <CollapsibleContent className="pt-2">
+                                                <div className="flex gap-2">
+                                                    <Input
+                                                        type={isApiKeyVisible ? "text" : "password"}
+                                                        value={server.apiKey || ""}
+                                                        onChange={(e) => handleUpdateApiKey(server.id, e.target.value)}
+                                                        className="h-9 text-xs bg-muted/30 font-mono flex-1"
+                                                        placeholder="ak_..."
+                                                    />
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="icon"
+                                                                className="h-9 w-9 shrink-0"
+                                                                onClick={() => toggleApiKeyVisibility(server.id)}
+                                                            >
+                                                                {isApiKeyVisible ? (
+                                                                    <EyeOff className="h-4 w-4" />
+                                                                ) : (
+                                                                    <Eye className="h-4 w-4" />
                                                                 )}
-                                                            />
-                                                        </Button>
-                                                    </CollapsibleTrigger>
-                                                    <CollapsibleContent className="mt-2">
-                                                        <div className="max-h-32 overflow-y-auto space-y-1 p-2 bg-muted/30 rounded-md">
+                                                            </Button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent>
+                                                            {isApiKeyVisible ? "Hide" : "Show"} API key
+                                                        </TooltipContent>
+                                                    </Tooltip>
+                                                </div>
+                                            </CollapsibleContent>
+                                        </Collapsible>
+
+                                        {/* Error Display */}
+                                        {status?.status === "error" && status.error && (
+                                            <div className="p-3 bg-destructive/10 text-destructive text-xs rounded-lg flex items-start gap-2">
+                                                <XCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                                                <span>{status.error}</span>
+                                            </div>
+                                        )}
+
+                                        {/* Tools List */}
+                                        {status?.tools && status.tools.length > 0 && (
+                                            <Collapsible
+                                                open={isExpanded}
+                                                onOpenChange={() => toggleExpanded(server.id)}
+                                            >
+                                                <CollapsibleTrigger asChild>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="w-full justify-between h-9 text-xs px-3 bg-muted/30 hover:bg-muted/50"
+                                                    >
+                                                        <span className="flex items-center gap-2 font-medium">
+                                                            <Wrench className="h-3.5 w-3.5 text-violet-500" />
+                                                            {status.tools.length} Tools Available
+                                                        </span>
+                                                        <ChevronDown
+                                                            className={cn(
+                                                                "h-3.5 w-3.5 transition-transform text-muted-foreground",
+                                                                isExpanded && "rotate-180"
+                                                            )}
+                                                        />
+                                                    </Button>
+                                                </CollapsibleTrigger>
+                                                <CollapsibleContent>
+                                                    <div className="mt-2 p-3 bg-muted/30 rounded-lg">
+                                                        <div className="max-h-48 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
                                                             {status.tools.map((tool, idx) => (
                                                                 <div
                                                                     key={idx}
-                                                                    className="flex items-start gap-2 text-xs"
+                                                                    className="flex items-start gap-2.5 p-2 rounded-md hover:bg-background/80 transition-colors text-xs"
                                                                 >
-                                                                    <Zap className="h-3 w-3 text-primary shrink-0 mt-0.5" />
-                                                                    <div>
-                                                                        <span className="font-medium">
+                                                                    <Zap className="h-3.5 w-3.5 text-violet-500 shrink-0 mt-0.5" />
+                                                                    <div className="min-w-0">
+                                                                        <div className="font-medium text-foreground/90">
                                                                             {tool.name}
-                                                                        </span>
+                                                                        </div>
                                                                         {tool.description && (
-                                                                            <p className="text-muted-foreground line-clamp-1">
+                                                                            <p className="text-muted-foreground line-clamp-1 opacity-80">
                                                                                 {tool.description}
                                                                             </p>
                                                                         )}
@@ -503,148 +603,58 @@ export function McpMarketplace() {
                                                                 </div>
                                                             ))}
                                                         </div>
-                                                    </CollapsibleContent>
-                                                </Collapsible>
-                                            )}
-
-                                            {status?.status === "error" && status.error && (
-                                                <p className="mt-2 text-xs text-destructive flex items-center gap-1">
-                                                    <XCircle className="h-3 w-3" />
-                                                    {status.error}
-                                                </p>
-                                            )}
-                                        </CardContent>
-
-                                        <CardFooter className="flex items-center justify-between border-t pt-3 bg-muted/10">
-                                            <div className="flex items-center gap-3">
-                                                <Switch
-                                                    checked={server.enabled}
-                                                    onCheckedChange={(c) => handleToggle(server.id, c)}
-                                                />
-                                                <span className="text-xs font-medium">
-                                                    {server.enabled ? "Active" : "Disabled"}
-                                                </span>
-                                            </div>
-
-                                            <div className="flex items-center gap-1">
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="h-7 gap-1.5 text-xs"
-                                                    onClick={() => testConnection(server)}
-                                                    disabled={status?.status === "connecting"}
-                                                >
-                                                    {status?.status === "connecting" ? (
-                                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                                    ) : (
-                                                        <RefreshCw className="h-3 w-3" />
-                                                    )}
-                                                    Test
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-7 w-7 text-destructive hover:text-destructive"
-                                                    onClick={() => handleDelete(server.id)}
-                                                >
-                                                    <Trash2 className="h-3.5 w-3.5" />
-                                                </Button>
-                                            </div>
-                                        </CardFooter>
-                                    </Card>
-                                );
-                            })}
-                        </div>
-                    )}
-                </TabsContent>
-
-                {/* Registry */}
-                <TabsContent value="registry" className="space-y-4 mt-4">
-                    {/* Category Filters */}
-                    <div className="flex flex-wrap gap-2">
-                        {CATEGORIES.map((cat) => {
-                            const Icon = cat.icon;
-                            return (
-                                <Button
-                                    key={cat.id}
-                                    variant={selectedCategory === cat.id ? "secondary" : "ghost"}
-                                    size="sm"
-                                    className="h-8 gap-1.5"
-                                    onClick={() => setSelectedCategory(cat.id)}
-                                >
-                                    <Icon className="h-3.5 w-3.5" />
-                                    {cat.label}
-                                </Button>
-                            );
-                        })}
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {filteredRegistry.map((item, idx) => (
-                            <Card
-                                key={idx}
-                                className="flex flex-col border-dashed hover:border-solid hover:border-primary/30 transition-all duration-300 hover:shadow-lg hover:shadow-primary/5 group"
-                            >
-                                <CardHeader className="flex-row gap-4 space-y-0">
-                                    <div className="h-12 w-12 shrink-0 rounded-xl bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center overflow-hidden shadow-inner group-hover:shadow-primary/10 transition-shadow">
-                                        {item.logoUrl ? (
-                                            /* eslint-disable-next-line @next/next/no-img-element */
-                                            <img
-                                                src={item.logoUrl}
-                                                alt={item.name}
-                                                className="h-full w-full object-cover"
-                                            />
-                                        ) : (
-                                            <Server className="h-5 w-5 text-muted-foreground" />
+                                                    </div>
+                                                </CollapsibleContent>
+                                            </Collapsible>
                                         )}
-                                    </div>
-                                    <div className="flex-1">
-                                        <CardTitle className="text-base">{item.name}</CardTitle>
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <Badge
-                                                variant="outline"
-                                                className="text-[10px] h-4 font-normal"
-                                            >
-                                                {item.author}
-                                            </Badge>
-                                            {item.category && (
-                                                <Badge
-                                                    variant="secondary"
-                                                    className="text-[10px] h-4 font-normal"
-                                                >
-                                                    {item.category}
-                                                </Badge>
-                                            )}
-                                        </div>
-                                    </div>
-                                </CardHeader>
-                                <CardContent className="flex-1 text-sm text-muted-foreground">
-                                    {item.description}
-                                </CardContent>
-                                <CardFooter className="pt-0">
-                                    <Button
-                                        className="w-full gap-2 shadow-lg shadow-primary/10 group-hover:shadow-primary/20 transition-shadow"
-                                        onClick={() => handleInstall(item)}
-                                    >
-                                        <Plus className="h-4 w-4" />
-                                        Install
-                                    </Button>
-                                </CardFooter>
-                            </Card>
-                        ))}
-                    </div>
+                                    </CardContent>
 
-                    {filteredRegistry.length === 0 && (
-                        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-                            <Search className="h-12 w-12 mb-4 opacity-30" />
-                            <p className="font-medium">No servers found</p>
-                            <p className="text-sm opacity-70">
-                                Try a different search term or category.
-                            </p>
-                        </div>
+                                    <CardFooter className="bg-muted/30 py-3 px-4 flex justify-between items-center border-t">
+                                        <div className="text-[10px] text-muted-foreground font-mono">
+                                            ID: {server.id.slice(0, 8)}...
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="h-8 text-xs gap-1.5"
+                                                        onClick={() => testConnection(server)}
+                                                        disabled={status?.status === "connecting"}
+                                                    >
+                                                        {status?.status === "connecting" ? (
+                                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                        ) : (
+                                                            <RefreshCw className="h-3.5 w-3.5" />
+                                                        )}
+                                                        Test
+                                                    </Button>
+                                                </TooltipTrigger>
+                                                <TooltipContent>Test connection and load tools</TooltipContent>
+                                            </Tooltip>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-muted-foreground hover:text-destructive transition-colors"
+                                                        onClick={() => handleDelete(server.id)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </TooltipTrigger>
+                                                <TooltipContent>Remove connection</TooltipContent>
+                                            </Tooltip>
+                                        </div>
+                                    </CardFooter>
+                                </Card>
+                            );
+                        })
                     )}
-                </TabsContent>
-            </Tabs>
-        </div>
+                </div>
+            </div>
+        </TooltipProvider>
     );
 }
+

@@ -4,7 +4,8 @@ import { useState, memo, useMemo } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download, ThumbsUp, ThumbsDown, Volume2, VolumeX } from "lucide-react";
+import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download, ThumbsUp, ThumbsDown, Volume2, VolumeX, ChevronDown, ChevronRight, Wrench, Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
 import type { Message } from "@/lib/db/schema";
@@ -44,6 +45,189 @@ function isWebSearchResponse(value: unknown): value is WebSearchResponse {
     typeof v.provider === "string" &&
     typeof v.query === "string" &&
     Array.isArray(v.results)
+  );
+}
+
+/** Extract a friendly tool name from namespaced MCP tool names */
+function getToolDisplayName(name: string): string {
+  // Handle namespaced MCP tools like "server_id__TOOL_NAME"
+  if (name.includes("__")) {
+    const toolPart = name.split("__").pop() || name;
+    // Convert SCREAMING_SNAKE_CASE to Title Case
+    return toolPart
+      .split("_")
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
+  }
+  return name === "webSearch" ? "Web Search" : name;
+}
+
+/** Collapsible section for tool calls */
+function ToolCallsSection({
+  toolEvents,
+  onCopySources,
+}: {
+  toolEvents: Array<{
+    key: string;
+    id?: string;
+    name: string;
+    args?: unknown;
+    result?: unknown;
+    startTime?: number;
+    endTime?: number;
+  }>;
+  onCopySources: (results: SearchResult[]) => void;
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Calculate overall status
+  // A tool is considered "running" if we haven't received a tool result yet.
+  // Do not use truthiness of `result` because some tools can legitimately return falsy values.
+  const runningCount = toolEvents.filter(e => e.endTime === undefined).length;
+  const errorCount = toolEvents.filter(e => e.result && (e.result as any).isError).length;
+  const doneCount = toolEvents.length - runningCount - errorCount;
+
+  return (
+    <div className="mt-3 border rounded-lg bg-muted/30 overflow-hidden">
+      {/* Collapsed header */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
+      >
+        {isExpanded ? (
+          <ChevronDown className="h-4 w-4" />
+        ) : (
+          <ChevronRight className="h-4 w-4" />
+        )}
+        <Wrench className="h-3.5 w-3.5" />
+        <span className="font-medium">
+          {toolEvents.length} tool{toolEvents.length !== 1 ? "s" : ""} used
+        </span>
+        <span className="text-xs opacity-70 flex items-center gap-2">
+          {runningCount > 0 && <span className="text-yellow-600 flex items-center gap-0.5"><Loader2 className="h-3 w-3 animate-spin" /> {runningCount} running</span>}
+        </span>
+      </button>
+
+      {/* Expanded content */}
+      {isExpanded && (
+        <div className="px-3 pb-3 space-y-2 border-t border-border/50">
+          {toolEvents.map((toolEvent) => {
+            const isWebSearch =
+              toolEvent.name === "webSearch" && isWebSearchResponse(toolEvent.result);
+            const webSearch = isWebSearch ? (toolEvent.result as WebSearchResponse) : null;
+            const displayName = getToolDisplayName(toolEvent.name);
+
+            // Determine status
+            let status: "running" | "done" | "error" = "running";
+            if (toolEvent.endTime !== undefined) status = "done";
+            if ((toolEvent.result as any)?.isError) status = "error";
+
+            // Calculate duration
+            let duration: string | null = null;
+            if (toolEvent.startTime && toolEvent.endTime) {
+              const ms = toolEvent.endTime - toolEvent.startTime;
+              duration = ms > 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+            }
+
+            return (
+              <div
+                key={toolEvent.key}
+                className={cn(
+                  "mt-2 rounded-lg border overflow-hidden",
+                  status === "error" ? "bg-red-50/50 border-red-200 dark:bg-red-900/10 dark:border-red-900/30" : "bg-background/50"
+                )}
+              >
+                <div className="flex items-center justify-between px-3 py-2 bg-muted/30">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    {status === "running" && <Loader2 className="h-3.5 w-3.5 animate-spin text-yellow-500" />}
+                    {status === "done" && <Check className="h-3.5 w-3.5 text-green-500" />}
+                    {status === "error" && <XIcon className="h-3.5 w-3.5 text-red-500" />}
+
+                    {displayName}
+                    {webSearch?.query ? (
+                      <span className="text-xs text-muted-foreground font-normal">
+                        &quot;{webSearch.query}&quot;
+                      </span>
+                    ) : null}
+
+                    {duration && (
+                      <Badge variant="outline" className="text-[10px] h-4 px-1.5 font-normal ml-2">
+                        {duration}
+                      </Badge>
+                    )}
+                  </div>
+                  {webSearch && webSearch.results.length > 0 ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs gap-2"
+                      onClick={() => onCopySources(webSearch.results)}
+                      title="Copy sources"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                      Copy
+                    </Button>
+                  ) : null}
+                </div>
+
+                <div className="px-3 py-2 text-sm">
+                  {webSearch ? (
+                    <div className="space-y-2">
+                      <div className="text-xs text-muted-foreground">
+                        Provider: {webSearch.provider}
+                        {webSearch.error ? ` • ${webSearch.error}` : ""}
+                      </div>
+                      <ol className="space-y-2">
+                        {webSearch.results.map((r, idx) => (
+                          <li key={`${r.url}-${idx}`} className="space-y-1">
+                            <a
+                              href={r.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-medium hover:underline break-words"
+                            >
+                              {idx + 1}. {r.title}
+                            </a>
+                            {r.publishedDate ? (
+                              <div className="text-xs text-muted-foreground">
+                                {r.publishedDate}
+                              </div>
+                            ) : null}
+                            {r.snippet ? (
+                              <div className="text-xs text-muted-foreground">
+                                {r.snippet}
+                              </div>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  ) : (
+                    <details className="group">
+                      <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+                        View details
+                      </summary>
+                      <pre className="mt-2 text-xs text-muted-foreground overflow-x-auto max-h-60 overflow-y-auto">
+                        {JSON.stringify(
+                          {
+                            args: toolEvent.args,
+                            result: toolEvent.result,
+                          },
+                          null,
+                          2
+                        )}
+                      </pre>
+                    </details>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -99,16 +283,31 @@ export const MessageItem = memo(function MessageItem({
     name: string;
     args?: unknown;
     result?: unknown;
+    startTime?: number;
+    endTime?: number;
   }> = [];
 
   for (let i = 0; i < toolCalls.length; i++) {
     const toolCall = toolCalls[i];
     const id = toolCall.id || toolCall.toolCallId;
     const name = toolCall.name || toolCall.toolName || "Tool";
-    const result = id ? toolResultsById.get(id)?.result : undefined;
+    // @ts-ignore
+    const resultObj = id ? toolResultsById.get(id) : undefined;
+    const result = resultObj?.result;
+    // @ts-ignore
+    const endTime = resultObj?.endTime;
     const key = id || `tool-call-${i}`;
 
-    toolEvents.push({ key, id, name, args: toolCall.args, result });
+    toolEvents.push({
+      key,
+      id,
+      name,
+      args: toolCall.args,
+      result,
+      // @ts-ignore
+      startTime: toolCall.startTime,
+      endTime
+    });
     if (id) toolEventIds.add(id);
   }
 
@@ -118,7 +317,15 @@ export const MessageItem = memo(function MessageItem({
     if (id && toolEventIds.has(id)) continue;
     const name = toolResult.name || toolResult.toolName || "Tool";
     const key = id || `tool-result-${i}`;
-    toolEvents.push({ key, id, name, args: toolResult.args, result: toolResult.result });
+    toolEvents.push({
+      key,
+      id,
+      name,
+      args: toolResult.args,
+      result: toolResult.result,
+      // @ts-ignore
+      endTime: toolResult.endTime
+    });
   }
 
   const handleCopySources = async (results: SearchResult[]) => {
@@ -258,9 +465,14 @@ export const MessageItem = memo(function MessageItem({
                     <span>Out: <span className="text-muted-foreground">{message.outputTokens?.toLocaleString() || 0}</span></span>
                     <span className="font-bold opacity-80">Total: <span className="text-muted-foreground">{((message.inputTokens || 0) + (message.outputTokens || 0)).toLocaleString()}</span></span>
                   </div>
-                  {message.cost && (
-                    <div className="ml-auto bg-primary/5 px-1.5 py-0.5 rounded border border-primary/10 text-primary/70">
-                      ${message.cost.toFixed(4)}
+                  {typeof message.cost === "number" && (
+                    <div className="ml-auto flex items-center gap-1.5 bg-primary/5 px-1.5 py-0.5 rounded border border-primary/10 text-primary/70">
+                      <span>${message.cost.toFixed(4)}</span>
+                      {message.costIsEstimated && (
+                        <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70">
+                          est
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -373,92 +585,9 @@ export const MessageItem = memo(function MessageItem({
                 </div>
               )}
 
-              {/* Tool calls/results */}
+              {/* Tool calls/results - collapsible */}
               {!isEditing && isAssistant && toolEvents.length > 0 && (
-                <div className="mt-4 space-y-2">
-                  {toolEvents.map((toolEvent) => {
-                    const isWebSearch =
-                      toolEvent.name === "webSearch" && isWebSearchResponse(toolEvent.result);
-                    const webSearch = isWebSearch ? (toolEvent.result as WebSearchResponse) : null;
-
-                    return (
-                      <div
-                        key={toolEvent.key}
-                        className="rounded-xl border bg-muted/40"
-                      >
-                        <div className="flex items-center justify-between px-3 py-2">
-                          <div className="text-sm font-medium">
-                            {toolEvent.name === "webSearch" ? "Web Search" : toolEvent.name}
-                            {webSearch?.query ? (
-                              <span className="ml-2 text-xs text-muted-foreground">
-                                “{webSearch.query}”
-                              </span>
-                            ) : null}
-                          </div>
-                          {webSearch && webSearch.results.length > 0 ? (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 px-2 text-xs gap-2"
-                              onClick={() => handleCopySources(webSearch.results)}
-                              title="Copy sources"
-                            >
-                              <Copy className="h-3.5 w-3.5" />
-                              Copy
-                            </Button>
-                          ) : null}
-                        </div>
-
-                        <div className="px-3 pb-3 text-sm">
-                          {webSearch ? (
-                            <div className="space-y-2">
-                              <div className="text-xs text-muted-foreground">
-                                Provider: {webSearch.provider}
-                                {webSearch.error ? ` • ${webSearch.error}` : ""}
-                              </div>
-                              <ol className="space-y-2">
-                                {webSearch.results.map((r, idx) => (
-                                  <li key={`${r.url}-${idx}`} className="space-y-1">
-                                    <a
-                                      href={r.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="font-medium hover:underline break-words"
-                                    >
-                                      {idx + 1}. {r.title}
-                                    </a>
-                                    {r.publishedDate ? (
-                                      <div className="text-xs text-muted-foreground">
-                                        {r.publishedDate}
-                                      </div>
-                                    ) : null}
-                                    {r.snippet ? (
-                                      <div className="text-xs text-muted-foreground">
-                                        {r.snippet}
-                                      </div>
-                                    ) : null}
-                                  </li>
-                                ))}
-                              </ol>
-                            </div>
-                          ) : (
-                            <pre className="text-xs text-muted-foreground overflow-x-auto">
-                              {JSON.stringify(
-                                {
-                                  args: toolEvent.args,
-                                  result: toolEvent.result,
-                                },
-                                null,
-                                2
-                              )}
-                            </pre>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <ToolCallsSection toolEvents={toolEvents} onCopySources={handleCopySources} />
               )}
             </div>
           </div>

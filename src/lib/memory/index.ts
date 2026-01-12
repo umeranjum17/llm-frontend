@@ -8,6 +8,32 @@ interface MemoryItem {
     score?: number; // Similarity score from search
 }
 
+// Cache for memory search results (query -> { results, timestamp })
+const searchCache = new Map<string, { results: MemoryItem[]; timestamp: number }>();
+const CACHE_TTL_MS = 60_000; // 60 seconds TTL
+
+// In-flight request deduplication (query -> Promise)
+const inFlightRequests = new Map<string, Promise<MemoryItem[]>>();
+
+function getCachedSearch(query: string): MemoryItem[] | null {
+    const cached = searchCache.get(query);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+        return cached.results;
+    }
+    // Expired or not found
+    if (cached) searchCache.delete(query);
+    return null;
+}
+
+function setCachedSearch(query: string, results: MemoryItem[]) {
+    searchCache.set(query, { results, timestamp: Date.now() });
+}
+
+// Clear cache when memories are modified
+function invalidateSearchCache() {
+    searchCache.clear();
+}
+
 async function getApiKey() {
     const keyRecord = await db.apiKeys.get("mem0");
     return keyRecord?.key;
@@ -58,15 +84,45 @@ export async function addMemory(content: string | { role: string, content: strin
     const messages = typeof content === 'string'
         ? [{ role: "user", content }]
         : content;
-    return callMem0Api("add", { content: messages });
+    const result = await callMem0Api("add", { content: messages });
+    // Invalidate cache since memories changed
+    invalidateSearchCache();
+    return result;
 }
 
 /**
  * Search for relevant memories based on a query (conversation context)
+ * Uses caching and request deduplication to minimize API calls
  */
 export async function searchMemories(query: string): Promise<MemoryItem[]> {
-    const results = await callMem0Api("search", { query });
-    return results || [];
+    // Check cache first
+    const cached = getCachedSearch(query);
+    if (cached) {
+        console.log("[Memory] Cache hit for query:", query.slice(0, 30));
+        return cached;
+    }
+
+    // Check if there's already an in-flight request for this query
+    const inFlight = inFlightRequests.get(query);
+    if (inFlight) {
+        console.log("[Memory] Deduplicating request for query:", query.slice(0, 30));
+        return inFlight;
+    }
+
+    // Make the request and track it
+    const requestPromise = (async () => {
+        try {
+            const results = await callMem0Api("search", { query });
+            const memoryItems = results || [];
+            setCachedSearch(query, memoryItems);
+            return memoryItems;
+        } finally {
+            inFlightRequests.delete(query);
+        }
+    })();
+
+    inFlightRequests.set(query, requestPromise);
+    return requestPromise;
 }
 
 /**
@@ -81,7 +137,10 @@ export async function getAllMemories(): Promise<MemoryItem[]> {
  * Delete a specific memory
  */
 export async function deleteMemory(memoryId: string) {
-    return callMem0Api("delete", { memoryId });
+    const result = await callMem0Api("delete", { memoryId });
+    // Invalidate cache since memories changed
+    invalidateSearchCache();
+    return result;
 }
 
 /**

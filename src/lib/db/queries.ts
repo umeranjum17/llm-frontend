@@ -833,6 +833,8 @@ export async function addMcpServer(server: Omit<McpServer, 'createdAt' | 'update
   const now = Date.now();
   await db.mcpServers.add({
     ...server,
+    // Initialize with all tools enabled by default (empty disabledTools list)
+    toolPolicy: server.toolPolicy ?? { disabledTools: [] },
     createdAt: now,
     updatedAt: now,
   } as McpServer);

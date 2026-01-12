@@ -46,7 +46,13 @@ export async function POST(req: Request) {
             summaryModel = generic(modelId || configuredModel);
         }
 
-        const { text } = await generateText({
+        // Request usage data from OpenRouter
+        const providerOptions: Record<string, any> = {};
+        if (providerId === "openrouter") {
+            providerOptions.openrouter = { usage: { include: true } };
+        }
+
+        const { text, usage } = await generateText({
             model: summaryModel,
             messages: [
                 {
@@ -65,12 +71,24 @@ Rules:
             ],
             maxTokens: 100,
             temperature: 0.3,
+            providerOptions,
         });
 
         const summary = text.trim();
-        console.log("[Summary] Generated:", summary);
 
-        return new Response(JSON.stringify({ summary }), {
+        // Extract cost from usage if available
+        const cost = (usage as any)?.cost ?? 0;
+        const inputTokens = usage?.promptTokens ?? 0;
+        const outputTokens = usage?.completionTokens ?? 0;
+
+        console.log("[Summary] Generated:", summary, `(cost: $${cost}, tokens: ${inputTokens}/${outputTokens})`);
+
+        return new Response(JSON.stringify({
+            summary,
+            cost,
+            inputTokens,
+            outputTokens,
+        }), {
             headers: { "Content-Type": "application/json" },
         });
     } catch (error: any) {

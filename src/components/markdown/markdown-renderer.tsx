@@ -12,6 +12,8 @@ import rehypeSanitize from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import { CodeBlock } from "./code-block";
+import { MermaidDiagram } from "./mermaid-diagram";
+import { ChartRenderer } from "./chart-renderer";
 import "katex/dist/katex.min.css";
 
 interface MarkdownRendererProps {
@@ -45,6 +47,16 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content }: Mark
           const match = /language-(\w+)/.exec(className);
           const language = match ? match[1] : "";
           const code = String((child.props as { children?: unknown }).children || "").replace(/\n$/, "");
+
+          // Handle mermaid diagrams
+          if (language === "mermaid") {
+            return <MermaidDiagram code={code} />;
+          }
+
+          // Handle chart/graph data (JSON-based charts)
+          if (language === "chart" || language === "graph") {
+            return <ChartRenderer code={code} />;
+          }
 
           return <CodeBlock language={language} code={code} />;
         },

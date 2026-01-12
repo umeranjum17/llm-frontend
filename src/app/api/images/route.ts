@@ -84,6 +84,38 @@ export async function POST(req: Request) {
         // OpenRouter uses chat/completions endpoint with modalities for image generation
         // This works for OpenRouter-native image models (GPT-5 Image, Gemini Flash Image, etc.)
         if (providerId === "openrouter" && !isDalleModel) {
+            // Some models need explicit image generation instructions
+            const isGeminiImageModel = modelId.toLowerCase().includes('gemini') &&
+                (modelId.toLowerCase().includes('image') || modelId.toLowerCase().includes('flash'));
+
+            // Format prompt for image generation - some models need explicit instruction
+            const formattedPrompt = isGeminiImageModel
+                ? `Generate an image: ${prompt}`
+                : prompt;
+
+            const requestBody: Record<string, unknown> = {
+                model: modelId, // OpenRouter needs full model ID
+                messages: [
+                    {
+                        role: "user",
+                        content: formattedPrompt,
+                    }
+                ],
+            };
+
+            // Add modalities for models that support it
+            // Note: Some models use this, others use provider-specific params
+            requestBody.modalities = ["text", "image"];
+
+            // For Gemini models, try adding provider-specific params
+            if (isGeminiImageModel) {
+                requestBody.provider = {
+                    allow_fallbacks: false,
+                };
+            }
+
+            console.log("OpenRouter image request:", JSON.stringify(requestBody, null, 2));
+
             const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
                 method: "POST",
                 headers: {
@@ -92,17 +124,7 @@ export async function POST(req: Request) {
                     "HTTP-Referer": "https://lumina.ai",
                     "X-Title": "Lumina",
                 },
-                body: JSON.stringify({
-                    model: modelId, // OpenRouter needs full model ID
-                    messages: [
-                        {
-                            role: "user",
-                            content: prompt,
-                        }
-                    ],
-                    // Request image output
-                    modalities: ["image", "text"],
-                }),
+                body: JSON.stringify(requestBody),
             });
 
             if (!response.ok) {
@@ -208,11 +230,23 @@ export async function POST(req: Request) {
             }
 
             if (images.length === 0) {
-                console.error("No images found in response. Content:", JSON.stringify(content, null, 2));
+                console.error("No images found in response. Full data:", JSON.stringify(data, null, 2));
+
+                // Check if the model didn't generate any content at all
+                const usage = (data as any).usage;
+                if (usage?.completion_tokens === 0) {
+                    return new Response(
+                        JSON.stringify({
+                            error: "The model did not generate any image. This model may not support image generation via this method, or the prompt may need to be more specific. Try a different image model like 'openai/gpt-4o' or 'google/gemini-2.0-flash-exp:free'.",
+                        }),
+                        { status: 400, headers: { "Content-Type": "application/json" } }
+                    );
+                }
+
                 return new Response(
                     JSON.stringify({
-                        error: "No images generated",
-                        debug: { contentType: typeof content, isArray: Array.isArray(content), content: content?.slice?.(0, 500) || content }
+                        error: "No images found in response. The model may have returned text instead of an image.",
+                        debug: { contentType: typeof content, isArray: Array.isArray(content), contentPreview: typeof content === 'string' ? content?.slice?.(0, 200) : JSON.stringify(content)?.slice(0, 200) }
                     }),
                     { status: 500, headers: { "Content-Type": "application/json" } }
                 );

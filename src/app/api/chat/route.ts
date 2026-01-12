@@ -158,45 +158,44 @@ export async function POST(req: Request) {
 
 
 
-    // Build tools object
-    const tools = enabledTools.includes("web-search")
-      ? {
-        webSearch: tool({
-          description: "Search the web for current information",
-          parameters: z.object({
-            query: z.string().describe("The search query"),
-            maxResults: z.number().default(5).describe("Maximum number of results"),
-          }),
-          execute: async ({ query, maxResults }) => {
-            return await webSearch(query, maxResults, webSearchConfig);
-          },
+    // Build tools object imperatively to avoid TypeScript spreading issues
+    const allTools: Record<string, any> = {};
+
+    // Add web search tool if enabled
+    if (enabledTools.includes("web-search")) {
+      allTools.webSearch = tool({
+        description: "Search the web for current information",
+        parameters: z.object({
+          query: z.string().describe("The search query"),
+          maxResults: z.number().default(5).describe("Maximum number of results"),
         }),
-      }
-      : undefined;
+        execute: async ({ query, maxResults }) => {
+          return await webSearch(query, maxResults, webSearchConfig);
+        },
+      });
+    }
 
     // Load MCP Tools (use singleton for connection pooling)
     const mcpManager = McpManager.getInstance();
-    let mcpTools: Record<string, any> = {};
     let mcpMetadata: ToolMetadata[] = [];
 
     if (mcpServers && mcpServers.length > 0) {
       try {
-        // Filter for enabled servers if not already done on client, 
-        // though client should probably send only enabled ones or the backend checks 'enabled' prop
+        // Filter for enabled servers if not already done on client
         const enabledMcpServers = (mcpServers as McpServer[]).filter(s => s.enabled);
+        console.log(`[MCP] Fetching tools for ${enabledMcpServers.length} enabled servers:`, enabledMcpServers.map(s => s.name).join(', '));
         const { tools: loadedTools, metadata } = await mcpManager.getTools(enabledMcpServers);
-        mcpTools = loadedTools;
+        // Add MCP tools to allTools
+        Object.assign(allTools, loadedTools);
         mcpMetadata = metadata;
-        console.log(`[MCP] Loaded ${Object.keys(mcpTools).length} external tools`);
+        console.log(`[MCP] Loaded ${Object.keys(loadedTools).length} external tools:`, Object.keys(loadedTools).join(', '));
       } catch (e) {
         console.error("[MCP] Failed to load tools:", e);
       }
     }
 
-    const allTools = {
-      ...tools,
-      ...mcpTools,
-    };
+    // Check if we have any tools
+    const hasTools = Object.keys(allTools).length > 0;
 
     // Build instruction messages for tools
     const toolInstructions: CoreMessage[] = [];
@@ -223,11 +222,24 @@ export async function POST(req: Request) {
     // Stream the response
     const coreMessages = [...toolInstructions, ...messages] as unknown as CoreMessage[];
 
+    // Request usage/cost data from providers that support it (OpenRouter, OpenAI)
+    const providerOptions: Record<string, any> = {};
+    if (providerId === "openrouter") {
+      // OpenRouter returns actual cost when usage is requested
+      providerOptions.openrouter = {
+        usage: { include: true }
+      };
+    }
+
     const result = streamText({
       model,
       messages: coreMessages,
-      tools: allTools,
-      maxSteps: 5, // Enable multi-step agentic behavior
+      // Pass undefined instead of empty object to avoid provider compatibility issues
+      tools: hasTools ? allTools : undefined,
+      // Only enable multi-step if we have tools
+      maxSteps: hasTools ? 5 : 1,
+      // Request usage data from providers
+      providerOptions,
     });
 
     // Return the streaming response using manual SSE for compatibility with use-chat.ts
@@ -237,16 +249,37 @@ export async function POST(req: Request) {
           const encoder = new TextEncoder();
           try {
             for await (const part of result.fullStream) {
+              // Log tool calls and results for debugging
+              if (part.type === 'tool-call') {
+                console.log(`[Chat] Tool call: ${part.toolName}`, part.args);
+              }
+              if (part.type === 'tool-result') {
+                console.log(`[Chat] Tool result: ${part.toolName}`, part.result);
+              }
+              if (part.type === 'error') {
+                console.error(`[Chat] Error in stream:`, part.error);
+              }
+              // Log usage data from step-finish and finish events
+              if (part.type === 'step-finish' || part.type === 'finish') {
+                console.log(`[Chat] ${part.type} event - usage:`, (part as any).usage);
+                console.log(`[Chat] ${part.type} event - experimental_providerMetadata:`, (part as any).experimental_providerMetadata);
+              }
+
               controller.enqueue(
                 encoder.encode(`data: ${JSON.stringify(part)}\n\n`)
               );
             }
           } catch (error) {
-            console.error("Stream error:", error);
+            const errorMessage = error instanceof Error ? error.message : "Stream failed";
+            console.error("[Chat Route] Stream error:", errorMessage);
+            if (error instanceof Error && error.stack) {
+              console.error("[Chat Route] Stack:", error.stack);
+            }
             controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ type: "error", error: "Stream failed" })}\n\n`)
+              encoder.encode(`data: ${JSON.stringify({ type: "error", error: { message: errorMessage } })}\n\n`)
             );
           } finally {
+
             controller.enqueue(encoder.encode("data: [DONE]\n\n"));
             controller.close();
           }
