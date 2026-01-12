@@ -65,11 +65,12 @@ import {
 
 interface ChatListProps {
   searchQuery: string;
+  onChatSelect?: () => void;
 }
 
 type ListItem = { type: "folder"; folder: FolderType } | { type: "chat"; chat: Chat };
 
-export function ChatList({ searchQuery }: ChatListProps) {
+export function ChatList({ searchQuery, onChatSelect }: ChatListProps) {
   const activeChatId = useUIStore((state) => state.activeChatId);
   const setActiveChatId = useUIStore((state) => state.setActiveChatId);
   const secondaryChatId = useUIStore((state) => state.secondaryChatId);

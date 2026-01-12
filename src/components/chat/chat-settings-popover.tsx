@@ -1,7 +1,7 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { Settings, Bot, Brain, Wrench, DollarSign, Swords, Tag, Check, FileText } from "lucide-react";
+import { Settings, Bot, Brain, DollarSign, Swords, Tag, Check, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -25,9 +25,6 @@ const REASONING_LEVELS: { value: ReasoningLevel; label: string }[] = [
   { value: "xhigh", label: "Max" },
 ];
 
-const AVAILABLE_TOOLS = [
-  { id: "web-search", name: "Web Search" },
-];
 
 interface ChatSettingsPopoverProps {
   chatId: string;
@@ -55,7 +52,6 @@ export function ChatSettingsPopover({
 
   const memoryEnabled = settings?.memoryEnabled !== false;
   const reasoningLevel = chat?.reasoningLevel || "medium";
-  const enabledTools = chat?.enabledTools || [];
   const selectedTags = chat?.tags || [];
   const calculatedCost = messages?.reduce((sum, msg) => sum + (msg.cost || 0), 0) || 0;
 
@@ -69,13 +65,6 @@ export function ChatSettingsPopover({
 
   const setReasoningLevel = async (level: ReasoningLevel) => {
     await updateChat(chatId, { reasoningLevel: level });
-  };
-
-  const toggleTool = async (toolId: string) => {
-    const newTools = enabledTools.includes(toolId)
-      ? enabledTools.filter((id) => id !== toolId)
-      : [...enabledTools, toolId];
-    await updateChat(chatId, { enabledTools: newTools });
   };
 
   const toggleTag = async (tagId: string) => {
@@ -134,28 +123,6 @@ export function ChatSettingsPopover({
                 )}
               >
                 {level.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Tools */}
-        <div className="px-2 py-1.5">
-          <div className="flex items-center gap-2 mb-1">
-            <Wrench className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm">Tools</span>
-          </div>
-          <div className="space-y-0.5 ml-6">
-            {AVAILABLE_TOOLS.map((tool) => (
-              <button
-                key={tool.id}
-                onClick={() => toggleTool(tool.id)}
-                className="w-full flex items-center justify-between py-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <span>{tool.name}</span>
-                {enabledTools.includes(tool.id) && (
-                  <Check className="h-3 w-3 text-primary" />
-                )}
               </button>
             ))}
           </div>

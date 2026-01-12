@@ -12,7 +12,11 @@ import { ChatList } from "./chat-list";
 import { useSidebarKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { getDefaultChatConfig } from "@/lib/ai/default-chat";
 
-export function Sidebar() {
+interface SidebarProps {
+  onNavigate?: () => void;
+}
+
+export function Sidebar({ onNavigate }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const currentProjectId = useSettingsStore((state) => state.currentProjectId);
   const updateCurrentProject = useSettingsStore((state) => state.updateCurrentProject);
@@ -41,6 +45,7 @@ export function Sidebar() {
       });
 
       setActiveChatId(newChat.id);
+      onNavigate?.();
     } catch (error) {
       console.error("Failed to create new chat:", error);
     }
@@ -52,7 +57,7 @@ export function Sidebar() {
       <div className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
         <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3">
           <h2 className="text-lg font-semibold tracking-tight">Lumina</h2>
-          <Link href="/settings" prefetch title="Settings">
+          <Link href="/settings" prefetch title="Settings" onClick={onNavigate}>
             <Button
               variant="ghost"
               size="icon"
@@ -95,7 +100,7 @@ export function Sidebar() {
 
       {/* Chat List */}
       <div className="flex-1 min-h-0 overflow-hidden">
-        <ChatList searchQuery={searchQuery} />
+        <ChatList searchQuery={searchQuery} onChatSelect={onNavigate} />
       </div>
     </div>
   );

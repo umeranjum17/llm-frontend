@@ -11,15 +11,13 @@ function titleCase(value: string) {
 }
 
 /**
- * Parse OpenRouter pricing (per token) and convert to per 1M tokens
- * OpenRouter returns pricing like "0.0000005" meaning $0.0000005 per token
- * We store pricing as per 1M tokens, so we multiply by 1,000,000
+ * Parse OpenRouter pricing (already per 1M tokens)
+ * OpenRouter returns pricing like "0.50" meaning $0.50 per 1M tokens
  */
 function parseUsdPer1M(value: string | undefined) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;
-  // Convert from per-token to per-1M-tokens
-  return n * 1_000_000;
+  return n;
 }
 
 function deriveProvider(modelId: string) {

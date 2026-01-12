@@ -100,6 +100,33 @@ export default function Home() {
     return () => window.removeEventListener("lumina:open-sidebar", handler as EventListener);
   }, []);
 
+  // Handle new chat event from mobile nav
+  useEffect(() => {
+    const handleNewChat = async () => {
+      const { createChat } = await import("@/lib/db/queries");
+      const { getDefaultChatConfig } = await import("@/lib/ai/default-chat");
+      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, currentProjectId } =
+        useSettingsStore.getState();
+      const { providerId, modelId } = getDefaultChatConfig({
+        defaultProviderId,
+        defaultModelId,
+        defaultModelIdsByProvider,
+      });
+
+      const newChat = await createChat({
+        title: "New Chat",
+        modelId,
+        providerId: providerId || undefined,
+        projectId: currentProjectId,
+      });
+
+      useUIStore.getState().setActiveChatId(newChat.id);
+    };
+
+    window.addEventListener("lumina:new-chat", handleNewChat);
+    return () => window.removeEventListener("lumina:new-chat", handleNewChat);
+  }, []);
+
   if (!settingsLoaded || !keysLoaded) {
     return (
       <div className="flex h-screen items-center justify-center">

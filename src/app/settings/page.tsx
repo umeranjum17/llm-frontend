@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Key, Palette, Keyboard, Download, Settings as SettingsIcon, Bot, FileText, Server, Search, Brain, Shield, BarChart3, Plug, Loader2 } from "lucide-react";
+import { ArrowLeft, Key, Palette, Keyboard, Download, Settings as SettingsIcon, Bot, FileText, Search, Brain, Shield, BarChart3, Loader2 } from "lucide-react";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useSettingsStore } from "@/stores/settings-store";
 
@@ -27,12 +27,9 @@ const KeyboardShortcutsSettings = dynamic(() => import("@/components/settings/ke
 const ExportImportSettings = dynamic(() => import("@/components/settings/export-import-settings").then(m => ({ default: m.ExportImportSettings })), { loading: LoadingSpinner });
 const AgentsSettings = dynamic(() => import("@/components/settings/agents-settings").then(m => ({ default: m.AgentsSettings })), { loading: LoadingSpinner });
 const PromptsSettings = dynamic(() => import("@/components/settings/prompts-settings").then(m => ({ default: m.PromptsSettings })), { loading: LoadingSpinner });
-const LocalModelsSettings = dynamic(() => import("@/components/settings/local-models-settings").then(m => ({ default: m.LocalModelsSettings })), { loading: LoadingSpinner });
 const MemorySettings = dynamic(() => import("@/components/settings/memory-settings").then(m => ({ default: m.MemorySettings })), { loading: LoadingSpinner });
 const TrustDashboard = dynamic(() => import("@/components/settings/trust-dashboard").then(m => ({ default: m.TrustDashboard })), { loading: LoadingSpinner });
 const UsageAnalytics = dynamic(() => import("@/components/settings/usage-analytics").then(m => ({ default: m.UsageAnalytics })), { loading: LoadingSpinner });
-const ConnectorsSettings = dynamic(() => import("@/components/settings/connectors-settings").then(m => ({ default: m.ConnectorsSettings })), { loading: LoadingSpinner });
-const WorkflowSettings = dynamic(() => import("@/components/settings/workflow-settings").then(m => ({ default: m.WorkflowSettings })), { loading: LoadingSpinner });
 const ModelAliasSettings = dynamic(() => import("@/components/settings/model-alias-settings").then(m => ({ default: m.ModelAliasSettings })), { loading: LoadingSpinner });
 const McpMarketplace = dynamic(() => import("@/components/settings/mcp-marketplace").then(m => ({ default: m.McpMarketplace })), { loading: LoadingSpinner });
 
@@ -50,7 +47,7 @@ export default function SettingsPage() {
   useEffect(() => {
     const tabParam = new URLSearchParams(window.location.search).get("tab");
     if (!tabParam) return;
-    const allowedTabs = ["general", "api-keys", "local-models", "memory", "theme", "shortcuts", "data", "agents", "prompts", "trust", "analytics", "connectors", "aliases"];
+    const allowedTabs = ["general", "mcp", "api-keys", "memory", "theme", "shortcuts", "data", "agents", "prompts", "trust", "analytics", "aliases"];
     if (allowedTabs.includes(tabParam)) setActiveTab(tabParam);
   }, []);
 
@@ -102,21 +99,13 @@ export default function SettingsPage() {
                 <SettingsIcon className="h-3.5 w-3.5" />
                 General
               </TabsTrigger>
-              <TabsTrigger value="connectors" className="gap-1.5 text-xs">
-                <Plug className="h-3.5 w-3.5" />
-                Connectors
-              </TabsTrigger>
               <TabsTrigger value="mcp" className="gap-1.5 text-xs">
-                <Plug className="h-3.5 w-3.5" />
+                <SettingsIcon className="h-3.5 w-3.5" />
                 Plugins
               </TabsTrigger>
               <TabsTrigger value="api-keys" className="gap-1.5 text-xs">
                 <Key className="h-3.5 w-3.5" />
                 API Keys
-              </TabsTrigger>
-              <TabsTrigger value="local-models" className="gap-1.5 text-xs">
-                <Server className="h-3.5 w-3.5" />
-                Local
               </TabsTrigger>
               <TabsTrigger value="memory" className="gap-1.5 text-xs">
                 <Brain className="h-3.5 w-3.5" />
@@ -150,10 +139,6 @@ export default function SettingsPage() {
                 <BarChart3 className="h-3.5 w-3.5" />
                 Analytics
               </TabsTrigger>
-              <TabsTrigger value="workflows" className="gap-1.5 text-xs">
-                <div className="h-3.5 w-3.5 rounded bg-pink-500/20 text-pink-500 flex items-center justify-center text-[9px] font-bold">W</div>
-                Workflows
-              </TabsTrigger>
               <TabsTrigger value="aliases" className="gap-1.5 text-xs">
                 <SettingsIcon className="h-3.5 w-3.5" />
                 Aliases
@@ -164,20 +149,12 @@ export default function SettingsPage() {
               <GeneralSettings />
             </TabsContent>
 
-            <TabsContent value="connectors" className="space-y-6">
-              <ConnectorsSettings />
-            </TabsContent>
-
             <TabsContent value="mcp" className="space-y-6">
               <McpMarketplace />
             </TabsContent>
 
             <TabsContent value="api-keys" className="space-y-6">
               <ApiKeysSettings />
-            </TabsContent>
-
-            <TabsContent value="local-models" className="space-y-6">
-              <LocalModelsSettings />
             </TabsContent>
 
             <TabsContent value="memory" className="space-y-6">
@@ -210,10 +187,6 @@ export default function SettingsPage() {
 
             <TabsContent value="analytics" className="space-y-6">
               <UsageAnalytics />
-            </TabsContent>
-
-            <TabsContent value="workflows" className="space-y-6">
-              <WorkflowSettings />
             </TabsContent>
 
             <TabsContent value="aliases" className="space-y-6">

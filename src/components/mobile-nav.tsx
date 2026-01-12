@@ -24,8 +24,8 @@ export function MobileNav() {
                             <Menu className="h-5 w-5" />
                         </Button>
                     </SheetTrigger>
-                    <SheetContent side="left" className="p-0 border-r border-white/10 bg-background/80 backdrop-blur-xl w-[300px]">
-                        <Sidebar />
+                    <SheetContent side="left" className="p-0 border-r border-white/10 bg-background/80 backdrop-blur-xl w-[300px] [&>button]:hidden">
+                        <Sidebar onNavigate={() => setOpen(false)} />
                     </SheetContent>
                 </Sheet>
 
