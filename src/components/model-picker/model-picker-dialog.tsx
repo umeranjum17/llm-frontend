@@ -523,43 +523,45 @@ export function ModelPickerDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl h-[90vh] sm:h-[95vh] max-h-[95vh] flex flex-col p-0 gap-0 overflow-hidden bg-background/95 backdrop-blur-xl border-border/50 shadow-2xl">
+      <DialogContent className="max-w-5xl h-[85vh] sm:h-[95vh] max-h-[95vh] flex flex-col p-0 gap-0 overflow-hidden bg-background/95 backdrop-blur-xl border-border/50 shadow-2xl">
         {/* Header Section */}
-        <div className="flex-none p-6 pb-4 border-b bg-muted/10 z-10 space-y-4">
-          <div className="flex items-start justify-between gap-4">
+        <div className="flex-none p-3 sm:p-6 pb-3 sm:pb-4 border-b bg-muted/10 z-10 space-y-2 sm:space-y-4">
+          <div className="flex items-start justify-between gap-2 sm:gap-4">
             <div>
-              <DialogTitle className="text-xl font-bold tracking-tight">Select Model</DialogTitle>
-              <DialogDescription className="text-muted-foreground mt-1">
+              <DialogTitle className="text-base sm:text-xl font-bold tracking-tight">Select Model</DialogTitle>
+              <DialogDescription className="text-muted-foreground mt-0.5 sm:mt-1 text-xs sm:text-sm hidden sm:block">
                 Choose the best AI model for your task
               </DialogDescription>
             </div>
-            <ParameterPresets />
+            <div className="hidden sm:block">
+              <ParameterPresets />
+            </div>
           </div>
 
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2 sm:gap-4">
             {/* Search Bar */}
             <div className="relative group">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Search className="h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
               </div>
               <Input
-                placeholder="Search models by name, provider, or capabilities..."
+                placeholder="Search models..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 h-11 bg-background/50 border-muted-foreground/20 focus:bg-background transition-all rounded-xl"
+                className="pl-9 h-9 sm:h-11 bg-background/50 border-muted-foreground/20 focus:bg-background transition-all rounded-lg sm:rounded-xl text-sm"
               />
             </div>
 
-            {/* Filters Row */}
-            <div className="flex items-center justify-between gap-4 overflow-x-auto no-scrollbar pb-1">
-              <div className="flex items-center gap-2">
-                <div className="flex bg-muted/50 p-1 rounded-lg border border-border/50">
+            {/* Filters Row - scrollable on mobile */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
+                <div className="flex bg-muted/50 p-0.5 sm:p-1 rounded-lg border border-border/50 shrink-0">
                   {categories.map((category) => (
                     <button
                       key={category.id}
                       onClick={() => setSelectedCategory(category.id)}
                       className={cn(
-                        "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                        "px-2 sm:px-3 py-1 sm:py-1.5 rounded-md text-[10px] sm:text-xs font-medium transition-all whitespace-nowrap",
                         selectedCategory === category.id
                           ? "bg-background text-foreground shadow-sm ring-1 ring-border"
                           : "text-muted-foreground hover:text-foreground hover:bg-background/50"
@@ -570,12 +572,12 @@ export function ModelPickerDialog({
                   ))}
                 </div>
 
-                <div className="h-6 w-px bg-border/60 mx-1" />
+                <div className="hidden sm:block h-6 w-px bg-border/60 mx-1 shrink-0" />
 
                 <Select value={selectedApiProvider} onValueChange={setSelectedApiProvider}>
-                  <SelectTrigger className="h-9 w-[160px] text-xs bg-muted/30 border-dashed border-border/60 rounded-lg">
-                    <div className="flex items-center gap-2 truncate">
-                      <span className="text-muted-foreground">Via:</span>
+                  <SelectTrigger className="h-8 sm:h-9 w-[120px] sm:w-[160px] text-[10px] sm:text-xs bg-muted/30 border-dashed border-border/60 rounded-lg shrink-0">
+                    <div className="flex items-center gap-1 sm:gap-2 truncate">
+                      <span className="text-muted-foreground hidden sm:inline">Via:</span>
                       <span className="font-medium truncate">
                         {selectedApiProvider === "auto"
                           ? "Auto"
@@ -592,12 +594,12 @@ export function ModelPickerDialog({
                 </Select>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger className="h-9 w-[130px] text-xs bg-muted/30 border-dashed border-border/60 rounded-lg">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <TrendingUp className="h-3.5 w-3.5" />
-                      <span className="font-medium text-foreground">{sortBy === "default" ? "Best Match" : sortBy === "cost" ? "Lowest Cost" : sortBy === "context" ? "Max Context" : "Name"}</span>
+                  <SelectTrigger className="h-8 sm:h-9 w-[100px] sm:w-[130px] text-[10px] sm:text-xs bg-muted/30 border-dashed border-border/60 rounded-lg">
+                    <div className="flex items-center gap-1 sm:gap-2 text-muted-foreground">
+                      <TrendingUp className="h-3 w-3 sm:h-3.5 sm:w-3.5 hidden sm:block" />
+                      <span className="font-medium text-foreground truncate">{sortBy === "default" ? "Best" : sortBy === "cost" ? "Cost" : sortBy === "context" ? "Context" : "Name"}</span>
                     </div>
                   </SelectTrigger>
                   <SelectContent>
@@ -611,7 +613,7 @@ export function ModelPickerDialog({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-9 px-3 rounded-lg text-muted-foreground hover:text-foreground gap-2"
+                  className="h-8 sm:h-9 px-2 sm:px-3 rounded-lg text-muted-foreground hover:text-foreground gap-1 sm:gap-2"
                   onClick={async () => {
                     const result = await loadModels({ refresh: true });
                     if (result.success) {
@@ -627,14 +629,14 @@ export function ModelPickerDialog({
                   disabled={modelsLoading}
                   title="Refresh model catalog from providers"
                 >
-                  <RefreshCcw className={cn("h-4 w-4", modelsLoading && "animate-spin")} />
-                  <span className="text-xs">Refresh</span>
+                  <RefreshCcw className={cn("h-3.5 w-3.5 sm:h-4 sm:w-4", modelsLoading && "animate-spin")} />
+                  <span className="text-[10px] sm:text-xs hidden sm:inline">Refresh</span>
                 </Button>
               </div>
             </div>
 
             {fetchedAt && (
-              <div className="flex items-center gap-2 px-1">
+              <div className="hidden sm:flex items-center gap-2 px-1">
                 <div className="h-1.5 w-1.5 rounded-full bg-green-500/50 animate-pulse" />
                 <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
                   Catalog updated {new Date(fetchedAt).toLocaleTimeString()}
@@ -655,20 +657,20 @@ export function ModelPickerDialog({
             itemContent={(index, item) => {
               if (item.kind === "heading") {
                 const icon = (() => {
-                  if (item.icon === "star") return <Star className="h-3.5 w-3.5 fill-yellow-500 text-yellow-500" />;
-                  if (item.icon === "code") return <Code className="h-3.5 w-3.5 text-blue-500" />;
-                  if (item.icon === "research") return <BookOpen className="h-3.5 w-3.5 text-teal-500" />;
-                  if (item.icon === "deep-thinking") return <Brain className="h-3.5 w-3.5 text-purple-500" />;
-                  if (item.icon === "fast") return <Zap className="h-3.5 w-3.5 text-orange-500" />;
-                  if (item.icon === "value") return <DollarSign className="h-3.5 w-3.5 text-green-500" />;
-                  if (item.icon === "image-gen") return <Palette className="h-3.5 w-3.5 text-pink-500" />;
+                  if (item.icon === "star") return <Star className="h-3 w-3 sm:h-3.5 sm:w-3.5 fill-yellow-500 text-yellow-500" />;
+                  if (item.icon === "code") return <Code className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-blue-500" />;
+                  if (item.icon === "research") return <BookOpen className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-teal-500" />;
+                  if (item.icon === "deep-thinking") return <Brain className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-purple-500" />;
+                  if (item.icon === "fast") return <Zap className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-orange-500" />;
+                  if (item.icon === "value") return <DollarSign className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-green-500" />;
+                  if (item.icon === "image-gen") return <Palette className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-pink-500" />;
                   return null;
                 })();
 
                 return (
-                  <div className={cn("px-6 pb-3 flex items-center gap-2", index === 0 ? "pt-6" : "pt-8")}>
+                  <div className={cn("px-3 sm:px-6 pb-2 sm:pb-3 flex items-center gap-2", index === 0 ? "pt-3 sm:pt-6" : "pt-4 sm:pt-8")}>
                     {icon}
-                    <h3 className="text-sm font-semibold text-foreground tracking-tight">
+                    <h3 className="text-xs sm:text-sm font-semibold text-foreground tracking-tight">
                       {item.title}
                     </h3>
                     <div className="h-px bg-border/50 flex-1 ml-2" />
@@ -678,8 +680,8 @@ export function ModelPickerDialog({
 
               if (item.kind === "message") {
                 return (
-                  <div className="px-6 py-8 text-center">
-                    <p className="text-sm text-muted-foreground bg-background/50 border border-border/50 rounded-xl py-8 px-4 inline-block mx-auto max-w-sm">
+                  <div className="px-3 sm:px-6 py-4 sm:py-8 text-center">
+                    <p className="text-xs sm:text-sm text-muted-foreground bg-background/50 border border-border/50 rounded-xl py-4 sm:py-8 px-3 sm:px-4 inline-block mx-auto max-w-sm">
                       {item.message}
                     </p>
                   </div>
@@ -693,7 +695,7 @@ export function ModelPickerDialog({
                 isModelIdCompatibleWithProviderId(pid, model.id)
               );
               return (
-                <div className="px-5 py-1.5">
+                <div className="px-2 sm:px-5 py-1">
                   <ModelItem
                     key={model.id}
                     model={model}
@@ -719,18 +721,19 @@ export function ModelPickerDialog({
         </div>
 
         {/* Footer / Advanced Settings */}
-        <div className="flex-none border-t bg-background/50 backdrop-blur-sm p-2">
+        <div className="flex-none border-t bg-background/50 backdrop-blur-sm p-1.5 sm:p-2">
           <div className="w-full">
             <button
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center justify-between w-full px-4 py-2.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-all"
+              className="flex items-center justify-between w-full px-3 sm:px-4 py-2 sm:py-2.5 text-[10px] sm:text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-all"
             >
               <span className="flex items-center gap-2">
-                {showAdvanced ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                Advanced Parameters & System Prompt
+                {showAdvanced ? <ChevronDown className="h-3 w-3 sm:h-3.5 sm:w-3.5" /> : <ChevronRight className="h-3 w-3 sm:h-3.5 sm:w-3.5" />}
+                <span className="hidden sm:inline">Advanced Parameters & System Prompt</span>
+                <span className="sm:hidden">Advanced Settings</span>
               </span>
               {showAdvanced && (
-                <span className="text-[10px] uppercase tracking-wider opacity-70">Close Settings</span>
+                <span className="text-[9px] sm:text-[10px] uppercase tracking-wider opacity-70">Close</span>
               )}
             </button>
 

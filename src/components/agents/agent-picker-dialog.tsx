@@ -82,85 +82,90 @@ export function AgentPickerDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Choose an Agent</DialogTitle>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col p-4 sm:p-6">
+        <DialogHeader className="pb-2">
+          <DialogTitle className="text-base sm:text-lg">Choose an Agent</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-3">
+        <div className="space-y-3 flex-1 overflow-hidden flex flex-col">
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search agents..."
+            className="h-9 sm:h-10"
           />
 
-          <div className="flex justify-between">
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setEditorOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                New Agent
+          <div className="flex justify-between gap-2">
+            <div className="flex gap-1.5 sm:gap-2">
+              <Button variant="outline" size="sm" className="h-8 text-xs sm:text-sm" onClick={() => setEditorOpen(true)}>
+                <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5" />
+                <span className="hidden sm:inline">New Agent</span>
+                <span className="sm:hidden">New</span>
               </Button>
-              <Button variant="ghost" size="icon" onClick={handleSync} disabled={syncing} title="Sync built-in agents">
-                <RefreshCw className={cn("h-4 w-4", syncing && "animate-spin")} />
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleSync} disabled={syncing} title="Sync built-in agents">
+                <RefreshCw className={cn("h-3.5 w-3.5 sm:h-4 sm:w-4", syncing && "animate-spin")} />
               </Button>
             </div>
-            <Button variant="outline" onClick={() => selectAgent(null)}>
-              Use Default
+            <Button variant="outline" size="sm" className="h-8 text-xs sm:text-sm" onClick={() => selectAgent(null)}>
+              <span className="hidden sm:inline">Use Default</span>
+              <span className="sm:hidden">Default</span>
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {filtered.map((agent) => {
-              const model = agent.modelId ? getModelById(agent.modelId) : null;
-              const costDisplay = model ? formatModelCost(model.inputCost, model.outputCost) : null;
-              const isFree = model && model.inputCost + model.outputCost === 0;
-              return (
-                <button
-                  key={agent.id}
-                  type="button"
-                  onClick={() => selectAgent(agent)}
-                  className={cn(
-                    "text-left rounded-lg border p-3 hover:bg-accent transition-colors",
-                    agent.id === currentAgentId && "border-primary"
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg leading-none">{agent.avatar || "🤖"}</span>
-                        <div className="font-medium truncate">{agent.name}</div>
+          <div className="flex-1 overflow-y-auto -mx-1 px-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+              {filtered.map((agent) => {
+                const model = agent.modelId ? getModelById(agent.modelId) : null;
+                const costDisplay = model ? formatModelCost(model.inputCost, model.outputCost) : null;
+                const isFree = model && model.inputCost + model.outputCost === 0;
+                return (
+                  <button
+                    key={agent.id}
+                    type="button"
+                    onClick={() => selectAgent(agent)}
+                    className={cn(
+                      "text-left rounded-lg border p-2.5 sm:p-3 hover:bg-accent transition-colors",
+                      agent.id === currentAgentId && "border-primary"
+                    )}
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className="text-base sm:text-lg leading-none shrink-0">{agent.avatar || "🤖"}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-1.5">
+                          <div className="font-medium text-sm truncate">{agent.name}</div>
+                          <div className="shrink-0 flex items-center gap-1">
+                            {agent.isBuiltIn && <Badge variant="secondary" className="text-[9px] sm:text-[10px] px-1.5 h-4">Built-in</Badge>}
+                            {agent.mcpServerIds?.length ? (
+                              <Badge variant="outline" className="text-[9px] sm:text-[10px] px-1.5 h-4">{agent.mcpServerIds.length} tools</Badge>
+                            ) : null}
+                          </div>
+                        </div>
+                        {agent.description && (
+                          <div className="mt-0.5 text-[11px] sm:text-xs text-muted-foreground line-clamp-2">
+                            {agent.description}
+                          </div>
+                        )}
+                        {model && (
+                          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                            <Badge variant="outline" className="text-[9px] sm:text-[10px] px-1.5 py-0 h-4 font-normal">
+                              {model.name}
+                            </Badge>
+                            {costDisplay && (
+                              <span className={cn(
+                                "text-[9px] sm:text-[10px]",
+                                isFree ? "text-green-500" : "text-muted-foreground"
+                              )}>
+                                {costDisplay}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      {agent.description ? (
-                        <div className="mt-1 text-xs text-muted-foreground line-clamp-2">
-                          {agent.description}
-                        </div>
-                      ) : null}
-                      {model && (
-                        <div className="mt-1.5 flex items-center gap-1.5">
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-normal">
-                            {model.name}
-                          </Badge>
-                          {costDisplay && (
-                            <span className={cn(
-                              "text-[10px]",
-                              isFree ? "text-green-500" : "text-muted-foreground"
-                            )}>
-                              {costDisplay}
-                            </span>
-                          )}
-                        </div>
-                      )}
                     </div>
-                    <div className="shrink-0 flex flex-col items-end gap-1">
-                      {agent.isBuiltIn ? <Badge variant="secondary" className="text-[10px]">Built-in</Badge> : null}
-                      {agent.mcpServerIds?.length ? (
-                        <Badge variant="outline" className="text-[10px]">{agent.mcpServerIds.length} tools</Badge>
-                      ) : null}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {filtered.length === 0 ? (
