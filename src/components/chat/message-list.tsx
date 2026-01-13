@@ -12,6 +12,7 @@ import type { Message } from "@/lib/db/schema";
 import { BranchNavigator } from "./branch-navigator";
 import { useSuggestedResponses } from "@/hooks/use-suggested-responses";
 import { SuggestedResponses } from "./suggested-responses";
+import { useStreamingStore } from "@/stores/streaming-store";
 
 interface MessageListProps {
   chatId: string;
@@ -71,6 +72,7 @@ function getLatestLeafFrom(messageId: string, childrenByParent: Map<string, Mess
 }
 
 // Memoized message row component to prevent unnecessary re-renders
+// Custom comparison: always re-render if streaming to show real-time updates
 const MessageRow = memo(function MessageRow({
   message,
   onContinue,
@@ -82,6 +84,9 @@ const MessageRow = memo(function MessageRow({
   siblingIndex,
   onSwitchSibling,
   showBranchNav,
+  isStreaming,
+  streamingContent,
+  streamingVersion,
 }: {
   message: Message;
   onContinue: (messageId: string) => void;
@@ -93,6 +98,9 @@ const MessageRow = memo(function MessageRow({
   siblingIndex: number;
   onSwitchSibling: (message: Message, direction: -1 | 1) => void;
   showBranchNav: boolean;
+  isStreaming: boolean;
+  streamingContent?: string;
+  streamingVersion?: number;
 }) {
   return (
     <div>
@@ -103,6 +111,8 @@ const MessageRow = memo(function MessageRow({
         onFork={onFork}
         onRegenerate={onRegenerate}
         isContinuing={isContinuing}
+        streamingContentProp={isStreaming ? streamingContent : undefined}
+        streamingVersionProp={isStreaming ? streamingVersion : undefined}
       />
       {showBranchNav && siblings.length > 1 && siblingIndex !== -1 && (
         <div className="mx-auto max-w-3xl px-4 pb-4 -mt-4">
@@ -116,6 +126,19 @@ const MessageRow = memo(function MessageRow({
       )}
     </div>
   );
+}, (prevProps, nextProps) => {
+  // Always re-render if streaming to show real-time updates
+  if (prevProps.isStreaming || nextProps.isStreaming) {
+    return false; // false = re-render
+  }
+  // Otherwise use default shallow comparison for non-streaming messages
+  return (
+    prevProps.message.id === nextProps.message.id &&
+    prevProps.message.content === nextProps.message.content &&
+    prevProps.isContinuing === nextProps.isContinuing &&
+    prevProps.siblingIndex === nextProps.siblingIndex &&
+    prevProps.siblings.length === nextProps.siblings.length
+  );
 });
 
 export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageListProps) {
@@ -124,6 +147,9 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [showNewMessagesButton, setShowNewMessagesButton] = useState(false);
   const previousMessageCount = useRef(0);
+
+  // Get streaming state to pass to MessageRow for proper re-renders
+  const { streamingMessageId, streamingContent, streamingVersion } = useStreamingStore();
 
   // Use Dexie live query for reactive updates
   const allMessages = useLiveQuery(() => getMessages(chatId), [chatId]);
@@ -287,8 +313,11 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
         computeItemKey={(index, message) => message.id}
         increaseViewportBy={{ top: 200, bottom: 200 }}
         overscan={100}
-        itemContent={(index, message) => {
+        // Pass streaming context to force re-renders when streaming state changes
+        context={{ streamingMessageId, streamingContent, streamingVersion }}
+        itemContent={(index, message, context) => {
           const siblingInfo = siblingInfoMap.get(message.id) || { siblings: [], index: -1 };
+          const isMessageStreaming = message.id === context.streamingMessageId;
           return (
             <MessageRow
               message={message}
@@ -301,6 +330,9 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
               siblingIndex={siblingInfo.index}
               onSwitchSibling={switchSibling}
               showBranchNav={!arenaModelId}
+              isStreaming={isMessageStreaming}
+              streamingContent={isMessageStreaming ? context.streamingContent : undefined}
+              streamingVersion={isMessageStreaming ? context.streamingVersion : undefined}
             />
           );
         }}

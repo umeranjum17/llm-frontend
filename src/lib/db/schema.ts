@@ -107,6 +107,7 @@ export interface UserSettings {
   memoryModelIdsByProvider?: Record<string, string>; // Per-provider memory extraction models
   memoryRetentionDays?: number;      // null/undefined = forever, or days to keep
   memoryAutoExtract?: boolean;       // Auto-learn from conversations
+  memoryCacheTTL?: number;           // Cache TTL in seconds (default: 30)
   memoryMaxItems?: number;           // Limit total memories
   titleModelId?: string;             // Which model to use for title generation (deprecated, use titleModelIdsByProvider)
   titleModelIdsByProvider?: Record<string, string>; // Per-provider title generation models

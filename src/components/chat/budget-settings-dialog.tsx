@@ -66,22 +66,27 @@ export function BudgetSettingsDialog({
     ? (calculatedCost / currentBudget) * 100
     : 0;
 
+  // If controlled externally (open/onOpenChange provided), don't render the trigger
+  const isControlled = controlledOpen !== undefined;
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {children || (
-          <Button variant="ghost" size="sm" className="gap-2">
-            <DollarSign className="h-4 w-4" />
-            {currentBudget ? (
-              <span className="text-xs">
-                ${calculatedCost.toFixed(4)} / ${currentBudget.toFixed(2)}
-              </span>
-            ) : (
-              <span className="text-xs">Set Budget</span>
-            )}
-          </Button>
-        )}
-      </DialogTrigger>
+      {!isControlled && (
+        <DialogTrigger asChild>
+          {children || (
+            <Button variant="ghost" size="sm" className="gap-2 hidden sm:flex">
+              <DollarSign className="h-4 w-4" />
+              {currentBudget ? (
+                <span className="text-xs">
+                  ${calculatedCost.toFixed(4)} / ${currentBudget.toFixed(2)}
+                </span>
+              ) : (
+                <span className="text-xs">Set Budget</span>
+              )}
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Chat Budget Settings</DialogTitle>

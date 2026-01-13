@@ -10,7 +10,7 @@ import { getImagesFromMessageContent, getTextFromMessageContent, mapTextInMessag
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { toast } from "sonner";
 import { isModelIdCompatibleWithProviderId, pickBestProviderId, providerLabel } from "@/lib/ai/provider-routing";
-import { addMemory } from "@/lib/memory";
+import { addMemory, refreshCacheInBackground } from "@/lib/memory";
 import { generateAndApplySummary } from "@/lib/ai/summarization";
 import { getSettings } from "@/lib/db/queries";
 import type { Message } from "ai";
@@ -199,6 +199,9 @@ export function useChat(chatId: string) {
     overrideModelId?: string,
     parentUserMessageId?: string
   ) => {
+    // Extract user message text for later use (e.g., background memory refresh)
+    const userMessageText = getTextFromMessageContent(messageContent);
+
     // Get chat details for model info
     const chat = await getChatById(chatId);
     if (!chat) {
@@ -638,12 +641,21 @@ export function useChat(chatId: string) {
       generateAndApplySummary({ chatId, messages: aiMessages, keys }).catch(console.error);
     }
     } finally {
-      // Always clear streaming state and pending timeouts, even on error
+      // Always clear pending DB update timeout
       if (dbUpdateTimeoutRef.current) {
         clearTimeout(dbUpdateTimeoutRef.current);
         dbUpdateTimeoutRef.current = null;
       }
-      clearStreaming();
+      // Delay clearing streaming state to allow the UI to catch up
+      // This fixes a race condition where Dexie's live query hasn't updated yet
+      // and the MessageItem hasn't mounted to consume the streaming content
+      setTimeout(() => {
+        clearStreaming();
+      }, 100);
+
+      // Refresh memory cache in background for next interaction
+      // This keeps memories fresh without blocking the current response
+      refreshCacheInBackground(userMessageText);
     }
   }, [chatId, getKeyForProvider, keys, scheduleMemoryExtraction, setStreamingMessage, appendStreamingContent, appendStreamingReasoning, setStreamingToolCalls, setStreamingToolResults, clearStreaming]);
 

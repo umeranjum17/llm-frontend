@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { formatDistanceToNow } from "date-fns";
-import { Brain, Trash2, Plus, Info } from "lucide-react";
+import { Brain, Trash2, Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,16 +15,37 @@ import {
     getAllMemories,
     addMemory,
     deleteMemory,
+    type MemoryItem,
 } from "@/lib/memory";
 import { db } from "@/lib/db/schema";
 
 export function MemorySettings() {
     const settings = useLiveQuery(() => getSettings());
-    const memories = useLiveQuery(() => getAllMemories());
     const apiKeys = useLiveQuery(() => db.apiKeys.toArray());
 
+    // Use proper state for async API calls (not useLiveQuery)
+    const [memories, setMemories] = useState<MemoryItem[]>([]);
+    const [isLoadingMemories, setIsLoadingMemories] = useState(false);
     const [newMemory, setNewMemory] = useState("");
     const [isAdding, setIsAdding] = useState(false);
+
+    // Load memories on mount and when refreshed
+    const loadMemories = useCallback(async () => {
+        setIsLoadingMemories(true);
+        try {
+            const result = await getAllMemories();
+            setMemories(result || []);
+        } catch (error) {
+            console.error("Failed to load memories:", error);
+        } finally {
+            setIsLoadingMemories(false);
+        }
+    }, []);
+
+    // Load memories once on mount
+    useEffect(() => {
+        loadMemories();
+    }, [loadMemories]);
 
     const handleToggleMemory = async (enabled: boolean) => {
         await updateSettings({ memoryEnabled: enabled });
@@ -39,6 +60,8 @@ export function MemorySettings() {
             await addMemory(newMemory.trim());
             setNewMemory("");
             toast.success("Memory added/extracted");
+            // Refresh the list after adding
+            await loadMemories();
         } catch (error) {
             console.error(error);
             toast.error("Failed to add memory");
@@ -50,10 +73,14 @@ export function MemorySettings() {
     const handleDeleteMemory = async (id: string) => {
         try {
             await deleteMemory(id);
+            // Optimistically remove from local state
+            setMemories(prev => prev.filter(m => m.id !== id));
             toast.success("Memory deleted");
         } catch (error) {
             console.error(error);
             toast.error("Failed to delete memory");
+            // Reload to restore state on error
+            await loadMemories();
         }
     };
 
@@ -154,6 +181,30 @@ export function MemorySettings() {
                                     }}
                                 />
                             </div>
+
+                            {/* Cache TTL Setting */}
+                            <div className="flex items-center justify-between pt-3 border-t">
+                                <div>
+                                    <Label>Cache Duration</Label>
+                                    <p className="text-xs text-muted-foreground">
+                                        How long to cache memory results (reduces API calls)
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        type="number"
+                                        min={5}
+                                        max={300}
+                                        className="w-20 h-8 text-sm"
+                                        value={settings?.memoryCacheTTL ?? 30}
+                                        onChange={async (e) => {
+                                            const value = Math.max(5, Math.min(300, parseInt(e.target.value) || 30));
+                                            await updateSettings({ memoryCacheTTL: value });
+                                        }}
+                                    />
+                                    <span className="text-sm text-muted-foreground">seconds</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -163,6 +214,15 @@ export function MemorySettings() {
                             <h4 className="font-semibold">
                                 Stored Memories ({memories?.length || 0})
                             </h4>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={loadMemories}
+                                disabled={isLoadingMemories}
+                            >
+                                <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingMemories ? 'animate-spin' : ''}`} />
+                                Refresh
+                            </Button>
                         </div>
 
                         {!memories || memories.length === 0 ? (

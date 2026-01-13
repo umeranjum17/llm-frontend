@@ -78,7 +78,7 @@ export default function SettingsPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-scroll">
-        <div className="container max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-8">
+        <div className="container max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-8 pb-20 sm:pb-8">
           {/* Search */}
           <div className="mb-4 sm:mb-6">
             <div className="relative">

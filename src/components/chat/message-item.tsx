@@ -289,6 +289,9 @@ interface MessageItemProps {
   onFork?: (messageId: string) => void;
   onRegenerate?: (assistantMessageId: string) => void;
   isContinuing?: boolean;
+  // Props passed from parent to bypass memo issues
+  streamingContentProp?: string;
+  streamingVersionProp?: number;
 }
 
 export const MessageItem = memo(function MessageItem({
@@ -298,6 +301,8 @@ export const MessageItem = memo(function MessageItem({
   onFork,
   onRegenerate,
   isContinuing,
+  streamingContentProp,
+  streamingVersionProp,
 }: MessageItemProps) {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -309,7 +314,8 @@ export const MessageItem = memo(function MessageItem({
   const { setActiveArtifact, setShowArtifacts } = useUIStore();
 
   // Get streaming state for real-time updates
-  const { streamingMessageId, streamingContent, streamingReasoning, streamingToolCalls, streamingToolResults } = useStreamingStore();
+  // Include streamingVersion to ensure re-renders on each content update
+  const { streamingMessageId, streamingContent, streamingReasoning, streamingToolCalls, streamingToolResults, streamingVersion } = useStreamingStore();
   const isStreaming = message.id === streamingMessageId;
 
   const isUser = message.role === "user";
@@ -317,8 +323,10 @@ export const MessageItem = memo(function MessageItem({
   const images = getImagesFromMessageContent(message.content);
 
   // Use streaming content if this message is currently being streamed
-  const textContent = isStreaming && streamingContent
-    ? streamingContent
+  // Prefer prop over store to ensure memo sees the change
+  const effectiveStreamingContent = streamingContentProp ?? streamingContent;
+  const textContent = isStreaming && effectiveStreamingContent
+    ? effectiveStreamingContent
     : getTextFromMessageContent(message.content);
 
   // Use streaming reasoning if available, otherwise fall back to persisted reasoning
@@ -539,9 +547,12 @@ export const MessageItem = memo(function MessageItem({
                 <div className="prose prose-sm dark:prose-invert max-w-none">
                   {isAssistant ? (
                     <>
-                      <MarkdownRenderer content={textContent} />
-                      {isStreaming && (
-                        <span className="inline-block w-2 h-4 ml-0.5 bg-primary/70 animate-pulse" />
+                      {isStreaming ? (
+                        // During streaming: show plain text for performance (no markdown parsing)
+                        <p className="whitespace-pre-wrap">{textContent}<span className="inline-block w-2 h-4 ml-0.5 bg-primary/70 animate-pulse" /></p>
+                      ) : (
+                        // After streaming: render full markdown
+                        <MarkdownRenderer content={textContent} />
                       )}
                     </>
                   ) : (

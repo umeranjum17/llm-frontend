@@ -20,6 +20,7 @@ import type { Prompt } from "@/lib/db/schema";
 import { extractVariableNames } from "@/lib/utils/prompt-variables";
 import { useVoiceInput } from "@/hooks/use-voice-input";
 import { PromptQuickSelect } from "@/components/chat/prompt-quick-select";
+import { MobileNavInline } from "@/components/mobile-nav";
 
 interface InputAreaProps {
   chatId: string;
@@ -594,7 +595,6 @@ export function InputArea({ chatId }: InputAreaProps) {
             ? `Listening: "${voiceDraft}"`
             : "Enter to send • Shift+Enter for new line"}
         </span>
-        <span className="sm:hidden">Enter to send</span>
         {chat && (
           <TokenCalculator
             chatId={chatId}
@@ -602,6 +602,11 @@ export function InputArea({ chatId }: InputAreaProps) {
             modelId={chat.modelId}
           />
         )}
+      </div>
+
+      {/* Mobile navigation - integrated below input */}
+      <div className="mt-2">
+        <MobileNavInline />
       </div>
 
       <PromptLibraryDialog

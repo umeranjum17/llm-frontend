@@ -29,11 +29,10 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
         return null;
     }
 
-    // If chat has activeMcpServerIds set, use those; otherwise fall back to globally enabled
-    const hasAgentMcpServers = chat?.activeMcpServerIds !== undefined;
-    const activeServerIds = hasAgentMcpServers
+    // If chat has activeMcpServerIds set, use those; otherwise default to none
+    const activeServerIds = chat?.activeMcpServerIds !== undefined
         ? new Set(chat.activeMcpServerIds || [])
-        : new Set(mcpServers.filter(s => s.enabled).map(s => s.id));
+        : new Set<string>(); // Default to no MCP servers enabled
 
     const enabledCount = mcpServers.filter((s) => activeServerIds.has(s.id)).length;
     const totalCount = mcpServers.length;
@@ -41,8 +40,8 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
     const toggleServer = async (server: McpServer) => {
         if (!chatId) return;
 
-        // Update chat-specific active MCP servers
-        const currentActive = chat?.activeMcpServerIds ?? mcpServers.filter(s => s.enabled).map(s => s.id);
+        // Update chat-specific active MCP servers (default to none if not set)
+        const currentActive = chat?.activeMcpServerIds ?? [];
         const newActive = currentActive.includes(server.id)
             ? currentActive.filter(id => id !== server.id)
             : [...currentActive, server.id];

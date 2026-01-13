@@ -258,8 +258,10 @@ export async function POST(req: Request) {
       {
         headers: {
           "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
+          "Cache-Control": "no-cache, no-transform",
           "Connection": "keep-alive",
+          "X-Accel-Buffering": "no", // Disable nginx buffering
+          "Content-Encoding": "none", // Disable compression to prevent buffering
         },
       }
     );

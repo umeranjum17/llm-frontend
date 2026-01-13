@@ -10,7 +10,8 @@ export const RECOMMENDED_MODELS = {
   reasoning: "deepseek/deepseek-r1",            // Best for math, logic, complex reasoning
   general: "openai/gpt-5.2",                    // Best overall & general purpose
   fast: "google/gemini-2.5-flash",              // Best for speed & scale
-  imageGeneration: "openai/dall-e-3",           // Image generation
+  imageGeneration: "google/gemini-3-pro-image-preview", // Best for logos & text rendering (works via OpenRouter)
+  mascotGeneration: "black-forest-labs/flux.2-pro",    // Best for character consistency (works via OpenRouter)
   diagram: "anthropic/claude-sonnet-4.5",       // Good at structured output
   writing: "openai/gpt-5.2",                    // Reliable for writing
   agents: "x-ai/grok-5",                        // Real-time & tool calling

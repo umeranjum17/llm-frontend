@@ -1,4 +1,5 @@
 import { db } from "@/lib/db/schema";
+import { getSettings } from "@/lib/db/queries";
 
 interface MemoryItem {
     id: string;
@@ -8,30 +9,57 @@ interface MemoryItem {
     score?: number; // Similarity score from search
 }
 
-// Cache for memory search results (query -> { results, timestamp })
-const searchCache = new Map<string, { results: MemoryItem[]; timestamp: number }>();
-const CACHE_TTL_MS = 60_000; // 60 seconds TTL
+// Simple global cache for all memory operations
+let memoryCache: {
+    searchResults: MemoryItem[];
+    allMemories: MemoryItem[];
+    timestamp: number;
+} | null = null;
 
-// In-flight request deduplication (query -> Promise)
-const inFlightRequests = new Map<string, Promise<MemoryItem[]>>();
+// Default cache TTL (can be overridden by settings)
+const DEFAULT_CACHE_TTL_MS = 30_000; // 30 seconds
 
-function getCachedSearch(query: string): MemoryItem[] | null {
-    const cached = searchCache.get(query);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-        return cached.results;
+// In-flight request deduplication
+let inFlightSearch: Promise<MemoryItem[]> | null = null;
+let inFlightGetAll: Promise<MemoryItem[]> | null = null;
+
+async function getCacheTTL(): Promise<number> {
+    try {
+        const settings = await getSettings();
+        return (settings?.memoryCacheTTL ?? 30) * 1000; // Convert seconds to ms
+    } catch {
+        return DEFAULT_CACHE_TTL_MS;
     }
-    // Expired or not found
-    if (cached) searchCache.delete(query);
-    return null;
 }
 
-function setCachedSearch(query: string, results: MemoryItem[]) {
-    searchCache.set(query, { results, timestamp: Date.now() });
+function isCacheValid(timestamp: number, ttlMs: number): boolean {
+    return Date.now() - timestamp < ttlMs;
 }
 
 // Clear cache when memories are modified
-function invalidateSearchCache() {
-    searchCache.clear();
+function invalidateCache() {
+    memoryCache = null;
+    console.log("[Memory] Cache invalidated");
+}
+
+/**
+ * Refresh cache in background (doesn't block, fire-and-forget)
+ * Call this after chat response to keep cache fresh for next interaction
+ * @param query - Optional query to use for the refresh (e.g., last user message)
+ */
+export function refreshCacheInBackground(query?: string) {
+    // Invalidate current cache
+    memoryCache = null;
+
+    // Need a query for Mem0 search - skip if none provided
+    if (!query || query.trim().length === 0) {
+        console.log("[Memory] Background refresh skipped - no query provided");
+        return;
+    }
+
+    // Fire-and-forget refresh - don't await
+    searchMemories(query).catch(() => {});
+    console.log("[Memory] Background cache refresh triggered");
 }
 
 async function getApiKey() {
@@ -86,51 +114,89 @@ export async function addMemory(content: string | { role: string, content: strin
         : content;
     const result = await callMem0Api("add", { content: messages });
     // Invalidate cache since memories changed
-    invalidateSearchCache();
+    invalidateCache();
     return result;
 }
 
 /**
  * Search for relevant memories based on a query (conversation context)
- * Uses caching and request deduplication to minimize API calls
+ * Uses simple global cache - returns cached results if within TTL
  */
 export async function searchMemories(query: string): Promise<MemoryItem[]> {
-    // Check cache first
-    const cached = getCachedSearch(query);
-    if (cached) {
-        console.log("[Memory] Cache hit for query:", query.slice(0, 30));
-        return cached;
+    const ttl = await getCacheTTL();
+
+    // Check global cache first
+    if (memoryCache && isCacheValid(memoryCache.timestamp, ttl)) {
+        console.log("[Memory] Cache hit (search)");
+        return memoryCache.searchResults;
     }
 
-    // Check if there's already an in-flight request for this query
-    const inFlight = inFlightRequests.get(query);
-    if (inFlight) {
-        console.log("[Memory] Deduplicating request for query:", query.slice(0, 30));
-        return inFlight;
+    // Deduplicate in-flight requests
+    if (inFlightSearch) {
+        console.log("[Memory] Deduplicating search request");
+        return inFlightSearch;
     }
 
-    // Make the request and track it
-    const requestPromise = (async () => {
+    // Make the request
+    inFlightSearch = (async () => {
         try {
             const results = await callMem0Api("search", { query });
             const memoryItems = results || [];
-            setCachedSearch(query, memoryItems);
+
+            // Update global cache
+            memoryCache = {
+                searchResults: memoryItems,
+                allMemories: memoryCache?.allMemories || [],
+                timestamp: Date.now(),
+            };
+
             return memoryItems;
         } finally {
-            inFlightRequests.delete(query);
+            inFlightSearch = null;
         }
     })();
 
-    inFlightRequests.set(query, requestPromise);
-    return requestPromise;
+    return inFlightSearch;
 }
 
 /**
  * Get all memories (for the settings page)
+ * Uses simple global cache
  */
 export async function getAllMemories(): Promise<MemoryItem[]> {
-    const results = await callMem0Api("get_all", {});
-    return results ? (results.results || results) : [];
+    const ttl = await getCacheTTL();
+
+    // Check global cache first
+    if (memoryCache && memoryCache.allMemories.length > 0 && isCacheValid(memoryCache.timestamp, ttl)) {
+        console.log("[Memory] Cache hit (getAll)");
+        return memoryCache.allMemories;
+    }
+
+    // Deduplicate in-flight requests
+    if (inFlightGetAll) {
+        console.log("[Memory] Deduplicating getAll request");
+        return inFlightGetAll;
+    }
+
+    inFlightGetAll = (async () => {
+        try {
+            const results = await callMem0Api("get_all", {});
+            const memoryItems = results ? (results.results || results) : [];
+
+            // Update global cache
+            memoryCache = {
+                searchResults: memoryCache?.searchResults || [],
+                allMemories: memoryItems,
+                timestamp: Date.now(),
+            };
+
+            return memoryItems;
+        } finally {
+            inFlightGetAll = null;
+        }
+    })();
+
+    return inFlightGetAll;
 }
 
 /**
@@ -139,7 +205,7 @@ export async function getAllMemories(): Promise<MemoryItem[]> {
 export async function deleteMemory(memoryId: string) {
     const result = await callMem0Api("delete", { memoryId });
     // Invalidate cache since memories changed
-    invalidateSearchCache();
+    invalidateCache();
     return result;
 }
 

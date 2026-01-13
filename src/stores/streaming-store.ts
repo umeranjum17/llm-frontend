@@ -11,6 +11,8 @@ interface StreamingState {
   streamingToolCalls: any[];
   // Tool results received
   streamingToolResults: any[];
+  // Version counter to force re-renders on each update
+  streamingVersion: number;
 
   // Actions
   setStreamingMessage: (messageId: string | null) => void;
@@ -29,6 +31,7 @@ export const useStreamingStore = create<StreamingState>((set, get) => ({
   streamingReasoning: "",
   streamingToolCalls: [],
   streamingToolResults: [],
+  streamingVersion: 0,
 
   setStreamingMessage: (messageId) => set({
     streamingMessageId: messageId,
@@ -36,23 +39,38 @@ export const useStreamingStore = create<StreamingState>((set, get) => ({
     streamingReasoning: "",
     streamingToolCalls: [],
     streamingToolResults: [],
+    streamingVersion: 0,
   }),
 
-  setStreamingContent: (content) => set({ streamingContent: content }),
+  setStreamingContent: (content) => set((state) => ({
+    streamingContent: content,
+    streamingVersion: state.streamingVersion + 1,
+  })),
 
   appendStreamingContent: (delta) => set((state) => ({
-    streamingContent: state.streamingContent + delta
+    streamingContent: state.streamingContent + delta,
+    streamingVersion: state.streamingVersion + 1,
   })),
 
-  setStreamingReasoning: (reasoning) => set({ streamingReasoning: reasoning }),
+  setStreamingReasoning: (reasoning) => set((state) => ({
+    streamingReasoning: reasoning,
+    streamingVersion: state.streamingVersion + 1,
+  })),
 
   appendStreamingReasoning: (delta) => set((state) => ({
-    streamingReasoning: state.streamingReasoning + delta
+    streamingReasoning: state.streamingReasoning + delta,
+    streamingVersion: state.streamingVersion + 1,
   })),
 
-  setStreamingToolCalls: (toolCalls) => set({ streamingToolCalls: toolCalls }),
+  setStreamingToolCalls: (toolCalls) => set((state) => ({
+    streamingToolCalls: toolCalls,
+    streamingVersion: state.streamingVersion + 1,
+  })),
 
-  setStreamingToolResults: (toolResults) => set({ streamingToolResults: toolResults }),
+  setStreamingToolResults: (toolResults) => set((state) => ({
+    streamingToolResults: toolResults,
+    streamingVersion: state.streamingVersion + 1,
+  })),
 
   clearStreaming: () => set({
     streamingMessageId: null,
@@ -60,5 +78,6 @@ export const useStreamingStore = create<StreamingState>((set, get) => ({
     streamingReasoning: "",
     streamingToolCalls: [],
     streamingToolResults: [],
+    streamingVersion: 0,
   }),
 }));

@@ -831,8 +831,8 @@ export async function getActiveMcpServersForChat(activeMcpServerIds?: string[]) 
   if (activeMcpServerIds !== undefined) {
     return await getMcpServersByIds(activeMcpServerIds);
   }
-  // Otherwise fall back to globally enabled servers
-  return await getEnabledMcpServers();
+  // Default to no MCP servers - user must explicitly enable them per session
+  return [];
 }
 
 export async function getAllMcpServers() {
