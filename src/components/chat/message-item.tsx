@@ -304,6 +304,7 @@ export const MessageItem = memo(function MessageItem({
   const [editContent, setEditContent] = useState(getTextFromMessageContent(message.content));
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
+  const [showMobileActions, setShowMobileActions] = useState(false);
   const { speak, stop, isPlaying } = useVoiceOutput();
   const { setActiveArtifact, setShowArtifacts } = useUIStore();
 
@@ -466,13 +467,19 @@ export const MessageItem = memo(function MessageItem({
   return (
     <div
       className={cn(
-        "group relative px-4 py-6"
+        "group relative px-2 sm:px-4 py-3 sm:py-6"
       )}
+      onClick={() => {
+        // Toggle mobile actions on tap (only on touch devices)
+        if (window.matchMedia("(hover: none)").matches) {
+          setShowMobileActions(!showMobileActions);
+        }
+      }}
     >
       <div className="mx-auto max-w-3xl">
-        <div className="flex gap-4">
-          {/* Avatar */}
-          <Avatar className="h-8 w-8 shrink-0 ring-1 ring-border">
+        <div className="flex gap-2 sm:gap-4">
+          {/* Avatar - hidden on mobile for more space */}
+          <Avatar className="h-8 w-8 shrink-0 ring-1 ring-border hidden sm:flex">
             <AvatarFallback>
               {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
             </AvatarFallback>
@@ -482,20 +489,20 @@ export const MessageItem = memo(function MessageItem({
           <div className="flex-1 min-w-0">
             <div
               className={cn(
-                "rounded-2xl border p-4",
+                "rounded-xl sm:rounded-2xl border p-2.5 sm:p-4",
                 isUser
                   ? "bg-primary/10 border-primary/20"
                   : "bg-card/40 backdrop-blur-sm border-border/50"
               )}
             >
-              <div className="mb-2 flex items-center gap-2">
+              <div className="mb-1.5 sm:mb-2 flex items-center gap-1.5 sm:gap-2">
                 <span className={cn(
-                  "text-sm font-semibold",
+                  "text-xs sm:text-sm font-semibold",
                   isUser ? "text-primary" : "text-foreground"
                 )}>
                   {isUser ? "You" : "Assistant"}
                 </span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-[10px] sm:text-xs text-muted-foreground">
                   {formatDistanceToNow(new Date(message.createdAt), {
                     addSuffix: true,
                   })}
@@ -675,12 +682,76 @@ export const MessageItem = memo(function MessageItem({
               {!isEditing && isAssistant && toolEvents.length > 0 && (
                 <ToolCallsSection toolEvents={toolEvents} onCopySources={handleCopySources} />
               )}
+
+              {/* Mobile Actions - Inside bubble */}
+              {!isEditing && showMobileActions && (
+                <div className="sm:hidden flex items-center gap-1 mt-2 pt-2 border-t border-border/30 flex-wrap">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2"
+                    onClick={(e) => { e.stopPropagation(); handleCopy(); }}
+                  >
+                    {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                  </Button>
+                  {isAssistant && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={cn("h-7 px-2", isPlaying && "text-primary")}
+                      onClick={(e) => { e.stopPropagation(); isPlaying ? stop() : speak(textContent); }}
+                    >
+                      {isPlaying ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+                    </Button>
+                  )}
+                  {canRegenerate && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2"
+                      onClick={(e) => { e.stopPropagation(); onRegenerate?.(message.id); }}
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                  {canEdit && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2"
+                      onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                  {isAssistant && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2"
+                        onClick={(e) => { e.stopPropagation(); handleRate("up"); }}
+                      >
+                        <ThumbsUp className={cn("h-3.5 w-3.5", message.rating === "up" && "fill-current text-green-500")} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2"
+                        onClick={(e) => { e.stopPropagation(); handleRate("down"); }}
+                      >
+                        <ThumbsDown className={cn("h-3.5 w-3.5", message.rating === "down" && "fill-current text-red-500")} />
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Actions */}
+          {/* Desktop Actions - Outside bubble */}
           {!isEditing && (
-            <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1">
+            <div className="hidden sm:flex shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex-col gap-1">
               <Button
                 variant="ghost"
                 size="icon"

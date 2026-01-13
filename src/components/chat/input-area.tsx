@@ -491,23 +491,24 @@ export function InputArea({ chatId }: InputAreaProps) {
         accept="image/*,.txt,.md,.js,.ts,.tsx,.jsx,.json,.csv,.py,.java,.c,.cpp,.h,.css,.html"
       />
 
-      <div className="flex gap-2 rounded-2xl border border-border/70 bg-card/80 p-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/60 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background">
+      <div className="flex gap-1.5 sm:gap-2 rounded-xl sm:rounded-2xl border border-border/70 bg-card/80 p-1.5 sm:p-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/60 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background">
         <Button
           type="button"
           variant="ghost"
           size="icon"
-          className="h-10 w-10 shrink-0"
+          className="h-9 w-9 sm:h-10 sm:w-10 shrink-0"
           onClick={() => fileInputRef.current?.click()}
           title="Attach images or files"
         >
-          <Paperclip className="h-5 w-5 text-muted-foreground" />
+          <Paperclip className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
         </Button>
 
+        {/* Voice input - hidden on mobile to save space */}
         <Button
           type="button"
           variant={voice.isListening ? "default" : "ghost"}
           size="icon"
-          className="h-10 w-10 shrink-0"
+          className="hidden sm:flex h-9 w-9 sm:h-10 sm:w-10 shrink-0"
           onClick={() => {
             if (!voice.isSupported) {
               toast.error("Speech recognition is not supported in this browser.");
@@ -519,20 +520,23 @@ export function InputArea({ chatId }: InputAreaProps) {
           title={voice.isListening ? "Stop recording" : "Voice input"}
         >
           {voice.isListening ? (
-            <Square className="h-5 w-5" />
+            <Square className="h-4 w-4 sm:h-5 sm:w-5" />
           ) : (
-            <Mic className="h-5 w-5 text-muted-foreground" />
+            <Mic className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
           )}
         </Button>
 
-        <PromptQuickSelect
-          onSelect={(prompt) => {
-            incrementPromptUsage(prompt.id).catch(() => {});
-            const reference = `@prompt:${prompt.id}[${prompt.title}]`;
-            setInput((prev) => (prev ? `${prev} ${reference}` : reference));
-            setTimeout(() => textareaRef.current?.focus(), 0);
-          }}
-        />
+        {/* Prompt quick select - hidden on mobile */}
+        <div className="hidden sm:block">
+          <PromptQuickSelect
+            onSelect={(prompt) => {
+              incrementPromptUsage(prompt.id).catch(() => {});
+              const reference = `@prompt:${prompt.id}[${prompt.title}]`;
+              setInput((prev) => (prev ? `${prev} ${reference}` : reference));
+              setTimeout(() => textareaRef.current?.focus(), 0);
+            }}
+          />
+        </div>
 
         <div className="relative flex-1">
           <MentionTextarea
@@ -573,23 +577,24 @@ export function InputArea({ chatId }: InputAreaProps) {
             (!input.trim() && attachments.length === 0 && imageAttachments.length === 0) ||
             isLoading
           }
-          className="h-10 w-10 shrink-0 rounded-xl"
+          className="h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-lg sm:rounded-xl"
           title="Send"
         >
           {isLoading ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
+            <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
           ) : (
-            <Send className="h-5 w-5" />
+            <Send className="h-4 w-4 sm:h-5 sm:w-5" />
           )}
         </Button>
       </div>
 
-      <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-        <span>
+      <div className="mt-1.5 sm:mt-2 flex items-center justify-between text-[10px] sm:text-xs text-muted-foreground">
+        <span className="hidden sm:inline">
           {voice.isListening && voiceDraft
-            ? `Listening: “${voiceDraft}”`
+            ? `Listening: "${voiceDraft}"`
             : "Enter to send • Shift+Enter for new line"}
         </span>
+        <span className="sm:hidden">Enter to send</span>
         {chat && (
           <TokenCalculator
             chatId={chatId}

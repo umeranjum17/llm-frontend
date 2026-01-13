@@ -13,6 +13,23 @@ export interface EncryptedData {
   salt: string;
   iv: string;
   data: string;
+  expiresAt?: number; // Unix timestamp when this backup expires (optional)
+}
+
+export type ExpirationOption = "1d" | "7d" | "30d" | "never";
+
+export function getExpirationTimestamp(option: ExpirationOption): number | undefined {
+  const now = Date.now();
+  switch (option) {
+    case "1d":
+      return now + 24 * 60 * 60 * 1000;
+    case "7d":
+      return now + 7 * 24 * 60 * 60 * 1000;
+    case "30d":
+      return now + 30 * 24 * 60 * 60 * 1000;
+    case "never":
+      return undefined;
+  }
 }
 
 /**
@@ -31,7 +48,7 @@ async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
   return crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
-      salt,
+      salt: salt.buffer as ArrayBuffer,
       iterations: PBKDF2_ITERATIONS,
       hash: "SHA-256",
     },
@@ -65,9 +82,14 @@ function base64ToArray(base64: string): Uint8Array {
  * Encrypts data with a password
  * @param data - The data object to encrypt
  * @param password - The encryption password
+ * @param expiresAt - Optional expiration timestamp
  * @returns Encrypted data as a JSON string
  */
-export async function encryptSettings(data: object, password: string): Promise<string> {
+export async function encryptSettings(
+  data: object,
+  password: string,
+  expiresAt?: number
+): Promise<string> {
   const encoder = new TextEncoder();
   const plaintext = encoder.encode(JSON.stringify(data));
 
@@ -80,7 +102,7 @@ export async function encryptSettings(data: object, password: string): Promise<s
 
   // Encrypt the data
   const ciphertext = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
+    { name: "AES-GCM", iv: iv.buffer as ArrayBuffer },
     key,
     plaintext
   );
@@ -91,9 +113,33 @@ export async function encryptSettings(data: object, password: string): Promise<s
     salt: arrayToBase64(salt),
     iv: arrayToBase64(iv),
     data: arrayToBase64(new Uint8Array(ciphertext)),
+    expiresAt,
   };
 
   return JSON.stringify(encryptedData);
+}
+
+/**
+ * Checks if an encrypted backup has expired
+ */
+export function checkExpiration(encrypted: string): {
+  isExpired: boolean;
+  expiresAt?: Date;
+  hasExpiration: boolean;
+} {
+  try {
+    const data: EncryptedData = JSON.parse(encrypted);
+    if (!data.expiresAt) {
+      return { isExpired: false, hasExpiration: false };
+    }
+    return {
+      isExpired: Date.now() > data.expiresAt,
+      expiresAt: new Date(data.expiresAt),
+      hasExpiration: true,
+    };
+  } catch {
+    return { isExpired: false, hasExpiration: false };
+  }
 }
 
 /**
@@ -111,6 +157,12 @@ export async function decryptSettings(encrypted: string, password: string): Prom
     throw new Error(`Unsupported encryption version: ${encryptedData.version}`);
   }
 
+  // Check expiration
+  if (encryptedData.expiresAt && Date.now() > encryptedData.expiresAt) {
+    const expiredDate = new Date(encryptedData.expiresAt).toLocaleDateString();
+    throw new Error(`This backup expired on ${expiredDate}. Please create a new export.`);
+  }
+
   // Decode base64 values
   const salt = base64ToArray(encryptedData.salt);
   const iv = base64ToArray(encryptedData.iv);
@@ -122,9 +174,9 @@ export async function decryptSettings(encrypted: string, password: string): Prom
   try {
     // Decrypt the data
     const plaintext = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv },
+      { name: "AES-GCM", iv: iv.buffer as ArrayBuffer },
       key,
-      ciphertext
+      ciphertext.buffer as ArrayBuffer
     );
 
     // Parse and return the decrypted JSON

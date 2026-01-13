@@ -364,9 +364,9 @@ export function ChatShell() {
           <div className="flex h-full flex-col">
             {/* Header - Clean Single Row */}
             <header className="sticky top-0 z-20 border-b border-border/50 bg-card/80 backdrop-blur-xl supports-[backdrop-filter]:bg-card/60">
-              <div className="flex items-center justify-between px-4 h-12">
+              <div className="flex items-center justify-between px-2 sm:px-4 h-11 sm:h-12">
                 {/* Left: Menu + Title */}
-                <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                   <Button
                     variant="ghost"
                     size="icon"
@@ -377,28 +377,28 @@ export function ChatShell() {
                     <Menu className="h-4 w-4" />
                   </Button>
                   <div className="flex flex-col min-w-0">
-                    <h1 className="text-sm font-medium truncate text-foreground/90">{chat?.title || "Chat"}</h1>
+                    <h1 className="text-xs sm:text-sm font-medium truncate text-foreground/90 max-w-[120px] sm:max-w-none">{chat?.title || "Chat"}</h1>
                     {chat?.tags && chat.tags.length > 0 && (
-                      <TagList tagIds={chat.tags} size="sm" className="mt-0.5" />
+                      <TagList tagIds={chat.tags} size="sm" className="mt-0.5 hidden sm:flex" />
                     )}
                   </div>
                 </div>
 
                 {/* Right: Agent + Model Selector + Settings + Artifacts */}
-                <div className="flex items-center gap-1.5">
-                  {/* Agent Selector */}
+                <div className="flex items-center gap-1">
+                  {/* Agent Selector - compact on mobile */}
                   {!isArenaMode && chat && (
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-8 gap-2 px-3 text-xs font-medium border-border/50"
+                      className="h-8 gap-1.5 px-2 sm:px-3 text-xs font-medium border-border/50"
                       onClick={() => setAgentPickerOpen(true)}
                     >
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         {currentAgent ? (
                           <>
                             <span className="text-sm leading-none">{currentAgent.avatar || "🤖"}</span>
-                            <div className="flex flex-col items-start leading-none">
+                            <div className="hidden sm:flex flex-col items-start leading-none">
                               <span className="max-w-[80px] sm:max-w-[120px] truncate font-medium">
                                 {currentAgent.name}
                               </span>
@@ -412,7 +412,7 @@ export function ChatShell() {
                         ) : (
                           <>
                             <Bot className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-muted-foreground">Agent</span>
+                            <span className="hidden sm:inline text-muted-foreground">Agent</span>
                           </>
                         )}
                       </div>
@@ -426,14 +426,14 @@ export function ChatShell() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-8 gap-2 px-3 text-xs font-medium border-border/50"
+                          className="h-8 gap-1.5 px-2 sm:px-3 text-xs font-medium border-border/50"
                         >
                           <div className="flex flex-col items-start leading-none">
-                            <span className="max-w-[120px] sm:max-w-[180px] truncate">
-                              {modelAliasMap.get(chat.modelId) || currentModel?.name || "Select Model"}
+                            <span className="max-w-[80px] sm:max-w-[180px] truncate text-[11px] sm:text-xs">
+                              {modelAliasMap.get(chat.modelId) || currentModel?.name || "Model"}
                             </span>
                             {providerId && (
-                              <span className="text-[10px] text-muted-foreground">
+                              <span className="hidden sm:block text-[10px] text-muted-foreground">
                                 {providerId === "openrouter" ? "OpenRouter" : providerLabel(providerId)}
                               </span>
                             )}
@@ -568,7 +568,10 @@ export function ChatShell() {
                     </Badge>
                   )}
 
-                  <ToolQuickToggle chatId={activeChatId} />
+                  {/* Tool toggle - hidden on mobile */}
+                  <div className="hidden sm:block">
+                    <ToolQuickToggle chatId={activeChatId} />
+                  </div>
 
                   <ChatSettingsPopover
                     chatId={activeChatId}
@@ -578,10 +581,11 @@ export function ChatShell() {
                     onToggleArena={toggleArenaMode}
                   />
 
+                  {/* Desktop only buttons */}
                   <Button
                     variant="ghost"
                     size="icon"
-                    className={cn("h-8 w-8", isSplitView && "text-primary")}
+                    className={cn("hidden sm:flex h-8 w-8", isSplitView && "text-primary")}
                     onClick={toggleSplitView}
                     title={isSplitView ? "Exit Split View" : "Split View"}
                   >
@@ -591,7 +595,7 @@ export function ChatShell() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className={cn("h-8 w-8", isFocusMode && "text-primary")}
+                    className={cn("hidden sm:flex h-8 w-8", isFocusMode && "text-primary")}
                     onClick={() => setIsFocusMode(!isFocusMode)}
                     title={isFocusMode ? "Exit Focus Mode" : "Enter Focus Mode"}
                   >
@@ -601,7 +605,7 @@ export function ChatShell() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8"
+                    className="hidden sm:flex h-8 w-8"
                     onClick={() => setShowArtifacts(!showArtifacts)}
                     title={showArtifacts ? "Hide artifacts" : "Show artifacts"}
                   >

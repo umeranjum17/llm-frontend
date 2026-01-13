@@ -311,7 +311,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
               <div className="space-y-2">
                 <Label>Model</Label>
                 <p className="text-xs text-muted-foreground mb-2">
-                  Select a specific model for this agent or use the chat's default model
+                  Select a specific model for this agent or use the chat&apos;s default model
                 </p>
                 <Select value={modelId} onValueChange={setModelId}>
                   <SelectTrigger className="h-10">

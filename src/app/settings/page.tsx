@@ -55,20 +55,20 @@ export default function SettingsPage() {
     <div className="h-screen flex flex-col">
       {/* Header */}
       <div className="border-b">
-        <div className="container max-w-5xl mx-auto px-6 py-4">
-          <div className="flex items-center gap-4">
+        <div className="container max-w-5xl mx-auto px-3 sm:px-6 py-3 sm:py-4">
+          <div className="flex items-center gap-3 sm:gap-4">
             <Link href="/" prefetch>
               <Button
                 variant="ghost"
                 size="icon"
-                className="shrink-0"
+                className="shrink-0 h-8 w-8 sm:h-10 sm:w-10"
               >
-                <ArrowLeft className="h-5 w-5" />
+                <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" />
               </Button>
             </Link>
             <div>
-              <h1 className="text-2xl font-bold">Settings</h1>
-              <p className="text-sm text-muted-foreground">
+              <h1 className="text-xl sm:text-2xl font-bold">Settings</h1>
+              <p className="text-xs sm:text-sm text-muted-foreground">
                 Manage your preferences and configuration
               </p>
             </div>
@@ -78,15 +78,15 @@ export default function SettingsPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-scroll">
-        <div className="container max-w-5xl mx-auto px-6 py-8">
+        <div className="container max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-8">
           {/* Search */}
-          <div className="mb-6">
+          <div className="mb-4 sm:mb-6">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 type="search"
                 placeholder="Search settings..."
-                className="pl-9"
+                className="pl-9 h-9 sm:h-10 text-sm"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -94,7 +94,7 @@ export default function SettingsPage() {
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="flex flex-wrap justify-start gap-1 h-auto p-1.5 mb-8 w-full">
+            <TabsList className="flex overflow-x-auto sm:flex-wrap sm:justify-start gap-1 h-auto p-1 sm:p-1.5 mb-4 sm:mb-8 w-full scrollbar-none">
               <TabsTrigger value="general" className="gap-1.5 text-xs">
                 <SettingsIcon className="h-3.5 w-3.5" />
                 General

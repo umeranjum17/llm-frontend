@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,14 +11,604 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Download, Upload, AlertTriangle, FileJson, FileText, Trash2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Download,
+  Upload,
+  AlertTriangle,
+  FileJson,
+  FileText,
+  Trash2,
+  Shield,
+  Key,
+  Server,
+  Bot,
+  MessageSquare,
+  Star,
+  Tag,
+  Settings,
+  Loader2,
+  CheckCircle2,
+  Lock,
+  Clock,
+} from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/db/schema";
 import { deleteAllChats } from "@/lib/db/queries";
+import {
+  exportAllSettings,
+  downloadSettingsFile,
+  getExportSummary,
+} from "@/lib/db/export-settings";
+import {
+  importSettings,
+  validateSettingsExport,
+  readFileAsText,
+  getImportPreview,
+  type ImportMode,
+} from "@/lib/db/import-settings";
+import {
+  encryptSettings,
+  decryptSettings,
+  isValidEncryptedFormat,
+  checkExpiration,
+  getExpirationTimestamp,
+  type ExpirationOption,
+} from "@/lib/crypto/settings-crypto";
+
+// Secure Export Dialog
+function SecureExportDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [expiration, setExpiration] = useState<ExpirationOption>("7d");
+  const [isExporting, setIsExporting] = useState(false);
+  const [summary, setSummary] = useState<Awaited<
+    ReturnType<typeof getExportSummary>
+  > | null>(null);
+
+  const loadSummary = async () => {
+    const data = await getExportSummary();
+    setSummary(data);
+  };
+
+  const handleExport = async () => {
+    if (password.length < 8) {
+      toast.error("Password must be at least 8 characters");
+      return;
+    }
+    if (password !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const settings = await exportAllSettings();
+      const expiresAt = getExpirationTimestamp(expiration);
+      const encrypted = await encryptSettings(settings, password, expiresAt);
+      downloadSettingsFile(encrypted);
+      toast.success("Settings exported securely");
+      onOpenChange(false);
+      setPassword("");
+      setConfirmPassword("");
+      setExpiration("7d");
+    } catch (error) {
+      toast.error("Failed to export settings");
+      console.error(error);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(isOpen) => {
+        if (isOpen) loadSummary();
+        else {
+          setPassword("");
+          setConfirmPassword("");
+        }
+        onOpenChange(isOpen);
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Shield className="h-5 w-5" />
+            Secure Export
+          </DialogTitle>
+          <DialogDescription>
+            Export API keys and settings with password protection. Share safely
+            via cloud storage.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          {summary && (
+            <div className="rounded-lg border bg-muted/50 p-3 text-sm space-y-1">
+              <div className="font-medium mb-2">Will export:</div>
+              <div className="grid grid-cols-2 gap-1 text-muted-foreground">
+                {summary.apiKeys > 0 && (
+                  <div className="flex items-center gap-1">
+                    <Key className="h-3 w-3" />
+                    {summary.apiKeys} API keys
+                  </div>
+                )}
+                {summary.mcpServers > 0 && (
+                  <div className="flex items-center gap-1">
+                    <Server className="h-3 w-3" />
+                    {summary.mcpServers} MCP servers
+                  </div>
+                )}
+                {summary.agents > 0 && (
+                  <div className="flex items-center gap-1">
+                    <Bot className="h-3 w-3" />
+                    {summary.agents} agents
+                  </div>
+                )}
+                {summary.prompts > 0 && (
+                  <div className="flex items-center gap-1">
+                    <MessageSquare className="h-3 w-3" />
+                    {summary.prompts} prompts
+                  </div>
+                )}
+                {summary.modelFavorites > 0 && (
+                  <div className="flex items-center gap-1">
+                    <Star className="h-3 w-3" />
+                    {summary.modelFavorites} favorites
+                  </div>
+                )}
+                {summary.tags > 0 && (
+                  <div className="flex items-center gap-1">
+                    <Tag className="h-3 w-3" />
+                    {summary.tags} tags
+                  </div>
+                )}
+                {summary.hasSettings && (
+                  <div className="flex items-center gap-1">
+                    <Settings className="h-3 w-3" />
+                    User settings
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="export-password">Encryption Password</Label>
+            <Input
+              id="export-password"
+              type="password"
+              placeholder="Enter a strong password (min 8 chars)"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="confirm-password">Confirm Password</Label>
+            <Input
+              id="confirm-password"
+              type="password"
+              placeholder="Confirm your password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              autoComplete="new-password"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Backup Expiration</Label>
+            <Select
+              value={expiration}
+              onValueChange={(v) => setExpiration(v as ExpirationOption)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1d">24 hours</SelectItem>
+                <SelectItem value="7d">7 days</SelectItem>
+                <SelectItem value="30d">30 days</SelectItem>
+                <SelectItem value="never">Never expires</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Expired backups cannot be imported, even with the correct password
+            </p>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleExport}
+            disabled={isExporting || password.length < 8}
+          >
+            {isExporting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Encrypting...
+              </>
+            ) : (
+              <>
+                <Lock className="mr-2 h-4 w-4" />
+                Export Encrypted
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Secure Import Dialog
+function SecureImportDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [password, setPassword] = useState("");
+  const [isImporting, setIsImporting] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<ReturnType<
+    typeof getImportPreview
+  > | null>(null);
+  const [decryptedData, setDecryptedData] = useState<any>(null);
+  const [importMode, setImportMode] = useState<ImportMode>("merge");
+  const [importOptions, setImportOptions] = useState({
+    importApiKeys: true,
+    importMcpServers: true,
+    importAgents: true,
+    importPrompts: true,
+    importSettings: true,
+    importModelFavorites: true,
+    importModelAliases: true,
+    importParameterPresets: true,
+    importTags: true,
+    importTagRules: true,
+  });
+  const [step, setStep] = useState<"select" | "decrypt" | "configure">(
+    "select"
+  );
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const resetState = () => {
+    setPassword("");
+    setSelectedFile(null);
+    setPreview(null);
+    setDecryptedData(null);
+    setStep("select");
+    setImportMode("merge");
+    setExpirationInfo(null);
+  };
+
+  const [expirationInfo, setExpirationInfo] = useState<{
+    isExpired: boolean;
+    expiresAt?: Date;
+    hasExpiration: boolean;
+  } | null>(null);
+
+  const handleFileSelect = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Check expiration before proceeding
+    try {
+      const content = await readFileAsText(file);
+      if (!isValidEncryptedFormat(content)) {
+        toast.error("Invalid file format. Please select a valid .lumina file.");
+        return;
+      }
+
+      const expInfo = checkExpiration(content);
+      setExpirationInfo(expInfo);
+
+      if (expInfo.isExpired) {
+        toast.error(
+          `This backup expired on ${expInfo.expiresAt?.toLocaleDateString()}. Please create a new export.`
+        );
+        return;
+      }
+
+      setSelectedFile(file);
+      setStep("decrypt");
+    } catch (error) {
+      toast.error("Failed to read file");
+    }
+  };
+
+  const handleDecrypt = async () => {
+    if (!selectedFile || !password) return;
+
+    setIsImporting(true);
+    try {
+      const content = await readFileAsText(selectedFile);
+
+      if (!isValidEncryptedFormat(content)) {
+        toast.error("Invalid file format. Please select a valid .lumina file.");
+        return;
+      }
+
+      const decrypted = await decryptSettings(content, password);
+
+      if (!validateSettingsExport(decrypted)) {
+        toast.error("Decrypted data is invalid or corrupted");
+        return;
+      }
+
+      setDecryptedData(decrypted);
+      setPreview(getImportPreview(decrypted));
+      setStep("configure");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to decrypt file"
+      );
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleImport = async () => {
+    if (!decryptedData) return;
+
+    setIsImporting(true);
+    try {
+      const result = await importSettings(decryptedData, {
+        mode: importMode,
+        ...importOptions,
+      });
+
+      if (result.success) {
+        const totalImported =
+          result.imported.apiKeys +
+          result.imported.mcpServers +
+          result.imported.agents +
+          result.imported.prompts +
+          result.imported.modelFavorites +
+          result.imported.tags +
+          (result.imported.settings ? 1 : 0);
+
+        toast.success(`Successfully imported ${totalImported} items`);
+        onOpenChange(false);
+        resetState();
+        window.location.reload();
+      } else {
+        toast.error(`Import completed with ${result.errors.length} errors`);
+        console.error("Import errors:", result.errors);
+      }
+    } catch (error) {
+      toast.error("Failed to import settings");
+      console.error(error);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) resetState();
+        onOpenChange(isOpen);
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Shield className="h-5 w-5" />
+            Secure Import
+          </DialogTitle>
+          <DialogDescription>
+            {step === "select" && "Select an encrypted .lumina file."}
+            {step === "decrypt" && "Enter the password to decrypt."}
+            {step === "configure" && "Choose what to import."}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          {step === "select" && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".lumina,.json"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              <Button
+                variant="outline"
+                className="w-full h-20 border-dashed"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <div className="flex flex-col items-center gap-2">
+                  <Upload className="h-6 w-6 text-muted-foreground" />
+                  <span className="text-sm">Select .lumina file</span>
+                </div>
+              </Button>
+            </>
+          )}
+
+          {step === "decrypt" && (
+            <>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                {selectedFile?.name}
+              </div>
+              {expirationInfo?.hasExpiration && expirationInfo.expiresAt && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">
+                  <Clock className="h-3 w-3" />
+                  Expires: {expirationInfo.expiresAt.toLocaleDateString()}{" "}
+                  {expirationInfo.expiresAt.toLocaleTimeString()}
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label htmlFor="import-password">Password</Label>
+                <Input
+                  id="import-password"
+                  type="password"
+                  placeholder="Enter decryption password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && password) handleDecrypt();
+                  }}
+                />
+              </div>
+            </>
+          )}
+
+          {step === "configure" && preview && (
+            <>
+              <div className="rounded-lg border bg-muted/50 p-3 text-sm">
+                <div className="font-medium mb-2">File contains:</div>
+                <div className="grid grid-cols-2 gap-1 text-muted-foreground">
+                  {preview.apiKeys > 0 && <div>{preview.apiKeys} API keys</div>}
+                  {preview.mcpServers > 0 && (
+                    <div>{preview.mcpServers} MCP servers</div>
+                  )}
+                  {preview.agents > 0 && <div>{preview.agents} agents</div>}
+                  {preview.prompts > 0 && <div>{preview.prompts} prompts</div>}
+                </div>
+                <div className="text-xs text-muted-foreground mt-2">
+                  Exported {preview.exportedAt.toLocaleDateString()}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Import Mode</Label>
+                <Select
+                  value={importMode}
+                  onValueChange={(v) => setImportMode(v as ImportMode)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="merge">Merge with existing</SelectItem>
+                    <SelectItem value="overwrite">Overwrite existing</SelectItem>
+                    <SelectItem value="skip">Skip existing</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Import</Label>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <label className="flex items-center gap-2">
+                    <Checkbox
+                      checked={importOptions.importApiKeys}
+                      onCheckedChange={(c) =>
+                        setImportOptions((o) => ({ ...o, importApiKeys: !!c }))
+                      }
+                    />
+                    API Keys
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <Checkbox
+                      checked={importOptions.importMcpServers}
+                      onCheckedChange={(c) =>
+                        setImportOptions((o) => ({
+                          ...o,
+                          importMcpServers: !!c,
+                        }))
+                      }
+                    />
+                    MCP Servers
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <Checkbox
+                      checked={importOptions.importAgents}
+                      onCheckedChange={(c) =>
+                        setImportOptions((o) => ({ ...o, importAgents: !!c }))
+                      }
+                    />
+                    Agents
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <Checkbox
+                      checked={importOptions.importSettings}
+                      onCheckedChange={(c) =>
+                        setImportOptions((o) => ({ ...o, importSettings: !!c }))
+                      }
+                    />
+                    Settings
+                  </label>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <DialogFooter>
+          {step === "select" && (
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+          )}
+          {step === "decrypt" && (
+            <>
+              <Button variant="outline" onClick={() => setStep("select")}>
+                Back
+              </Button>
+              <Button onClick={handleDecrypt} disabled={isImporting || !password}>
+                {isImporting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
+                Decrypt
+              </Button>
+            </>
+          )}
+          {step === "configure" && (
+            <>
+              <Button variant="outline" onClick={() => setStep("decrypt")}>
+                Back
+              </Button>
+              <Button onClick={handleImport} disabled={isImporting}>
+                {isImporting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="mr-2 h-4 w-4" />
+                )}
+                Import
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export function ExportImportSettings() {
   const [exportFormat, setExportFormat] = useState<"json" | "csv">("json");
   const [exportScope, setExportScope] = useState<"all" | "chats" | "settings">("all");
+  const [secureExportOpen, setSecureExportOpen] = useState(false);
+  const [secureImportOpen, setSecureImportOpen] = useState(false);
   const [importing, setImporting] = useState(false);
 
   const handleExport = async () => {
@@ -242,6 +832,38 @@ export function ExportImportSettings() {
           </Label>
         </div>
       </div>
+
+      {/* Secure Backup Section */}
+      <div className="space-y-4 p-4 border rounded-lg border-primary/30 bg-primary/5">
+        <h4 className="font-medium flex items-center gap-2">
+          <Shield className="h-4 w-4 text-primary" />
+          Secure Backup (Encrypted)
+        </h4>
+        <p className="text-sm text-muted-foreground">
+          Export settings with password protection. Safe to share via Google Drive or other cloud storage.
+        </p>
+        <div className="flex gap-3">
+          <Button
+            variant="outline"
+            onClick={() => setSecureExportOpen(true)}
+            className="flex-1"
+          >
+            <Lock className="h-4 w-4 mr-2" />
+            Export Encrypted
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setSecureImportOpen(true)}
+            className="flex-1"
+          >
+            <Shield className="h-4 w-4 mr-2" />
+            Import Encrypted
+          </Button>
+        </div>
+      </div>
+
+      <SecureExportDialog open={secureExportOpen} onOpenChange={setSecureExportOpen} />
+      <SecureImportDialog open={secureImportOpen} onOpenChange={setSecureImportOpen} />
 
       {/* Danger Zone */}
       <div className="space-y-4 p-4 border border-destructive rounded-lg">
