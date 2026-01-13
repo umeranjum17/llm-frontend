@@ -95,53 +95,53 @@ export default function SettingsPage() {
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="flex overflow-x-auto sm:flex-wrap sm:justify-start gap-1 h-auto p-1 sm:p-1.5 mb-4 sm:mb-8 w-full scrollbar-none">
-              <TabsTrigger value="general" className="gap-1.5 text-xs">
+              <TabsTrigger value="general" className="gap-1.5 text-xs shrink-0 px-2 sm:px-3">
                 <SettingsIcon className="h-3.5 w-3.5" />
-                General
+                <span className="hidden sm:inline">General</span>
               </TabsTrigger>
-              <TabsTrigger value="mcp" className="gap-1.5 text-xs">
+              <TabsTrigger value="mcp" className="gap-1.5 text-xs shrink-0 px-2 sm:px-3">
                 <SettingsIcon className="h-3.5 w-3.5" />
-                Plugins
+                <span className="hidden sm:inline">Plugins</span>
               </TabsTrigger>
-              <TabsTrigger value="api-keys" className="gap-1.5 text-xs">
+              <TabsTrigger value="api-keys" className="gap-1.5 text-xs shrink-0 px-2 sm:px-3">
                 <Key className="h-3.5 w-3.5" />
-                API Keys
+                <span className="hidden sm:inline">API Keys</span>
               </TabsTrigger>
-              <TabsTrigger value="memory" className="gap-1.5 text-xs">
+              <TabsTrigger value="memory" className="gap-1.5 text-xs shrink-0 px-2 sm:px-3">
                 <Brain className="h-3.5 w-3.5" />
-                Memory
+                <span className="hidden sm:inline">Memory</span>
               </TabsTrigger>
-              <TabsTrigger value="theme" className="gap-1.5 text-xs">
+              <TabsTrigger value="theme" className="gap-1.5 text-xs shrink-0 px-2 sm:px-3">
                 <Palette className="h-3.5 w-3.5" />
-                Theme
+                <span className="hidden sm:inline">Theme</span>
               </TabsTrigger>
-              <TabsTrigger value="shortcuts" className="gap-1.5 text-xs">
+              <TabsTrigger value="shortcuts" className="gap-1.5 text-xs shrink-0 px-2 sm:px-3">
                 <Keyboard className="h-3.5 w-3.5" />
-                Shortcuts
+                <span className="hidden sm:inline">Shortcuts</span>
               </TabsTrigger>
-              <TabsTrigger value="agents" className="gap-1.5 text-xs">
+              <TabsTrigger value="agents" className="gap-1.5 text-xs shrink-0 px-2 sm:px-3">
                 <Bot className="h-3.5 w-3.5" />
-                Agents
+                <span className="hidden sm:inline">Agents</span>
               </TabsTrigger>
-              <TabsTrigger value="prompts" className="gap-1.5 text-xs">
+              <TabsTrigger value="prompts" className="gap-1.5 text-xs shrink-0 px-2 sm:px-3">
                 <FileText className="h-3.5 w-3.5" />
-                Prompts
+                <span className="hidden sm:inline">Prompts</span>
               </TabsTrigger>
-              <TabsTrigger value="data" className="gap-1.5 text-xs">
+              <TabsTrigger value="data" className="gap-1.5 text-xs shrink-0 px-2 sm:px-3">
                 <Download className="h-3.5 w-3.5" />
-                Data
+                <span className="hidden sm:inline">Data</span>
               </TabsTrigger>
-              <TabsTrigger value="trust" className="gap-1.5 text-xs">
+              <TabsTrigger value="trust" className="gap-1.5 text-xs shrink-0 px-2 sm:px-3">
                 <Shield className="h-3.5 w-3.5" />
-                Trust
+                <span className="hidden sm:inline">Trust</span>
               </TabsTrigger>
-              <TabsTrigger value="analytics" className="gap-1.5 text-xs">
+              <TabsTrigger value="analytics" className="gap-1.5 text-xs shrink-0 px-2 sm:px-3">
                 <BarChart3 className="h-3.5 w-3.5" />
-                Analytics
+                <span className="hidden sm:inline">Analytics</span>
               </TabsTrigger>
-              <TabsTrigger value="aliases" className="gap-1.5 text-xs">
+              <TabsTrigger value="aliases" className="gap-1.5 text-xs shrink-0 px-2 sm:px-3">
                 <SettingsIcon className="h-3.5 w-3.5" />
-                Aliases
+                <span className="hidden sm:inline">Aliases</span>
               </TabsTrigger>
             </TabsList>
 
