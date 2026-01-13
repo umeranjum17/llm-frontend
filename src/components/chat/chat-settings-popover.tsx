@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { SlidersHorizontal, Bot, Brain, DollarSign, Swords, Tag, Check, FileText } from "lucide-react";
+import { SlidersHorizontal, Bot, Brain, DollarSign, Swords, Tag, FileText, Download, FileCode, Copy, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -13,6 +14,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { getAgentById, getAllTags, getSettings, updateSettings, updateChat, getChatById, getMessages } from "@/lib/db/queries";
+import { getChatForExport, downloadChat, copyChatToClipboard, type ExportFormat } from "@/lib/db/export-chat";
 import { toast } from "sonner";
 import { useChatSummary } from "@/hooks/use-chat-summary";
 
@@ -56,6 +58,37 @@ export function ChatSettingsPopover({
   const calculatedCost = messages?.reduce((sum, msg) => sum + (msg.cost || 0), 0) || 0;
 
   const { generateSummary, isGenerating } = useChatSummary();
+  const [showExportMenu, setShowExportMenu] = useState(false);
+
+  const handleExport = async (format: ExportFormat) => {
+    try {
+      const exportData = await getChatForExport(chatId);
+      if (!exportData) {
+        toast.error("Failed to export chat");
+        return;
+      }
+      downloadChat(exportData, format);
+      toast.success(`Chat exported as ${format === "markdown" ? "Markdown" : "JSON"}`);
+    } catch (error) {
+      toast.error("Failed to export chat");
+    }
+    setShowExportMenu(false);
+  };
+
+  const handleCopyChat = async (format: ExportFormat) => {
+    try {
+      const exportData = await getChatForExport(chatId);
+      if (!exportData) {
+        toast.error("Failed to copy chat");
+        return;
+      }
+      await copyChatToClipboard(exportData, format);
+      toast.success(`Chat copied as ${format === "markdown" ? "Markdown" : "JSON"}`);
+    } catch (error) {
+      toast.error("Failed to copy chat");
+    }
+    setShowExportMenu(false);
+  };
 
   const toggleMemory = async () => {
     const newStatus = !memoryEnabled;
@@ -212,6 +245,46 @@ export function ChatSettingsPopover({
             <span>{isGenerating ? "Summarizing..." : "Summarize Chat"}</span>
           </div>
         </button>
+
+        {/* Export */}
+        <div className="relative">
+          <button
+            onClick={() => setShowExportMenu(!showExportMenu)}
+            className="w-full flex items-center justify-between px-2 py-1.5 text-sm hover:bg-accent rounded-sm transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Download className="h-4 w-4 text-muted-foreground" />
+              <span>Export Chat</span>
+            </div>
+            <ChevronRight className={cn("h-4 w-4 text-muted-foreground transition-transform", showExportMenu && "rotate-90")} />
+          </button>
+
+          {showExportMenu && (
+            <div className="mt-1 ml-6 space-y-1">
+              <button
+                onClick={() => handleExport("markdown")}
+                className="w-full flex items-center gap-2 px-2 py-1 text-xs hover:bg-accent rounded-sm transition-colors"
+              >
+                <FileText className="h-3 w-3" />
+                <span>Download as Markdown</span>
+              </button>
+              <button
+                onClick={() => handleExport("json")}
+                className="w-full flex items-center gap-2 px-2 py-1 text-xs hover:bg-accent rounded-sm transition-colors"
+              >
+                <FileCode className="h-3 w-3" />
+                <span>Download as JSON</span>
+              </button>
+              <button
+                onClick={() => handleCopyChat("markdown")}
+                className="w-full flex items-center gap-2 px-2 py-1 text-xs hover:bg-accent rounded-sm transition-colors"
+              >
+                <Copy className="h-3 w-3" />
+                <span>Copy as Markdown</span>
+              </button>
+            </div>
+          )}
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );

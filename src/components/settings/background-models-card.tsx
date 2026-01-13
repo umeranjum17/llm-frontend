@@ -138,11 +138,11 @@ export function BackgroundModelsCard() {
 
     return (
         <Card>
-            <CardHeader className="pb-4">
+            <CardHeader className="pb-3 sm:pb-4 px-3 sm:px-6">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        <Sparkles className="h-5 w-5 text-primary" />
-                        <CardTitle className="text-lg">Background Models</CardTitle>
+                        <Sparkles className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+                        <CardTitle className="text-base sm:text-lg">Background Models</CardTitle>
                     </div>
                     <TooltipProvider>
                         <Tooltip>
@@ -160,11 +160,11 @@ export function BackgroundModelsCard() {
                         </Tooltip>
                     </TooltipProvider>
                 </div>
-                <CardDescription>
+                <CardDescription className="text-xs sm:text-sm">
                     Configure which models power automatic features
                 </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3 sm:space-y-4 px-3 sm:px-6">
                 {BACKGROUND_MODELS.map((bg) => {
                     const Icon = bg.icon;
                     const currentModel = localSettings[bg.settingKey] || bg.defaultModel;
@@ -172,50 +172,57 @@ export function BackgroundModelsCard() {
                     const isDisabled = isTagging && !autoTaggingEnabled;
 
                     return (
-                        <div key={bg.id} className="flex items-center gap-4">
-                            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted ${isDisabled ? "opacity-50" : ""}`}>
-                                <Icon className="h-4 w-4 text-muted-foreground" />
-                            </div>
-                            <div className={`flex-1 min-w-0 ${isDisabled ? "opacity-50" : ""}`}>
-                                <div className="flex items-center gap-2">
-                                    <Label className="text-sm font-medium">{bg.label}</Label>
-                                    {!isDisabled && (
-                                        <Badge variant="outline" className="text-[10px] h-4">
-                                            {getModelName(currentModel)}
-                                        </Badge>
-                                    )}
-                                    {isTagging && !autoTaggingEnabled && (
-                                        <Badge variant="secondary" className="text-[10px] h-4">
-                                            Disabled
-                                        </Badge>
-                                    )}
+                        <div key={bg.id} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                            <div className="flex items-center gap-3 sm:gap-4">
+                                <div className={`flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-lg bg-muted ${isDisabled ? "opacity-50" : ""}`}>
+                                    <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                                 </div>
-                                <p className="text-xs text-muted-foreground truncate">
-                                    {bg.description}
-                                </p>
+                                <div className={`flex-1 min-w-0 ${isDisabled ? "opacity-50" : ""}`}>
+                                    <div className="flex items-center gap-2">
+                                        <Label className="text-xs sm:text-sm font-medium">{bg.label}</Label>
+                                        {isTagging && !autoTaggingEnabled && (
+                                            <Badge variant="secondary" className="text-[10px] h-4">
+                                                Disabled
+                                            </Badge>
+                                        )}
+                                    </div>
+                                    <p className="text-[10px] sm:text-xs text-muted-foreground truncate hidden sm:block">
+                                        {bg.description}
+                                    </p>
+                                </div>
+                                {isTagging && (
+                                    <Switch
+                                        checked={autoTaggingEnabled}
+                                        onCheckedChange={updateAutoTagging}
+                                        className="sm:hidden"
+                                    />
+                                )}
                             </div>
-                            {isTagging && (
-                                <Switch
-                                    checked={autoTaggingEnabled}
-                                    onCheckedChange={updateAutoTagging}
-                                />
-                            )}
-                            <Select
-                                value={currentModel}
-                                onValueChange={(v) => handleModelChange(bg.settingKey, v)}
-                                disabled={isDisabled}
-                            >
-                                <SelectTrigger className={`w-[200px] h-8 text-xs ${isDisabled ? "opacity-50" : ""}`}>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {availableModels.map((model) => (
-                                        <SelectItem key={model.id} value={model.id} className="text-xs">
-                                            {model.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <div className="flex items-center gap-2 pl-11 sm:pl-0 sm:ml-auto">
+                                {isTagging && (
+                                    <Switch
+                                        checked={autoTaggingEnabled}
+                                        onCheckedChange={updateAutoTagging}
+                                        className="hidden sm:flex"
+                                    />
+                                )}
+                                <Select
+                                    value={currentModel}
+                                    onValueChange={(v) => handleModelChange(bg.settingKey, v)}
+                                    disabled={isDisabled}
+                                >
+                                    <SelectTrigger className={`w-full sm:w-[200px] h-8 text-xs ${isDisabled ? "opacity-50" : ""}`}>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {availableModels.map((model) => (
+                                            <SelectItem key={model.id} value={model.id} className="text-xs">
+                                                {model.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
                     );
                 })}

@@ -122,15 +122,15 @@ export function GeneralSettings() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h3 className="text-lg font-medium">General Settings</h3>
-        <p className="text-sm text-muted-foreground">
+        <h3 className="text-base sm:text-lg font-medium">General Settings</h3>
+        <p className="text-xs sm:text-sm text-muted-foreground">
           Configure default behavior and preferences
         </p>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-3 sm:space-y-4">
         {/* Default Provider */}
         <div className="space-y-2">
           <Label htmlFor="default-provider">Default Provider</Label>

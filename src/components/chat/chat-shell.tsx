@@ -683,7 +683,7 @@ export function ChatShell() {
             </div>
 
             {/* Input */}
-            <div className="border-t border-border/70 bg-card/80 p-3 backdrop-blur-xl supports-[backdrop-filter]:bg-card/65 shadow-[0_-8px_30px_-24px_rgba(0,0,0,0.6)]">
+            <div className="border-t border-border/70 bg-card/80 p-2 sm:p-3 backdrop-blur-xl supports-[backdrop-filter]:bg-card/65 shadow-[0_-8px_30px_-24px_rgba(0,0,0,0.6)]">
               <InputArea chatId={activeChatId} />
             </div>
           </div>
