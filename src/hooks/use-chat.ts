@@ -192,7 +192,8 @@ async function handlePipelineExecution(
     completePipeline: (finalResult: any) => void;
     failPipeline: (error: string) => void;
     clearPipeline: () => void;
-  }
+  },
+  mcpServers?: Array<{ id: string; name: string; url: string; apiKey?: string; enabled: boolean; type: "sse" | "stdio"; collection: "curated" | "custom"; toolPolicy?: { disabledTools?: string[] }; toolCaps?: number }>
 ): Promise<void> {
   const { addMessage, updateMessage, updateChat } = await import("@/lib/db/queries");
 
@@ -235,6 +236,7 @@ async function handlePipelineExecution(
         userInput,
         chatId,
         providerBaseUrl: apiKey?.baseUrl,
+        mcpServers,
       }),
       signal,
     });
@@ -530,6 +532,9 @@ export function useChat(chatId: string) {
     if (agent?.executionType === "pipeline" && agent.pipeline?.steps?.length) {
       abortControllerRef.current = new AbortController();
       try {
+        // Get MCP servers for tool steps
+        const mcpServers = await getActiveMcpServersForChat(chat.activeMcpServerIds || agent.mcpServerIds || []);
+
         return await handlePipelineExecution(
           chatId,
           agent,
@@ -545,7 +550,8 @@ export function useChat(chatId: string) {
             completePipeline,
             failPipeline,
             clearPipeline,
-          }
+          },
+          mcpServers
         );
       } finally {
         abortControllerRef.current = null;

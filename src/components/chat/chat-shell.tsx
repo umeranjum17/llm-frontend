@@ -63,6 +63,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { MessageSquare, Eye, Brain, Wrench } from "lucide-react";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { formatModelCost } from "@/components/model-picker/model-item";
+import { OfflineIndicator } from "@/components/pwa";
 
 export function ChatShell() {
   const router = useRouter();
@@ -382,6 +383,7 @@ export function ChatShell() {
                       <TagList tagIds={chat.tags} size="sm" className="mt-0.5 hidden sm:flex" />
                     )}
                   </div>
+                  <OfflineIndicator className="hidden sm:inline-flex" />
                 </div>
 
                 {/* Right: Agent + Model Selector + Settings + Artifacts */}

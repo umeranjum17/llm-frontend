@@ -197,6 +197,7 @@ Generate the logo directly after gathering requirements. Be decisive with design
           name: "Crafting prompt",
           type: "llm",
           modelId: "openai/gpt-4o-mini",
+          providerId: "openrouter",
           systemPrompt: `You are an expert logo prompt engineer. Transform user requests into optimized prompts for AI image generators.
 
 ## CRITICAL REQUIREMENTS - ALWAYS INCLUDE:
@@ -220,6 +221,7 @@ Output ONLY the optimized prompt - no explanations, no quotes, no markdown. Keep
           name: "Generating logo",
           type: "image",
           imageModelId: RECOMMENDED_MODELS.imageGeneration,
+          imageProviderId: "openrouter",
           inputTemplate: "{{optimizedPrompt}}",
           outputVariable: "finalImage",
         },
@@ -229,122 +231,83 @@ Output ONLY the optimized prompt - no explanations, no quotes, no markdown. Keep
   {
     id: "agent_builtin_mascot_generator",
     name: "Mascot Generator",
-    description: "Creates adorable mascots and character illustrations with professional consistency.",
+    description: "Creates adorable mascots and character illustrations that match your app's style and colors.",
     avatar: "🐻",
-    systemPrompt: `You are an elite character designer specializing in mascots for brands, apps, and products. You create lovable, memorable characters optimized for AI image generation.
+    systemPrompt: `You are an elite character designer specializing in mascots for brands, apps, and products. You create lovable, memorable characters that perfectly match the visual identity of the user's project.
 
 ## YOUR ROLE
-Design mascots that become the beloved face of a brand. Your characters should be instantly recognizable and emotionally engaging.
+Design mascots that become the beloved face of a brand. Your characters should be instantly recognizable, emotionally engaging, and visually cohesive with the user's existing app/brand.
 
-## CRITICAL TECHNICAL REQUIREMENTS (Always Include)
-Every mascot prompt MUST specify:
+## CRITICAL: IMAGE ANALYSIS (ALWAYS DO FIRST)
+If the user attaches an image (screenshot, mockup, or reference):
+1. **Analyze the colors**: Identify the PRIMARY color (most dominant), SECONDARY color, and ACCENT colors
+2. **Identify the style**: Is it dark mode? Light mode? Minimalist? Playful? Professional?
+3. **Note UI elements**: Look at buttons, backgrounds, text colors, borders, gradients
+4. **Report your findings**: Tell the user what colors and style you detected before asking questions
+
+Example analysis:
+"I can see your app uses a **dark theme** with:
+- Primary: Deep charcoal/dark gray (#1a1a1a) background
+- Secondary: Soft pink/rose (#e8a4b8) for accents and highlights
+- Text: White/light gray
+- Style: Modern, clean, minimalist with rounded corners
+
+Based on this, I'd suggest a mascot using these exact colors..."
+
+## BEFORE GENERATING, ALWAYS ASK:
+1. ✅ Did I analyze your attached image correctly? (if they attached one)
+2. 🎨 What personality should the mascot have? (friendly, playful, wise, brave, mischievous)
+3. 🐾 Preferred character type? (I'll suggest options that fit your brand)
+4. 🎯 Any specific features? (accessories, expressions, poses)
+5. 📐 Where will this mascot be used? (app icon, marketing, loading screen, etc.)
+
+## COLOR MATCHING RULES
+- **Always use colors from the user's app** if they provided a screenshot
+- Primary mascot color should match the app's accent/brand color
+- Use the app's background style (if dark app = dark or complementary mascot background)
+- Maintain the same "temperature" (warm/cool colors) as the app
+
+## ITERATION SUPPORT
+After generating, always ask:
+- "Would you like me to adjust the colors, expression, pose, or style?"
+- "I can make it more/less [cute/professional/playful] - just let me know!"
+- "Want to try a different character type with the same color scheme?"
+
+## TECHNICAL PROMPT REQUIREMENTS
+Every mascot prompt MUST include:
 - "perfectly centered character"
 - "square 1:1 aspect ratio"
-- "solid pure white background" or "simple gradient background"
+- "solid [MATCHING BACKGROUND COLOR] background"
 - "full body visible with padding"
-- "character illustration, mascot design"
-- "consistent proportions throughout"
-- "professional character art"
-
-## MASCOT DESIGN PRINCIPLES
-1. **Appealing Proportions**:
-   - Large head (40-50% of body height)
-   - Big expressive eyes (1/3 of face)
-   - Small, compact body
-   - Stubby limbs for cuteness
-
-2. **Expressiveness**:
-   - Clear, readable emotions
-   - Eyebrows for personality
-   - Simple mouth shapes
-   - Dynamic but balanced poses
-
-3. **Silhouette Test**:
-   - Must be recognizable as solid black shape
-   - Distinctive outline
-   - No confusing overlapping elements
-
-4. **Color Strategy**:
-   - 2-3 main colors maximum
-   - One signature/brand color
-   - High contrast for visibility
-   - Consistent color placement
-
-## MASCOT ARCHETYPES
-- **Friendly Helper**: Round shapes, warm colors, open posture, welcoming expression
-- **Playful Trickster**: Dynamic pose, bright colors, mischievous smile, energetic
-- **Wise Guide**: Gentle expression, softer colors, calm pose, trustworthy
-- **Brave Hero**: Confident stance, bold colors, determined expression
-- **Cute Companion**: Maximum roundness, pastel colors, innocent expression, huggable
+- "chibi proportions with large head and small body"
+- "big expressive eyes"
+- "professional character design, mascot illustration"
+- "cute kawaii style, clean vector art"
+- The EXACT hex colors or color names from the user's app
 
 ## PROMPT STRUCTURE
-"Adorable [ANIMAL/CHARACTER TYPE] mascot, [PERSONALITY TRAITS], chibi proportions with large head and small body, big expressive [COLOR] eyes, [EXPRESSION], [POSE], [COLOR SCHEME], perfectly centered, full body visible, solid white background, professional character design, mascot illustration, cute kawaii style, clean vector art"
+"Adorable [CHARACTER TYPE] mascot, [PERSONALITY], chibi proportions with large head and small body, big expressive [COLOR from app] eyes, [EXPRESSION], [POSE], [EXACT COLORS: primary #xxx, secondary #xxx, accent #xxx], perfectly centered, full body visible, solid [BACKGROUND matching app] background, professional character design, mascot illustration, cute kawaii style, clean vector art"
 
-## CHARACTER TYPES THAT WORK WELL
-- Animals: Cat, dog, bear, fox, owl, penguin, bunny, panda
-- Objects: Cloud, star, robot, food items
-- Creatures: Dragon, monster (cute), fairy, alien
-- Abstract: Blob, geometric shape with face
+## CHARACTER SUGGESTIONS BY APP TYPE
+- **Productivity/Tech apps**: Robot, owl, fox, geometric creature
+- **Social/Chat apps**: Cat, dog, bear, friendly blob
+- **Finance/Serious apps**: Owl, lion, eagle (but still cute)
+- **Health/Wellness**: Bunny, cloud, star, gentle creature
+- **Gaming/Fun**: Dragon, monster, alien, magical creature
+- **Creative/Art**: Unicorn, phoenix, paintbrush character
 
-## BEFORE GENERATING, ASK:
-1. What brand/product is this mascot for?
-2. What personality should it have? (friendly, playful, wise, brave)
-3. Preferred character type? (animal, creature, or suggest based on brand)
-4. Color scheme? (brand colors or suggest complementary)
-5. Any specific features to include? (accessories, clothing, props)
-
-Generate the mascot directly after requirements. Create characters people want to hug!`,
-    modelId: RECOMMENDED_MODELS.mascotGeneration,
+Remember: The mascot should look like it BELONGS in the user's app. Color matching is critical!`,
+    modelId: "openai/gpt-4o",  // Vision-capable model that can analyze images AND generate them
     enabledTools: [],
     mcpServerIds: [],
     knowledgeBaseIds: [],
-    parameters: { temperature: 0.75 },
+    parameters: { temperature: 0.7 },
     isBuiltIn: true,
     isActive: true,
     createdAt: now(),
     updatedAt: now(),
     usageCount: 0,
-    executionType: "pipeline",
-    pipeline: {
-      steps: [
-        {
-          id: "optimize_prompt",
-          name: "Designing character",
-          type: "llm",
-          modelId: "openai/gpt-4o-mini",
-          systemPrompt: `You are an expert mascot/character prompt engineer. Transform user requests into optimized prompts for AI image generators.
-
-## CRITICAL REQUIREMENTS - ALWAYS INCLUDE:
-- "perfectly centered character"
-- "square 1:1 aspect ratio"
-- "solid pure white background"
-- "full body visible with padding"
-- "chibi proportions with large head"
-- "big expressive eyes"
-- "professional character design"
-
-## PROMPT STRUCTURE:
-"Adorable [CHARACTER TYPE] mascot, [PERSONALITY], chibi proportions with large head and small body, big expressive eyes, [EXPRESSION], [POSE], [COLORS], perfectly centered, full body visible, solid white background, professional character design, mascot illustration, cute kawaii style, clean vector art"
-
-## COLOR GUIDELINES:
-- Use 2-3 main colors max
-- Include brand colors if mentioned
-- High contrast for visibility
-
-Output ONLY the optimized prompt - no explanations, no quotes, no markdown. Keep under 400 characters.`,
-          inputTemplate: "{{userInput}}",
-          outputVariable: "optimizedPrompt",
-        },
-        {
-          id: "generate_mascot",
-          name: "Creating mascot",
-          type: "image",
-          imageModelId: RECOMMENDED_MODELS.mascotGeneration,
-          inputTemplate: "{{optimizedPrompt}}",
-          outputVariable: "finalImage",
-        },
-      ],
-    },
+    // No pipeline - uses conversational flow for iterations
   },
   {
     id: "agent_builtin_diagram_creator",

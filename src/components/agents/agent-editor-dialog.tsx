@@ -96,7 +96,15 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
     setToolsError(null);
     // Pipeline state
     setExecutionType(agent?.executionType || "simple");
-    setPipelineSteps(agent?.pipeline?.steps || []);
+    // Ensure pipeline steps have default providerId values (so they get saved properly)
+    const steps = agent?.pipeline?.steps || [];
+    const stepsWithDefaults = steps.map((step) => ({
+      ...step,
+      // Set default providerId based on step type
+      providerId: step.providerId || "openrouter",
+      imageProviderId: step.type === "image" ? (step.imageProviderId || "openrouter") : step.imageProviderId,
+    }));
+    setPipelineSteps(stepsWithDefaults);
   }, [open, agent, loadModels]);
 
   // Load MCP tools when servers are selected
@@ -641,6 +649,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                           id: `step_${Date.now()}`,
                           name: `Step ${pipelineSteps.length + 1}`,
                           type: "llm",
+                          providerId: "openrouter",
                           inputTemplate: "{{userInput}}",
                           outputVariable: `step${pipelineSteps.length + 1}Output`,
                         };
@@ -706,6 +715,18 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                                     Image
                                   </div>
                                 </SelectItem>
+                                <SelectItem value="tool">
+                                  <div className="flex items-center gap-1">
+                                    <Wrench className="h-3 w-3" />
+                                    Tool
+                                  </div>
+                                </SelectItem>
+                                <SelectItem value="subagent">
+                                  <div className="flex items-center gap-1">
+                                    <Bot className="h-3 w-3" />
+                                    Agent
+                                  </div>
+                                </SelectItem>
                               </SelectContent>
                             </Select>
                             <Button
@@ -721,6 +742,8 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                             </Button>
                           </div>
 
+                          {/* Model and Provider selection - only for LLM and Image steps */}
+                          {(step.type === "llm" || step.type === "image") && (
                           <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1">
                               <Label className="text-xs">Model</Label>
@@ -795,19 +818,114 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                               </Popover>
                             </div>
                             <div className="space-y-1">
-                              <Label className="text-xs">Output Variable</Label>
-                              <Input
-                                value={step.outputVariable}
-                                onChange={(e) => {
+                              <Label className="text-xs">Provider</Label>
+                              <Select
+                                value={step.type === "image" ? (step.imageProviderId || "openrouter") : (step.providerId || "openrouter")}
+                                onValueChange={(v) => {
                                   const updated = [...pipelineSteps];
-                                  updated[index] = { ...step, outputVariable: e.target.value };
+                                  if (step.type === "image") {
+                                    updated[index] = { ...step, imageProviderId: v };
+                                  } else {
+                                    updated[index] = { ...step, providerId: v };
+                                  }
                                   setPipelineSteps(updated);
                                 }}
-                                placeholder="e.g., optimizedPrompt"
-                                className="h-8"
+                              >
+                                <SelectTrigger className="h-8 text-xs">
+                                  <SelectValue placeholder="Select provider" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {PROVIDERS.filter(p => p.apiKeyRequired).map((provider) => (
+                                    <SelectItem key={provider.id} value={provider.id}>
+                                      {provider.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                          )}
+
+                          {/* Tool step configuration */}
+                          {step.type === "tool" && (
+                          <div className="space-y-3">
+                            <div className="space-y-1">
+                              <Label className="text-xs">Tool Name</Label>
+                              <Input
+                                value={step.toolName || ""}
+                                onChange={(e) => {
+                                  const updated = [...pipelineSteps];
+                                  updated[index] = { ...step, toolName: e.target.value || undefined };
+                                  setPipelineSteps(updated);
+                                }}
+                                placeholder="e.g., mcp_xyz123_search"
+                                className="h-8 text-xs"
                                 disabled={isBuiltIn}
                               />
+                              <p className="text-xs text-muted-foreground">
+                                The MCP tool name (check your connected MCP servers for available tools)
+                              </p>
                             </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Tool Arguments (JSON)</Label>
+                              <Textarea
+                                value={step.toolArgs ? JSON.stringify(step.toolArgs, null, 2) : ""}
+                                onChange={(e) => {
+                                  const updated = [...pipelineSteps];
+                                  try {
+                                    const args = e.target.value ? JSON.parse(e.target.value) : undefined;
+                                    updated[index] = { ...step, toolArgs: args };
+                                  } catch {
+                                    // Keep as-is if not valid JSON
+                                    updated[index] = { ...step, toolArgs: undefined };
+                                  }
+                                  setPipelineSteps(updated);
+                                }}
+                                placeholder={'{"query": "{{userInput}}"}'}
+                                className="min-h-[60px] text-xs font-mono"
+                                disabled={isBuiltIn}
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Use {"{{variable}}"} to reference pipeline variables
+                              </p>
+                            </div>
+                          </div>
+                          )}
+
+                          {/* Subagent step configuration */}
+                          {step.type === "subagent" && (
+                          <div className="space-y-1">
+                            <Label className="text-xs">Agent ID</Label>
+                            <Input
+                              value={step.agentId || ""}
+                              onChange={(e) => {
+                                const updated = [...pipelineSteps];
+                                updated[index] = { ...step, agentId: e.target.value || undefined };
+                                setPipelineSteps(updated);
+                              }}
+                              placeholder="e.g., agent_builtin_summarizer"
+                              className="h-8 text-xs"
+                              disabled={isBuiltIn}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              The ID of another agent to invoke (check Agents page for available agents)
+                            </p>
+                          </div>
+                          )}
+
+                          <div className="space-y-1">
+                            <Label className="text-xs">Output Variable</Label>
+                            <Input
+                              value={step.outputVariable}
+                              onChange={(e) => {
+                                const updated = [...pipelineSteps];
+                                updated[index] = { ...step, outputVariable: e.target.value };
+                                setPipelineSteps(updated);
+                              }}
+                              placeholder="e.g., optimizedPrompt"
+                              className="h-8"
+                              disabled={isBuiltIn}
+                            />
                           </div>
 
                           <div className="space-y-1">

@@ -14,18 +14,25 @@ export async function ensureBuiltInAgents() {
   }
 
   // Update existing built-in agents with latest definition (but preserve user customizations)
-  // User customizations (modelId, mcpServerIds, enabledTools, isActive, mcpToolPolicy) are NOT overwritten
+  // User customizations (modelId, mcpServerIds, enabledTools, isActive, mcpToolPolicy, pipeline) are NOT overwritten
   for (const agent of BUILTIN_AGENTS) {
     if (existingIds.has(agent.id)) {
-      await db.agents.update(agent.id, {
+      const existingAgent = existingAgents.find((a) => a.id === agent.id);
+      const updateData: Record<string, any> = {
         // Only update definition fields, not user customizations
         systemPrompt: agent.systemPrompt,
         description: agent.description,
         avatar: agent.avatar,
-        // Also sync pipeline configuration for built-in agents
-        executionType: agent.executionType,
-        pipeline: agent.pipeline,
-      });
+      };
+
+      // Only sync pipeline/executionType if the existing agent doesn't have any pipeline config
+      // This preserves user customizations to model/provider settings
+      if (!existingAgent?.pipeline?.steps?.length && agent.pipeline?.steps?.length) {
+        updateData.executionType = agent.executionType;
+        updateData.pipeline = agent.pipeline;
+      }
+
+      await db.agents.update(agent.id, updateData);
     }
   }
 }

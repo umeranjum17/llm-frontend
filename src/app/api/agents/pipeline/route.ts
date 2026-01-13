@@ -3,6 +3,7 @@ import { generateText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import type { PipelineStep, PipelineConfig, Agent } from "@/lib/db/schema";
+import { PROVIDERS } from "@/lib/providers/registry";
 
 export const runtime = "nodejs";
 
@@ -12,7 +13,9 @@ const PipelineStepSchema = z.object({
   type: z.enum(["llm", "image", "tool", "subagent"]),
   modelId: z.string().optional(),
   systemPrompt: z.string().optional(),
+  providerId: z.string().optional(),
   imageModelId: z.string().optional(),
+  imageProviderId: z.string().optional(),
   agentId: z.string().optional(),
   toolName: z.string().optional(),
   toolArgs: z.record(z.string()).optional(),
@@ -27,11 +30,26 @@ const PipelineConfigSchema = z.object({
   outputTemplate: z.string().optional(),
 });
 
+const McpServerSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  url: z.string(),
+  apiKey: z.string().optional(),
+  enabled: z.boolean(),
+  type: z.enum(["sse", "stdio"]),
+  collection: z.enum(["curated", "custom"]),
+  toolPolicy: z.object({
+    disabledTools: z.array(z.string()).optional(),
+  }).optional(),
+  toolCaps: z.number().optional(),
+});
+
 const RequestSchema = z.object({
   pipeline: PipelineConfigSchema,
   userInput: z.string(),
   chatId: z.string(),
   providerBaseUrl: z.string().optional(),
+  mcpServers: z.array(McpServerSchema).optional(),
 });
 
 /**
@@ -44,19 +62,46 @@ function substituteVariables(template: string, context: Record<string, any>): st
 }
 
 /**
+ * Get provider base URL from provider ID
+ */
+function getProviderBaseUrl(providerId: string): string {
+  const provider = PROVIDERS.find((p) => p.id === providerId);
+  return provider?.baseUrl || "https://openrouter.ai/api/v1";
+}
+
+/**
  * Create a model instance based on provider and model ID
  */
-function createModel(modelId: string, apiKey: string, providerBaseUrl?: string) {
-  // Detect provider from model ID
-  if (modelId.startsWith("anthropic/") || modelId.startsWith("claude")) {
+function createModel(modelId: string, apiKey: string, providerId?: string) {
+  const effectiveProviderId = providerId || "openrouter";
+
+  console.log("[Pipeline createModel] Creating model:", {
+    modelId,
+    providerId,
+    effectiveProviderId,
+  });
+
+  // Handle Anthropic provider (direct API)
+  if (effectiveProviderId === "anthropic") {
+    console.log("[Pipeline createModel] Using Anthropic provider");
     const anthropic = createAnthropic({ apiKey });
     return anthropic(modelId.replace("anthropic/", ""));
   }
 
-  // Default to OpenRouter (handles most models)
+  // Handle OpenAI direct (not via OpenRouter)
+  if (effectiveProviderId === "openai") {
+    console.log("[Pipeline createModel] Using OpenAI direct provider");
+    const openai = createOpenAI({ apiKey });
+    return openai(modelId.replace("openai/", ""));
+  }
+
+  // Default to OpenRouter or other OpenAI-compatible providers
+  // This includes Google models via OpenRouter
+  const baseUrl = getProviderBaseUrl(effectiveProviderId);
+  console.log("[Pipeline createModel] Using OpenRouter/compatible provider with baseURL:", baseUrl);
   const openai = createOpenAI({
     apiKey,
-    baseURL: providerBaseUrl || "https://openrouter.ai/api/v1",
+    baseURL: baseUrl,
   });
   return openai(modelId);
 }
@@ -67,11 +112,19 @@ function createModel(modelId: string, apiKey: string, providerBaseUrl?: string) 
 async function executeLLMStep(
   step: PipelineStep,
   input: string,
-  apiKey: string,
-  providerBaseUrl?: string
+  apiKey: string
 ): Promise<string> {
   const modelId = step.modelId || "openai/gpt-4o-mini";
-  const model = createModel(modelId, apiKey, providerBaseUrl);
+  const providerId = step.providerId || "openrouter";
+
+  console.log("[Pipeline LLM Step] Step config:", {
+    stepId: step.id,
+    stepProviderId: step.providerId,
+    effectiveProviderId: providerId,
+    modelId,
+  });
+
+  const model = createModel(modelId, apiKey, providerId);
 
   const result = await generateText({
     model,
@@ -90,10 +143,18 @@ async function executeImageStep(
   step: PipelineStep,
   input: string,
   apiKey: string,
-  providerBaseUrl?: string,
   baseUrl?: string
 ): Promise<{ type: "image"; url: string; revisedPrompt?: string }> {
   const modelId = step.imageModelId || step.modelId || "openai/dall-e-3";
+  const providerId = step.imageProviderId || step.providerId || "openrouter";
+  const providerBaseUrl = getProviderBaseUrl(providerId);
+
+  console.log("[Pipeline Image Step] Step config:", {
+    stepId: step.id,
+    stepImageProviderId: step.imageProviderId,
+    effectiveProviderId: providerId,
+    modelId,
+  });
 
   // Call the images API
   const response = await fetch(`${baseUrl}/api/images`, {
@@ -103,6 +164,7 @@ async function executeImageStep(
       "X-API-Key": apiKey,
     },
     body: JSON.stringify({
+      providerId,
       modelId,
       prompt: input,
       providerBaseUrl,
@@ -130,6 +192,100 @@ async function executeImageStep(
   };
 }
 
+/**
+ * Execute a subagent step - calls another agent
+ */
+async function executeSubagentStep(
+  step: PipelineStep,
+  input: string,
+  apiKey: string,
+  chatId: string,
+  baseUrl: string
+): Promise<any> {
+  if (!step.agentId) {
+    throw new Error("Subagent step requires agentId");
+  }
+
+  // Call the agent run API which handles both simple and pipeline agents
+  const response = await fetch(`${baseUrl}/api/agents/run`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": apiKey,
+    },
+    body: JSON.stringify({
+      agentId: step.agentId,
+      userMessage: input,
+      chatId,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error((errorData as any)?.error || "Subagent execution failed");
+  }
+
+  const data = await response.json();
+  return (data as any).result || (data as any).text || data;
+}
+
+/**
+ * Execute a tool step - calls an MCP tool
+ */
+async function executeToolStep(
+  step: PipelineStep,
+  input: string,
+  context: Record<string, any>,
+  apiKey: string,
+  baseUrl: string,
+  mcpServers?: z.infer<typeof McpServerSchema>[]
+): Promise<any> {
+  if (!step.toolName) {
+    throw new Error("Tool step requires toolName");
+  }
+
+  if (!mcpServers || mcpServers.length === 0) {
+    throw new Error("Tool step requires MCP servers to be configured");
+  }
+
+  // Substitute variables in tool arguments
+  const toolArgs: Record<string, string> = {};
+  if (step.toolArgs) {
+    for (const [key, value] of Object.entries(step.toolArgs)) {
+      toolArgs[key] = substituteVariables(value, { ...context, input });
+    }
+  }
+
+  console.log("[Pipeline Tool Step] Executing tool:", {
+    toolName: step.toolName,
+    args: toolArgs,
+    serverCount: mcpServers.length,
+  });
+
+  // Call the MCP tool execution API
+  const response = await fetch(`${baseUrl}/api/mcp/execute-tool`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": apiKey,
+    },
+    body: JSON.stringify({
+      toolName: step.toolName,
+      args: toolArgs,
+      input, // Pass input as default argument if no specific args
+      servers: mcpServers,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error((errorData as any)?.error || `Tool ${step.toolName} execution failed`);
+  }
+
+  const data = await response.json();
+  return (data as any).result || data;
+}
+
 export async function POST(req: Request) {
   const encoder = new TextEncoder();
 
@@ -149,7 +305,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { pipeline, userInput, chatId, providerBaseUrl } = parsed.data;
+    const { pipeline, userInput, chatId, providerBaseUrl, mcpServers } = parsed.data;
     const apiKey = req.headers.get("X-API-Key");
 
     if (!apiKey) {
@@ -189,20 +345,20 @@ export async function POST(req: Request) {
               try {
                 switch (step.type) {
                   case "llm":
-                    output = await executeLLMStep(step, input, apiKey, providerBaseUrl);
+                    output = await executeLLMStep(step, input, apiKey);
                     break;
 
                   case "image":
-                    output = await executeImageStep(step, input, apiKey, providerBaseUrl, baseUrl);
+                    output = await executeImageStep(step, input, apiKey, baseUrl);
                     break;
 
                   case "subagent":
-                    // TODO: Implement subagent execution
-                    throw new Error("Subagent steps not yet implemented");
+                    output = await executeSubagentStep(step, input, apiKey, chatId, baseUrl);
+                    break;
 
                   case "tool":
-                    // TODO: Implement tool execution
-                    throw new Error("Tool steps not yet implemented");
+                    output = await executeToolStep(step, input, context, apiKey, baseUrl, mcpServers);
+                    break;
 
                   default:
                     throw new Error(`Unknown step type: ${(step as any).type}`);

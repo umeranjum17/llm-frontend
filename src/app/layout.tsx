@@ -4,6 +4,7 @@ import { ThemeProvider } from "@/components/providers/theme-provider";
 import { Toaster as SonnerToaster } from "sonner";
 import { CommandPalette } from "@/components/command-palette/command-palette";
 import { MobileNav } from "@/components/mobile-nav";
+import { InstallPrompt, UpdatePrompt } from "@/components/pwa";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -44,6 +45,8 @@ export default function RootLayout({
           {children}
           <CommandPalette />
           <MobileNav />
+          <InstallPrompt />
+          <UpdatePrompt />
           <SonnerToaster richColors closeButton />
         </ThemeProvider>
       </body>
