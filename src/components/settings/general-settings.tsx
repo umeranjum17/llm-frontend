@@ -17,10 +17,9 @@ import { useModelsStore } from "@/stores/models-store";
 import { toast } from "sonner";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { PROVIDERS, isCustomOpenAIProvider, resolveProvider } from "@/lib/providers";
-import { GraduationCap, Eye, Brain, Wrench } from "lucide-react";
+import { GraduationCap } from "lucide-react";
 import { BackgroundModelsCard } from "./background-models-card";
-import { getModelCapabilities } from "@/lib/constants/model-capabilities";
-import { formatModelCost } from "@/components/model-picker/model-item";
+import { ModelCombobox } from "@/components/model-picker/model-combobox";
 
 export function GeneralSettings() {
   const router = useRouter();
@@ -154,7 +153,8 @@ export function GeneralSettings() {
         {/* Default Model (per provider) */}
         <div className="space-y-2">
           <Label>Default Model</Label>
-          <Select
+          <ModelCombobox
+            models={providerFilteredModels}
             value={defaultModelId}
             onValueChange={(nextModelId) =>
               setDefaultModelIdsByProvider((prev) => ({
@@ -162,52 +162,8 @@ export function GeneralSettings() {
                 [defaultProviderId]: nextModelId,
               }))
             }
-          >
-            <SelectTrigger className="h-10">
-              <SelectValue placeholder="Select a model">
-                {selectedModel ? (
-                  <div className="flex items-center gap-2">
-                    <span className="truncate">{selectedModel.name}</span>
-                    {(() => {
-                      const caps = getModelCapabilities(selectedModel.id);
-                      return (
-                        <div className="flex items-center gap-0.5">
-                          {caps.supportsVision && <Eye className="h-3 w-3 text-sky-500" />}
-                          {caps.supportsReasoning && <Brain className="h-3 w-3 text-purple-500" />}
-                          {caps.supportsTools && <Wrench className="h-3 w-3 text-amber-500" />}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                ) : null}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent className="max-h-[300px]">
-              {providerFilteredModels.slice(0, 50).map((m) => {
-                const capabilities = getModelCapabilities(m.id);
-                const costDisplay = formatModelCost(m.inputCost, m.outputCost);
-                const isFree = costDisplay === "Free";
-                return (
-                  <SelectItem key={m.id} value={m.id}>
-                    <div className="flex items-center gap-2 w-full">
-                      <span className="truncate">{m.name}</span>
-                      <div className="flex items-center gap-0.5 shrink-0">
-                        {capabilities.supportsVision && <Eye className="h-3 w-3 text-sky-500" />}
-                        {capabilities.supportsReasoning && <Brain className="h-3 w-3 text-purple-500" />}
-                        {capabilities.supportsTools && <Wrench className="h-3 w-3 text-amber-500" />}
-                      </div>
-                      <span className={isFree ? "text-green-500 text-xs" : "text-muted-foreground text-xs"}>
-                        {costDisplay}
-                      </span>
-                      {(defaultProviderId === "openrouter" || isCustomOpenAIProvider(defaultProviderId)) && (
-                        <span className="text-muted-foreground/70 text-xs">{m.provider}</span>
-                      )}
-                    </div>
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
+            placeholder="Search and select a model..."
+          />
           <p className="text-xs text-muted-foreground">
             Each provider keeps its own default model selection
           </p>

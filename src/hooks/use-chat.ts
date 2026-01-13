@@ -5,8 +5,8 @@ import { useStreamingStore } from "@/stores/streaming-store";
 import { addMessage, updateChat, getChatById, updateMessage, getMessagesForBranch, getLastMessage, getMessageById, chatHasBranches, incrementAgentUsage, getMessages, getActiveMcpServersForChat, getAgentById } from "@/lib/db/queries";
 import { buildContextMessages } from "@/lib/ai/context-builder";
 import { countMessagesTokens, countTokens, estimateCost } from "@/lib/utils/token-counter";
-import type { MessageContent } from "@/lib/db/schema";
-import { getImagesFromMessageContent, getTextFromMessageContent, mapTextInMessageContent } from "@/lib/utils/message-content";
+import type { MessageContent, Agent } from "@/lib/db/schema";
+import { getImagesFromMessageContent, getTextFromMessageContent, mapTextInMessageContent, convertToAISDKContent } from "@/lib/utils/message-content";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { toast } from "sonner";
 import { isModelIdCompatibleWithProviderId, pickBestProviderId, providerLabel } from "@/lib/ai/provider-routing";
@@ -22,6 +22,44 @@ function cleanReferencesForLLM(content: string) {
 }
 
 /**
+ * Generate an optimized image prompt using a text model.
+ * This applies the agent's system prompt to create a professional image generation prompt.
+ */
+async function generateOptimizedImagePrompt(
+  userPrompt: string,
+  systemPrompt: string,
+  apiKey: { key: string; baseUrl?: string } | undefined,
+  signal?: AbortSignal
+): Promise<string> {
+  try {
+    const response = await fetch("/api/chat/prompt-optimizer", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey?.key ? { "X-API-Key": apiKey.key } : {}),
+      },
+      body: JSON.stringify({
+        userPrompt,
+        systemPrompt,
+        providerBaseUrl: apiKey?.baseUrl,
+      }),
+      signal,
+    });
+
+    if (!response.ok) {
+      console.warn("[Image Gen] Prompt optimization failed, using original prompt");
+      return userPrompt;
+    }
+
+    const data = await response.json();
+    return data.optimizedPrompt || userPrompt;
+  } catch (error) {
+    console.warn("[Image Gen] Prompt optimization error:", error);
+    return userPrompt;
+  }
+}
+
+/**
  * Handle image generation models separately from chat models.
  * Calls /api/images and creates a message with the generated image.
  */
@@ -31,7 +69,9 @@ async function handleImageGeneration(
   providerId: string,
   apiKey: { key: string; baseUrl?: string } | undefined,
   prompt: string,
-  parentUserMessageId?: string
+  parentUserMessageId?: string,
+  signal?: AbortSignal,
+  agentSystemPrompt?: string
 ): Promise<void> {
   const { addMessage, updateMessage, updateChat, getChatById } = await import("@/lib/db/queries");
 
@@ -39,12 +79,30 @@ async function handleImageGeneration(
   const assistantMessage = await addMessage({
     chatId,
     role: "assistant",
-    content: [{ type: "text", text: "🎨 Generating image..." }],
+    content: [{ type: "text", text: agentSystemPrompt ? "🎨 Crafting your prompt..." : "🎨 Generating image..." }],
     modelId,
     parentId: parentUserMessageId,
   });
 
+  // Update activeBranchLeafId immediately so the UI shows the new message
+  // and branch state is consistent even if generation fails
+  await updateChat(chatId, { activeBranchLeafId: assistantMessage.id });
+
   try {
+    // If there's an agent system prompt, optimize the image prompt first
+    let finalPrompt = prompt;
+    if (agentSystemPrompt) {
+      console.log("[Image Gen] Optimizing prompt with agent system prompt...");
+      await updateMessage(assistantMessage.id, {
+        content: [{ type: "text", text: "🎨 Crafting optimized prompt..." }],
+      });
+      finalPrompt = await generateOptimizedImagePrompt(prompt, agentSystemPrompt, apiKey, signal);
+      console.log("[Image Gen] Optimized prompt:", finalPrompt.substring(0, 200) + "...");
+      await updateMessage(assistantMessage.id, {
+        content: [{ type: "text", text: "🎨 Generating image..." }],
+      });
+    }
+
     console.log("[Image Gen] providerId:", providerId, "apiKey:", apiKey?.key ? "present" : "MISSING");
     const response = await fetch("/api/images", {
       method: "POST",
@@ -56,10 +114,11 @@ async function handleImageGeneration(
         providerId,
         providerBaseUrl: apiKey?.baseUrl,
         modelId,
-        prompt,
+        prompt: finalPrompt,
         size: "1024x1024",
         quality: "standard",
       }),
+      signal,
     });
 
     if (!response.ok) {
@@ -97,20 +156,218 @@ async function handleImageGeneration(
     await updateMessage(assistantMessage.id, {
       content: contentParts,
     });
-
-    // Update chat's activeBranchLeafId
-    const chat = await getChatById(chatId);
-    if (chat) {
-      await updateChat(chatId, {
-        activeBranchLeafId: assistantMessage.id,
-      });
-    }
   } catch (error) {
+    // Handle abort gracefully
+    if (error instanceof Error && error.name === "AbortError") {
+      await updateMessage(assistantMessage.id, {
+        content: "⏹️ Image generation cancelled",
+      });
+      return;
+    }
     // Update message with error
     const errorText = error instanceof Error ? error.message : "Image generation failed";
     await updateMessage(assistantMessage.id, {
       content: `❌ ${errorText}`,
     });
+    throw error;
+  }
+}
+
+/**
+ * Handle pipeline agent execution.
+ * Calls /api/agents/pipeline and streams step-by-step progress.
+ */
+async function handlePipelineExecution(
+  chatId: string,
+  agent: Agent,
+  apiKey: { key: string; baseUrl?: string } | undefined,
+  userInput: string,
+  parentUserMessageId?: string,
+  signal?: AbortSignal,
+  pipelineActions?: {
+    startPipeline: (steps: Array<{ id: string; name: string; type: "llm" | "image" | "tool" | "subagent" }>) => void;
+    setStepRunning: (stepIndex: number) => void;
+    setStepComplete: (stepIndex: number, output: any) => void;
+    setStepError: (stepIndex: number, error: string) => void;
+    completePipeline: (finalResult: any) => void;
+    failPipeline: (error: string) => void;
+    clearPipeline: () => void;
+  }
+): Promise<void> {
+  const { addMessage, updateMessage, updateChat } = await import("@/lib/db/queries");
+
+  if (!agent.pipeline?.steps?.length) {
+    throw new Error("Agent has no pipeline steps configured");
+  }
+
+  // Create assistant message placeholder
+  const assistantMessage = await addMessage({
+    chatId,
+    role: "assistant",
+    content: [{ type: "text", text: `🔄 Starting ${agent.name}...` }],
+    modelId: agent.modelId || "pipeline",
+    parentId: parentUserMessageId,
+  });
+
+  // Update activeBranchLeafId immediately
+  await updateChat(chatId, { activeBranchLeafId: assistantMessage.id });
+
+  // Start pipeline tracking in the store
+  if (pipelineActions) {
+    pipelineActions.startPipeline(
+      agent.pipeline.steps.map((s) => ({
+        id: s.id,
+        name: s.name,
+        type: s.type,
+      }))
+    );
+  }
+
+  try {
+    const response = await fetch("/api/agents/pipeline", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey?.key ? { "X-API-Key": apiKey.key } : {}),
+      },
+      body: JSON.stringify({
+        pipeline: agent.pipeline,
+        userInput,
+        chatId,
+        providerBaseUrl: apiKey?.baseUrl,
+      }),
+      signal,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error((errorData as any)?.error || response.statusText);
+    }
+
+    // Process SSE stream
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+
+    if (!reader) {
+      throw new Error("No response body");
+    }
+
+    let buffer = "";
+    let finalResult: any = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const data = line.slice(6);
+        if (data === "[DONE]") continue;
+
+        try {
+          const event = JSON.parse(data);
+
+          switch (event.type) {
+            case "step-start":
+              if (pipelineActions) {
+                pipelineActions.setStepRunning(event.stepIndex);
+              }
+              await updateMessage(assistantMessage.id, {
+                content: [{ type: "text", text: `🔄 ${event.step.name}...` }],
+              });
+              break;
+
+            case "step-complete":
+              if (pipelineActions) {
+                pipelineActions.setStepComplete(event.stepIndex, event.output);
+              }
+              break;
+
+            case "step-error":
+              if (pipelineActions) {
+                pipelineActions.setStepError(event.stepIndex, event.error);
+              }
+              if (!event.continuing) {
+                throw new Error(event.error);
+              }
+              break;
+
+            case "step-retry":
+              // Update UI to show retry attempt
+              await updateMessage(assistantMessage.id, {
+                content: [{ type: "text", text: `🔄 Retrying step (attempt ${event.retryCount})...` }],
+              });
+              break;
+
+            case "pipeline-complete":
+              finalResult = event.result;
+              if (pipelineActions) {
+                pipelineActions.completePipeline(finalResult);
+              }
+              break;
+
+            case "pipeline-error":
+              if (pipelineActions) {
+                pipelineActions.failPipeline(event.error);
+              }
+              throw new Error(event.error);
+
+            case "done":
+              // Stream complete
+              break;
+          }
+        } catch (e) {
+          if (e instanceof Error && e.message !== "Failed to parse stream data") {
+            throw e;
+          }
+          console.warn("Failed to parse pipeline stream data:", data);
+        }
+      }
+    }
+
+    // Build final message content
+    if (finalResult) {
+      // Check if the result is an image object
+      if (typeof finalResult === "object" && finalResult.type === "image" && finalResult.url) {
+        const contentParts: Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }> = [];
+        if (finalResult.revisedPrompt) {
+          contentParts.push({ type: "text", text: `*${finalResult.revisedPrompt}*` });
+        }
+        contentParts.push({
+          type: "image_url",
+          image_url: { url: finalResult.url },
+        });
+        await updateMessage(assistantMessage.id, { content: contentParts });
+      } else {
+        // Text result
+        await updateMessage(assistantMessage.id, {
+          content: typeof finalResult === "string" ? finalResult : JSON.stringify(finalResult),
+        });
+      }
+    }
+  } catch (error) {
+    // Handle abort gracefully
+    if (error instanceof Error && error.name === "AbortError") {
+      await updateMessage(assistantMessage.id, {
+        content: "⏹️ Pipeline cancelled",
+      });
+      if (pipelineActions) {
+        pipelineActions.clearPipeline();
+      }
+      return;
+    }
+
+    const errorText = error instanceof Error ? error.message : "Pipeline failed";
+    await updateMessage(assistantMessage.id, {
+      content: `❌ ${errorText}`,
+    });
+    if (pipelineActions) {
+      pipelineActions.failPipeline(errorText);
+    }
     throw error;
   }
 }
@@ -121,9 +378,24 @@ export function useChat(chatId: string) {
   const [continuingMessageId, setContinuingMessageId] = useState<string | null>(null);
   const { keys, getKeyForProvider } = useApiKeysStore();
   const { isArenaMode, arenaModelIds } = useUIStore();
-  const { setStreamingMessage, appendStreamingContent, appendStreamingReasoning, setStreamingToolCalls, setStreamingToolResults, clearStreaming } = useStreamingStore();
+  const {
+    setStreamingMessage,
+    appendStreamingContent,
+    appendStreamingReasoning,
+    setStreamingToolCalls,
+    setStreamingToolResults,
+    clearStreaming,
+    startPipeline,
+    setStepRunning,
+    setStepComplete,
+    setStepError,
+    completePipeline,
+    failPipeline,
+    clearPipeline,
+  } = useStreamingStore();
   const extractionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const dbUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Schedule memory extraction after assistant response (debounced)
   const scheduleMemoryExtraction = useCallback(async () => {
@@ -141,7 +413,7 @@ export function useChat(chatId: string) {
 
         const messages = await getMessages(chatId);
         if (messages.length >= 2) {
-          // Get last exchange (User + Assistant)
+          // Get last exchange (User + Assistant) for context
           const recentMessages = messages.slice(-2).map(m => ({
             role: m.role,
             content: typeof m.content === 'string' ? m.content : getTextFromMessageContent(m.content)
@@ -254,16 +526,54 @@ export function useChat(chatId: string) {
       throw new Error(`Selected model (${modelId}) does not support images.`);
     }
 
+    // Check if this is a pipeline agent
+    if (agent?.executionType === "pipeline" && agent.pipeline?.steps?.length) {
+      abortControllerRef.current = new AbortController();
+      try {
+        return await handlePipelineExecution(
+          chatId,
+          agent,
+          apiKey,
+          getTextFromMessageContent(messageContent),
+          parentUserMessageId,
+          abortControllerRef.current.signal,
+          {
+            startPipeline,
+            setStepRunning,
+            setStepComplete,
+            setStepError,
+            completePipeline,
+            failPipeline,
+            clearPipeline,
+          }
+        );
+      } finally {
+        abortControllerRef.current = null;
+        // Clear pipeline state after a short delay to allow UI to catch up
+        setTimeout(() => {
+          clearPipeline();
+        }, 2000);
+      }
+    }
+
     // Check if this is an image generation model
     if (modelCaps.isImageGeneration) {
-      return await handleImageGeneration(
-        chatId,
-        modelId,
-        providerId,
-        apiKey,
-        getTextFromMessageContent(messageContent),
-        parentUserMessageId
-      );
+      // Create abort controller for image generation
+      abortControllerRef.current = new AbortController();
+      try {
+        return await handleImageGeneration(
+          chatId,
+          modelId,
+          providerId,
+          apiKey,
+          getTextFromMessageContent(messageContent),
+          parentUserMessageId,
+          abortControllerRef.current.signal,
+          agent?.systemPrompt // Pass agent's system prompt for prompt optimization
+        );
+      } finally {
+        abortControllerRef.current = null;
+      }
     }
 
     const contextMessages = await buildContextMessages(
@@ -287,13 +597,18 @@ export function useChat(chatId: string) {
         .filter(
           (m) => m.role === "system" || m.role === "user" || m.role === "assistant"
         )
-        .map((m) => ({
-          role: m.role as "system" | "user" | "assistant",
-          content:
-            m.role === "user"
-              ? mapTextInMessageContent(m.content, cleanReferencesForLLM)
-              : m.content,
-        })),
+        .map((m) => {
+          const role = m.role as "system" | "user" | "assistant";
+          // Clean references for user messages first
+          let content = role === "user"
+            ? mapTextInMessageContent(m.content, cleanReferencesForLLM)
+            : m.content;
+          // Convert to AI SDK format (image_url -> image for users, strip images from assistants)
+          return {
+            role,
+            content: convertToAISDKContent(content, role),
+          };
+        }),
     ];
 
     // Add empty assistant message that we'll update during streaming
@@ -306,8 +621,18 @@ export function useChat(chatId: string) {
       parentId: parentUserMessageId,
     });
 
+    // Update activeBranchLeafId immediately so the UI shows the new message
+    // and subsequent operations have the correct parent reference
+    await updateChat(chatId, { activeBranchLeafId: assistantMessage.id });
+
     // Set streaming state for real-time UI updates
     setStreamingMessage(assistantMessage.id);
+
+    // Create abort controller for this request
+    abortControllerRef.current = new AbortController();
+
+    // Track content for abort handling (needs to be outside try block for catch access)
+    let fullContent = "";
 
     try {
     // Call API route for streaming
@@ -325,16 +650,19 @@ export function useChat(chatId: string) {
         enabledTools,
         mcpServers: await getActiveMcpServersForChat(chat.activeMcpServerIds),
       }),
+      signal: abortControllerRef.current.signal,
     });
 
     if (!response.ok) {
-      throw new Error(`API request failed: ${response.statusText}`);
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = (errorData as any)?.error || (errorData as any)?.message || response.statusText;
+      throw new Error(errorMessage);
     }
 
     // Handle streaming response with real-time updates
     const reader = response.body?.getReader();
     const decoder = new TextDecoder();
-    let fullContent = "";
+    fullContent = ""; // Reset content tracking
     let fullReasoning = ""; // For extended thinking / reasoning
     let inputTokens: number | undefined;
     let outputTokens: number | undefined;
@@ -551,11 +879,10 @@ export function useChat(chatId: string) {
       toolResults: toolResults.length > 0 ? toolResults : undefined,
     });
 
-    // Update chat's total cost
+    // Update chat's total cost (activeBranchLeafId already set when assistant message was created)
     const currentTotalCost = chat.totalCost || 0;
     await updateChat(chatId, {
       totalCost: currentTotalCost + cost,
-      activeBranchLeafId: assistantMessage.id,
     });
 
     // Auto-generate title after the first exchange
@@ -640,7 +967,26 @@ export function useChat(chatId: string) {
       }));
       generateAndApplySummary({ chatId, messages: aiMessages, keys }).catch(console.error);
     }
+    } catch (error) {
+      // Handle abort gracefully - don't show as error
+      if (error instanceof Error && error.name === "AbortError") {
+        // Update message to show it was cancelled
+        await updateMessage(assistantMessage.id, {
+          content: fullContent || "⏹️ Request cancelled",
+          isIncomplete: !!fullContent,
+          canContinue: false,
+        });
+        return; // Don't re-throw for cancelled requests
+      }
+      // Update the assistant message with the error so it's visible in the chat
+      const errorText = error instanceof Error ? error.message : "An error occurred";
+      await updateMessage(assistantMessage.id, {
+        content: `❌ ${errorText}`,
+      });
+      throw error; // Re-throw so outer handlers can still process it
     } finally {
+      // Clear abort controller
+      abortControllerRef.current = null;
       // Always clear pending DB update timeout
       if (dbUpdateTimeoutRef.current) {
         clearTimeout(dbUpdateTimeoutRef.current);
@@ -657,7 +1003,7 @@ export function useChat(chatId: string) {
       // This keeps memories fresh without blocking the current response
       refreshCacheInBackground(userMessageText);
     }
-  }, [chatId, getKeyForProvider, keys, scheduleMemoryExtraction, setStreamingMessage, appendStreamingContent, appendStreamingReasoning, setStreamingToolCalls, setStreamingToolResults, clearStreaming]);
+  }, [chatId, getKeyForProvider, keys, scheduleMemoryExtraction, setStreamingMessage, appendStreamingContent, appendStreamingReasoning, setStreamingToolCalls, setStreamingToolResults, clearStreaming, startPipeline, setStepRunning, setStepComplete, setStepError, completePipeline, failPipeline, clearPipeline]);
 
   const sendMessage = async (content: MessageContent, attachments?: Array<{ name: string; content: string }>) => {
     setIsLoading(true);
@@ -823,18 +1169,48 @@ export function useChat(chatId: string) {
     }
   };
 
-  const handleError = (err: any) => {
+  const resendMessage = async (userMessageId: string) => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const userMessage = await getMessageById(userMessageId);
+      if (!userMessage || userMessage.chatId !== chatId) throw new Error("Message not found");
+      if (userMessage.role !== "user") throw new Error("Can only resend user messages");
+
+      // Generate a new response for this user message
+      await generateResponse(userMessage.content, undefined, undefined, userMessageId);
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleError = (err: unknown) => {
     const errorMessage = err instanceof Error ? err.message : "An error occurred";
     setError(errorMessage);
-    console.error(err);
+    // Log as warning to avoid triggering Next.js error overlay in dev mode
+    console.warn("[Chat Error]", errorMessage);
     toast.error(errorMessage);
   };
+
+  const cancelRequest = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsLoading(false);
+      clearStreaming();
+    }
+  }, [clearStreaming]);
 
   return {
     sendMessage,
     editMessage,
     continueResponse,
     regenerateAssistant,
+    resendMessage,
+    cancelRequest,
     isLoading,
     error,
     continuingMessageId,

@@ -176,6 +176,43 @@ export interface ParameterPreset {
   isDefault?: boolean;
 }
 
+// Pipeline step for multi-step agent execution
+export interface PipelineStep {
+  id: string;
+  name: string; // Display name (e.g., "Crafting prompt", "Generating image")
+  type: "llm" | "image" | "tool" | "subagent";
+
+  // For LLM steps - generate text using a model
+  modelId?: string; // Model to use for this step
+  systemPrompt?: string; // System prompt for this step
+  providerId?: string; // Provider to use for this step (openrouter, anthropic, etc.)
+
+  // For image steps - generate image
+  imageModelId?: string; // Image generation model
+  imageProviderId?: string; // Provider for image generation
+
+  // For subagent steps - invoke another agent
+  agentId?: string; // Agent to invoke
+
+  // For tool steps - call an MCP tool
+  toolName?: string;
+  toolArgs?: Record<string, string>; // Can use {{variables}}
+
+  // Input/output mapping
+  inputTemplate: string; // Template with {{variable}} placeholders (e.g., "{{userInput}}", "{{step_1_output}}")
+  outputVariable: string; // Where to store result (e.g., "optimizedPrompt")
+
+  // Error handling
+  onError?: "continue" | "abort" | "retry";
+  maxRetries?: number;
+}
+
+// Pipeline configuration for multi-step agents
+export interface PipelineConfig {
+  steps: PipelineStep[];
+  outputTemplate?: string; // How to format final response (e.g., "{{finalImage}}")
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -200,6 +237,12 @@ export interface Agent {
   createdAt: number;
   updatedAt: number;
   usageCount: number;
+
+  // Multi-step execution support
+  executionType?: "simple" | "pipeline" | "orchestrator"; // Defaults to "simple"
+  pipeline?: PipelineConfig; // For pipeline agents
+  subAgentIds?: string[]; // For orchestrator agents - which agents can be invoked
+  orchestrationPrompt?: string; // For orchestrator agents - how to decide which sub-agents to call
 }
 
 export interface PromptVariable {

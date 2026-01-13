@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, RefreshCw } from "lucide-react";
+import { Plus, RefreshCw, Pencil } from "lucide-react";
 import { getAllAgents, getChatById, updateChat } from "@/lib/db/queries";
 import type { Agent } from "@/lib/db/schema";
 import { cn } from "@/lib/utils";
@@ -39,6 +39,7 @@ export function AgentPickerDialog({
 }: AgentPickerDialogProps) {
   const [query, setQuery] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
+  const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
   const [syncing, setSyncing] = useState(false);
   const agents = useLiveQuery(() => getAllAgents(), []);
 
@@ -97,7 +98,7 @@ export function AgentPickerDialog({
 
           <div className="flex justify-between gap-2">
             <div className="flex gap-1.5 sm:gap-2">
-              <Button variant="outline" size="sm" className="h-8 text-xs sm:text-sm" onClick={() => setEditorOpen(true)}>
+              <Button variant="outline" size="sm" className="h-8 text-xs sm:text-sm" onClick={() => { setEditingAgent(null); setEditorOpen(true); }}>
                 <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5" />
                 <span className="hidden sm:inline">New Agent</span>
                 <span className="sm:hidden">New</span>
@@ -119,21 +120,34 @@ export function AgentPickerDialog({
                 const costDisplay = model ? formatModelCost(model.inputCost, model.outputCost) : null;
                 const isFree = model && model.inputCost + model.outputCost === 0;
                 return (
-                  <button
+                  <div
                     key={agent.id}
-                    type="button"
-                    onClick={() => selectAgent(agent)}
                     className={cn(
-                      "text-left rounded-lg border p-2.5 sm:p-3 hover:bg-accent transition-colors",
+                      "relative group text-left rounded-lg border p-2.5 sm:p-3 hover:bg-accent transition-colors cursor-pointer",
                       agent.id === currentAgentId && "border-primary"
                     )}
+                    onClick={() => selectAgent(agent)}
                   >
+                    {/* Edit button */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingAgent(agent);
+                        setEditorOpen(true);
+                      }}
+                      className="absolute top-2 right-2 p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-background/80 transition-opacity"
+                      title="Edit agent"
+                    >
+                      <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                    </button>
+
                     <div className="flex items-start gap-2">
                       <span className="text-base sm:text-lg leading-none shrink-0">{agent.avatar || "🤖"}</span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-1.5">
                           <div className="font-medium text-sm truncate">{agent.name}</div>
-                          <div className="shrink-0 flex items-center gap-1">
+                          <div className="shrink-0 flex items-center gap-1 mr-5">
                             {agent.isBuiltIn && <Badge variant="secondary" className="text-[9px] sm:text-[10px] px-1.5 h-4">Built-in</Badge>}
                             {agent.mcpServerIds?.length ? (
                               <Badge variant="outline" className="text-[9px] sm:text-[10px] px-1.5 h-4">{agent.mcpServerIds.length} tools</Badge>
@@ -145,7 +159,13 @@ export function AgentPickerDialog({
                             {agent.description}
                           </div>
                         )}
-                        {model && (
+                        {agent.executionType === "pipeline" && agent.pipeline?.steps?.length ? (
+                          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                            <Badge variant="outline" className="text-[9px] sm:text-[10px] px-1.5 py-0 h-4 font-normal bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400">
+                              Pipeline ({agent.pipeline.steps.length} steps)
+                            </Badge>
+                          </div>
+                        ) : model && (
                           <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                             <Badge variant="outline" className="text-[9px] sm:text-[10px] px-1.5 py-0 h-4 font-normal">
                               {model.name}
@@ -162,7 +182,7 @@ export function AgentPickerDialog({
                         )}
                       </div>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -178,12 +198,16 @@ export function AgentPickerDialog({
 
       <AgentEditorDialog
         open={editorOpen}
-        onOpenChange={setEditorOpen}
+        onOpenChange={(open) => {
+          setEditorOpen(open);
+          if (!open) setEditingAgent(null);
+        }}
+        agent={editingAgent}
         onSaved={(agentId) => {
-          // After creating, select the new agent
+          // After creating/editing, select the agent
           getAllAgents().then((allAgents) => {
-            const newAgent = allAgents.find((a) => a.id === agentId);
-            if (newAgent) selectAgent(newAgent);
+            const savedAgent = allAgents.find((a) => a.id === agentId);
+            if (savedAgent && !editingAgent) selectAgent(savedAgent);
           });
         }}
       />

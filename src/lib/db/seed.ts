@@ -22,6 +22,9 @@ export async function ensureBuiltInAgents() {
         systemPrompt: agent.systemPrompt,
         description: agent.description,
         avatar: agent.avatar,
+        // Also sync pipeline configuration for built-in agents
+        executionType: agent.executionType,
+        pipeline: agent.pipeline,
       });
     }
   }

@@ -3,13 +3,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -18,15 +11,15 @@ import { useSettingsStore } from "@/stores/settings-store";
 import { toast } from "sonner";
 import { getSettings, updateSettings } from "@/lib/db/queries";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/lib/db/schema";
 import { useModelsStore } from "@/stores/models-store";
-import { MODELS } from "@/lib/constants/models";
+import { MODELS, type Model } from "@/lib/constants/models";
 import {
     Tooltip,
     TooltipContent,
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { ModelCombobox } from "@/components/model-picker/model-combobox";
 
 interface BackgroundModel {
     id: string;
@@ -206,22 +199,16 @@ export function BackgroundModelsCard() {
                                         className="hidden sm:flex"
                                     />
                                 )}
-                                <Select
-                                    value={currentModel}
-                                    onValueChange={(v) => handleModelChange(bg.settingKey, v)}
-                                    disabled={isDisabled}
-                                >
-                                    <SelectTrigger className={`w-full sm:w-[200px] h-8 text-xs ${isDisabled ? "opacity-50" : ""}`}>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {availableModels.map((model) => (
-                                            <SelectItem key={model.id} value={model.id} className="text-xs">
-                                                {model.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <div className={`w-full sm:w-[220px] ${isDisabled ? "opacity-50 pointer-events-none" : ""}`}>
+                                    <ModelCombobox
+                                        models={availableModels}
+                                        value={currentModel}
+                                        onValueChange={(v) => handleModelChange(bg.settingKey, v)}
+                                        disabled={isDisabled}
+                                        placeholder="Select model..."
+                                        className="h-8 text-xs"
+                                    />
+                                </div>
                             </div>
                         </div>
                     );

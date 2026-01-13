@@ -4,7 +4,7 @@ import { useState, memo, useMemo } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download, ThumbsUp, ThumbsDown, Volume2, VolumeX, ChevronDown, ChevronRight, Wrench, Loader2, Brain } from "lucide-react";
+import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download, ThumbsUp, ThumbsDown, Volume2, VolumeX, ChevronDown, ChevronRight, Wrench, Loader2, Brain, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
@@ -18,7 +18,7 @@ import { updateMessage } from "@/lib/db/queries";
 import { useVoiceOutput } from "@/hooks/use-voice-output";
 import { parseArtifactFences } from "@/lib/utils/artifact-fence-parser";
 import { useUIStore } from "@/stores/ui-store";
-import { useStreamingStore } from "@/stores/streaming-store";
+import { useStreamingStore, type PipelineExecution } from "@/stores/streaming-store";
 import { nanoid } from "nanoid";
 import { Code2 } from "lucide-react";
 
@@ -282,12 +282,103 @@ function ThinkingSection({
   );
 }
 
+/** Pipeline progress display section */
+function PipelineProgressSection({
+  pipelineExecution,
+}: {
+  pipelineExecution: PipelineExecution;
+}) {
+  if (!pipelineExecution) return null;
+
+  const getStepIcon = (status: string) => {
+    switch (status) {
+      case "running":
+        return <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500" />;
+      case "complete":
+        return <Check className="h-3.5 w-3.5 text-green-500" />;
+      case "error":
+        return <XIcon className="h-3.5 w-3.5 text-red-500" />;
+      default:
+        return <div className="h-3.5 w-3.5 rounded-full border-2 border-muted-foreground/30" />;
+    }
+  };
+
+  const getStepTypeIcon = (type: string) => {
+    switch (type) {
+      case "llm":
+        return "💬";
+      case "image":
+        return "🎨";
+      case "tool":
+        return "🔧";
+      case "subagent":
+        return "🤖";
+      default:
+        return "📝";
+    }
+  };
+
+  return (
+    <div className="mb-3 border rounded-lg bg-blue-500/5 border-blue-500/20 overflow-hidden">
+      <div className="px-3 py-2 text-sm text-blue-600 dark:text-blue-400">
+        <div className="flex items-center gap-2 mb-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="font-medium">Pipeline Progress</span>
+          <span className="text-xs text-muted-foreground">
+            {pipelineExecution.steps.filter(s => s.status === "complete").length}/{pipelineExecution.totalSteps} steps
+          </span>
+        </div>
+
+        <div className="space-y-1.5">
+          {pipelineExecution.steps.map((step, index) => (
+            <div
+              key={step.id}
+              className={cn(
+                "flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors",
+                step.status === "running" && "bg-blue-500/10",
+                step.status === "complete" && "opacity-60",
+                step.status === "error" && "bg-red-500/10"
+              )}
+            >
+              {getStepIcon(step.status)}
+              <span className="text-sm">{getStepTypeIcon(step.type)}</span>
+              <span className={cn(
+                "text-sm flex-1",
+                step.status === "running" && "font-medium"
+              )}>
+                {step.name}
+              </span>
+              {step.status === "running" && (
+                <span className="text-xs text-muted-foreground animate-pulse">
+                  in progress...
+                </span>
+              )}
+              {step.status === "error" && step.error && (
+                <span className="text-xs text-red-500 truncate max-w-32">
+                  {step.error}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {pipelineExecution.error && (
+          <div className="mt-2 text-xs text-red-500 bg-red-500/10 px-2 py-1 rounded">
+            Pipeline failed: {pipelineExecution.error}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface MessageItemProps {
   message: Message;
   onContinue?: (messageId: string) => void;
   onEdit?: (messageId: string, newContent: string) => void;
   onFork?: (messageId: string) => void;
   onRegenerate?: (assistantMessageId: string) => void;
+  onResend?: (userMessageId: string) => void;
   isContinuing?: boolean;
   // Props passed from parent to bypass memo issues
   streamingContentProp?: string;
@@ -300,6 +391,7 @@ export const MessageItem = memo(function MessageItem({
   onEdit,
   onFork,
   onRegenerate,
+  onResend,
   isContinuing,
   streamingContentProp,
   streamingVersionProp,
@@ -315,7 +407,7 @@ export const MessageItem = memo(function MessageItem({
 
   // Get streaming state for real-time updates
   // Include streamingVersion to ensure re-renders on each content update
-  const { streamingMessageId, streamingContent, streamingReasoning, streamingToolCalls, streamingToolResults, streamingVersion } = useStreamingStore();
+  const { streamingMessageId, streamingContent, streamingReasoning, streamingToolCalls, streamingToolResults, streamingVersion, pipelineExecution } = useStreamingStore();
   const isStreaming = message.id === streamingMessageId;
 
   const isUser = message.role === "user";
@@ -343,6 +435,7 @@ export const MessageItem = memo(function MessageItem({
   const canEdit = isUser && onEdit && !isMessageContentParts(message.content);
   const canFork = isUser && !!onFork;
   const canRegenerate = isAssistant && !!onRegenerate;
+  const canResend = isUser && !!onResend;
 
   // Use streaming tool data if available, otherwise fall back to message data
   const toolCalls = (isStreaming && streamingToolCalls.length > 0
@@ -516,6 +609,11 @@ export const MessageItem = memo(function MessageItem({
                   })}
                 </span>
               </div>
+
+              {/* Pipeline Progress Section (for pipeline agents) */}
+              {!isEditing && isAssistant && isStreaming && pipelineExecution?.isActive && (
+                <PipelineProgressSection pipelineExecution={pipelineExecution} />
+              )}
 
               {/* Thinking/Reasoning Section (for assistant messages with extended thinking) */}
               {!isEditing && isAssistant && reasoningContent && (
@@ -725,6 +823,16 @@ export const MessageItem = memo(function MessageItem({
                       <RotateCcw className="h-3.5 w-3.5" />
                     </Button>
                   )}
+                  {canResend && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2"
+                      onClick={(e) => { e.stopPropagation(); onResend?.(message.id); }}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
                   {canEdit && (
                     <Button
                       variant="ghost"
@@ -807,6 +915,17 @@ export const MessageItem = memo(function MessageItem({
                   title="Regenerate (new branch)"
                 >
                   <RotateCcw className="h-4 w-4" />
+                </Button>
+              )}
+              {canResend && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => onResend?.(message.id)}
+                  title="Resend message"
+                >
+                  <RefreshCw className="h-4 w-4" />
                 </Button>
               )}
               {canEdit && (

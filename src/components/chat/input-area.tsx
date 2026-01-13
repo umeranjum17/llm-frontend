@@ -65,7 +65,7 @@ export function InputArea({ chatId }: InputAreaProps) {
   const [selectedPrompt, setSelectedPrompt] = useState<Prompt | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { sendMessage, isLoading } = useChat(chatId);
+  const { sendMessage, isLoading, cancelRequest } = useChat(chatId);
   const voice = useVoiceInput();
   const [voiceDraft, setVoiceDraft] = useState("");
   const wasListeningRef = useRef(false);
@@ -571,22 +571,28 @@ export function InputArea({ chatId }: InputAreaProps) {
           )}
         </div>
 
-        <Button
-          type="submit"
-          size="icon"
-          disabled={
-            (!input.trim() && attachments.length === 0 && imageAttachments.length === 0) ||
-            isLoading
-          }
-          className="h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-lg sm:rounded-xl"
-          title="Send"
-        >
-          {isLoading ? (
-            <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
-          ) : (
+        {isLoading ? (
+          <Button
+            type="button"
+            size="icon"
+            variant="destructive"
+            onClick={cancelRequest}
+            className="h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-lg sm:rounded-xl"
+            title="Stop generating"
+          >
+            <Square className="h-4 w-4 sm:h-5 sm:w-5" />
+          </Button>
+        ) : (
+          <Button
+            type="submit"
+            size="icon"
+            disabled={!input.trim() && attachments.length === 0 && imageAttachments.length === 0}
+            className="h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-lg sm:rounded-xl"
+            title="Send"
+          >
             <Send className="h-4 w-4 sm:h-5 sm:w-5" />
-          )}
-        </Button>
+          </Button>
+        )}
       </div>
 
       <div className="mt-1.5 sm:mt-2 flex items-center justify-between text-[10px] sm:text-xs text-muted-foreground">

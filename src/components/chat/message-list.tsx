@@ -79,6 +79,7 @@ const MessageRow = memo(function MessageRow({
   onEdit,
   onFork,
   onRegenerate,
+  onResend,
   isContinuing,
   siblings,
   siblingIndex,
@@ -93,6 +94,7 @@ const MessageRow = memo(function MessageRow({
   onEdit: (messageId: string, newContent: string) => void;
   onFork: (messageId: string) => void;
   onRegenerate: (assistantMessageId: string) => void;
+  onResend: (userMessageId: string) => void;
   isContinuing: boolean;
   siblings: Message[];
   siblingIndex: number;
@@ -110,6 +112,7 @@ const MessageRow = memo(function MessageRow({
         onEdit={onEdit}
         onFork={onFork}
         onRegenerate={onRegenerate}
+        onResend={onResend}
         isContinuing={isContinuing}
         streamingContentProp={isStreaming ? streamingContent : undefined}
         streamingVersionProp={isStreaming ? streamingVersion : undefined}
@@ -143,7 +146,7 @@ const MessageRow = memo(function MessageRow({
 
 export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageListProps) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
-  const { continueResponse, continuingMessageId, editMessage, regenerateAssistant } = useChat(chatId);
+  const { continueResponse, continuingMessageId, editMessage, regenerateAssistant, resendMessage } = useChat(chatId);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [showNewMessagesButton, setShowNewMessagesButton] = useState(false);
   const previousMessageCount = useRef(0);
@@ -325,6 +328,7 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
               onEdit={editMessage}
               onFork={handleFork}
               onRegenerate={regenerateAssistant}
+              onResend={resendMessage}
               isContinuing={continuingMessageId === message.id}
               siblings={siblingInfo.siblings}
               siblingIndex={siblingInfo.index}

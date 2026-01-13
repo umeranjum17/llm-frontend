@@ -402,7 +402,11 @@ export function ChatShell() {
                               <span className="max-w-[80px] sm:max-w-[120px] truncate font-medium">
                                 {currentAgent.name}
                               </span>
-                              {currentAgent.modelId && (
+                              {currentAgent.executionType === "pipeline" && currentAgent.pipeline?.steps?.length ? (
+                                <span className="text-[10px] text-muted-foreground">
+                                  Pipeline ({currentAgent.pipeline.steps.length} steps)
+                                </span>
+                              ) : currentAgent.modelId && (
                                 <span className="text-[10px] text-muted-foreground">
                                   {getModelById(currentAgent.modelId)?.name || currentAgent.modelId.split("/").pop()}
                                 </span>
@@ -419,8 +423,13 @@ export function ChatShell() {
                     </Button>
                   )}
 
-                  {/* Model Selector */}
-                  {!isArenaMode && chat && (
+                  {/* Model Selector - hidden for pipeline agents */}
+                  {!isArenaMode && chat && currentAgent?.executionType === "pipeline" && currentAgent.pipeline?.steps?.length ? (
+                    <div className="h-8 px-3 flex items-center text-xs text-muted-foreground border rounded-md border-border/50 bg-muted/30">
+                      <span className="hidden sm:inline">Uses pipeline models</span>
+                      <span className="sm:hidden">Pipeline</span>
+                    </div>
+                  ) : !isArenaMode && chat && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button

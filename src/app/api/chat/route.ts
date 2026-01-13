@@ -18,6 +18,12 @@ const MessageContentPartSchema = z.union([
     type: z.literal("text"),
     text: z.string(),
   }),
+  // AI SDK format for images
+  z.object({
+    type: z.literal("image"),
+    image: z.string(),
+  }),
+  // Legacy OpenAI format for images (still accept for backwards compat)
   z.object({
     type: z.literal("image_url"),
     image_url: z.union([
@@ -94,8 +100,14 @@ export async function POST(req: Request) {
     for (const message of messages) {
       if (!Array.isArray(message.content)) continue;
       for (const part of message.content) {
-        if (part.type !== "image_url") continue;
-        const url = typeof part.image_url === "string" ? part.image_url : part.image_url.url;
+        let url: string | undefined;
+        // Handle both AI SDK format (image) and legacy OpenAI format (image_url)
+        if (part.type === "image") {
+          url = part.image;
+        } else if (part.type === "image_url") {
+          url = typeof part.image_url === "string" ? part.image_url : part.image_url.url;
+        }
+        if (!url) continue;
         const bytes = dataUrlBase64SizeBytes(url);
         if (bytes !== null && bytes > MAX_IMAGE_BYTES) {
           return new Response(
@@ -267,8 +279,10 @@ export async function POST(req: Request) {
     );
   } catch (error) {
     console.error("Chat API error:", error);
+    // Return actual error message for better debugging
+    const errorMessage = error instanceof Error ? error.message : "Failed to process chat request";
     return new Response(
-      JSON.stringify({ error: "Failed to process chat request" }),
+      JSON.stringify({ error: errorMessage }),
       {
         status: 500,
         headers: { "Content-Type": "application/json" },
