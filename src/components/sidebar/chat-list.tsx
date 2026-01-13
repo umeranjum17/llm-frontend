@@ -146,6 +146,7 @@ export function ChatList({ searchQuery, onChatSelect }: ChatListProps) {
       setActiveChatId(chatId);
       setSelectedChats(new Set());
       setLastSelectedIndex(null);
+      onChatSelect?.();
     }
   };
 

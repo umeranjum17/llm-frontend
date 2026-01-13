@@ -4,7 +4,7 @@ import { useState, memo, useMemo } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download, ThumbsUp, ThumbsDown, Volume2, VolumeX, ChevronDown, ChevronRight, Wrench, Loader2 } from "lucide-react";
+import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download, ThumbsUp, ThumbsDown, Volume2, VolumeX, ChevronDown, ChevronRight, Wrench, Loader2, Brain } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
@@ -18,6 +18,7 @@ import { updateMessage } from "@/lib/db/queries";
 import { useVoiceOutput } from "@/hooks/use-voice-output";
 import { parseArtifactFences } from "@/lib/utils/artifact-fence-parser";
 import { useUIStore } from "@/stores/ui-store";
+import { useStreamingStore } from "@/stores/streaming-store";
 import { nanoid } from "nanoid";
 import { Code2 } from "lucide-react";
 
@@ -231,6 +232,56 @@ function ToolCallsSection({
   );
 }
 
+/** Collapsible section for thinking/reasoning */
+function ThinkingSection({
+  reasoning,
+  isStreaming,
+}: {
+  reasoning: string;
+  isStreaming?: boolean;
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  if (!reasoning) return null;
+
+  return (
+    <div className="mb-3 border rounded-lg bg-purple-500/5 border-purple-500/20 overflow-hidden">
+      {/* Collapsed header */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-purple-600 dark:text-purple-400 hover:bg-purple-500/10 transition-colors"
+      >
+        {isExpanded ? (
+          <ChevronDown className="h-4 w-4" />
+        ) : (
+          <ChevronRight className="h-4 w-4" />
+        )}
+        <Brain className="h-3.5 w-3.5" />
+        <span className="font-medium">Thinking</span>
+        {isStreaming && (
+          <span className="flex items-center gap-1 text-xs opacity-70">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            thinking...
+          </span>
+        )}
+      </button>
+
+      {/* Expanded content */}
+      {isExpanded && (
+        <div className="px-3 pb-3 border-t border-purple-500/20">
+          <div className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap font-mono text-xs leading-relaxed max-h-96 overflow-y-auto">
+            {reasoning}
+            {isStreaming && (
+              <span className="inline-block w-1.5 h-3 ml-0.5 bg-purple-500/70 animate-pulse" />
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface MessageItemProps {
   message: Message;
   onContinue?: (messageId: string) => void;
@@ -256,10 +307,27 @@ export const MessageItem = memo(function MessageItem({
   const { speak, stop, isPlaying } = useVoiceOutput();
   const { setActiveArtifact, setShowArtifacts } = useUIStore();
 
+  // Get streaming state for real-time updates
+  const { streamingMessageId, streamingContent, streamingReasoning, streamingToolCalls, streamingToolResults } = useStreamingStore();
+  const isStreaming = message.id === streamingMessageId;
+
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
   const images = getImagesFromMessageContent(message.content);
-  const textContent = getTextFromMessageContent(message.content);
+
+  // Use streaming content if this message is currently being streamed
+  const textContent = isStreaming && streamingContent
+    ? streamingContent
+    : getTextFromMessageContent(message.content);
+
+  // Use streaming reasoning if available, otherwise fall back to persisted reasoning
+  const reasoningContent = isStreaming && streamingReasoning
+    ? streamingReasoning
+    : message.reasoning || "";
+
+  // Track if we're actively streaming reasoning (reasoning is appearing but response hasn't started)
+  const isStreamingReasoning = isStreaming && !!streamingReasoning && !streamingContent;
+
   const artifactFiles = useMemo(() => isAssistant ? parseArtifactFences(textContent) : [], [isAssistant, textContent]);
   const hasMultipleFiles = artifactFiles.length > 0;
 
@@ -267,8 +335,13 @@ export const MessageItem = memo(function MessageItem({
   const canFork = isUser && !!onFork;
   const canRegenerate = isAssistant && !!onRegenerate;
 
-  const toolCalls = (Array.isArray(message.toolCalls) ? message.toolCalls : []) as ToolCallLike[];
-  const toolResults = (Array.isArray(message.toolResults) ? message.toolResults : []) as ToolResultLike[];
+  // Use streaming tool data if available, otherwise fall back to message data
+  const toolCalls = (isStreaming && streamingToolCalls.length > 0
+    ? streamingToolCalls
+    : (Array.isArray(message.toolCalls) ? message.toolCalls : [])) as ToolCallLike[];
+  const toolResults = (isStreaming && streamingToolResults.length > 0
+    ? streamingToolResults
+    : (Array.isArray(message.toolResults) ? message.toolResults : [])) as ToolResultLike[];
 
   const toolResultsById = new Map<string, ToolResultLike>();
   for (const toolResult of toolResults) {
@@ -429,6 +502,14 @@ export const MessageItem = memo(function MessageItem({
                 </span>
               </div>
 
+              {/* Thinking/Reasoning Section (for assistant messages with extended thinking) */}
+              {!isEditing && isAssistant && reasoningContent && (
+                <ThinkingSection
+                  reasoning={reasoningContent}
+                  isStreaming={isStreamingReasoning}
+                />
+              )}
+
               {/* Editing Mode */}
               {isEditing ? (
                 <div className="space-y-2">
@@ -450,7 +531,12 @@ export const MessageItem = memo(function MessageItem({
                 /* Message content */
                 <div className="prose prose-sm dark:prose-invert max-w-none">
                   {isAssistant ? (
-                    <MarkdownRenderer content={textContent} />
+                    <>
+                      <MarkdownRenderer content={textContent} />
+                      {isStreaming && (
+                        <span className="inline-block w-2 h-4 ml-0.5 bg-primary/70 animate-pulse" />
+                      )}
+                    </>
                   ) : (
                     <p className="whitespace-pre-wrap">{textContent}</p>
                   )}

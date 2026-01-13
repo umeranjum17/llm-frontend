@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useUIStore } from "@/stores/ui-store";
-import { addMessage, updateChat, getChatById, updateMessage, getMessagesForBranch, getLastMessage, getMessageById, chatHasBranches, incrementAgentUsage, getMessages, getEnabledMcpServers } from "@/lib/db/queries";
+import { useStreamingStore } from "@/stores/streaming-store";
+import { addMessage, updateChat, getChatById, updateMessage, getMessagesForBranch, getLastMessage, getMessageById, chatHasBranches, incrementAgentUsage, getMessages, getActiveMcpServersForChat, getAgentById } from "@/lib/db/queries";
 import { buildContextMessages } from "@/lib/ai/context-builder";
 import { countMessagesTokens, countTokens, estimateCost } from "@/lib/utils/token-counter";
 import type { MessageContent } from "@/lib/db/schema";
@@ -120,7 +121,9 @@ export function useChat(chatId: string) {
   const [continuingMessageId, setContinuingMessageId] = useState<string | null>(null);
   const { keys, getKeyForProvider } = useApiKeysStore();
   const { isArenaMode, arenaModelIds } = useUIStore();
+  const { setStreamingMessage, appendStreamingContent, appendStreamingReasoning, setStreamingToolCalls, setStreamingToolResults, clearStreaming } = useStreamingStore();
   const extractionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const dbUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Schedule memory extraction after assistant response (debounced)
   const scheduleMemoryExtraction = useCallback(async () => {
@@ -202,7 +205,9 @@ export function useChat(chatId: string) {
       throw new Error("Chat not found");
     }
 
-    const modelId = overrideModelId || chat.modelId;
+    // Get agent's model if chat has an agent with a specific model set
+    const agent = chat.agentId ? await getAgentById(chat.agentId) : undefined;
+    const modelId = overrideModelId || agent?.modelId || chat.modelId;
 
     const llmProviderIds = Array.from(
       new Set(
@@ -258,24 +263,6 @@ export function useChat(chatId: string) {
       );
     }
 
-    const webSearchConfig = (() => {
-      if (!enabledTools.includes("web-search")) return undefined;
-
-      const tavilyKey = getKeyForProvider("tavily")?.key;
-      if (tavilyKey) return { provider: "tavily" as const, apiKey: tavilyKey };
-
-      const serperKey = getKeyForProvider("serper")?.key;
-      if (serperKey) return { provider: "serper" as const, apiKey: serperKey };
-
-      const braveKey = getKeyForProvider("brave")?.key;
-      if (braveKey) return { provider: "brave" as const, apiKey: braveKey };
-
-      const searxngBaseUrl = getKeyForProvider("searxng")?.key;
-      if (searxngBaseUrl) return { provider: "searxng" as const, baseUrl: searxngBaseUrl };
-
-      return undefined;
-    })();
-
     const contextMessages = await buildContextMessages(
       getTextFromMessageContent(messageContent),
       chatId
@@ -316,6 +303,10 @@ export function useChat(chatId: string) {
       parentId: parentUserMessageId,
     });
 
+    // Set streaming state for real-time UI updates
+    setStreamingMessage(assistantMessage.id);
+
+    try {
     // Call API route for streaming
     const response = await fetch("/api/chat", {
       method: "POST",
@@ -329,8 +320,7 @@ export function useChat(chatId: string) {
         modelId,
         messages: llmMessages,
         enabledTools,
-        webSearch: webSearchConfig,
-        mcpServers: await getEnabledMcpServers(),
+        mcpServers: await getActiveMcpServersForChat(chat.activeMcpServerIds),
       }),
     });
 
@@ -342,6 +332,7 @@ export function useChat(chatId: string) {
     const reader = response.body?.getReader();
     const decoder = new TextDecoder();
     let fullContent = "";
+    let fullReasoning = ""; // For extended thinking / reasoning
     let inputTokens: number | undefined;
     let outputTokens: number | undefined;
     let actualCost: number | undefined; // Actual cost from provider (OpenRouter, etc.)
@@ -412,10 +403,24 @@ export function useChat(chatId: string) {
           if (parsed.type === "text-delta" && typeof parsed.textDelta === "string") {
             fullContent += parsed.textDelta;
 
-            // Real-time update: Update message in database immediately
-            await updateMessage(assistantMessage.id, {
-              content: fullContent,
-            });
+            // Real-time update: Update streaming store immediately for instant UI feedback
+            appendStreamingContent(parsed.textDelta);
+
+            // Batch database updates (debounce to reduce write frequency)
+            if (dbUpdateTimeoutRef.current) {
+              clearTimeout(dbUpdateTimeoutRef.current);
+            }
+            dbUpdateTimeoutRef.current = setTimeout(() => {
+              updateMessage(assistantMessage.id, {
+                content: fullContent,
+              });
+            }, 150); // Update DB every 150ms max
+          }
+
+          // Handle reasoning/thinking events (from extended thinking models like Claude)
+          if (parsed.type === "reasoning" && typeof parsed.textDelta === "string") {
+            fullReasoning += parsed.textDelta;
+            appendStreamingReasoning(parsed.textDelta);
           }
 
           if (parsed.type === "tool-call") {
@@ -427,6 +432,8 @@ export function useChat(chatId: string) {
               args: parsed.args,
               startTime: now, // Add start time
             });
+            // Update streaming store for real-time UI
+            setStreamingToolCalls([...toolCalls]);
             await updateMessage(assistantMessage.id, {
               toolCalls: [...toolCalls],
             });
@@ -444,6 +451,8 @@ export function useChat(chatId: string) {
               result: parsed.result,
               endTime: now, // Add end time
             });
+            // Update streaming store for real-time UI
+            setStreamingToolResults([...toolResults]);
             await updateMessage(assistantMessage.id, {
               toolResults: [...toolResults],
             });
@@ -528,6 +537,7 @@ export function useChat(chatId: string) {
     // Update the assistant message with full content and metadata
     await updateMessage(assistantMessage.id, {
       content: fullContent,
+      reasoning: fullReasoning || undefined,
       inputTokens: inputTokens || 0,
       outputTokens: outputTokens || 0,
       cost,
@@ -627,15 +637,43 @@ export function useChat(chatId: string) {
       }));
       generateAndApplySummary({ chatId, messages: aiMessages, keys }).catch(console.error);
     }
-  }, [chatId, getKeyForProvider, keys, scheduleMemoryExtraction]);
+    } finally {
+      // Always clear streaming state and pending timeouts, even on error
+      if (dbUpdateTimeoutRef.current) {
+        clearTimeout(dbUpdateTimeoutRef.current);
+        dbUpdateTimeoutRef.current = null;
+      }
+      clearStreaming();
+    }
+  }, [chatId, getKeyForProvider, keys, scheduleMemoryExtraction, setStreamingMessage, appendStreamingContent, appendStreamingReasoning, setStreamingToolCalls, setStreamingToolResults, clearStreaming]);
 
   const sendMessage = async (content: MessageContent, attachments?: Array<{ name: string; content: string }>) => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const chat = await getChatById(chatId);
+      let chat = await getChatById(chatId);
       if (!chat) throw new Error("Chat not found");
+
+      // Check for @agent mention - if found, switch to that agent
+      const messageText = getTextFromMessageContent(content);
+      const agentMentionMatch = messageText.match(/@agent:([^\[]+)\[([^\]]+)\]/);
+      if (agentMentionMatch) {
+        const mentionedAgentId = agentMentionMatch[1];
+        const mentionedAgent = await getAgentById(mentionedAgentId);
+        if (mentionedAgent) {
+          // Switch the chat to use the mentioned agent
+          await updateChat(chatId, {
+            agentId: mentionedAgent.id,
+            modelId: mentionedAgent.modelId || chat.modelId,
+            activeMcpServerIds: mentionedAgent.mcpServerIds || [],
+          });
+          // Refresh chat data after update
+          chat = await getChatById(chatId);
+          if (!chat) throw new Error("Chat not found after agent switch");
+        }
+      }
+
       if (chat.agentId) {
         incrementAgentUsage(chat.agentId).catch(() => { });
       }

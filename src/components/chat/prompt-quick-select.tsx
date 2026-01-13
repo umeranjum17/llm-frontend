@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Zap, Star, BarChart3, FileCode, Search, PenLine } from "lucide-react";
+import { Zap, Star, BarChart3, FileCode, Search, PenLine, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -21,6 +21,7 @@ interface PromptQuickSelectProps {
 }
 
 const CATEGORY_CONFIG: Record<string, { label: string; icon: React.ReactNode }> = {
+  creation: { label: "Creation", icon: <Sparkles className="h-3.5 w-3.5" /> },
   visualization: { label: "Visualization", icon: <BarChart3 className="h-3.5 w-3.5" /> },
   coding: { label: "Coding", icon: <FileCode className="h-3.5 w-3.5" /> },
   analysis: { label: "Analysis", icon: <Search className="h-3.5 w-3.5" /> },
@@ -54,7 +55,7 @@ export function PromptQuickSelect({ onSelect }: PromptQuickSelectProps) {
     onSelect(prompt);
   };
 
-  const categoryOrder = ["visualization", "coding", "analysis", "writing", "other"];
+  const categoryOrder = ["creation", "visualization", "coding", "analysis", "writing", "other"];
 
   return (
     <DropdownMenu>

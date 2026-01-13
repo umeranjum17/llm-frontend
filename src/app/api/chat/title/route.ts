@@ -26,19 +26,26 @@ export async function POST(req: Request) {
         // Construct the model instance
         let titleModel;
 
+        // Require user-provided API key for all providers
+        if (!apiKey) {
+            return new Response(JSON.stringify({ title: "New Chat" }), {
+                headers: { "Content-Type": "application/json" },
+            });
+        }
+
         // Helper to Create model based on provider
         if (providerId === "openai") {
             const openai = createOpenAI({
-                apiKey: apiKey || process.env.OPENAI_API_KEY,
+                apiKey,
                 baseURL: providerBaseUrl
             });
             titleModel = openai(configuredTitleModel);
         } else if (providerId === "anthropic") {
-            const anthropic = createAnthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY });
+            const anthropic = createAnthropic({ apiKey });
             titleModel = anthropic(configuredTitleModel);
         } else if (providerId === "openrouter") {
             const openrouter = createOpenAI({
-                apiKey: apiKey || process.env.OPENROUTER_API_KEY,
+                apiKey,
                 baseURL: "https://openrouter.ai/api/v1",
             });
             // Use configured model or default to cheapest option

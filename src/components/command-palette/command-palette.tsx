@@ -23,6 +23,9 @@ import {
   RefreshCw,
   ArrowRightLeft,
   GraduationCap,
+  Eye,
+  Brain,
+  Wrench,
 } from "lucide-react";
 import { useUIStore } from "@/stores/ui-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -35,6 +38,30 @@ import { useApiKeysStore } from "@/stores/api-keys-store";
 import { isModelIdCompatibleWithProviderId, pickBestProviderId } from "@/lib/ai/provider-routing";
 import { toast } from "sonner";
 import Fuse from "fuse.js";
+import { getModelCapabilities } from "@/lib/constants/model-capabilities";
+import { formatModelCost } from "@/components/model-picker/model-item";
+import { cn } from "@/lib/utils";
+
+// Capability badges for command palette items
+function ModelCapabilityBadges({ modelId }: { modelId: string }) {
+  const capabilities = getModelCapabilities(modelId);
+  if (!capabilities.supportsVision && !capabilities.supportsReasoning && !capabilities.supportsTools) {
+    return null;
+  }
+  return (
+    <div className="flex items-center gap-0.5 ml-2">
+      {capabilities.supportsVision && (
+        <span title="Vision"><Eye className="h-3 w-3 text-sky-500" /></span>
+      )}
+      {capabilities.supportsReasoning && (
+        <span title="Reasoning"><Brain className="h-3 w-3 text-purple-500" /></span>
+      )}
+      {capabilities.supportsTools && (
+        <span title="Tools"><Wrench className="h-3 w-3 text-amber-500" /></span>
+      )}
+    </div>
+  );
+}
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
@@ -235,19 +262,33 @@ export function CommandPalette() {
         {activeChatId && filteredModels.length > 0 && (
           <>
             <CommandGroup heading="Switch Model (Current Chat)">
-              {filteredModels.slice(0, 6).map((model) => (
-                <CommandItem
-                  key={`switch-${model.id}`}
-                  value={`switch ${model.name} ${model.id}`}
-                  onSelect={() => handleSwitchModel(model.id)}
-                >
-                  <ArrowRightLeft className="mr-2 h-4 w-4" />
-                  <span>{model.name}</span>
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    {model.provider}
-                  </span>
-                </CommandItem>
-              ))}
+              {filteredModels.slice(0, 6).map((model) => {
+                const costDisplay = formatModelCost(model.inputCost, model.outputCost);
+                const isFree = model.inputCost + model.outputCost === 0;
+                return (
+                  <CommandItem
+                    key={`switch-${model.id}`}
+                    value={`switch ${model.name} ${model.id}`}
+                    onSelect={() => handleSwitchModel(model.id)}
+                    className="py-2"
+                  >
+                    <ArrowRightLeft className="mr-2 h-4 w-4 shrink-0" />
+                    <span className="truncate">{model.name}</span>
+                    <ModelCapabilityBadges modelId={model.id} />
+                    <div className="ml-auto flex items-center gap-2 shrink-0">
+                      <span className={cn(
+                        "text-xs",
+                        isFree ? "text-green-500" : "text-muted-foreground"
+                      )}>
+                        {costDisplay}
+                      </span>
+                      <span className="text-xs text-muted-foreground/70">
+                        {model.provider}
+                      </span>
+                    </div>
+                  </CommandItem>
+                );
+              })}
             </CommandGroup>
             <CommandSeparator />
           </>
@@ -310,19 +351,33 @@ export function CommandPalette() {
 
         {/* Start New Chat with Model */}
         <CommandGroup heading="Start New Chat">
-          {filteredModels.slice(0, 8).map((model) => (
-            <CommandItem
-              key={`new-${model.id}`}
-              value={`new ${model.name} ${model.id}`}
-              onSelect={() => handleSelectModelNewChat(model.id)}
-            >
-              <Sparkles className="mr-2 h-4 w-4" />
-              <span>{model.name}</span>
-              <span className="ml-auto text-xs text-muted-foreground">
-                {model.provider}
-              </span>
-            </CommandItem>
-          ))}
+          {filteredModels.slice(0, 8).map((model) => {
+            const costDisplay = formatModelCost(model.inputCost, model.outputCost);
+            const isFree = model.inputCost + model.outputCost === 0;
+            return (
+              <CommandItem
+                key={`new-${model.id}`}
+                value={`new ${model.name} ${model.id}`}
+                onSelect={() => handleSelectModelNewChat(model.id)}
+                className="py-2"
+              >
+                <Sparkles className="mr-2 h-4 w-4 shrink-0" />
+                <span className="truncate">{model.name}</span>
+                <ModelCapabilityBadges modelId={model.id} />
+                <div className="ml-auto flex items-center gap-2 shrink-0">
+                  <span className={cn(
+                    "text-xs",
+                    isFree ? "text-green-500" : "text-muted-foreground"
+                  )}>
+                    {costDisplay}
+                  </span>
+                  <span className="text-xs text-muted-foreground/70">
+                    {model.provider}
+                  </span>
+                </div>
+              </CommandItem>
+            );
+          })}
         </CommandGroup>
       </CommandList>
     </CommandDialog>

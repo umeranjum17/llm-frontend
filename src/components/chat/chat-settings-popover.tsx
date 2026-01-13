@@ -1,7 +1,7 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { Settings, Bot, Brain, DollarSign, Swords, Tag, Check, FileText } from "lucide-react";
+import { SlidersHorizontal, Bot, Brain, DollarSign, Swords, Tag, Check, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -81,9 +81,9 @@ export function ChatSettingsPopover({
           variant="ghost"
           size="icon"
           className="h-8 w-8"
-          title="Chat settings"
+          title="Chat options"
         >
-          <Settings className="h-4 w-4" />
+          <SlidersHorizontal className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">

@@ -13,32 +13,50 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { getAllMcpServers, updateMcpServer } from "@/lib/db/queries";
+import { getAllMcpServers, getChatById, updateChat } from "@/lib/db/queries";
 import { toast } from "sonner";
 import { McpServer } from "@/lib/db/schema";
 
-export function ToolQuickToggle() {
+interface ToolQuickToggleProps {
+    chatId?: string;
+}
+
+export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
     const mcpServers = useLiveQuery(() => getAllMcpServers(), []);
+    const chat = useLiveQuery(() => chatId ? getChatById(chatId) : undefined, [chatId]);
 
     if (!mcpServers || mcpServers.length === 0) {
         return null;
     }
 
-    const enabledCount = mcpServers.filter((s) => s.enabled).length;
+    // If chat has activeMcpServerIds set, use those; otherwise fall back to globally enabled
+    const hasAgentMcpServers = chat?.activeMcpServerIds !== undefined;
+    const activeServerIds = hasAgentMcpServers
+        ? new Set(chat.activeMcpServerIds || [])
+        : new Set(mcpServers.filter(s => s.enabled).map(s => s.id));
+
+    const enabledCount = mcpServers.filter((s) => activeServerIds.has(s.id)).length;
     const totalCount = mcpServers.length;
 
     const toggleServer = async (server: McpServer) => {
-        const newEnabled = !server.enabled;
-        await updateMcpServer(server.id, { enabled: newEnabled });
+        if (!chatId) return;
+
+        // Update chat-specific active MCP servers
+        const currentActive = chat?.activeMcpServerIds ?? mcpServers.filter(s => s.enabled).map(s => s.id);
+        const newActive = currentActive.includes(server.id)
+            ? currentActive.filter(id => id !== server.id)
+            : [...currentActive, server.id];
+
+        await updateChat(chatId, { activeMcpServerIds: newActive });
         toast.success(
-            newEnabled
+            newActive.includes(server.id)
                 ? `${server.name} enabled`
-                : `${server.name} temporarily disabled`
+                : `${server.name} disabled`
         );
     };
 
-    const getStatusIcon = (server: McpServer) => {
-        if (!server.enabled) {
+    const getStatusIcon = (server: McpServer, isActive: boolean) => {
+        if (!isActive) {
             return null;
         }
         switch (server.status) {
@@ -54,8 +72,8 @@ export function ToolQuickToggle() {
         }
     };
 
-    const getToolCount = (server: McpServer) => {
-        if (!server.enabled) return null;
+    const getToolCount = (server: McpServer, isActive: boolean) => {
+        if (!isActive) return null;
         const tools = server.tools || [];
         const disabled = server.toolPolicy?.disabledTools?.length || 0;
         const active = tools.length - disabled;
@@ -95,49 +113,52 @@ export function ToolQuickToggle() {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <div className="max-h-[300px] overflow-y-auto py-1">
-                    {mcpServers.map((server) => (
-                        <div
-                            key={server.id}
-                            className="flex items-center justify-between px-2 py-2 hover:bg-accent rounded-sm transition-colors"
-                        >
-                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                                <div className={cn(
-                                    "h-5 w-5 rounded flex items-center justify-center shrink-0",
-                                    server.enabled ? "bg-primary/10" : "bg-muted"
-                                )}>
-                                    <Plug className={cn(
-                                        "h-3 w-3",
-                                        server.enabled ? "text-primary" : "text-muted-foreground"
-                                    )} />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                    <div className="flex items-center gap-1.5">
-                                        <span className="text-sm font-medium truncate">{server.name}</span>
-                                        {getStatusIcon(server)}
+                    {mcpServers.map((server) => {
+                        const isActive = activeServerIds.has(server.id);
+                        return (
+                            <div
+                                key={server.id}
+                                className="flex items-center justify-between px-2 py-2 hover:bg-accent rounded-sm transition-colors"
+                            >
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <div className={cn(
+                                        "h-5 w-5 rounded flex items-center justify-center shrink-0",
+                                        isActive ? "bg-primary/10" : "bg-muted"
+                                    )}>
+                                        <Plug className={cn(
+                                            "h-3 w-3",
+                                            isActive ? "text-primary" : "text-muted-foreground"
+                                        )} />
                                     </div>
-                                    {server.enabled && (
-                                        <div className="flex items-center gap-1 mt-0.5">
-                                            {getToolCount(server) && (
-                                                <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4">
-                                                    {getToolCount(server)} tools
-                                                </Badge>
-                                            )}
-                                            {server.status === "error" && server.error && (
-                                                <span className="text-[10px] text-destructive truncate">
-                                                    {server.error}
-                                                </span>
-                                            )}
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="text-sm font-medium truncate">{server.name}</span>
+                                            {getStatusIcon(server, isActive)}
                                         </div>
-                                    )}
+                                        {isActive && (
+                                            <div className="flex items-center gap-1 mt-0.5">
+                                                {getToolCount(server, isActive) && (
+                                                    <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4">
+                                                        {getToolCount(server, isActive)} tools
+                                                    </Badge>
+                                                )}
+                                                {server.status === "error" && server.error && (
+                                                    <span className="text-[10px] text-destructive truncate">
+                                                        {server.error}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
+                                <Switch
+                                    checked={isActive}
+                                    onCheckedChange={() => toggleServer(server)}
+                                    className="shrink-0 ml-2 scale-90"
+                                />
                             </div>
-                            <Switch
-                                checked={server.enabled}
-                                onCheckedChange={() => toggleServer(server)}
-                                className="shrink-0 ml-2 scale-90"
-                            />
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
                 {mcpServers.length === 0 && (
                     <div className="px-2 py-4 text-center text-sm text-muted-foreground">

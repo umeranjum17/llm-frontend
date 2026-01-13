@@ -821,6 +821,20 @@ export async function getEnabledMcpServers() {
   return await db.mcpServers.filter(server => server.enabled === true).toArray();
 }
 
+export async function getMcpServersByIds(ids: string[]) {
+  if (!ids || ids.length === 0) return [];
+  return await db.mcpServers.where('id').anyOf(ids).toArray();
+}
+
+export async function getActiveMcpServersForChat(activeMcpServerIds?: string[]) {
+  // If chat has specific active MCP servers, use those
+  if (activeMcpServerIds !== undefined) {
+    return await getMcpServersByIds(activeMcpServerIds);
+  }
+  // Otherwise fall back to globally enabled servers
+  return await getEnabledMcpServers();
+}
+
 export async function getAllMcpServers() {
   return await db.mcpServers.toArray();
 }

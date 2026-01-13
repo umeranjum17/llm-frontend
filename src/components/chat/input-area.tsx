@@ -110,16 +110,6 @@ export function InputArea({ chatId }: InputAreaProps) {
   const mentionItems = useMemo<MentionItem[]>(() => {
     const items: MentionItem[] = [];
 
-    // Web Search
-    items.push({
-      id: "web-search",
-      type: "action", // Changed from 'agent' to avoid @agent:... formatting
-      label: "Web Search",
-      value: "@web:",
-      description: "Search the internet",
-      metadata: { type: "web" }
-    });
-
     // Connectors
     if (activeConnectors.includes("notion")) {
       items.push({

@@ -5,11 +5,12 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Trash2, Pencil, Plus } from "lucide-react";
+import { Trash2, Pencil, Plus, Server, Wrench } from "lucide-react";
 import { getAllAgents, deleteAgent, updateAgent } from "@/lib/db/queries";
 import type { Agent } from "@/lib/db/schema";
 import { AgentEditorDialog } from "@/components/agents/agent-editor-dialog";
 import { toast } from "sonner";
+import { getModelById } from "@/lib/constants/models";
 
 export function AgentsSettings() {
   const [query, setQuery] = useState("");
@@ -76,18 +77,35 @@ export function AgentsSettings() {
             key={agent.id}
             className="flex items-center justify-between gap-4 rounded-lg border p-3"
           >
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-lg leading-none">{agent.avatar || "🤖"}</span>
                 <div className="font-medium truncate">{agent.name}</div>
                 {agent.isBuiltIn ? <Badge variant="secondary">Built-in</Badge> : null}
                 {!agent.isActive ? <Badge variant="outline">Disabled</Badge> : null}
               </div>
               {agent.description ? (
-                <div className="mt-1 text-xs text-muted-foreground line-clamp-2">
+                <div className="mt-1 text-xs text-muted-foreground line-clamp-1">
                   {agent.description}
                 </div>
               ) : null}
+              <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                <span>
+                  {agent.modelId ? getModelById(agent.modelId)?.name || agent.modelId.split("/").pop() : "Default model"}
+                </span>
+                {(agent.enabledTools?.length > 0 || (agent.mcpServerIds?.length ?? 0) > 0) && (
+                  <div className="flex items-center gap-1">
+                    <Wrench className="h-3 w-3" />
+                    <span>{agent.enabledTools?.length || 0} tools</span>
+                  </div>
+                )}
+                {(agent.mcpServerIds?.length ?? 0) > 0 && (
+                  <div className="flex items-center gap-1">
+                    <Server className="h-3 w-3" />
+                    <span>{agent.mcpServerIds?.length} MCP</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="shrink-0 flex items-center gap-2">
@@ -105,8 +123,7 @@ export function AgentsSettings() {
                   setEditingAgent(agent);
                   setEditorOpen(true);
                 }}
-                disabled={agent.isBuiltIn}
-                title={agent.isBuiltIn ? "Built-in agents cannot be edited" : "Edit agent"}
+                title={agent.isBuiltIn ? "Configure agent" : "Edit agent"}
               >
                 <Pencil className="h-4 w-4" />
               </Button>

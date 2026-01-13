@@ -2,7 +2,6 @@ import { streamText, tool, type CoreMessage } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
-import { webSearch } from "@/lib/tools/web-search";
 import { normalizeModelIdForProviderId } from "@/lib/ai/provider-routing";
 import { isCustomOpenAIProvider, resolveProvider } from "@/lib/providers";
 import { McpManager, type ToolMetadata } from "@/lib/mcp/mcp-manager";
@@ -49,13 +48,6 @@ const ChatRequestSchema = z.object({
     )
     .min(1),
   enabledTools: z.array(z.string()).optional(),
-  webSearch: z
-    .object({
-      provider: z.enum(["tavily", "serper", "brave", "searxng", "mock"]).optional(),
-      apiKey: z.string().optional(),
-      baseUrl: z.string().optional(),
-    })
-    .optional(),
   mcpServers: z.array(z.any()).optional(), // Config for MCP servers
 });
 
@@ -93,7 +85,6 @@ export async function POST(req: Request) {
       modelId,
       messages,
       enabledTools = [],
-      webSearch: webSearchConfig,
       mcpServers = [],
     } = parsedBody.data;
     const apiKey = req.headers.get("X-API-Key");
@@ -161,20 +152,6 @@ export async function POST(req: Request) {
     // Build tools object imperatively to avoid TypeScript spreading issues
     const allTools: Record<string, any> = {};
 
-    // Add web search tool if enabled
-    if (enabledTools.includes("web-search")) {
-      allTools.webSearch = tool({
-        description: "Search the web for current information",
-        parameters: z.object({
-          query: z.string().describe("The search query"),
-          maxResults: z.number().default(5).describe("Maximum number of results"),
-        }),
-        execute: async ({ query, maxResults }) => {
-          return await webSearch(query, maxResults, webSearchConfig);
-        },
-      });
-    }
-
     // Load MCP Tools (use singleton for connection pooling)
     const mcpManager = McpManager.getInstance();
     let mcpMetadata: ToolMetadata[] = [];
@@ -199,13 +176,6 @@ export async function POST(req: Request) {
 
     // Build instruction messages for tools
     const toolInstructions: CoreMessage[] = [];
-
-    if (enabledTools.includes("web-search")) {
-      toolInstructions.push({
-        role: "system",
-        content: "If you use webSearch, call it as many times as needed (within the step limit), then include a final `Sources` section with numbered markdown links to the URLs you relied on. If you did not use webSearch, do not add a Sources section.",
-      });
-    }
 
     // Add MCP tool instructions if any MCP tools are loaded
     if (mcpMetadata.length > 0) {

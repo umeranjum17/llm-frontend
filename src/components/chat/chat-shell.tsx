@@ -14,6 +14,7 @@ import {
   updateModelLastUsed,
   getMessages,
   getAllModelAliases,
+  getAgentById,
 } from "@/lib/db/queries";
 import { MODELS, type Model, getModelById } from "@/lib/constants/models";
 import { MessageList } from "./message-list";
@@ -38,6 +39,7 @@ import {
   Maximize2,
   Minimize2,
   Columns2,
+  Bot,
 } from "lucide-react";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { ArtifactShell } from "@/components/artifacts/artifact-shell";
@@ -58,7 +60,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/empty-state";
-import { MessageSquare } from "lucide-react";
+import { MessageSquare, Eye, Brain, Wrench } from "lucide-react";
+import { getModelCapabilities } from "@/lib/constants/model-capabilities";
+import { formatModelCost } from "@/components/model-picker/model-item";
 
 export function ChatShell() {
   const router = useRouter();
@@ -107,6 +111,12 @@ export function ChatShell() {
     [activeChatId]
   );
 
+  // Get current agent
+  const currentAgent = useLiveQuery(
+    () => (chat?.agentId ? getAgentById(chat.agentId) : undefined),
+    [chat?.agentId]
+  );
+
   const messages = useLiveQuery(() => (activeChatId ? getMessages(activeChatId) : undefined), [activeChatId]);
 
   // Map messages to match ai SDK Message type (createdAt as Date)
@@ -124,7 +134,9 @@ export function ChatShell() {
   // Auto-summary hook
   useChatSummary(activeChatId || "", aiMessages, chat?.summary);
 
-  const currentModel = chat ? getModelById(chat.modelId) : undefined;
+  // Use agent's model if agent has one, otherwise use chat's model
+  const effectiveModelId = currentAgent?.modelId || chat?.modelId;
+  const currentModel = effectiveModelId ? getModelById(effectiveModelId) : undefined;
 
   useEffect(() => {
     if (!chat?.providerId) return;
@@ -372,8 +384,42 @@ export function ChatShell() {
                   </div>
                 </div>
 
-                {/* Right: Model Selector + Settings + Artifacts */}
+                {/* Right: Agent + Model Selector + Settings + Artifacts */}
                 <div className="flex items-center gap-1.5">
+                  {/* Agent Selector */}
+                  {!isArenaMode && chat && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-2 px-3 text-xs font-medium border-border/50"
+                      onClick={() => setAgentPickerOpen(true)}
+                    >
+                      <div className="flex items-center gap-2">
+                        {currentAgent ? (
+                          <>
+                            <span className="text-sm leading-none">{currentAgent.avatar || "🤖"}</span>
+                            <div className="flex flex-col items-start leading-none">
+                              <span className="max-w-[80px] sm:max-w-[120px] truncate font-medium">
+                                {currentAgent.name}
+                              </span>
+                              {currentAgent.modelId && (
+                                <span className="text-[10px] text-muted-foreground">
+                                  {getModelById(currentAgent.modelId)?.name || currentAgent.modelId.split("/").pop()}
+                                </span>
+                              )}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <Bot className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-muted-foreground">Agent</span>
+                          </>
+                        )}
+                      </div>
+                    </Button>
+                  )}
+
+                  {/* Model Selector */}
                   {!isArenaMode && chat && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -443,26 +489,48 @@ export function ChatShell() {
                           </DropdownMenuLabel>
                           <DropdownMenuSeparator />
                           {quickSwitchModels.length > 0 ? (
-                            quickSwitchModels.map((model, idx) => (
-                              <DropdownMenuItem
-                                key={model.id}
-                                onClick={() => handleQuickModelChange(model.id)}
-                                className="cursor-pointer"
-                              >
-                                <div className="flex w-full items-center gap-2">
-                                  <span className="w-5 h-5 rounded bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground shrink-0">
-                                    {idx + 1}
-                                  </span>
-                                  <span className="truncate flex-1">{model.name}</span>
-                                  <span className="text-xs text-muted-foreground shrink-0">
-                                    {model.provider}
-                                  </span>
-                                  {chat?.modelId === model.id && (
-                                    <Check className="h-4 w-4 text-primary shrink-0" />
-                                  )}
-                                </div>
-                              </DropdownMenuItem>
-                            ))
+                            quickSwitchModels.map((model, idx) => {
+                              const capabilities = getModelCapabilities(model.id);
+                              const costDisplay = formatModelCost(model.inputCost, model.outputCost);
+                              const isFree = model.inputCost + model.outputCost === 0;
+                              return (
+                                <DropdownMenuItem
+                                  key={model.id}
+                                  onClick={() => handleQuickModelChange(model.id)}
+                                  className="cursor-pointer py-2"
+                                >
+                                  <div className="flex w-full items-center gap-2">
+                                    <span className="w-5 h-5 rounded bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground shrink-0">
+                                      {idx + 1}
+                                    </span>
+                                    <span className="truncate flex-1">{model.name}</span>
+                                    <div className="flex items-center gap-0.5 shrink-0">
+                                      {capabilities.supportsVision && (
+                                        <span title="Vision"><Eye className="h-3 w-3 text-sky-500" /></span>
+                                      )}
+                                      {capabilities.supportsReasoning && (
+                                        <span title="Reasoning"><Brain className="h-3 w-3 text-purple-500" /></span>
+                                      )}
+                                      {capabilities.supportsTools && (
+                                        <span title="Tools"><Wrench className="h-3 w-3 text-amber-500" /></span>
+                                      )}
+                                    </div>
+                                    <span className={cn(
+                                      "text-xs shrink-0",
+                                      isFree ? "text-green-500" : "text-muted-foreground"
+                                    )}>
+                                      {costDisplay}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground/70 shrink-0">
+                                      {model.provider}
+                                    </span>
+                                    {chat?.modelId === model.id && (
+                                      <Check className="h-4 w-4 text-primary shrink-0" />
+                                    )}
+                                  </div>
+                                </DropdownMenuItem>
+                              );
+                            })
                           ) : (
                             <div className="px-4 py-3 text-sm text-muted-foreground text-center">
                               No favorites or recent models.
@@ -500,7 +568,7 @@ export function ChatShell() {
                     </Badge>
                   )}
 
-                  <ToolQuickToggle />
+                  <ToolQuickToggle chatId={activeChatId} />
 
                   <ChatSettingsPopover
                     chatId={activeChatId}

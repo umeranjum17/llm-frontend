@@ -18,6 +18,13 @@ export async function POST(req: Request) {
             return new Response("No messages provided", { status: 400 });
         }
 
+        // Require user-provided API key
+        if (!apiKey) {
+            return new Response(JSON.stringify({ summary: "" }), {
+                headers: { "Content-Type": "application/json" },
+            });
+        }
+
         const configuredModel = DEFAULT_SUMMARY_MODELS[providerId] || "gpt-4o-mini";
         console.log(`[Summary] Using model ${configuredModel} for provider ${providerId}`);
 
@@ -25,16 +32,16 @@ export async function POST(req: Request) {
 
         if (providerId === "openai") {
             const openai = createOpenAI({
-                apiKey: apiKey || process.env.OPENAI_API_KEY,
+                apiKey,
                 baseURL: providerBaseUrl
             });
             summaryModel = openai(configuredModel);
         } else if (providerId === "anthropic") {
-            const anthropic = createAnthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY });
+            const anthropic = createAnthropic({ apiKey });
             summaryModel = anthropic(configuredModel);
         } else if (providerId === "openrouter") {
             const openrouter = createOpenAI({
-                apiKey: apiKey || process.env.OPENROUTER_API_KEY,
+                apiKey,
                 baseURL: "https://openrouter.ai/api/v1",
             });
             summaryModel = openrouter(configuredModel);

@@ -6,6 +6,64 @@ function now() {
 
 export const BUILTIN_PROMPTS: Prompt[] = [
   {
+    id: "prompt_builtin_generate_image",
+    title: "Generate Image",
+    category: "creation",
+    description: "Create an AI-generated image (use with image model).",
+    content: `Generate an image based on this description:
+
+{{description}}
+
+Style: {{style}}`,
+    variables: [
+      { name: "description", placeholder: "Describe the image (e.g., 'A serene mountain lake at sunset')" },
+      { name: "style", placeholder: "Art style (e.g., photorealistic, anime, oil painting)", defaultValue: "photorealistic" },
+    ],
+    tags: ["creation", "image", "ai-art"],
+    isFavorite: false,
+    isBuiltIn: true,
+    createdAt: now(),
+    updatedAt: now(),
+    usageCount: 0,
+  },
+  {
+    id: "prompt_builtin_create_react_app",
+    title: "Create React App",
+    category: "creation",
+    description: "Generate a complete React application with components.",
+    content: `Create a React application for the following:
+
+**App Description:**
+{{description}}
+
+**Requirements:**
+{{requirements}}
+
+**Output Format:**
+Please provide the code as a complete, runnable React application. Structure your response with:
+
+1. **App.tsx** - Main application component
+2. **Component files** - Any additional components needed
+3. **Styles** - CSS or Tailwind classes as appropriate
+
+Use modern React patterns:
+- Functional components with hooks
+- TypeScript for type safety
+- Clean, readable code with proper naming conventions
+
+Make the app interactive and visually appealing with good UX.`,
+    variables: [
+      { name: "description", placeholder: "What should the app do? (e.g., 'A todo list app with categories and due dates')" },
+      { name: "requirements", placeholder: "Specific features or constraints", defaultValue: "Use Tailwind CSS for styling, include responsive design" },
+    ],
+    tags: ["creation", "react", "coding", "app"],
+    isFavorite: false,
+    isBuiltIn: true,
+    createdAt: now(),
+    updatedAt: now(),
+    usageCount: 0,
+  },
+  {
     id: "prompt_builtin_code_review",
     title: "Code Review",
     category: "coding",

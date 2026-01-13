@@ -22,19 +22,7 @@ interface Tool {
 }
 
 const AVAILABLE_TOOLS: Tool[] = [
-  {
-    id: "web-search",
-    name: "Web Search",
-    description: "Search the web for information",
-    enabled: false,
-  },
-  // Future tools can be added here
-  // {
-  //   id: "code-execution",
-  //   name: "Code Execution",
-  //   description: "Execute code in a sandbox",
-  //   enabled: false,
-  // },
+  // Built-in tools can be added here
 ];
 
 interface ToolSelectorProps {

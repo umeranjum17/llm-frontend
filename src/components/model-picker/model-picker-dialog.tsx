@@ -16,10 +16,11 @@ import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Star, Check, ChevronRight, ChevronDown, RefreshCcw, TrendingUp, Code, Zap, DollarSign, Brain, BookOpen, Eye, Wrench, Sparkles, Palette } from "lucide-react";
+import { Search, Star, ChevronRight, ChevronDown, RefreshCcw, TrendingUp, Code, Zap, DollarSign, Brain, BookOpen, Palette } from "lucide-react";
 import { type Model, getModelById } from "@/lib/constants/models";
 import { cn } from "@/lib/utils";
 import { Virtuoso } from "react-virtuoso";
+import { ModelItem } from "./model-item";
 import {
   getFavoriteModels,
   getRecentModels,
@@ -693,13 +694,20 @@ export function ModelPickerDialog({
               );
               return (
                 <div className="px-5 py-1.5">
-                  <ModelCard
+                  <ModelItem
                     key={model.id}
                     model={model}
+                    variant="card"
                     isSelected={model.id === currentModelId}
                     isFavorite={item.forceFavorite ? true : isFavorite(model.id)}
+                    showFavoriteButton={true}
+                    showCapabilities={true}
+                    showCost={true}
+                    showContext={true}
+                    showDescription={true}
+                    showProviderBadge={true}
                     availableProviders={availableProviders}
-                    onSelect={() => handleSelectModel(model.id)}
+                    onClick={() => handleSelectModel(model.id)}
                     onToggleFavorite={(e) =>
                       handleToggleFavorite(model.id, model.category[0], e)
                     }
@@ -836,171 +844,3 @@ export function ModelPickerDialog({
   );
 }
 
-interface ModelCardProps {
-  model: Model;
-  isSelected: boolean;
-  isFavorite: boolean;
-  availableProviders: string[];
-  onSelect: () => void;
-  onToggleFavorite: (e: React.MouseEvent) => void;
-}
-
-function ModelCard({
-  model,
-  isSelected,
-  isFavorite,
-  availableProviders,
-  onSelect,
-  onToggleFavorite,
-}: ModelCardProps) {
-  const totalCost = model.inputCost + model.outputCost;
-  const costDisplay =
-    totalCost === 0
-      ? "Free"
-      : totalCost < 0.1
-        ? `$${totalCost.toFixed(3)}/1M`
-        : `$${totalCost.toFixed(2)}/1M`;
-
-  // Simplify provider labels for display
-  const providerBadges = availableProviders.slice(0, 3).map(p => {
-    if (p === 'openrouter') return 'OR';
-    if (p === 'anthropic') return 'Direct';
-    if (p === 'openai') return 'Direct';
-    if (p === 'google') return 'Direct';
-    return p.split('/')[0]?.slice(0, 4) || p;
-  });
-
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onSelect}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onSelect();
-        }
-      }}
-      className={cn(
-        "group relative w-full text-left rounded-xl border transition-all duration-200 outline-none hover:border-primary/50",
-        isSelected
-          ? "border-primary bg-primary/5 shadow-md ring-1 ring-primary/20"
-          : "bg-card hover:bg-muted/50 hover:shadow-sm"
-      )}
-    >
-      {/* Selection Indicator Stripe */}
-      <div
-        className={cn(
-          "absolute left-0 top-0 bottom-0 w-1 rounded-l-xl transition-colors",
-          isSelected ? "bg-primary" : "bg-transparent group-hover:bg-primary/30"
-        )}
-      />
-
-      {/* Capabilities Badges */}
-      {(() => {
-        const capabilities = getModelCapabilities(model.id);
-        return (capabilities.supportsVision || capabilities.supportsTools || capabilities.supportsReasoning) && (
-          <div className="absolute top-2 right-2 flex items-center gap-1">
-            {capabilities.supportsVision && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5" title="Vision">
-                <Eye className="h-3 w-3" />
-              </Badge>
-            )}
-            {capabilities.supportsTools && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5" title="Tools">
-                <Wrench className="h-3 w-3" />
-              </Badge>
-            )}
-            {capabilities.supportsReasoning && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5" title="Reasoning">
-                <Sparkles className="h-3 w-3" />
-              </Badge>
-            )}
-          </div>
-        );
-      })()}
-
-      <div className="p-4 pl-5 sm:p-5 sm:pl-6 flex flex-col gap-3">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1.5">
-              <h3 className={cn("font-semibold text-base sm:text-lg tracking-tight", isSelected && "text-primary")}>
-                {model.name}
-              </h3>
-              {model.category.includes("new") && (
-                <Badge variant="secondary" className="bg-blue-500/10 text-blue-600 dark:text-blue-400 h-5 text-[10px] px-1.5 border-blue-200 dark:border-blue-900;">
-                  NEW
-                </Badge>
-              )}
-            </div>
-
-            <div className="flex flex-wrap gap-y-1 gap-x-2 text-xs text-muted-foreground items-center">
-              <Badge variant="outline" className="text-[10px] h-5 px-1.5 font-medium bg-background/50">
-                {model.provider}
-              </Badge>
-              {providerBadges.length > 0 && (
-                <span className="text-[10px] text-muted-foreground/60">via</span>
-              )}
-              {providerBadges.map((badge, i) => (
-                <Badge
-                  key={i}
-                  variant="secondary"
-                  className="text-[9px] h-4 px-1 font-normal bg-muted/50"
-                >
-                  {badge}
-                </Badge>
-              ))}
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={onToggleFavorite}
-            className={cn(
-              "p-1.5 rounded-lg transition-all",
-              isFavorite
-                ? "text-yellow-500 bg-yellow-500/10 hover:bg-yellow-500/20"
-                : "text-muted-foreground/30 hover:text-yellow-500 hover:bg-yellow-500/10"
-            )}
-          >
-            <Star className={cn("h-4 w-4", isFavorite && "fill-current")} />
-          </button>
-        </div>
-
-        {model.description && (
-          <p className="text-sm text-muted-foreground/80 leading-relaxed line-clamp-2">
-            {model.description}
-          </p>
-        )}
-
-        <div className="pt-3 mt-1 border-t flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 sm:gap-6 text-xs text-muted-foreground font-medium">
-            <div className="flex items-center gap-1.5">
-              <span className="text-muted-foreground/50 uppercase tracking-wider text-[10px]">Context</span>
-              <span>{model.contextLength >= 1000 ? `${Math.round(model.contextLength / 1000)}k` : model.contextLength}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-muted-foreground/50 uppercase tracking-wider text-[10px]">Cost</span>
-              <span className={cn(totalCost === 0 && "text-green-600 dark:text-green-400")}>{costDisplay}</span>
-            </div>
-          </div>
-
-          <div className="flex gap-1.5">
-            {model.supportsVision && (
-              <div className="flex items-center gap-1 text-[10px] font-medium text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/30 px-2 py-0.5 rounded-full border border-sky-100 dark:border-sky-900">
-                <Zap className="h-3 w-3" />
-                <span>Vision</span>
-              </div>
-            )}
-            {model.supportsReasoning && (
-              <div className="flex items-center gap-1 text-[10px] font-medium text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/30 px-2 py-0.5 rounded-full border border-purple-100 dark:border-purple-900">
-                <TrendingUp className="h-3 w-3" />
-                <span>Reasoning</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}

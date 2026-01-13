@@ -36,6 +36,7 @@ export interface Chat {
   order?: number; // For manual ordering within folder
   reasoningLevel?: "low" | "medium" | "high" | "xhigh";
   enabledTools?: string[];
+  activeMcpServerIds?: string[]; // Active MCP servers for this chat (from agent or user selection)
   budgetCap?: number; // Max spend in USD
   totalCost?: number; // Running total cost in USD
   activeBranchLeafId?: string; // Currently selected conversation leaf
@@ -182,6 +183,11 @@ export interface Agent {
   systemPrompt: string;
   modelId?: string; // Override default model
   enabledTools: string[];
+  mcpServerIds: string[]; // Linked MCP servers for this agent
+  mcpToolPolicy?: {
+    // Per-tool enable/disable within linked servers
+    disabledTools: string[]; // Tool names to disable (denylist)
+  };
   knowledgeBaseIds: string[];
   parameters?: {
     temperature?: number;
