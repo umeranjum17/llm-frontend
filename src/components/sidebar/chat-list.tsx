@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -96,10 +96,14 @@ export function ChatList({ searchQuery, onChatSelect }: ChatListProps) {
   const tags = useLiveQuery(() => getAllTags(), []);
 
   // Batch fetch last messages for all chats (avoids N+1 queries)
-  const allChatIds = chats?.map(c => c.id) || [];
+  // Memoize the chat IDs string to prevent unnecessary re-subscriptions
+  const chatIdsKey = useMemo(() => chats?.map(c => c.id).join(',') ?? '', [chats]);
   const lastMessagesMap = useLiveQuery(
-    () => getLastMessagesForChats(allChatIds),
-    [allChatIds.join(',')]
+    () => {
+      const ids = chatIdsKey.split(',').filter(Boolean);
+      return ids.length > 0 ? getLastMessagesForChats(ids) : Promise.resolve(new Map());
+    },
+    [chatIdsKey]
   );
 
   // Use fuzzy search with Fuse.js

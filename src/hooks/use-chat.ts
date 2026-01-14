@@ -429,6 +429,8 @@ export function useChat(chatId: string) {
   const extractionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const dbUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const streamingClearTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pipelineClearTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Schedule memory extraction after assistant response (debounced)
   const scheduleMemoryExtraction = useCallback(async () => {
@@ -492,11 +494,27 @@ export function useChat(chatId: string) {
     return () => {
       window.removeEventListener("pagehide", handlePageHide);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      // Clean up all pending timeouts when chat changes or component unmounts
       if (extractionTimeoutRef.current) {
         clearTimeout(extractionTimeoutRef.current);
+        extractionTimeoutRef.current = null;
       }
+      if (dbUpdateTimeoutRef.current) {
+        clearTimeout(dbUpdateTimeoutRef.current);
+        dbUpdateTimeoutRef.current = null;
+      }
+      if (streamingClearTimeoutRef.current) {
+        clearTimeout(streamingClearTimeoutRef.current);
+        streamingClearTimeoutRef.current = null;
+      }
+      if (pipelineClearTimeoutRef.current) {
+        clearTimeout(pipelineClearTimeoutRef.current);
+        pipelineClearTimeoutRef.current = null;
+      }
+      // Clear streaming state immediately when switching chats
+      clearStreaming();
     };
-  }, [chatId]);
+  }, [chatId, clearStreaming]);
 
   const generateResponse = useCallback(async (
     messageContent: MessageContent,
@@ -569,7 +587,7 @@ export function useChat(chatId: string) {
         // Extract images from message content for vision-enabled pipeline steps
         const userImages = getImagesFromMessageContent(messageContent);
 
-        return await handlePipelineExecution(
+        await handlePipelineExecution(
           chatId,
           agent,
           apiKey,
@@ -588,12 +606,21 @@ export function useChat(chatId: string) {
           },
           mcpServers
         );
+        // Pipeline completed successfully - clear after delay for UI to catch up
+        if (pipelineClearTimeoutRef.current) {
+          clearTimeout(pipelineClearTimeoutRef.current);
+        }
+        pipelineClearTimeoutRef.current = setTimeout(() => {
+          clearPipeline();
+          pipelineClearTimeoutRef.current = null;
+        }, 1000);
+        return;
+      } catch (error) {
+        // Clear pipeline state immediately on error
+        clearPipeline();
+        throw error;
       } finally {
         abortControllerRef.current = null;
-        // Clear pipeline state after a short delay to allow UI to catch up
-        setTimeout(() => {
-          clearPipeline();
-        }, 2000);
       }
     }
 
@@ -1036,9 +1063,13 @@ export function useChat(chatId: string) {
       // Delay clearing streaming state to allow the UI to catch up
       // This fixes a race condition where Dexie's live query hasn't updated yet
       // and the MessageItem hasn't mounted to consume the streaming content
-      setTimeout(() => {
+      if (streamingClearTimeoutRef.current) {
+        clearTimeout(streamingClearTimeoutRef.current);
+      }
+      streamingClearTimeoutRef.current = setTimeout(() => {
         clearStreaming();
-      }, 100);
+        streamingClearTimeoutRef.current = null;
+      }, 150);
 
       // Refresh memory cache in background for next interaction
       // This keeps memories fresh without blocking the current response
@@ -1119,6 +1150,9 @@ export function useChat(chatId: string) {
 
     } catch (err) {
       handleError(err);
+      // Ensure all state is cleared on error
+      clearStreaming();
+      clearPipeline();
     } finally {
       setIsLoading(false);
     }
@@ -1151,6 +1185,8 @@ export function useChat(chatId: string) {
 
     } catch (err) {
       handleError(err);
+      clearStreaming();
+      clearPipeline();
     } finally {
       setIsLoading(false);
     }
@@ -1179,6 +1215,8 @@ export function useChat(chatId: string) {
 
     } catch (err) {
       handleError(err);
+      clearStreaming();
+      clearPipeline();
     } finally {
       setIsLoading(false);
       setContinuingMessageId(null);
@@ -1205,6 +1243,8 @@ export function useChat(chatId: string) {
       await generateResponse(parentUser.content, undefined, undefined, parentUser.id);
     } catch (err) {
       handleError(err);
+      clearStreaming();
+      clearPipeline();
     } finally {
       setIsLoading(false);
     }
@@ -1223,6 +1263,8 @@ export function useChat(chatId: string) {
       await generateResponse(userMessage.content, undefined, undefined, userMessageId);
     } catch (err) {
       handleError(err);
+      clearStreaming();
+      clearPipeline();
     } finally {
       setIsLoading(false);
     }
