@@ -52,7 +52,9 @@ function getShikiLanguage(lang: string): string {
 
 export function CodeBlock({ language, code, isStreaming = false }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(true);
+  // Start collapsed while streaming, expand when done
+  const [isExpanded, setIsExpanded] = useState(!isStreaming);
+  const [wasStreaming, setWasStreaming] = useState(isStreaming);
   const isSvgLang = language?.toLowerCase() === "svg";
   const [showPreview, setShowPreview] = useState(isSvgLang);
   const shikiLang = getShikiLanguage(language);
@@ -63,6 +65,15 @@ export function CodeBlock({ language, code, isStreaming = false }: CodeBlockProp
   const lastCodeRef = useRef(code);
   const setShowArtifacts = useUIStore((state) => state.setShowArtifacts);
   const setActiveArtifact = useUIStore((state) => state.setActiveArtifact);
+
+  // Auto-expand when streaming finishes
+  useEffect(() => {
+    if (wasStreaming && !isStreaming) {
+      // Streaming just finished - auto-expand
+      setIsExpanded(true);
+    }
+    setWasStreaming(isStreaming);
+  }, [isStreaming, wasStreaming]);
 
   useEffect(() => {
     // Check cache first - instant if available
@@ -133,9 +144,16 @@ export function CodeBlock({ language, code, isStreaming = false }: CodeBlockProp
       <div
         className={cn(
           "flex items-center justify-between bg-primary/5 border-b border-white/5 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-primary transition-[border-radius] duration-150",
-          isExpanded ? "rounded-t-lg" : "rounded-lg"
+          isExpanded ? "rounded-t-lg" : "rounded-lg",
+          isStreaming && !isExpanded && "relative overflow-hidden"
         )}
       >
+        {/* Streaming progress bar when collapsed */}
+        {isStreaming && !isExpanded && (
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary/20">
+            <div className="h-full bg-primary/60 animate-pulse" style={{ width: '100%' }} />
+          </div>
+        )}
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded)}
@@ -149,8 +167,11 @@ export function CodeBlock({ language, code, isStreaming = false }: CodeBlockProp
             "text-muted-foreground text-xs ml-1 transition-opacity duration-150",
             isExpanded ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
           )}>
-            ({lineCount} {lineCount === 1 ? 'line' : 'lines'})
-            {isStreaming && <span className="ml-1 animate-pulse">...</span>}
+            {isStreaming ? (
+              <span className="text-primary/70 animate-pulse">generating...</span>
+            ) : (
+              <>({lineCount} {lineCount === 1 ? 'line' : 'lines'})</>
+            )}
           </span>
         </button>
         <div className="flex items-center gap-0.5 sm:gap-1">
@@ -193,34 +214,35 @@ export function CodeBlock({ language, code, isStreaming = false }: CodeBlockProp
           </Button>
         </div>
       </div>
+      {/* Use grid for smooth expand/collapse without max-height limits */}
       <div
-        className={cn(
-          "overflow-hidden rounded-b-lg bg-[#24292e] transition-all duration-200 ease-out",
-          isExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
-        )}
+        className="grid transition-[grid-template-rows] duration-200 ease-out"
+        style={{ gridTemplateRows: isExpanded ? '1fr' : '0fr' }}
       >
-        {isSvgLang && showPreview ? (
-          <div className="p-6 flex items-center justify-center min-h-[200px] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-            <div
-              className="[&>svg]:w-full [&>svg]:h-auto [&>svg]:max-h-[300px] [&>svg]:min-w-[200px]"
-              style={{ width: '100%', maxWidth: '400px' }}
-              dangerouslySetInnerHTML={{ __html: code }}
-            />
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            {highlightedHtml ? (
+        <div className="overflow-hidden rounded-b-lg bg-[#24292e]">
+          {isSvgLang && showPreview ? (
+            <div className="p-6 flex items-center justify-center min-h-[200px] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
               <div
-                className="[&>pre]:m-0 [&>pre]:rounded-none [&>pre]:rounded-b-lg [&>pre]:bg-transparent [&>pre]:p-3 sm:[&>pre]:p-4 [&>pre]:text-[11px] sm:[&>pre]:text-[13px] [&_code]:text-[11px] sm:[&_code]:text-[13px]"
-                dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+                className="[&>svg]:w-full [&>svg]:h-auto [&>svg]:max-h-[300px] [&>svg]:min-w-[200px]"
+                style={{ width: '100%', maxWidth: '400px' }}
+                dangerouslySetInnerHTML={{ __html: code }}
               />
-            ) : (
-              <pre className="text-[#e1e4e8] p-3 sm:p-4 m-0 font-mono text-[11px] sm:text-[13px] leading-relaxed whitespace-pre-wrap break-words">
-                <code>{code}</code>
-              </pre>
-            )}
-          </div>
-        )}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              {highlightedHtml ? (
+                <div
+                  className="[&>pre]:m-0 [&>pre]:rounded-none [&>pre]:rounded-b-lg [&>pre]:bg-transparent [&>pre]:p-3 sm:[&>pre]:p-4 [&>pre]:text-[11px] sm:[&>pre]:text-[13px] [&_code]:text-[11px] sm:[&_code]:text-[13px]"
+                  dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+                />
+              ) : (
+                <pre className="text-[#e1e4e8] p-3 sm:p-4 m-0 font-mono text-[11px] sm:text-[13px] leading-relaxed whitespace-pre-wrap break-words">
+                  <code>{code}</code>
+                </pre>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

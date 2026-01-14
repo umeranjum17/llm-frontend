@@ -47,7 +47,12 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, isStre
           const className = String((child.props as { className?: unknown }).className || "");
           const match = /language-(\w+)/.exec(className);
           const language = match ? match[1] : "";
-          const code = String((child.props as { children?: unknown }).children || "").replace(/\n$/, "");
+          // Handle children that could be string, array of strings, or nested arrays
+          const rawChildren = (child.props as { children?: unknown }).children;
+          const code = (Array.isArray(rawChildren)
+            ? rawChildren.flat(Infinity).join("")
+            : String(rawChildren || "")
+          ).replace(/\n$/, "");
 
           // Handle mermaid diagrams
           if (language === "mermaid") {
