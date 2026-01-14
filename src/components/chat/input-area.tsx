@@ -606,6 +606,11 @@ export function InputArea({ chatId }: InputAreaProps) {
             chatId={chatId}
             inputContent={input}
             modelId={chat.modelId}
+            isPipelineAgent={(() => {
+              if (!chat.agentId || !agents) return false;
+              const agent = agents.find(a => a.id === chat.agentId);
+              return agent?.executionType === "pipeline";
+            })()}
           />
         )}
       </div>
@@ -651,26 +656,60 @@ function TokenCalculator({
   chatId,
   inputContent,
   modelId,
+  isPipelineAgent = false,
 }: {
   chatId: string;
   inputContent: string;
   modelId: string;
+  isPipelineAgent?: boolean;
 }) {
   const messages = useLiveQuery(() => getMessages(chatId), [chatId]);
   const model = getModelById(modelId);
 
   const { historyTokens, draftTokens } = useMemo(() => {
     if (!messages) return { historyTokens: 0, draftTokens: 0 };
+
+    // For pipeline agents, don't count image tokens heavily since they manage their own context per step
+    if (isPipelineAgent) {
+      // Just count text tokens, images are handled per-step by the pipeline
+      let textTokens = 0;
+      for (const message of messages) {
+        const content = message.content;
+        if (typeof content === "string") {
+          textTokens += countTokens(content);
+        } else if (Array.isArray(content)) {
+          for (const part of content) {
+            if (part.type === "text") {
+              textTokens += countTokens(part.text);
+            }
+            // Skip image_url parts - they don't accumulate in pipeline context the same way
+          }
+        }
+      }
+      return {
+        historyTokens: textTokens,
+        draftTokens: countTokens(inputContent),
+      };
+    }
+
     return {
       historyTokens: countMessagesTokens(messages),
       draftTokens: countTokens(inputContent),
     };
-  }, [messages, inputContent]);
+  }, [messages, inputContent, isPipelineAgent]);
 
   if (!model) return null;
 
   const totalUsed = historyTokens + draftTokens;
-  const isHighUsage = totalUsed > model.contextLength * 0.85;
+
+  // For pipeline agents, don't show context warning - each step manages its own context
+  // The main chat context doesn't limit pipeline execution the same way
+  const isHighUsage = !isPipelineAgent && totalUsed > model.contextLength * 0.85;
+
+  // For pipeline agents, don't show the token calculator at all since it's misleading
+  if (isPipelineAgent) {
+    return null;
+  }
 
   return (
     <div className="flex flex-col items-end gap-1">

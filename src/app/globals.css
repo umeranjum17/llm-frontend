@@ -251,6 +251,53 @@
   @apply my-6 border-border;
 }
 
+/* ReactFlow dark mode overrides */
+.react-flow {
+  --xy-background-color: transparent;
+  --xy-background-pattern-color: hsl(var(--muted-foreground) / 0.1);
+}
+
+.dark .react-flow {
+  --xy-background-color: transparent;
+  --xy-node-color: hsl(var(--card));
+  --xy-node-border-color: hsl(var(--border));
+}
+
+/* Ensure ReactFlow nodes are visible in dark mode */
+.react-flow__node {
+  background: transparent !important;
+}
+
+.react-flow__node > div {
+  background: hsl(var(--card)) !important;
+}
+
+/* ReactFlow edges */
+.react-flow__edge-path {
+  stroke: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* ReactFlow controls for dark mode */
+.dark .react-flow__controls {
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
+}
+
+.dark .react-flow__controls-button {
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
+  fill: hsl(var(--foreground));
+}
+
+.dark .react-flow__controls-button:hover {
+  background: hsl(var(--muted));
+}
+
+/* ReactFlow minimap for dark mode */
+.dark .react-flow__minimap {
+  background: hsl(var(--card));
+}
+
 /* Premium utility classes */
 @layer utilities {
 

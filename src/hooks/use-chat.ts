@@ -182,12 +182,13 @@ async function handlePipelineExecution(
   agent: Agent,
   apiKey: { key: string; baseUrl?: string } | undefined,
   userInput: string,
+  userImages?: string[],  // Base64 or URL images from the user message
   parentUserMessageId?: string,
   signal?: AbortSignal,
   pipelineActions?: {
     startPipeline: (steps: Array<{ id: string; name: string; type: "llm" | "image" | "tool" | "subagent" }>) => void;
-    setStepRunning: (stepIndex: number) => void;
-    setStepComplete: (stepIndex: number, output: any) => void;
+    setStepRunning: (stepIndex: number, input?: string) => void;
+    setStepComplete: (stepIndex: number, output: any, toolCalls?: Array<{ toolName: string; args: any; result?: any }>) => void;
     setStepError: (stepIndex: number, error: string) => void;
     completePipeline: (finalResult: any) => void;
     failPipeline: (error: string) => void;
@@ -196,6 +197,7 @@ async function handlePipelineExecution(
   mcpServers?: Array<{ id: string; name: string; url: string; apiKey?: string; enabled: boolean; type: "sse" | "stdio"; collection: "curated" | "custom"; toolPolicy?: { disabledTools?: string[] }; toolCaps?: number }>
 ): Promise<void> {
   const { addMessage, updateMessage, updateChat } = await import("@/lib/db/queries");
+  type PipelineExecutionStep = import("@/lib/db/schema").PipelineExecutionStep;
 
   if (!agent.pipeline?.steps?.length) {
     throw new Error("Agent has no pipeline steps configured");
@@ -212,6 +214,13 @@ async function handlePipelineExecution(
 
   // Update activeBranchLeafId immediately
   await updateChat(chatId, { activeBranchLeafId: assistantMessage.id });
+
+  // Track pipeline execution steps for persistence
+  const executionSteps: PipelineExecutionStep[] = agent.pipeline.steps.map((s) => ({
+    id: s.id,
+    name: s.name,
+    type: s.type,
+  }));
 
   // Start pipeline tracking in the store
   if (pipelineActions) {
@@ -234,6 +243,7 @@ async function handlePipelineExecution(
       body: JSON.stringify({
         pipeline: agent.pipeline,
         userInput,
+        userImages: userImages || [],  // Pass images for vision models
         chatId,
         providerBaseUrl: apiKey?.baseUrl,
         mcpServers,
@@ -275,8 +285,12 @@ async function handlePipelineExecution(
 
           switch (event.type) {
             case "step-start":
+              // Record input for this step
+              if (executionSteps[event.stepIndex]) {
+                executionSteps[event.stepIndex].input = event.input;
+              }
               if (pipelineActions) {
-                pipelineActions.setStepRunning(event.stepIndex);
+                pipelineActions.setStepRunning(event.stepIndex, event.input);
               }
               await updateMessage(assistantMessage.id, {
                 content: [{ type: "text", text: `🔄 ${event.step.name}...` }],
@@ -284,8 +298,15 @@ async function handlePipelineExecution(
               break;
 
             case "step-complete":
+              // Record output and tool calls for this step
+              if (executionSteps[event.stepIndex]) {
+                executionSteps[event.stepIndex].output = event.output;
+                if (event.toolCalls && event.toolCalls.length > 0) {
+                  executionSteps[event.stepIndex].toolCalls = event.toolCalls;
+                }
+              }
               if (pipelineActions) {
-                pipelineActions.setStepComplete(event.stepIndex, event.output);
+                pipelineActions.setStepComplete(event.stepIndex, event.output, event.toolCalls);
               }
               break;
 
@@ -331,7 +352,7 @@ async function handlePipelineExecution(
       }
     }
 
-    // Build final message content
+    // Build final message content and persist pipeline execution
     if (finalResult) {
       // Check if the result is an image object
       if (typeof finalResult === "object" && finalResult.type === "image" && finalResult.url) {
@@ -343,11 +364,21 @@ async function handlePipelineExecution(
           type: "image_url",
           image_url: { url: finalResult.url },
         });
-        await updateMessage(assistantMessage.id, { content: contentParts });
+        await updateMessage(assistantMessage.id, {
+          content: contentParts,
+          pipelineExecution: {
+            steps: executionSteps,
+            agentName: agent.name,
+          },
+        });
       } else {
         // Text result
         await updateMessage(assistantMessage.id, {
           content: typeof finalResult === "string" ? finalResult : JSON.stringify(finalResult),
+          pipelineExecution: {
+            steps: executionSteps,
+            agentName: agent.name,
+          },
         });
       }
     }
@@ -535,11 +566,15 @@ export function useChat(chatId: string) {
         // Get MCP servers for tool steps
         const mcpServers = await getActiveMcpServersForChat(chat.activeMcpServerIds || agent.mcpServerIds || []);
 
+        // Extract images from message content for vision-enabled pipeline steps
+        const userImages = getImagesFromMessageContent(messageContent);
+
         return await handlePipelineExecution(
           chatId,
           agent,
           apiKey,
           getTextFromMessageContent(messageContent),
+          userImages,  // Pass images for vision models in pipeline
           parentUserMessageId,
           abortControllerRef.current.signal,
           {

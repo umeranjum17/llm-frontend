@@ -1,12 +1,20 @@
 import { create } from "zustand";
 
+export interface PipelineToolCall {
+  toolName: string;
+  args: any;
+  result?: any;
+}
+
 export interface PipelineStepProgress {
   id: string;
   name: string;
   type: "llm" | "image" | "tool" | "subagent";
   status: "pending" | "running" | "complete" | "error";
+  input?: string;
   output?: any;
   error?: string;
+  toolCalls?: PipelineToolCall[];
 }
 
 export interface PipelineExecution {
@@ -46,8 +54,8 @@ interface StreamingState {
 
   // Pipeline actions
   startPipeline: (steps: Array<{ id: string; name: string; type: "llm" | "image" | "tool" | "subagent" }>) => void;
-  setStepRunning: (stepIndex: number) => void;
-  setStepComplete: (stepIndex: number, output: any) => void;
+  setStepRunning: (stepIndex: number, input?: string) => void;
+  setStepComplete: (stepIndex: number, output: any, toolCalls?: PipelineToolCall[]) => void;
   setStepError: (stepIndex: number, error: string) => void;
   completePipeline: (finalResult: any) => void;
   failPipeline: (error: string) => void;
@@ -128,11 +136,11 @@ export const useStreamingStore = create<StreamingState>((set, get) => ({
     streamingVersion: state.streamingVersion + 1,
   })),
 
-  setStepRunning: (stepIndex) => set((state) => {
+  setStepRunning: (stepIndex, input) => set((state) => {
     if (!state.pipelineExecution) return state;
     const steps = [...state.pipelineExecution.steps];
     if (steps[stepIndex]) {
-      steps[stepIndex] = { ...steps[stepIndex], status: "running" };
+      steps[stepIndex] = { ...steps[stepIndex], status: "running", input };
     }
     return {
       pipelineExecution: {
@@ -144,11 +152,16 @@ export const useStreamingStore = create<StreamingState>((set, get) => ({
     };
   }),
 
-  setStepComplete: (stepIndex, output) => set((state) => {
+  setStepComplete: (stepIndex, output, toolCalls) => set((state) => {
     if (!state.pipelineExecution) return state;
     const steps = [...state.pipelineExecution.steps];
     if (steps[stepIndex]) {
-      steps[stepIndex] = { ...steps[stepIndex], status: "complete", output };
+      steps[stepIndex] = {
+        ...steps[stepIndex],
+        status: "complete",
+        output,
+        ...(toolCalls && toolCalls.length > 0 ? { toolCalls } : {}),
+      };
     }
     return {
       pipelineExecution: {

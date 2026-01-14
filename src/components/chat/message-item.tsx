@@ -282,13 +282,27 @@ function ThinkingSection({
   );
 }
 
-/** Pipeline progress display section */
+/** Pipeline progress display section (during streaming) */
 function PipelineProgressSection({
   pipelineExecution,
 }: {
   pipelineExecution: PipelineExecution;
 }) {
+  const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
+
   if (!pipelineExecution) return null;
+
+  const toggleStep = (stepId: string) => {
+    setExpandedSteps((prev) => {
+      const next = new Set(prev);
+      if (next.has(stepId)) {
+        next.delete(stepId);
+      } else {
+        next.add(stepId);
+      }
+      return next;
+    });
+  };
 
   const getStepIcon = (status: string) => {
     switch (status) {
@@ -329,37 +343,116 @@ function PipelineProgressSection({
           </span>
         </div>
 
-        <div className="space-y-1.5">
-          {pipelineExecution.steps.map((step, index) => (
-            <div
-              key={step.id}
-              className={cn(
-                "flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors",
-                step.status === "running" && "bg-blue-500/10",
-                step.status === "complete" && "opacity-60",
-                step.status === "error" && "bg-red-500/10"
-              )}
-            >
-              {getStepIcon(step.status)}
-              <span className="text-sm">{getStepTypeIcon(step.type)}</span>
-              <span className={cn(
-                "text-sm flex-1",
-                step.status === "running" && "font-medium"
-              )}>
-                {step.name}
-              </span>
-              {step.status === "running" && (
-                <span className="text-xs text-muted-foreground animate-pulse">
-                  in progress...
-                </span>
-              )}
-              {step.status === "error" && step.error && (
-                <span className="text-xs text-red-500 truncate max-w-32">
-                  {step.error}
-                </span>
-              )}
-            </div>
-          ))}
+        <div className="space-y-1">
+          {pipelineExecution.steps.map((step, index) => {
+            const isExpanded = expandedSteps.has(step.id);
+            const hasDetails = step.input || step.output || (step.toolCalls && step.toolCalls.length > 0);
+            const canExpand = hasDetails && (step.status === "complete" || step.status === "running");
+
+            return (
+              <div key={step.id} className="space-y-0.5">
+                <div
+                  className={cn(
+                    "flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors",
+                    step.status === "running" && "bg-blue-500/10",
+                    step.status === "complete" && "bg-green-500/5",
+                    step.status === "error" && "bg-red-500/10",
+                    canExpand && "cursor-pointer hover:bg-blue-500/15"
+                  )}
+                  onClick={() => canExpand && toggleStep(step.id)}
+                >
+                  {/* Expand/collapse indicator */}
+                  {canExpand ? (
+                    isExpanded ? (
+                      <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                    )
+                  ) : (
+                    <div className="w-3" />
+                  )}
+                  {getStepIcon(step.status)}
+                  <span className="text-sm">{getStepTypeIcon(step.type)}</span>
+                  <span className={cn(
+                    "text-sm flex-1",
+                    step.status === "running" && "font-medium"
+                  )}>
+                    {step.name}
+                  </span>
+                  {step.status === "running" && (
+                    <span className="text-xs text-muted-foreground animate-pulse">
+                      in progress...
+                    </span>
+                  )}
+                  {step.status === "error" && step.error && (
+                    <span className="text-xs text-red-500 truncate max-w-32">
+                      {step.error}
+                    </span>
+                  )}
+                  {step.status === "complete" && step.toolCalls && step.toolCalls.length > 0 && (
+                    <span className="text-xs text-amber-600 dark:text-amber-400">
+                      🔧 {step.toolCalls.length} tool{step.toolCalls.length !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+
+                {/* Expanded details */}
+                {isExpanded && (
+                  <div className="ml-4 pl-3 border-l-2 border-blue-500/30 space-y-2 py-1">
+                    {/* Input */}
+                    {step.input && (
+                      <div className="space-y-0.5">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                          Input
+                        </div>
+                        <div className="text-xs bg-muted/50 rounded p-2 font-mono whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
+                          {step.input}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Tool calls */}
+                    {step.toolCalls && step.toolCalls.length > 0 && (
+                      <div className="space-y-1">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                          Tools Used
+                        </div>
+                        {step.toolCalls.map((tc, tcIndex) => (
+                          <div key={tcIndex} className="text-xs bg-amber-500/10 rounded p-2">
+                            <span className="text-amber-600 dark:text-amber-400 font-mono font-medium">
+                              {tc.toolName}
+                            </span>
+                            {tc.args && Object.keys(tc.args).length > 0 && (
+                              <div className="mt-1 text-muted-foreground font-mono text-[10px]">
+                                Args: {JSON.stringify(tc.args, null, 2)}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Output */}
+                    {step.output && (
+                      <div className="space-y-0.5">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                          Output
+                        </div>
+                        <div className="text-xs bg-green-500/10 rounded p-2 whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
+                          {typeof step.output === "string"
+                            ? step.output
+                            : typeof step.output === "object" && step.output?.type === "image"
+                              ? `🖼️ Image generated`
+                              : JSON.stringify(step.output, null, 2)
+                          }
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {pipelineExecution.error && (
@@ -368,6 +461,182 @@ function PipelineProgressSection({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Pipeline execution details (persisted, after completion) */
+function PipelineExecutionDetails({
+  pipelineExecution,
+}: {
+  pipelineExecution: {
+    steps: Array<{
+      id: string;
+      name: string;
+      type: "llm" | "image" | "tool" | "subagent";
+      input?: string;
+      output?: any;
+      toolCalls?: Array<{ toolName: string; args: any; result?: any }>;
+    }>;
+    agentName?: string;
+  };
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
+
+  if (!pipelineExecution?.steps?.length) return null;
+
+  const toggleStep = (stepId: string) => {
+    setExpandedSteps((prev) => {
+      const next = new Set(prev);
+      if (next.has(stepId)) {
+        next.delete(stepId);
+      } else {
+        next.add(stepId);
+      }
+      return next;
+    });
+  };
+
+  const getStepTypeIcon = (type: string) => {
+    switch (type) {
+      case "llm":
+        return "💬";
+      case "image":
+        return "🎨";
+      case "tool":
+        return "🔧";
+      case "subagent":
+        return "🤖";
+      default:
+        return "📝";
+    }
+  };
+
+  const totalToolCalls = pipelineExecution.steps.reduce(
+    (acc, step) => acc + (step.toolCalls?.length || 0),
+    0
+  );
+
+  return (
+    <div className="mt-3 border rounded-lg bg-muted/30 overflow-hidden">
+      {/* Collapsed header */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
+      >
+        {isExpanded ? (
+          <ChevronDown className="h-4 w-4" />
+        ) : (
+          <ChevronRight className="h-4 w-4" />
+        )}
+        <Bot className="h-3.5 w-3.5" />
+        <span className="font-medium">
+          {pipelineExecution.agentName || "Pipeline"} ({pipelineExecution.steps.length} steps)
+        </span>
+        {totalToolCalls > 0 && (
+          <span className="text-xs text-amber-600 dark:text-amber-400">
+            🔧 {totalToolCalls} tool{totalToolCalls !== 1 ? "s" : ""}
+          </span>
+        )}
+      </button>
+
+      {/* Expanded content */}
+      {isExpanded && (
+        <div className="px-3 pb-3 border-t border-border/50 space-y-1.5 pt-2">
+          {pipelineExecution.steps.map((step, index) => {
+            const isStepExpanded = expandedSteps.has(step.id);
+            const hasDetails = step.input || step.output || (step.toolCalls && step.toolCalls.length > 0);
+
+            return (
+              <div key={step.id} className="space-y-0.5">
+                <div
+                  className={cn(
+                    "flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors bg-background/50",
+                    hasDetails && "cursor-pointer hover:bg-muted/50"
+                  )}
+                  onClick={() => hasDetails && toggleStep(step.id)}
+                >
+                  {/* Expand/collapse indicator */}
+                  {hasDetails ? (
+                    isStepExpanded ? (
+                      <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                    )
+                  ) : (
+                    <div className="w-3" />
+                  )}
+                  <Check className="h-3.5 w-3.5 text-green-500" />
+                  <span className="text-sm">{getStepTypeIcon(step.type)}</span>
+                  <span className="text-sm flex-1">{step.name}</span>
+                  {step.toolCalls && step.toolCalls.length > 0 && (
+                    <span className="text-xs text-amber-600 dark:text-amber-400">
+                      🔧 {step.toolCalls.length}
+                    </span>
+                  )}
+                </div>
+
+                {/* Expanded details */}
+                {isStepExpanded && hasDetails && (
+                  <div className="ml-4 pl-3 border-l-2 border-muted-foreground/20 space-y-2 py-1">
+                    {/* Input */}
+                    {step.input && (
+                      <div className="space-y-0.5">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                          Input
+                        </div>
+                        <div className="text-xs bg-muted/50 rounded p-2 font-mono whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
+                          {step.input}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Tool calls */}
+                    {step.toolCalls && step.toolCalls.length > 0 && (
+                      <div className="space-y-1">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                          Tools Used
+                        </div>
+                        {step.toolCalls.map((tc, tcIndex) => (
+                          <div key={tcIndex} className="text-xs bg-amber-500/10 rounded p-2">
+                            <span className="text-amber-600 dark:text-amber-400 font-mono font-medium">
+                              {tc.toolName}
+                            </span>
+                            {tc.args && Object.keys(tc.args).length > 0 && (
+                              <div className="mt-1 text-muted-foreground font-mono text-[10px]">
+                                Args: {JSON.stringify(tc.args, null, 2)}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Output */}
+                    {step.output && (
+                      <div className="space-y-0.5">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                          Output
+                        </div>
+                        <div className="text-xs bg-green-500/10 rounded p-2 whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
+                          {typeof step.output === "string"
+                            ? step.output
+                            : typeof step.output === "object" && step.output?.type === "image"
+                              ? `🖼️ Image generated`
+                              : JSON.stringify(step.output, null, 2)
+                          }
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -645,12 +914,9 @@ export const MessageItem = memo(function MessageItem({
                 <div className="prose prose-sm dark:prose-invert max-w-none">
                   {isAssistant ? (
                     <>
-                      {isStreaming ? (
-                        // During streaming: show plain text for performance (no markdown parsing)
-                        <p className="whitespace-pre-wrap">{textContent}<span className="inline-block w-2 h-4 ml-0.5 bg-primary/70 animate-pulse" /></p>
-                      ) : (
-                        // After streaming: render full markdown
-                        <MarkdownRenderer content={textContent} />
+                      <MarkdownRenderer content={textContent} />
+                      {isStreaming && (
+                        <span className="inline-block w-2 h-4 ml-0.5 bg-primary/70 animate-pulse" />
                       )}
                     </>
                   ) : (
@@ -790,6 +1056,11 @@ export const MessageItem = memo(function MessageItem({
               {/* Tool calls/results - collapsible */}
               {!isEditing && isAssistant && toolEvents.length > 0 && (
                 <ToolCallsSection toolEvents={toolEvents} onCopySources={handleCopySources} />
+              )}
+
+              {/* Pipeline execution details (persisted, after completion) */}
+              {!isEditing && isAssistant && !isStreaming && message.pipelineExecution && (
+                <PipelineExecutionDetails pipelineExecution={message.pipelineExecution} />
               )}
 
               {/* Mobile Actions - Inside bubble */}

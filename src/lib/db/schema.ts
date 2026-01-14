@@ -59,6 +59,15 @@ export type MessageContentPart =
 
 export type MessageContent = string | MessageContentPart[];
 
+export interface PipelineExecutionStep {
+  id: string;
+  name: string;
+  type: "llm" | "image" | "tool" | "subagent";
+  input?: string;
+  output?: any;
+  toolCalls?: Array<{ toolName: string; args: any; result?: any }>;
+}
+
 export interface Message {
   id: string;
   chatId: string;
@@ -78,6 +87,10 @@ export interface Message {
   isIncomplete?: boolean; // Response was cut off mid-stream
   canContinue?: boolean; // Can continue this response
   rating?: "up" | "down";
+  pipelineExecution?: {
+    steps: PipelineExecutionStep[];
+    agentName?: string;
+  };
 }
 
 export interface ApiKey {
@@ -186,10 +199,15 @@ export interface PipelineStep {
   modelId?: string; // Model to use for this step
   systemPrompt?: string; // System prompt for this step
   providerId?: string; // Provider to use for this step (openrouter, anthropic, etc.)
+  enabledTools?: string[]; // Tool names available to this LLM step
+  mcpServerIds?: string[]; // MCP servers available to this LLM step
 
   // For image steps - generate image
   imageModelId?: string; // Image generation model
   imageProviderId?: string; // Provider for image generation
+  imageSize?: "256x256" | "512x512" | "1024x1024" | "1024x1792" | "1792x1024" | "auto"; // Image dimensions
+  imageQuality?: "standard" | "hd"; // Image quality
+  imageStyle?: "natural" | "vivid"; // DALL-E 3 style option
 
   // For subagent steps - invoke another agent
   agentId?: string; // Agent to invoke

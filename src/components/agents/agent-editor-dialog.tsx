@@ -15,15 +15,16 @@ import { MODELS } from "@/lib/constants/models";
 import { useModelsStore } from "@/stores/models-store";
 import type { Agent, McpServer, PipelineStep } from "@/lib/db/schema";
 import { PROVIDERS } from "@/lib/providers/registry";
-import { addAgent, updateAgent, getAllMcpServers, getMcpServerById } from "@/lib/db/queries";
+import { addAgent, updateAgent, getAllMcpServers, getMcpServerById, getAllAgents } from "@/lib/db/queries";
 import { toast } from "sonner";
-import { Eye, Brain, Wrench, Sparkles, Server, Loader2, AlertCircle, Image, Search, Check, Plus, Trash2, GripVertical, MessageSquare, ImageIcon, Bot, Settings2 } from "lucide-react";
+import { Eye, Brain, Wrench, Sparkles, Server, Loader2, AlertCircle, Image, Search, Check, Plus, Trash2, GripVertical, MessageSquare, ImageIcon, Bot, Settings2, LayoutGrid, List, ChevronDown, ChevronRight } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getModelCapabilities, isImageGenerationModel } from "@/lib/constants/model-capabilities";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatModelCost } from "@/components/model-picker/model-item";
 import { McpManager } from "@/lib/mcp/mcp-manager";
+import { PipelineCanvas } from "./pipeline";
 
 interface AgentEditorDialogProps {
   open: boolean;
@@ -59,6 +60,8 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
   // Pipeline state
   const [executionType, setExecutionType] = useState<"simple" | "pipeline" | "orchestrator">("simple");
   const [pipelineSteps, setPipelineSteps] = useState<PipelineStep[]>([]);
+  const [pipelineViewMode, setPipelineViewMode] = useState<"visual" | "form">("visual");
+  const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
 
   // MCP state
   const [loadingTools, setLoadingTools] = useState(false);
@@ -78,6 +81,9 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
 
   // Load all MCP servers (show all, not just enabled ones)
   const allMcpServers = useLiveQuery(() => getAllMcpServers(), []) || [];
+
+  // Load all agents for subagent selection
+  const allAgents = useLiveQuery(() => getAllAgents(), []) || [];
 
   // Initialize form when dialog opens
   useEffect(() => {
@@ -336,14 +342,17 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                 </Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="tools">
-              Tools
-              {mcpServerIds.length > 0 && (
-                <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">
-                  {enabledMcpToolsCount}
-                </Badge>
-              )}
-            </TabsTrigger>
+            {/* Hide Tools tab for pipeline agents - tools are per-step */}
+            {executionType !== "pipeline" && (
+              <TabsTrigger value="tools">
+                Tools
+                {mcpServerIds.length > 0 && (
+                  <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">
+                    {enabledMcpToolsCount}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <ScrollArea className="flex-1 mt-4 pr-4" style={{ maxHeight: "calc(90vh - 220px)" }}>
@@ -356,7 +365,6 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Agent name"
-                    disabled={isBuiltIn}
                   />
                 </div>
                 <div className="space-y-2">
@@ -365,7 +373,6 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                     value={avatar}
                     onChange={(e) => setAvatar(e.target.value)}
                     placeholder="🤖"
-                    disabled={isBuiltIn}
                   />
                 </div>
 
@@ -375,7 +382,6 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="What does this agent do?"
-                    disabled={isBuiltIn}
                   />
                 </div>
 
@@ -386,13 +392,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                     onChange={(e) => setSystemPrompt(e.target.value)}
                     className="min-h-[140px]"
                     placeholder="Define the agent behavior..."
-                    disabled={isBuiltIn}
                   />
-                  {isBuiltIn && (
-                    <p className="text-xs text-muted-foreground">
-                      System prompt cannot be modified for built-in agents
-                    </p>
-                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -608,7 +608,6 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                 <Select
                   value={executionType}
                   onValueChange={(v) => setExecutionType(v as typeof executionType)}
-                  disabled={isBuiltIn}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select execution type" />
@@ -641,6 +640,48 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                         Define the steps this agent will execute sequentially
                       </p>
                     </div>
+                    <div className="flex items-center gap-2">
+                      {/* View mode toggle */}
+                      <div className="flex items-center border rounded-lg p-0.5">
+                        <Button
+                          variant={pipelineViewMode === "visual" ? "secondary" : "ghost"}
+                          size="sm"
+                          className="h-7 px-2"
+                          onClick={() => setPipelineViewMode("visual")}
+                        >
+                          <LayoutGrid className="h-3.5 w-3.5 mr-1" />
+                          Visual
+                        </Button>
+                        <Button
+                          variant={pipelineViewMode === "form" ? "secondary" : "ghost"}
+                          size="sm"
+                          className="h-7 px-2"
+                          onClick={() => setPipelineViewMode("form")}
+                        >
+                          <List className="h-3.5 w-3.5 mr-1" />
+                          Form
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Visual Pipeline Editor */}
+                  {pipelineViewMode === "visual" && (
+                    <PipelineCanvas
+                      steps={pipelineSteps}
+                      onStepsChange={setPipelineSteps}
+                      modelOptions={modelOptions}
+                      mcpServers={allMcpServers}
+                      agents={allAgents}
+                      currentAgentId={agent?.id}
+                      isBuiltIn={isBuiltIn}
+                    />
+                  )}
+
+                  {/* Form-based Pipeline Editor */}
+                  {pipelineViewMode === "form" && (
+                  <>
+                  <div className="flex justify-end">
                     <Button
                       variant="outline"
                       size="sm"
@@ -655,8 +696,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                         };
                         setPipelineSteps([...pipelineSteps, newStep]);
                       }}
-                      disabled={isBuiltIn}
-                    >
+                      >
                       <Plus className="h-4 w-4 mr-1" />
                       Add Step
                     </Button>
@@ -671,14 +711,61 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                       </p>
                     </div>
                   ) : (
-                    <div className="space-y-3">
-                      {pipelineSteps.map((step, index) => (
-                        <div key={step.id} className="rounded-lg border p-3 space-y-3">
-                          <div className="flex items-center gap-2">
-                            <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
-                            <Badge variant="outline" className="shrink-0">
+                    <div className="space-y-2">
+                      {pipelineSteps.map((step, index) => {
+                        const isExpanded = expandedSteps.has(step.id);
+                        const StepIcon = step.type === "llm" ? MessageSquare : step.type === "image" ? ImageIcon : step.type === "tool" ? Wrench : Bot;
+                        const stepColor = step.type === "llm" ? "text-blue-500" : step.type === "image" ? "text-pink-500" : step.type === "tool" ? "text-amber-500" : "text-purple-500";
+
+                        return (
+                        <div key={step.id} className="rounded-lg border overflow-hidden">
+                          {/* Compact header - always visible */}
+                          <div
+                            className="flex items-center gap-2 p-2 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors"
+                            onClick={() => {
+                              const newExpanded = new Set(expandedSteps);
+                              if (isExpanded) {
+                                newExpanded.delete(step.id);
+                              } else {
+                                newExpanded.add(step.id);
+                              }
+                              setExpandedSteps(newExpanded);
+                            }}
+                          >
+                            {isExpanded ? (
+                              <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                            )}
+                            <Badge variant="outline" className="shrink-0 h-5 w-5 p-0 flex items-center justify-center text-[10px]">
                               {index + 1}
                             </Badge>
+                            <StepIcon className={`h-3.5 w-3.5 shrink-0 ${stepColor}`} />
+                            <span className="font-medium text-sm truncate flex-1">{step.name || `Step ${index + 1}`}</span>
+                            <Badge variant="secondary" className="text-[10px] h-5 shrink-0">
+                              {step.type.toUpperCase()}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground truncate max-w-[100px]">
+                              → {step.outputVariable}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 shrink-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPipelineSteps(pipelineSteps.filter((_, i) => i !== index));
+                              }}
+                                      >
+                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                            </Button>
+                          </div>
+
+                          {/* Expanded content */}
+                          {isExpanded && (
+                          <div className="p-3 space-y-3 border-t">
+                          <div className="flex items-center gap-2">
+                            <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
                             <Input
                               value={step.name}
                               onChange={(e) => {
@@ -688,8 +775,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                               }}
                               placeholder="Step name"
                               className="flex-1 h-8"
-                              disabled={isBuiltIn}
-                            />
+                                      />
                             <Select
                               value={step.type}
                               onValueChange={(v) => {
@@ -697,8 +783,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                                 updated[index] = { ...step, type: v as PipelineStep["type"] };
                                 setPipelineSteps(updated);
                               }}
-                              disabled={isBuiltIn}
-                            >
+                                      >
                               <SelectTrigger className="w-28 h-8">
                                 <SelectValue />
                               </SelectTrigger>
@@ -729,17 +814,6 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                                 </SelectItem>
                               </SelectContent>
                             </Select>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 shrink-0"
-                              onClick={() => {
-                                setPipelineSteps(pipelineSteps.filter((_, i) => i !== index));
-                              }}
-                              disabled={isBuiltIn}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
                           </div>
 
                           {/* Model and Provider selection - only for LLM and Image steps */}
@@ -860,8 +934,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                                 }}
                                 placeholder="e.g., mcp_xyz123_search"
                                 className="h-8 text-xs"
-                                disabled={isBuiltIn}
-                              />
+                                          />
                               <p className="text-xs text-muted-foreground">
                                 The MCP tool name (check your connected MCP servers for available tools)
                               </p>
@@ -883,8 +956,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                                 }}
                                 placeholder={'{"query": "{{userInput}}"}'}
                                 className="min-h-[60px] text-xs font-mono"
-                                disabled={isBuiltIn}
-                              />
+                                          />
                               <p className="text-xs text-muted-foreground">
                                 Use {"{{variable}}"} to reference pipeline variables
                               </p>
@@ -905,8 +977,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                               }}
                               placeholder="e.g., agent_builtin_summarizer"
                               className="h-8 text-xs"
-                              disabled={isBuiltIn}
-                            />
+                                      />
                             <p className="text-xs text-muted-foreground">
                               The ID of another agent to invoke (check Agents page for available agents)
                             </p>
@@ -924,8 +995,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                               }}
                               placeholder="e.g., optimizedPrompt"
                               className="h-8"
-                              disabled={isBuiltIn}
-                            />
+                                      />
                           </div>
 
                           <div className="space-y-1">
@@ -939,8 +1009,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                               }}
                               placeholder="e.g., {{userInput}} or {{step1Output}}"
                               className="h-8"
-                              disabled={isBuiltIn}
-                            />
+                                      />
                             <p className="text-xs text-muted-foreground">
                               Use {"{{userInput}}"} for user message, {"{{stepName}}"} for previous step output
                             </p>
@@ -958,12 +1027,14 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                                 }}
                                 placeholder="Instructions for this step..."
                                 className="min-h-[80px] text-sm"
-                                disabled={isBuiltIn}
-                              />
+                                          />
                             </div>
                           )}
+                          </div>
+                          )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
 
@@ -977,11 +1048,14 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                       ))}
                     </div>
                   )}
+                  </>
+                  )}
                 </div>
               )}
             </TabsContent>
 
-            {/* Tools Tab */}
+            {/* Tools Tab - Hidden for pipeline agents */}
+            {executionType !== "pipeline" && (
             <TabsContent value="tools" className="space-y-6 mt-0">
               {/* MCP Servers */}
               <div className="space-y-3">
@@ -1096,6 +1170,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
                 </div>
               )}
             </TabsContent>
+            )}
           </ScrollArea>
         </Tabs>
 
