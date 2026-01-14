@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -17,7 +17,7 @@ import { useModelsStore } from "@/stores/models-store";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
-import { getAllChats, createChat } from "@/lib/db/queries";
+import { getAllChats, createChat, getChatById } from "@/lib/db/queries";
 import { getDefaultChatConfig } from "@/lib/ai/default-chat";
 import { toast } from "sonner";
 
@@ -77,6 +77,31 @@ export default function Home() {
       loadRecentChat();
     }
   }, [keysLoaded, keys.length]);
+
+  // Handle PWA resume - validate active chat still exists when app comes back to foreground
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === "visible") {
+        const activeChatId = useUIStore.getState().activeChatId;
+        if (activeChatId) {
+          // Verify the chat still exists (could have been deleted in another tab)
+          const chat = await getChatById(activeChatId);
+          if (!chat) {
+            // Chat was deleted - load most recent chat instead
+            const chats = await getAllChats();
+            if (chats.length > 0) {
+              useUIStore.getState().setActiveChatId(chats[0].id);
+            } else {
+              useUIStore.getState().setActiveChatId(null);
+            }
+          }
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 768px)");

@@ -431,7 +431,7 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
           );
         }}
         followOutput={isAtBottom ? "auto" : false}
-        alignToBottom={!streamingMessageId}
+        alignToBottom={true}
         atBottomThreshold={100}
         atBottomStateChange={handleAtBottomChange}
         className="scrollbar-thin"

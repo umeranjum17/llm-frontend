@@ -20,6 +20,8 @@ export function MobileNav() {
     }
 
     const handleNewChat = () => {
+        // Close sidebar first if open
+        setSidebarOpen(false);
         const event = new CustomEvent("lumina:new-chat");
         window.dispatchEvent(event);
     };
@@ -77,6 +79,8 @@ export const MobileNavInline = memo(function MobileNavInline() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
     const handleNewChat = () => {
+        // Close sidebar first if open
+        setSidebarOpen(false);
         const event = new CustomEvent("lumina:new-chat");
         window.dispatchEvent(event);
     };
