@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Copy, Check, Maximize2 } from "lucide-react";
+import { Copy, Check, Maximize2, ChevronRight, ChevronDown } from "lucide-react";
 import { codeToHtml } from "shiki";
 import { useUIStore } from "@/stores/ui-store";
+import { cn } from "@/lib/utils";
 
 // Global cache for highlighted code - survives component unmount/remount
 const highlightCache = new Map<string, string>();
@@ -36,10 +37,12 @@ function setCachedHighlight(code: string, language: string, html: string): void 
 interface CodeBlockProps {
   language: string;
   code: string;
+  isStreaming?: boolean;
 }
 
-export function CodeBlock({ language, code }: CodeBlockProps) {
+export function CodeBlock({ language, code, isStreaming = false }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(
     () => getCachedHighlight(code, language)
   );
@@ -110,46 +113,76 @@ export function CodeBlock({ language, code }: CodeBlockProps) {
     setArtifactsFullscreen(true);
   };
 
+  const lineCount = code.split('\n').length;
+
   return (
-    <div className="group relative my-4">
-      <div className="flex items-center justify-between rounded-t-lg bg-primary/5 border-b border-white/5 px-4 py-2 text-sm font-medium text-primary">
-        <span>{language || "text"}</span>
-        <div className="flex items-center gap-1">
+    <div className="group relative my-3 sm:my-4 contain-layout">
+      <div
+        className={cn(
+          "flex items-center justify-between bg-primary/5 border-b border-white/5 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-primary transition-[border-radius] duration-150",
+          isExpanded ? "rounded-t-lg" : "rounded-lg"
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="flex items-center gap-1.5 hover:text-primary/80 transition-colors"
+        >
+          <span className="transition-transform duration-150" style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+            <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+          </span>
+          <span>{language || "text"}</span>
+          <span className={cn(
+            "text-muted-foreground text-xs ml-1 transition-opacity duration-150",
+            isExpanded ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
+          )}>
+            ({lineCount} {lineCount === 1 ? 'line' : 'lines'})
+            {isStreaming && <span className="ml-1 animate-pulse">...</span>}
+          </span>
+        </button>
+        <div className="flex items-center gap-0.5 sm:gap-1">
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8"
+            className="h-7 w-7 sm:h-8 sm:w-8"
             onClick={handleOpenArtifact}
-            title="Open in Artifacts"
+            title="Open fullscreen"
           >
-            <Maximize2 className="h-4 w-4" />
+            <Maximize2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8"
+            className="h-7 w-7 sm:h-8 sm:w-8"
             onClick={handleCopy}
             title="Copy code"
           >
             {copied ? (
-              <Check className="h-4 w-4 text-green-500" />
+              <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-500" />
             ) : (
-              <Copy className="h-4 w-4" />
+              <Copy className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             )}
           </Button>
         </div>
       </div>
-      <div className="overflow-x-auto rounded-b-lg bg-[#24292e]">
-        {highlightedHtml ? (
-          <div
-            className="[&>pre]:m-0 [&>pre]:rounded-none [&>pre]:rounded-b-lg [&>pre]:bg-transparent"
-            dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-          />
-        ) : (
-          <pre className="text-[#e1e4e8] p-4 m-0 font-mono text-sm leading-relaxed whitespace-pre-wrap break-words">
-            <code>{code}</code>
-          </pre>
+      <div
+        className={cn(
+          "overflow-hidden rounded-b-lg bg-[#24292e] transition-all duration-200 ease-out",
+          isExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
         )}
+      >
+        <div className="overflow-x-auto">
+          {highlightedHtml ? (
+            <div
+              className="[&>pre]:m-0 [&>pre]:rounded-none [&>pre]:rounded-b-lg [&>pre]:bg-transparent [&>pre]:p-3 sm:[&>pre]:p-4 [&>pre]:text-[11px] sm:[&>pre]:text-[13px] [&_code]:text-[11px] sm:[&_code]:text-[13px]"
+              dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+            />
+          ) : (
+            <pre className="text-[#e1e4e8] p-3 sm:p-4 m-0 font-mono text-[11px] sm:text-[13px] leading-relaxed whitespace-pre-wrap break-words">
+              <code>{code}</code>
+            </pre>
+          )}
+        </div>
       </div>
     </div>
   );

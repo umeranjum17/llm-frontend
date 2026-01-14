@@ -533,9 +533,11 @@ export function useChat(chatId: string) {
       throw new Error("Chat not found");
     }
 
-    // Get agent's model if chat has an agent with a specific model set
+    // Get agent for system prompt and other settings
+    // Use chat.modelId for the model - agent's default is copied there when selected,
+    // and user changes via dropdown update chat.modelId
     const agent = chat.agentId ? await getAgentById(chat.agentId) : undefined;
-    const modelId = overrideModelId || agent?.modelId || chat.modelId;
+    const modelId = overrideModelId || chat.modelId;
 
     const llmProviderIds = Array.from(
       new Set(
@@ -704,6 +706,13 @@ export function useChat(chatId: string) {
     // Track content for abort handling (needs to be outside try block for catch access)
     let fullContent = "";
 
+    // Connection timeout for mobile networks (30 seconds)
+    const connectionTimeoutId = setTimeout(() => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    }, 30000);
+
     try {
     // Call API route for streaming
     const response = await fetch("/api/chat", {
@@ -722,6 +731,9 @@ export function useChat(chatId: string) {
       }),
       signal: abortControllerRef.current.signal,
     });
+
+    // Clear connection timeout once response is received
+    clearTimeout(connectionTimeoutId);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -1038,11 +1050,16 @@ export function useChat(chatId: string) {
       generateAndApplySummary({ chatId, messages: aiMessages, keys }).catch(console.error);
     }
     } catch (error) {
+      // Clear connection timeout on error
+      clearTimeout(connectionTimeoutId);
+
       // Handle abort gracefully - don't show as error
       if (error instanceof Error && error.name === "AbortError") {
-        // Update message to show it was cancelled
+        // Check if it was a timeout vs user cancellation
+        const isTimeout = !fullContent && abortControllerRef.current === null;
+        // Update message to show it was cancelled or timed out
         await updateMessage(assistantMessage.id, {
-          content: fullContent || "⏹️ Request cancelled",
+          content: fullContent || (isTimeout ? "⏱️ Connection timed out. Please try again." : "⏹️ Request cancelled"),
           isIncomplete: !!fullContent,
           canContinue: false,
         });

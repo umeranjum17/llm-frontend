@@ -35,7 +35,6 @@ import {
   ChevronDown,
   PanelRightOpen,
   PanelRightClose,
-  Menu,
   Maximize2,
   Minimize2,
   Columns2,
@@ -135,9 +134,9 @@ export function ChatShell() {
   // Auto-summary hook
   useChatSummary(activeChatId || "", aiMessages, chat?.summary);
 
-  // Use agent's model if agent has one, otherwise use chat's model
-  const effectiveModelId = currentAgent?.modelId || chat?.modelId;
-  const currentModel = effectiveModelId ? getModelById(effectiveModelId) : undefined;
+  // Always use chat's model - agent's default model is copied to chat.modelId when agent is selected
+  // If user changes model via dropdown, chat.modelId is updated and should take precedence
+  const currentModel = chat?.modelId ? getModelById(chat.modelId) : undefined;
 
   useEffect(() => {
     if (!chat?.providerId) return;
@@ -366,17 +365,8 @@ export function ChatShell() {
             {/* Header - Clean Single Row */}
             <header className="sticky top-0 z-20 border-b border-border/50 bg-card/80 backdrop-blur-xl supports-[backdrop-filter]:bg-card/60">
               <div className="flex items-center justify-between px-2 sm:px-4 h-11 sm:h-12">
-                {/* Left: Menu + Title */}
+                {/* Left: Title (hamburger menu removed - use bottom nav on mobile) */}
                 <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="sm:hidden h-8 w-8 shrink-0"
-                    onClick={() => window.dispatchEvent(new CustomEvent("lumina:open-sidebar"))}
-                    title="Open sidebar"
-                  >
-                    <Menu className="h-4 w-4" />
-                  </Button>
                   <div className="flex flex-col min-w-0">
                     <h1 className="text-xs sm:text-sm font-medium truncate text-foreground/90 max-w-[120px] sm:max-w-none">{chat?.title || "Chat"}</h1>
                     {chat?.tags && chat.tags.length > 0 && (

@@ -11,6 +11,8 @@ import { ProjectSelector } from "@/components/projects/project-selector";
 import { ChatList } from "./chat-list";
 import { useSidebarKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { getDefaultChatConfig } from "@/lib/ai/default-chat";
+import { createChat } from "@/lib/db/queries";
+import { toast } from "sonner";
 
 interface SidebarProps {
   onNavigate?: () => void;
@@ -26,9 +28,10 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   useSidebarKeyboardShortcuts();
 
   const handleNewChat = async () => {
+    // Close sidebar immediately for responsive feel
+    onNavigate?.();
+
     try {
-      // Import dynamically to avoid circular dependencies
-      const { createChat } = await import("@/lib/db/queries");
       const { defaultProviderId, defaultModelId, defaultModelIdsByProvider } =
         useSettingsStore.getState();
       const { providerId, modelId } = getDefaultChatConfig({
@@ -45,9 +48,9 @@ export function Sidebar({ onNavigate }: SidebarProps) {
       });
 
       setActiveChatId(newChat.id);
-      onNavigate?.();
     } catch (error) {
       console.error("Failed to create new chat:", error);
+      toast.error("Failed to create new chat. Please try again.");
     }
   };
 

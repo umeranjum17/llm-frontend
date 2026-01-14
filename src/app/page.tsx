@@ -17,7 +17,9 @@ import { useModelsStore } from "@/stores/models-store";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
-import { getAllChats } from "@/lib/db/queries";
+import { getAllChats, createChat } from "@/lib/db/queries";
+import { getDefaultChatConfig } from "@/lib/ai/default-chat";
+import { toast } from "sonner";
 
 export default function Home() {
   const router = useRouter();
@@ -103,24 +105,27 @@ export default function Home() {
   // Handle new chat event from mobile nav
   useEffect(() => {
     const handleNewChat = async () => {
-      const { createChat } = await import("@/lib/db/queries");
-      const { getDefaultChatConfig } = await import("@/lib/ai/default-chat");
-      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, currentProjectId } =
-        useSettingsStore.getState();
-      const { providerId, modelId } = getDefaultChatConfig({
-        defaultProviderId,
-        defaultModelId,
-        defaultModelIdsByProvider,
-      });
+      try {
+        const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, currentProjectId } =
+          useSettingsStore.getState();
+        const { providerId, modelId } = getDefaultChatConfig({
+          defaultProviderId,
+          defaultModelId,
+          defaultModelIdsByProvider,
+        });
 
-      const newChat = await createChat({
-        title: "New Chat",
-        modelId,
-        providerId: providerId || undefined,
-        projectId: currentProjectId,
-      });
+        const newChat = await createChat({
+          title: "New Chat",
+          modelId,
+          providerId: providerId || undefined,
+          projectId: currentProjectId,
+        });
 
-      useUIStore.getState().setActiveChatId(newChat.id);
+        useUIStore.getState().setActiveChatId(newChat.id);
+      } catch (error) {
+        console.error("Failed to create new chat:", error);
+        toast.error("Failed to create new chat. Please try again.");
+      }
     };
 
     window.addEventListener("lumina:new-chat", handleNewChat);

@@ -914,7 +914,7 @@ export const MessageItem = memo(function MessageItem({
                 <div className="prose prose-sm dark:prose-invert max-w-none">
                   {isAssistant ? (
                     <>
-                      <MarkdownRenderer content={textContent} />
+                      <MarkdownRenderer content={textContent} isStreaming={isStreaming} />
                       {isStreaming && (
                         <span className="inline-block w-2 h-4 ml-0.5 bg-primary/70 animate-pulse" />
                       )}

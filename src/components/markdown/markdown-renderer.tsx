@@ -18,9 +18,10 @@ import "katex/dist/katex.min.css";
 
 interface MarkdownRendererProps {
   content: string;
+  isStreaming?: boolean;
 }
 
-export const MarkdownRenderer = memo(function MarkdownRenderer({ content }: MarkdownRendererProps) {
+export const MarkdownRenderer = memo(function MarkdownRenderer({ content, isStreaming = false }: MarkdownRendererProps) {
   return (
     <ReactMarkdown
       remarkPlugins={[
@@ -58,7 +59,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content }: Mark
             return <ChartRenderer code={code} />;
           }
 
-          return <CodeBlock language={language} code={code} />;
+          return <CodeBlock language={language} code={code} isStreaming={isStreaming} />;
         },
         code: ({ node, className, children, ...props }) => (
           <code className={className} {...props}>

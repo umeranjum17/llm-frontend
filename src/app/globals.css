@@ -186,11 +186,11 @@
 
 /* Code block styles */
 .prose pre {
-  @apply bg-muted rounded-lg p-4 overflow-x-auto;
+  @apply bg-muted rounded-lg p-3 sm:p-4 overflow-x-auto text-[11px] sm:text-[13px];
 }
 
 .prose code {
-  @apply bg-muted px-1.5 py-0.5 rounded text-sm;
+  @apply bg-muted px-1 sm:px-1.5 py-0.5 rounded text-[11px] sm:text-sm;
 }
 
 .prose pre code {
@@ -379,4 +379,29 @@
   .active-scale:active {
     transform: scale(0.98);
   }
+
+  /* Layout containment for performance */
+  .contain-layout {
+    contain: layout;
+  }
+
+  .contain-paint {
+    contain: paint;
+  }
+
+  .contain-strict {
+    contain: strict;
+  }
+}
+
+/* Smooth streaming animations */
+@layer utilities {
+  .streaming-text {
+    will-change: contents;
+  }
+}
+
+/* Prevent layout shifts during streaming */
+.prose > *:last-child {
+  margin-bottom: 0;
 }

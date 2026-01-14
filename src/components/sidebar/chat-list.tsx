@@ -6,6 +6,7 @@ import {
   closestCenter,
   KeyboardSensor,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   DragEndEvent,
@@ -86,7 +87,8 @@ export function ChatList({ searchQuery, onChatSelect }: ChatListProps) {
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
@@ -269,55 +271,60 @@ export function ChatList({ searchQuery, onChatSelect }: ChatListProps) {
     const activeId = active.id as string;
     const overId = over.id as string;
 
-    // Handle folder reordering
-    if (activeId.startsWith("folder-") && overId.startsWith("folder-")) {
-      const folderIds = folders?.map(f => f.id) || [];
-      const activeIndex = folderIds.indexOf(activeId.replace("folder-", ""));
-      const overIndex = folderIds.indexOf(overId.replace("folder-", ""));
-
-      if (activeIndex !== -1 && overIndex !== -1) {
-        const newOrder = arrayMove(folderIds, activeIndex, overIndex);
-        await reorderFolders(newOrder);
-      }
-      return;
-    }
-
-    // Handle chat reordering within same folder
-    if (activeId.startsWith("chat-") && overId.startsWith("chat-")) {
-      const activeChatId = activeId.replace("chat-", "");
-      const overChatId = overId.replace("chat-", "");
-      const activeChat = chats?.find(c => c.id === activeChatId);
-      const overChat = chats?.find(c => c.id === overChatId);
-
-      if (activeChat && overChat && activeChat.folderId === overChat.folderId) {
-        const folderChats = chats?.filter(c => c.folderId === activeChat.folderId) || [];
-        const chatIds = folderChats.map(c => c.id);
-        const activeIndex = chatIds.indexOf(activeChatId);
-        const overIndex = chatIds.indexOf(overChatId);
+    try {
+      // Handle folder reordering
+      if (activeId.startsWith("folder-") && overId.startsWith("folder-")) {
+        const folderIds = folders?.map(f => f.id) || [];
+        const activeIndex = folderIds.indexOf(activeId.replace("folder-", ""));
+        const overIndex = folderIds.indexOf(overId.replace("folder-", ""));
 
         if (activeIndex !== -1 && overIndex !== -1) {
-          const newOrder = arrayMove(chatIds, activeIndex, overIndex);
-          await reorderChats(newOrder);
+          const newOrder = arrayMove(folderIds, activeIndex, overIndex);
+          await reorderFolders(newOrder);
         }
+        return;
       }
-      return;
-    }
 
-    // Handle moving chat to folder (drag chat onto folder)
-    if (activeId.startsWith("chat-") && overId.startsWith("folder-")) {
-      const chatId = activeId.replace("chat-", "");
-      const folderId = overId.replace("folder-", "");
-      await moveChatToFolder(chatId, folderId);
-      toast.success("Chat moved to folder");
-      return;
-    }
+      // Handle chat reordering within same folder
+      if (activeId.startsWith("chat-") && overId.startsWith("chat-")) {
+        const activeChatId = activeId.replace("chat-", "");
+        const overChatId = overId.replace("chat-", "");
+        const activeChat = chats?.find(c => c.id === activeChatId);
+        const overChat = chats?.find(c => c.id === overChatId);
 
-    // Handle moving chat out of folder (drag to "no-folder" zone)
-    if (activeId.startsWith("chat-") && overId === "no-folder") {
-      const chatId = activeId.replace("chat-", "");
-      await moveChatToFolder(chatId, null);
-      toast.success("Chat moved out of folder");
-      return;
+        if (activeChat && overChat && activeChat.folderId === overChat.folderId) {
+          const folderChats = chats?.filter(c => c.folderId === activeChat.folderId) || [];
+          const chatIds = folderChats.map(c => c.id);
+          const activeIndex = chatIds.indexOf(activeChatId);
+          const overIndex = chatIds.indexOf(overChatId);
+
+          if (activeIndex !== -1 && overIndex !== -1) {
+            const newOrder = arrayMove(chatIds, activeIndex, overIndex);
+            await reorderChats(newOrder);
+          }
+        }
+        return;
+      }
+
+      // Handle moving chat to folder (drag chat onto folder)
+      if (activeId.startsWith("chat-") && overId.startsWith("folder-")) {
+        const chatId = activeId.replace("chat-", "");
+        const folderId = overId.replace("folder-", "");
+        await moveChatToFolder(chatId, folderId);
+        toast.success("Chat moved to folder");
+        return;
+      }
+
+      // Handle moving chat out of folder (drag to "no-folder" zone)
+      if (activeId.startsWith("chat-") && overId === "no-folder") {
+        const chatId = activeId.replace("chat-", "");
+        await moveChatToFolder(chatId, null);
+        toast.success("Chat moved out of folder");
+        return;
+      }
+    } catch (error) {
+      console.error("Failed to reorder:", error);
+      toast.error("Failed to reorder. Please try again.");
     }
   };
 
@@ -594,10 +601,10 @@ function SortableFolderItem({ folder, isExpanded, onToggle, chatCount = 0, onEdi
       <button
         {...attributes}
         {...listeners}
-        className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors opacity-30 group-hover:opacity-100 touch-none select-none"
+        className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors opacity-30 group-hover:opacity-100 touch-none select-none p-1 -m-1"
         onClick={(e) => e.stopPropagation()}
       >
-        <GripVertical className="h-3 w-3" />
+        <GripVertical className="h-4 w-4 sm:h-3 sm:w-3" />
       </button>
       {isExpanded ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
       <Folder className="h-3.5 w-3.5" style={folder.color ? { color: folder.color } : undefined} />
@@ -729,10 +736,10 @@ function SortableChatItem({
           <button
             {...attributes}
             {...listeners}
-            className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors shrink-0 opacity-30 group-hover:opacity-100 touch-none select-none"
+            className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors shrink-0 opacity-30 group-hover:opacity-100 touch-none select-none p-1 -m-1"
             onClick={(e) => e.stopPropagation()}
           >
-            <GripVertical className="h-3 w-3" />
+            <GripVertical className="h-4 w-4 sm:h-3 sm:w-3" />
           </button>
 
           <Tooltip delayDuration={500}>
