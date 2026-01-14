@@ -163,7 +163,7 @@ line 3`;
     });
   });
 
-  it('can collapse and expand code block', () => {
+  it('can collapse and expand code block', async () => {
     render(<CodeBlock language="javascript" code="const x = 1;" />);
 
     // Initially expanded (code should be visible)
@@ -174,14 +174,23 @@ line 3`;
     expect(toggleButton).toBeInTheDocument();
     fireEvent.click(toggleButton!);
 
-    // After collapsing, code should not be visible
-    expect(screen.queryByText('const x = 1;')).not.toBeInTheDocument();
+    // After collapsing, the code container uses CSS to hide content (max-h-0, opacity-0)
+    // The element is still in DOM but visually hidden via CSS transitions
+    await waitFor(() => {
+      const codeContainer = document.querySelector('.bg-\\[\\#24292e\\]');
+      expect(codeContainer?.className).toContain('max-h-0');
+      expect(codeContainer?.className).toContain('opacity-0');
+    });
 
     // Click again to expand
     fireEvent.click(toggleButton!);
 
-    // Code should be visible again
-    expect(screen.getByText('const x = 1;')).toBeInTheDocument();
+    // Code should be visible again (max-h removed, opacity restored)
+    await waitFor(() => {
+      const codeContainer = document.querySelector('.bg-\\[\\#24292e\\]');
+      // When expanded, max-h-0 should not be present
+      expect(codeContainer?.className).not.toContain('max-h-0');
+    });
   });
 
   it('shows line count when collapsed', () => {

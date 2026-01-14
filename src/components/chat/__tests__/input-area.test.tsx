@@ -45,19 +45,24 @@ vi.mock('@/lib/connectors/registry', () => ({
   availableConnectors: [],
 }));
 
-vi.mock('@/components/chat/mention-textarea', () => ({
-  MentionTextarea: vi.forwardRef(({ value, onChange, placeholder, disabled, className }: any, ref: any) => (
-    <textarea
-      ref={ref}
-      value={value}
-      onChange={onChange}
-      placeholder={placeholder}
-      disabled={disabled}
-      className={className}
-      data-testid="mention-textarea"
-    />
-  )),
-}));
+vi.mock('@/components/chat/mention-textarea', () => {
+  const React = require('react');
+  const MockMentionTextarea = React.forwardRef(({ value, onChange, placeholder, disabled, className }: any, ref: any) => (
+    React.createElement('textarea', {
+      ref,
+      value,
+      onChange,
+      placeholder,
+      disabled,
+      className,
+      'data-testid': 'mention-textarea',
+    })
+  ));
+  MockMentionTextarea.displayName = 'MockMentionTextarea';
+  return {
+    MentionTextarea: MockMentionTextarea,
+  };
+});
 
 vi.mock('@/components/chat/prompt-quick-select', () => ({
   PromptQuickSelect: () => <div data-testid="prompt-quick-select">Prompt Select</div>,
