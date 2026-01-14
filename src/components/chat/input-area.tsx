@@ -233,14 +233,23 @@ export function InputArea({ chatId }: InputAreaProps) {
   // Register Cmd+Enter keyboard shortcut for sending message
   useChatKeyboardShortcuts(handleSubmitMessage);
 
-  // Auto-resize textarea logic is now likely handled inside MentionTextarea or we need to pass a ref and keep it here
-  // Since MentionTextarea forwards ref, we can keep using it.
+  // Auto-resize textarea using requestAnimationFrame to avoid layout thrashing
   useEffect(() => {
     const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.style.height = "auto";
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
-    }
+    if (!textarea) return;
+
+    const resize = () => {
+      const minHeight = 40; // min-h-10 = 40px
+      const maxHeight = 200;
+
+      // Reset height to measure content, but batch with rAF to avoid flash
+      textarea.style.height = "inherit";
+      const scrollHeight = Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight);
+      textarea.style.height = `${scrollHeight}px`;
+    };
+
+    const rafId = requestAnimationFrame(resize);
+    return () => cancelAnimationFrame(rafId);
   }, [input]);
 
   useEffect(() => {
@@ -665,6 +674,13 @@ function TokenCalculator({
   const messages = useLiveQuery(() => getMessages(chatId), [chatId]);
   const model = getModelById(modelId);
 
+  // Debounce input content to avoid recalculating tokens on every keystroke
+  const [debouncedInput, setDebouncedInput] = useState(inputContent);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedInput(inputContent), 300);
+    return () => clearTimeout(timer);
+  }, [inputContent]);
+
   const { historyTokens, draftTokens } = useMemo(() => {
     if (!messages) return { historyTokens: 0, draftTokens: 0 };
 
@@ -687,15 +703,15 @@ function TokenCalculator({
       }
       return {
         historyTokens: textTokens,
-        draftTokens: countTokens(inputContent),
+        draftTokens: countTokens(debouncedInput),
       };
     }
 
     return {
       historyTokens: countMessagesTokens(messages),
-      draftTokens: countTokens(inputContent),
+      draftTokens: countTokens(debouncedInput),
     };
-  }, [messages, inputContent, isPipelineAgent]);
+  }, [messages, debouncedInput, isPipelineAgent]);
 
   if (!model) return null;
 
