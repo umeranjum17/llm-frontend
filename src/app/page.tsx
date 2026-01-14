@@ -157,7 +157,7 @@ export default function Home() {
               defaultSize={isWideScreen ? 16 : 20}
               minSize={isWideScreen ? 12 : 15}
               maxSize={isWideScreen ? 26 : 32}
-              className="min-w-0 overflow-hidden"
+              className="min-w-0"
             >
               <Sidebar />
             </ResizablePanel>

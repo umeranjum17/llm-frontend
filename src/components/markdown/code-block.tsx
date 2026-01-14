@@ -1,10 +1,37 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Copy, Check, Maximize2 } from "lucide-react";
 import { codeToHtml } from "shiki";
 import { useUIStore } from "@/stores/ui-store";
+
+// Global cache for highlighted code - survives component unmount/remount
+const highlightCache = new Map<string, string>();
+const MAX_CACHE_SIZE = 200;
+
+function getCacheKey(code: string, language: string): string {
+  // Use length + hash of first/last chars for faster key generation
+  const len = code.length;
+  const prefix = code.slice(0, 50);
+  const suffix = code.slice(-50);
+  return `${language}:${len}:${prefix}:${suffix}`;
+}
+
+function getCachedHighlight(code: string, language: string): string | null {
+  return highlightCache.get(getCacheKey(code, language)) || null;
+}
+
+function setCachedHighlight(code: string, language: string, html: string): void {
+  const key = getCacheKey(code, language);
+  if (highlightCache.has(key)) {
+    highlightCache.delete(key);
+  } else if (highlightCache.size >= MAX_CACHE_SIZE) {
+    const firstKey = highlightCache.keys().next().value;
+    if (firstKey) highlightCache.delete(firstKey);
+  }
+  highlightCache.set(key, html);
+}
 
 interface CodeBlockProps {
   language: string;
@@ -13,24 +40,54 @@ interface CodeBlockProps {
 
 export function CodeBlock({ language, code }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
-  const [html, setHtml] = useState<string>("");
+  const [highlightedHtml, setHighlightedHtml] = useState<string | null>(
+    () => getCachedHighlight(code, language)
+  );
+  const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastCodeRef = useRef(code);
   const setShowArtifacts = useUIStore((state) => state.setShowArtifacts);
   const setActiveArtifact = useUIStore((state) => state.setActiveArtifact);
 
   useEffect(() => {
-    async function highlight() {
+    // Check cache first - instant if available
+    const cached = getCachedHighlight(code, language);
+    if (cached) {
+      setHighlightedHtml(cached);
+      lastCodeRef.current = code;
+      return;
+    }
+
+    // Clear pending timeout
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
+    }
+
+    // Debounce: wait for code to stabilize before highlighting
+    highlightTimeoutRef.current = setTimeout(async () => {
+      // Double-check code hasn't changed
+      if (lastCodeRef.current !== code) {
+        lastCodeRef.current = code;
+      }
+
       try {
         const highlighted = await codeToHtml(code, {
           lang: language || "text",
           theme: "github-dark",
         });
-        setHtml(highlighted);
-      } catch (error) {
-        // Fallback to plain text if highlighting fails
-        setHtml(`<pre><code>${code}</code></pre>`);
+        setCachedHighlight(code, language, highlighted);
+        setHighlightedHtml(highlighted);
+      } catch {
+        // Keep showing plain text on error
       }
-    }
-    highlight();
+    }, 300);
+
+    lastCodeRef.current = code;
+
+    return () => {
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
+    };
   }, [code, language]);
 
   const handleCopy = async () => {
@@ -38,6 +95,8 @@ export function CodeBlock({ language, code }: CodeBlockProps) {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const setArtifactsFullscreen = useUIStore((state) => state.setArtifactsFullscreen);
 
   const handleOpenArtifact = () => {
     setActiveArtifact({
@@ -48,6 +107,7 @@ export function CodeBlock({ language, code }: CodeBlockProps) {
       type: 'code',
     });
     setShowArtifacts(true);
+    setArtifactsFullscreen(true);
   };
 
   return (
@@ -79,10 +139,18 @@ export function CodeBlock({ language, code }: CodeBlockProps) {
           </Button>
         </div>
       </div>
-      <div
-        className="overflow-x-auto rounded-b-lg [&>pre]:my-0 [&>pre]:rounded-none [&>pre]:rounded-b-lg"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+      <div className="overflow-x-auto rounded-b-lg bg-[#24292e]">
+        {highlightedHtml ? (
+          <div
+            className="[&>pre]:m-0 [&>pre]:rounded-none [&>pre]:rounded-b-lg [&>pre]:bg-transparent"
+            dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+          />
+        ) : (
+          <pre className="text-[#e1e4e8] p-4 m-0 font-mono text-sm leading-relaxed whitespace-pre-wrap break-words">
+            <code>{code}</code>
+          </pre>
+        )}
+      </div>
     </div>
   );
 }

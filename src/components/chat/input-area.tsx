@@ -115,19 +115,6 @@ export function InputArea({ chatId }: InputAreaProps) {
 
     // === @ TRIGGER: Agents, Prompts, Connectors ===
 
-    // Connectors (@ trigger)
-    if (activeConnectors.includes("notion")) {
-      items.push({
-        id: "connector-notion",
-        type: "action",
-        label: "Search Notion",
-        value: "@notion:",
-        description: "Search your Notion workspace",
-        metadata: { type: "connector", connectorId: "notion" },
-        trigger: "@",
-      });
-    }
-
     // Agents (@ trigger)
     if (agents) {
       agents.forEach(a => {

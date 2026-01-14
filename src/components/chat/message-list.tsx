@@ -321,6 +321,7 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
     }
   }, [messageCount, isAtBottom]);
 
+
   const scrollToBottom = useCallback(() => {
     if (messageCount > 0) {
       virtuosoRef.current?.scrollToIndex({ index: messageCount - 1, behavior: "smooth" });
@@ -429,8 +430,9 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
             />
           );
         }}
-        followOutput={isAtBottom ? "smooth" : false}
-        alignToBottom
+        followOutput={isAtBottom ? "auto" : false}
+        alignToBottom={!streamingMessageId}
+        atBottomThreshold={100}
         atBottomStateChange={handleAtBottomChange}
         className="scrollbar-thin"
         components={{

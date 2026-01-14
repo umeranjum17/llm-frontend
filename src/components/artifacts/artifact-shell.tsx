@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
@@ -44,6 +44,7 @@ export function ArtifactShell() {
     );
 
     const [activeTab, setActiveTab] = useState("preview");
+    const iframeRef = useRef<HTMLIFrameElement>(null);
 
     // Determine artifact type for routing
     const isProject =
@@ -94,6 +95,17 @@ export function ArtifactShell() {
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [artifactsFullscreen, setArtifactsFullscreen]);
+
+    // Auto-focus iframe when HTML preview is active so keyboard events go to the game/app
+    useEffect(() => {
+        if (isHtml && activeTab === "preview" && iframeRef.current) {
+            // Small delay to ensure iframe is rendered
+            const timer = setTimeout(() => {
+                iframeRef.current?.focus();
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [isHtml, activeTab, activeArtifact?.id]);
 
     const handleDownload = () => {
         if (!activeArtifact) return;
@@ -336,12 +348,31 @@ export function ArtifactShell() {
                                     </ArtifactErrorBoundary>
                                 ) : isHtml ? (
                                     <ArtifactErrorBoundary fallbackTitle="Failed to load HTML preview">
-                                        <iframe
-                                            srcDoc={activeArtifact.code}
-                                            className="w-full h-full border-0 bg-white"
-                                            sandbox="allow-scripts allow-same-origin"
-                                            title="Preview"
-                                        />
+                                        <div
+                                            className="w-full h-full relative overflow-hidden"
+                                            onClick={() => iframeRef.current?.focus()}
+                                            onKeyDown={(e) => {
+                                                // Prevent keyboard events from bubbling to parent app
+                                                e.stopPropagation();
+                                            }}
+                                            onWheel={(e) => {
+                                                // Prevent scroll from affecting parent
+                                                e.stopPropagation();
+                                            }}
+                                        >
+                                            <iframe
+                                                ref={iframeRef}
+                                                srcDoc={activeArtifact.code}
+                                                className="absolute inset-0 w-full h-full border-0 bg-white focus:outline-none"
+                                                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+                                                title="Preview"
+                                                tabIndex={0}
+                                                onLoad={() => {
+                                                    // Focus iframe
+                                                    iframeRef.current?.focus();
+                                                }}
+                                            />
+                                        </div>
                                     </ArtifactErrorBoundary>
                                 ) : (
                                     <div className="h-full flex flex-col items-center justify-center text-center opacity-70 p-8">
