@@ -26,6 +26,15 @@ export interface PipelineExecution {
   error?: string;
 }
 
+export interface OptimisticMessage {
+  id: string;
+  content: any;
+  role: "user" | "assistant";
+  createdAt: number;
+  status?: "sending" | "switching-agent";
+  agentName?: string;
+}
+
 interface StreamingState {
   // The ID of the message currently being streamed
   streamingMessageId: string | null;
@@ -41,6 +50,8 @@ interface StreamingState {
   streamingVersion: number;
   // Pipeline execution state
   pipelineExecution: PipelineExecution | null;
+  // Optimistic user message (shown immediately before DB save)
+  optimisticMessage: OptimisticMessage | null;
 
   // Actions
   setStreamingMessage: (messageId: string | null) => void;
@@ -51,6 +62,9 @@ interface StreamingState {
   setStreamingToolCalls: (toolCalls: any[]) => void;
   setStreamingToolResults: (toolResults: any[]) => void;
   clearStreaming: () => void;
+  // Optimistic message actions
+  setOptimisticMessage: (message: OptimisticMessage | null) => void;
+  clearOptimisticMessage: () => void;
 
   // Pipeline actions
   startPipeline: (steps: Array<{ id: string; name: string; type: "llm" | "image" | "tool" | "subagent" }>) => void;
@@ -70,6 +84,7 @@ export const useStreamingStore = create<StreamingState>((set, get) => ({
   streamingToolResults: [],
   streamingVersion: 0,
   pipelineExecution: null,
+  optimisticMessage: null,
 
   setStreamingMessage: (messageId) => set({
     streamingMessageId: messageId,
@@ -118,7 +133,18 @@ export const useStreamingStore = create<StreamingState>((set, get) => ({
     streamingToolResults: [],
     streamingVersion: 0,
     pipelineExecution: null,
+    optimisticMessage: null,
   }),
+
+  setOptimisticMessage: (message) => set((state) => ({
+    optimisticMessage: message,
+    streamingVersion: state.streamingVersion + 1,
+  })),
+
+  clearOptimisticMessage: () => set((state) => ({
+    optimisticMessage: null,
+    streamingVersion: state.streamingVersion + 1,
+  })),
 
   // Pipeline actions
   startPipeline: (steps) => set((state) => ({

@@ -1,7 +1,7 @@
 
 import { useState, useCallback, useEffect, useMemo } from "react";
 import Fuse from "fuse.js";
-import { MentionItem, MentionType } from "./types";
+import { MentionItem, MentionType, TriggerChar } from "./types";
 
 interface UseMentionsProps {
     items: MentionItem[];
@@ -15,21 +15,31 @@ export function useMentions({ items, triggerChars = ["@", "#", "/"] }: UseMentio
     const [filteredItems, setFilteredItems] = useState<MentionItem[]>([]);
     const [triggerChar, setTriggerChar] = useState<string | null>(null);
 
-    const fuse = useMemo(() => new Fuse(items, {
+    // Filter items by trigger character first
+    const itemsForTrigger = useMemo(() => {
+        if (!triggerChar) return items;
+        return items.filter(item => {
+            // Default trigger is "@" if not specified
+            const itemTrigger = item.trigger || "@";
+            return itemTrigger === triggerChar;
+        });
+    }, [items, triggerChar]);
+
+    const fuse = useMemo(() => new Fuse(itemsForTrigger, {
         keys: ["label", "value", "description", "type"],
         threshold: 0.3,
-    }), [items]);
+    }), [itemsForTrigger]);
 
     useEffect(() => {
         if (!query) {
-            setFilteredItems(items.slice(0, 10)); // Show top 10 by default
+            setFilteredItems(itemsForTrigger.slice(0, 10)); // Show top 10 by default
             return;
         }
 
         const results = fuse.search(query);
         setFilteredItems(results.map((r) => r.item).slice(0, 10));
         setActiveIndex(0);
-    }, [query, items, fuse]);
+    }, [query, itemsForTrigger, fuse]);
 
     const handleKeyDown = useCallback(
         (e: React.KeyboardEvent, onSelect: (item: MentionItem) => void) => {

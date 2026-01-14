@@ -73,12 +73,16 @@ export const MentionTextarea = forwardRef<HTMLTextAreaElement, MentionTextareaPr
             if (onMentionSelect) {
                 onMentionSelect(item, performInsertion);
             } else {
-                // Default behavior
+                // Default behavior based on item type
                 let insertion = "";
                 if (item.type === 'file') {
                     insertion = `@file:${item.id}[${item.label}]`;
                 } else if (item.type === 'agent') {
                     insertion = `@agent:${item.id}[${item.label}]`;
+                } else if (item.type === 'chat') {
+                    insertion = `#chat:${item.id}[${item.label}]`;
+                } else if (item.type === 'tag') {
+                    insertion = `#tag:${item.id}[${item.label}]`;
                 } else {
                     insertion = item.value;
                 }

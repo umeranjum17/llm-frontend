@@ -425,6 +425,8 @@ export function useChat(chatId: string) {
     completePipeline,
     failPipeline,
     clearPipeline,
+    setOptimisticMessage,
+    clearOptimisticMessage,
   } = useStreamingStore();
   const extractionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const dbUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -1081,6 +1083,16 @@ export function useChat(chatId: string) {
     setIsLoading(true);
     setError(null);
 
+    // Show optimistic user message immediately for instant feedback
+    const optimisticId = `optimistic-${Date.now()}`;
+    setOptimisticMessage({
+      id: optimisticId,
+      content,
+      role: "user",
+      createdAt: Date.now(),
+      status: "sending",
+    });
+
     try {
       let chat = await getChatById(chatId);
       if (!chat) throw new Error("Chat not found");
@@ -1092,6 +1104,16 @@ export function useChat(chatId: string) {
         const mentionedAgentId = agentMentionMatch[1];
         const mentionedAgent = await getAgentById(mentionedAgentId);
         if (mentionedAgent) {
+          // Update optimistic message to show agent switching
+          setOptimisticMessage({
+            id: optimisticId,
+            content,
+            role: "user",
+            createdAt: Date.now(),
+            status: "switching-agent",
+            agentName: mentionedAgent.name,
+          });
+
           // Switch the chat to use the mentioned agent
           await updateChat(chatId, {
             agentId: mentionedAgent.id,
@@ -1127,6 +1149,9 @@ export function useChat(chatId: string) {
         parentId,
       });
 
+      // Clear optimistic message now that real message is saved
+      clearOptimisticMessage();
+
       // Update chat's updatedAt timestamp
       await updateChat(chatId, { activeBranchLeafId: userMessage.id });
 
@@ -1153,6 +1178,7 @@ export function useChat(chatId: string) {
       // Ensure all state is cleared on error
       clearStreaming();
       clearPipeline();
+      clearOptimisticMessage();
     } finally {
       setIsLoading(false);
     }

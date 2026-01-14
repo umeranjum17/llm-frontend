@@ -108,10 +108,14 @@ export function InputArea({ chatId }: InputAreaProps) {
   }, []);
 
   // Construct mention items
+  // @ = agents, prompts, connectors
+  // # = chats, tags
   const mentionItems = useMemo<MentionItem[]>(() => {
     const items: MentionItem[] = [];
 
-    // Connectors
+    // === @ TRIGGER: Agents, Prompts, Connectors ===
+
+    // Connectors (@ trigger)
     if (activeConnectors.includes("notion")) {
       items.push({
         id: "connector-notion",
@@ -119,11 +123,12 @@ export function InputArea({ chatId }: InputAreaProps) {
         label: "Search Notion",
         value: "@notion:",
         description: "Search your Notion workspace",
-        metadata: { type: "connector", connectorId: "notion" }
+        metadata: { type: "connector", connectorId: "notion" },
+        trigger: "@",
       });
     }
 
-    // Agents
+    // Agents (@ trigger)
     if (agents) {
       agents.forEach(a => {
         if (!a.isActive) return;
@@ -133,61 +138,68 @@ export function InputArea({ chatId }: InputAreaProps) {
           label: a.name,
           value: `@agent:${a.id}[${a.name}]`,
           description: a.description || "AI Assistant",
-          metadata: { agent: a }
+          metadata: { agent: a },
+          trigger: "@",
         });
       });
     }
 
-    // Prompts (mapped to commands or prompts)
+    // Prompts (@ trigger)
     if (prompts) {
       prompts.forEach(p => {
         items.push({
           id: p.id,
           type: "prompt",
           label: p.title,
-          value: `@prompt:${p.id}[${p.title}]`, // Insert as reference
+          value: `@prompt:${p.id}[${p.title}]`,
           description: p.description || undefined,
-          metadata: { prompt: p }
+          metadata: { prompt: p },
+          trigger: "@",
         });
       });
     }
 
-    // Files
+    // Files (@ trigger)
     if (files) {
       files.forEach(f => {
         items.push({
           id: f.id,
           type: "file",
           label: f.name,
-          value: f.name, // The value insertion logic handles the format
+          value: f.name,
           description: `${(f.size / 1024).toFixed(1)}KB`,
+          trigger: "@",
         });
       });
     }
 
-    // Chats
+    // === # TRIGGER: Chats, Tags ===
+
+    // Chats (# trigger)
     if (otherChats) {
       otherChats.forEach(c => {
         if (c.id === chatId) return; // Exclude current chat
         items.push({
           id: c.id,
-          type: "agent", // reusing agent icon for chat temporarily or we can add 'chat' type
+          type: "chat",
           label: c.title,
-          value: c.title,
+          value: `#chat:${c.id}[${c.title}]`,
           description: "Chat history",
+          trigger: "#",
         });
       });
     }
 
-    // Tags for '#'
+    // Tags (# trigger)
     if (tags) {
       tags.forEach(t => {
         items.push({
           id: t.id,
-          type: "prompt", // using prompt icon (hash-like) for now or add 'tag' type
+          type: "tag",
           label: t.name,
-          value: `#${t.name}`,
-          description: `${t.usageCount || 0} uses`
+          value: `#tag:${t.id}[${t.name}]`,
+          description: `${t.usageCount || 0} uses`,
+          trigger: "#",
         });
       });
     }
@@ -547,7 +559,7 @@ export function InputArea({ chatId }: InputAreaProps) {
             onChange={handleInputChange}
             onEnter={handleMentionTextareaEnter}
             onPaste={handlePaste}
-            placeholder="Message Lumina… (use @ to reference files or chats)"
+            placeholder="Message Lumina… (@ for agents/prompts, # for chats)"
             className="w-full resize-none bg-transparent px-2 py-2 pr-10 text-sm leading-6 focus:outline-none min-h-10 max-h-[200px] disabled:opacity-60"
             rows={1}
             disabled={isLoading}

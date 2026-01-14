@@ -1,5 +1,7 @@
 
-export type MentionType = "agent" | "prompt" | "file" | "command" | "action";
+export type MentionType = "agent" | "prompt" | "file" | "command" | "action" | "chat" | "tag";
+
+export type TriggerChar = "@" | "#" | "/";
 
 export interface MentionItem {
     id: string;
@@ -9,4 +11,5 @@ export interface MentionItem {
     description?: string;
     icon?: React.ReactNode;
     metadata?: any;
+    trigger?: TriggerChar; // Which trigger character shows this item (default: "@")
 }
