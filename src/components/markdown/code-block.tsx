@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Copy, Check, Maximize2, ChevronRight, ChevronDown } from "lucide-react";
+import { Copy, Check, Maximize2, ChevronRight, Eye, Code } from "lucide-react";
 import { codeToHtml } from "shiki";
 import { useUIStore } from "@/stores/ui-store";
 import { cn } from "@/lib/utils";
@@ -40,11 +40,24 @@ interface CodeBlockProps {
   isStreaming?: boolean;
 }
 
+// Map language aliases to shiki-supported languages
+function getShikiLanguage(lang: string): string {
+  const langMap: Record<string, string> = {
+    svg: "xml",
+    html: "html",
+    htm: "html",
+  };
+  return langMap[lang.toLowerCase()] || lang || "text";
+}
+
 export function CodeBlock({ language, code, isStreaming = false }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
+  const isSvgLang = language?.toLowerCase() === "svg";
+  const [showPreview, setShowPreview] = useState(isSvgLang);
+  const shikiLang = getShikiLanguage(language);
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(
-    () => getCachedHighlight(code, language)
+    () => getCachedHighlight(code, shikiLang)
   );
   const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastCodeRef = useRef(code);
@@ -53,7 +66,7 @@ export function CodeBlock({ language, code, isStreaming = false }: CodeBlockProp
 
   useEffect(() => {
     // Check cache first - instant if available
-    const cached = getCachedHighlight(code, language);
+    const cached = getCachedHighlight(code, shikiLang);
     if (cached) {
       setHighlightedHtml(cached);
       lastCodeRef.current = code;
@@ -74,10 +87,10 @@ export function CodeBlock({ language, code, isStreaming = false }: CodeBlockProp
 
       try {
         const highlighted = await codeToHtml(code, {
-          lang: language || "text",
+          lang: shikiLang,
           theme: "github-dark",
         });
-        setCachedHighlight(code, language, highlighted);
+        setCachedHighlight(code, shikiLang, highlighted);
         setHighlightedHtml(highlighted);
       } catch {
         // Keep showing plain text on error
@@ -91,7 +104,7 @@ export function CodeBlock({ language, code, isStreaming = false }: CodeBlockProp
         clearTimeout(highlightTimeoutRef.current);
       }
     };
-  }, [code, language]);
+  }, [code, shikiLang]);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(code);
@@ -141,6 +154,21 @@ export function CodeBlock({ language, code, isStreaming = false }: CodeBlockProp
           </span>
         </button>
         <div className="flex items-center gap-0.5 sm:gap-1">
+          {isSvgLang && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn("h-7 w-7 sm:h-8 sm:w-8", showPreview && "bg-primary/10")}
+              onClick={() => setShowPreview(!showPreview)}
+              title={showPreview ? "Show code" : "Preview SVG"}
+            >
+              {showPreview ? (
+                <Code className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              ) : (
+                <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              )}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -171,18 +199,28 @@ export function CodeBlock({ language, code, isStreaming = false }: CodeBlockProp
           isExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
         )}
       >
-        <div className="overflow-x-auto">
-          {highlightedHtml ? (
+        {isSvgLang && showPreview ? (
+          <div className="p-6 flex items-center justify-center min-h-[200px] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
             <div
-              className="[&>pre]:m-0 [&>pre]:rounded-none [&>pre]:rounded-b-lg [&>pre]:bg-transparent [&>pre]:p-3 sm:[&>pre]:p-4 [&>pre]:text-[11px] sm:[&>pre]:text-[13px] [&_code]:text-[11px] sm:[&_code]:text-[13px]"
-              dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+              className="[&>svg]:w-full [&>svg]:h-auto [&>svg]:max-h-[300px] [&>svg]:min-w-[200px]"
+              style={{ width: '100%', maxWidth: '400px' }}
+              dangerouslySetInnerHTML={{ __html: code }}
             />
-          ) : (
-            <pre className="text-[#e1e4e8] p-3 sm:p-4 m-0 font-mono text-[11px] sm:text-[13px] leading-relaxed whitespace-pre-wrap break-words">
-              <code>{code}</code>
-            </pre>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            {highlightedHtml ? (
+              <div
+                className="[&>pre]:m-0 [&>pre]:rounded-none [&>pre]:rounded-b-lg [&>pre]:bg-transparent [&>pre]:p-3 sm:[&>pre]:p-4 [&>pre]:text-[11px] sm:[&>pre]:text-[13px] [&_code]:text-[11px] sm:[&_code]:text-[13px]"
+                dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+              />
+            ) : (
+              <pre className="text-[#e1e4e8] p-3 sm:p-4 m-0 font-mono text-[11px] sm:text-[13px] leading-relaxed whitespace-pre-wrap break-words">
+                <code>{code}</code>
+              </pre>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

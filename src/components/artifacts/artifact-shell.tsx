@@ -70,6 +70,7 @@ export function ArtifactShell() {
         activeArtifact &&
         ["docx", "word"].includes(activeArtifact.language || activeArtifact.type);
     const isHtml = activeArtifact?.language === "html";
+    const isSvg = activeArtifact?.language === "svg";
     const isMarkdown = activeArtifact?.language === "markdown";
 
     // Switch to appropriate tab on artifact change
@@ -77,13 +78,13 @@ export function ArtifactShell() {
         if (activeArtifact) {
             if (isProject || isRunnable) {
                 setActiveTab("run");
-            } else if (isData || isDoc || isHtml) {
+            } else if (isData || isDoc || isHtml || isSvg) {
                 setActiveTab("preview");
             } else {
                 setActiveTab("code");
             }
         }
-    }, [activeArtifact, isProject, isRunnable, isData, isDoc, isHtml]);
+    }, [activeArtifact, isProject, isRunnable, isData, isDoc, isHtml, isSvg]);
 
     // Handle escape key for fullscreen
     useEffect(() => {
@@ -291,7 +292,7 @@ export function ArtifactShell() {
                                             Run
                                         </TabsTrigger>
                                     )}
-                                    {(isData || isDoc || isHtml || isMarkdown) && (
+                                    {(isData || isDoc || isHtml || isSvg || isMarkdown) && (
                                         <TabsTrigger
                                             value="preview"
                                             className="h-9 px-2 rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary"
@@ -371,6 +372,16 @@ export function ArtifactShell() {
                                                     // Focus iframe
                                                     iframeRef.current?.focus();
                                                 }}
+                                            />
+                                        </div>
+                                    </ArtifactErrorBoundary>
+                                ) : isSvg ? (
+                                    <ArtifactErrorBoundary fallbackTitle="Failed to load SVG preview">
+                                        <div className="w-full h-full flex items-center justify-center p-8 overflow-auto bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+                                            <div
+                                                className="[&>svg]:w-full [&>svg]:h-auto [&>svg]:max-h-[80vh] [&>svg]:min-w-[200px]"
+                                                style={{ width: '100%', maxWidth: '600px' }}
+                                                dangerouslySetInnerHTML={{ __html: activeArtifact.code || "" }}
                                             />
                                         </div>
                                     </ArtifactErrorBoundary>
