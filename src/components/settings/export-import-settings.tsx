@@ -39,6 +39,9 @@ import {
   CheckCircle2,
   Lock,
   Clock,
+  Link2,
+  Copy,
+  Check,
 } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/db/schema";
@@ -61,7 +64,10 @@ import {
   isValidEncryptedFormat,
   checkExpiration,
   getExpirationTimestamp,
+  getShareLinkExpirationTimestamp,
+  createShareableUrl,
   type ExpirationOption,
+  type ShareLinkExpirationOption,
 } from "@/lib/crypto/settings-crypto";
 
 // Secure Export Dialog
@@ -604,11 +610,326 @@ function SecureImportDialog({
   );
 }
 
+// Shareable Link Dialog
+function ShareableLinkDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [expiration, setExpiration] = useState<ShareLinkExpirationOption>("6h");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [summary, setSummary] = useState<Awaited<
+    ReturnType<typeof getExportSummary>
+  > | null>(null);
+  const [includeOptions, setIncludeOptions] = useState({
+    apiKeys: true,
+    mcpServers: true,
+    agents: false,
+    settings: false,
+  });
+
+  const loadSummary = async () => {
+    const data = await getExportSummary();
+    setSummary(data);
+  };
+
+  const resetState = () => {
+    setPassword("");
+    setConfirmPassword("");
+    setExpiration("6h");
+    setGeneratedUrl(null);
+    setCopied(false);
+    setIncludeOptions({
+      apiKeys: true,
+      mcpServers: true,
+      agents: false,
+      settings: false,
+    });
+  };
+
+  const handleGenerate = async () => {
+    if (password.length < 8) {
+      toast.error("Password must be at least 8 characters");
+      return;
+    }
+    if (password !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      // Get settings data
+      const allSettings = await exportAllSettings();
+
+      // Filter based on selected options
+      const filteredData = {
+        version: allSettings.version,
+        exportedAt: allSettings.exportedAt,
+        data: {
+          apiKeys: includeOptions.apiKeys ? allSettings.data.apiKeys : [],
+          mcpServers: includeOptions.mcpServers ? allSettings.data.mcpServers : [],
+          agents: includeOptions.agents ? allSettings.data.agents : [],
+          prompts: [], // Always exclude prompts from share links (too large)
+          settings: includeOptions.settings ? allSettings.data.settings : null,
+          modelFavorites: [],
+          modelAliases: [],
+          parameterPresets: [],
+          tags: [],
+          tagRules: [],
+        },
+      };
+
+      const expiresAt = getShareLinkExpirationTimestamp(expiration);
+      const url = await createShareableUrl(filteredData, password, expiresAt);
+
+      // Check URL length (warn if > 8KB)
+      if (url.length > 8000) {
+        toast.warning("Link is very long. Some services may truncate it.");
+      }
+
+      setGeneratedUrl(url);
+      toast.success("Shareable link created!");
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to create shareable link");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleCopy = async () => {
+    if (!generatedUrl) return;
+
+    try {
+      await navigator.clipboard.writeText(generatedUrl);
+      setCopied(true);
+      toast.success("Link copied to clipboard");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Failed to copy link");
+    }
+  };
+
+  const expirationLabels: Record<ShareLinkExpirationOption, string> = {
+    "1h": "1 hour",
+    "6h": "6 hours",
+    "24h": "24 hours",
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(isOpen) => {
+        if (isOpen) loadSummary();
+        else resetState();
+        onOpenChange(isOpen);
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Link2 className="h-5 w-5" />
+            Create Shareable Link
+          </DialogTitle>
+          <DialogDescription>
+            Generate a password-protected link to share your settings. The link expires automatically.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          {!generatedUrl ? (
+            <>
+              {/* What to include */}
+              <div className="space-y-2">
+                <Label>Include in link</Label>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <label className="flex items-center gap-2">
+                    <Checkbox
+                      checked={includeOptions.apiKeys}
+                      onCheckedChange={(c) =>
+                        setIncludeOptions((o) => ({ ...o, apiKeys: !!c }))
+                      }
+                    />
+                    <Key className="h-3 w-3" />
+                    API Keys {summary && summary.apiKeys > 0 && `(${summary.apiKeys})`}
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <Checkbox
+                      checked={includeOptions.mcpServers}
+                      onCheckedChange={(c) =>
+                        setIncludeOptions((o) => ({ ...o, mcpServers: !!c }))
+                      }
+                    />
+                    <Server className="h-3 w-3" />
+                    MCP Servers {summary && summary.mcpServers > 0 && `(${summary.mcpServers})`}
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <Checkbox
+                      checked={includeOptions.agents}
+                      onCheckedChange={(c) =>
+                        setIncludeOptions((o) => ({ ...o, agents: !!c }))
+                      }
+                    />
+                    <Bot className="h-3 w-3" />
+                    Agents {summary && summary.agents > 0 && `(${summary.agents})`}
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <Checkbox
+                      checked={includeOptions.settings}
+                      onCheckedChange={(c) =>
+                        setIncludeOptions((o) => ({ ...o, settings: !!c }))
+                      }
+                    />
+                    <Settings className="h-3 w-3" />
+                    Settings
+                  </label>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="share-password">Password</Label>
+                <Input
+                  id="share-password"
+                  type="password"
+                  placeholder="Enter a password (min 8 chars)"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="share-confirm-password">Confirm Password</Label>
+                <Input
+                  id="share-confirm-password"
+                  type="password"
+                  placeholder="Confirm your password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Link Expiration</Label>
+                <Select
+                  value={expiration}
+                  onValueChange={(v) => setExpiration(v as ShareLinkExpirationOption)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1h">1 hour</SelectItem>
+                    <SelectItem value="6h">6 hours (recommended)</SelectItem>
+                    <SelectItem value="24h">24 hours</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Short-lived links are safer for sharing sensitive data
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Generated URL */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm text-green-600">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Link generated successfully!
+                </div>
+
+                <div className="p-3 bg-muted rounded-lg">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+                    <Clock className="h-3 w-3" />
+                    Expires in {expirationLabels[expiration]}
+                  </div>
+                  <div className="text-xs font-mono break-all max-h-24 overflow-y-auto">
+                    {generatedUrl}
+                  </div>
+                </div>
+
+                <Button onClick={handleCopy} className="w-full" variant="outline">
+                  {copied ? (
+                    <>
+                      <Check className="h-4 w-4 mr-2" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copy Link
+                    </>
+                  )}
+                </Button>
+
+                <div className="flex items-start gap-2 p-3 border rounded-md bg-yellow-500/10 border-yellow-500/30">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 text-yellow-600 shrink-0" />
+                  <p className="text-xs text-muted-foreground">
+                    Share the password separately (via different channel). Never include the password in the same message as the link.
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <DialogFooter>
+          {!generatedUrl ? (
+            <>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleGenerate}
+                disabled={
+                  isGenerating ||
+                  password.length < 8 ||
+                  (!includeOptions.apiKeys && !includeOptions.mcpServers && !includeOptions.agents && !includeOptions.settings)
+                }
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Link2 className="mr-2 h-4 w-4" />
+                    Generate Link
+                  </>
+                )}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => setGeneratedUrl(null)}>
+                Create Another
+              </Button>
+              <Button onClick={() => onOpenChange(false)}>
+                Done
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function ExportImportSettings() {
   const [exportFormat, setExportFormat] = useState<"json" | "csv">("json");
   const [exportScope, setExportScope] = useState<"all" | "chats" | "settings">("all");
   const [secureExportOpen, setSecureExportOpen] = useState(false);
   const [secureImportOpen, setSecureImportOpen] = useState(false);
+  const [shareableLinkOpen, setShareableLinkOpen] = useState(false);
   const [importing, setImporting] = useState(false);
 
   const handleExport = async () => {

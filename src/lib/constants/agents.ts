@@ -5,16 +5,17 @@ function now() {
 }
 
 // Recommended models for different use cases (2026 best picks)
+// IMPORTANT: Model IDs must match those in /lib/models/data/featured.json
 export const RECOMMENDED_MODELS = {
   coding: "anthropic/claude-sonnet-4.5",        // Best for code & software engineering
-  reasoning: "deepseek/deepseek-r1",            // Best for math, logic, complex reasoning
+  reasoning: "deepseek/deepseek-reasoner",      // Best for math, logic, complex reasoning
   general: "openai/gpt-5.2",                    // Best overall & general purpose
-  fast: "google/gemini-2.5-flash",              // Best for speed & scale
-  imageGeneration: "google/gemini-3-pro-image-preview", // Best for logos & text rendering (works via OpenRouter)
-  mascotGeneration: "black-forest-labs/flux.2-pro",    // Best for character consistency (works via OpenRouter)
+  fast: "google/gemini-3-flash",                // Best for speed & scale
+  imageGeneration: "openai/gpt-5-image",        // Best for logos & text rendering
+  mascotGeneration: "openai/gpt-5-image",       // Best for character consistency
   diagram: "anthropic/claude-sonnet-4.5",       // Good at structured output
-  writing: "openai/gpt-5.2",                    // Reliable for writing
-  agents: "x-ai/grok-5",                        // Real-time & tool calling
+  writing: "openai/gpt-5",                      // Reliable for writing
+  agents: "xai/grok-3",                         // Real-time & tool calling
 } as const;
 
 export const BUILTIN_AGENTS: Agent[] = [

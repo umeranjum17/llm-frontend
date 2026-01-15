@@ -149,7 +149,13 @@ export async function POST(req: Request) {
             const images: Array<{ url: string; revisedPrompt?: string }> = [];
 
             // Helper function to recursively find all b64_json values in an object
-            function findBase64Images(obj: any, found: string[] = []): string[] {
+            const MAX_DEPTH = 20; // Prevent stack overflow with deeply nested objects
+            function findBase64Images(obj: any, found: string[] = [], depth: number = 0): string[] {
+                // Depth limit to prevent stack overflow
+                if (depth > MAX_DEPTH) {
+                    console.warn('[Images API] Max traversal depth reached');
+                    return found;
+                }
                 if (!obj || typeof obj !== 'object') return found;
 
                 if (obj.b64_json && typeof obj.b64_json === 'string') {
@@ -161,11 +167,11 @@ export async function POST(req: Request) {
 
                 if (Array.isArray(obj)) {
                     for (const item of obj) {
-                        findBase64Images(item, found);
+                        findBase64Images(item, found, depth + 1);
                     }
                 } else {
                     for (const key of Object.keys(obj)) {
-                        findBase64Images(obj[key], found);
+                        findBase64Images(obj[key], found, depth + 1);
                     }
                 }
                 return found;

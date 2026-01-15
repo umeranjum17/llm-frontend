@@ -24,6 +24,9 @@ export interface ModelCapabilities {
   supportsTools: boolean;
   supportsStreaming: boolean;
   isImageGeneration: boolean;
+  // Advanced features
+  supportsPromptCaching: boolean; // Anthropic prompt caching
+  supportsThinking: boolean; // Extended thinking (Claude, o1, o3, etc.)
 }
 
 // Cache for resolved capabilities
@@ -60,6 +63,8 @@ export function getModelCapabilities(modelId: string): ModelCapabilities {
       supportsTools: defaults.supportsTools ?? false,
       supportsStreaming: defaults.supportsStreaming ?? true,
       isImageGeneration: isImageGen,
+      supportsPromptCaching: false,
+      supportsThinking: false,
     };
   }
 
@@ -74,6 +79,7 @@ export function getModelCapabilities(modelId: string): ModelCapabilities {
 
   // Build capabilities object
   const isImageGen = isImageGenerationModel(modelId);
+
   const capabilities: ModelCapabilities = {
     supportsSystemPrompt: (detected.supportsSystemPrompt as boolean) ?? defaults.supportsSystemPrompt,
     supportsTemperature: (detected.supportsTemperature as boolean) ?? defaults.supportsTemperature,
@@ -88,6 +94,9 @@ export function getModelCapabilities(modelId: string): ModelCapabilities {
     supportsTools: (detected.supportsTools as boolean) ?? (defaults.supportsTools ?? false),
     supportsStreaming: (detected.supportsStreaming as boolean) ?? (defaults.supportsStreaming ?? true),
     isImageGeneration: isImageGen,
+    // Use stable boolean flags from model data
+    supportsPromptCaching: (model as any).supportsPromptCaching ?? false,
+    supportsThinking: (model as any).supportsThinking ?? false,
   };
 
   // Cache the result
@@ -148,4 +157,6 @@ export const DEFAULT_CAPABILITIES: ModelCapabilities = {
   supportsTools: false,
   supportsStreaming: true,
   isImageGeneration: false,
+  supportsPromptCaching: false,
+  supportsThinking: false,
 };

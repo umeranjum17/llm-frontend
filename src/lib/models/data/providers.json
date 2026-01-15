@@ -1,0 +1,139 @@
+{
+  "$schema": "./provider-schema.json",
+  "_comment": "Provider Routing - Maps model IDs to supported providers. OpenRouter can route any model.",
+  "_updated": "2026-01-15",
+  "providers": {
+    "openrouter": {
+      "name": "OpenRouter",
+      "description": "Universal router - can access any model",
+      "supportsAllModels": true,
+      "pricing": "pay-per-use",
+      "website": "https://openrouter.ai"
+    },
+    "openai": {
+      "name": "OpenAI",
+      "description": "Direct OpenAI API access",
+      "models": [
+        "openai/gpt-5.2",
+        "openai/gpt-5.2-pro",
+        "openai/gpt-5",
+        "openai/gpt-5-codex",
+        "openai/gpt-5-image",
+        "openai/gpt-5-image-mini",
+        "openai/o4-mini",
+        "openai/o3",
+        "openai/o3-pro",
+        "openai/gpt-4o",
+        "openai/gpt-4o-mini",
+        "openai/o1",
+        "openai/dall-e-3",
+        "openai/dall-e-2"
+      ],
+      "website": "https://platform.openai.com"
+    },
+    "anthropic": {
+      "name": "Anthropic",
+      "description": "Direct Anthropic API access",
+      "models": [
+        "anthropic/claude-opus-4.5",
+        "anthropic/claude-sonnet-4.5",
+        "anthropic/claude-sonnet-4",
+        "anthropic/claude-haiku-4",
+        "anthropic/claude-3.5-sonnet",
+        "anthropic/claude-3-opus",
+        "anthropic/claude-3-haiku"
+      ],
+      "website": "https://console.anthropic.com"
+    },
+    "google": {
+      "name": "Google AI",
+      "description": "Direct Google AI Studio / Vertex AI access",
+      "models": [
+        "google/gemini-3-flash",
+        "google/gemini-3-pro",
+        "google/gemini-3-deep-think",
+        "google/gemini-3-flash-thinking",
+        "google/gemini-2.5-pro",
+        "google/gemini-2.5-flash",
+        "google/gemini-2.0-flash-exp:free",
+        "google/gemini-1.5-pro"
+      ],
+      "website": "https://aistudio.google.com"
+    },
+    "together": {
+      "name": "Together AI",
+      "description": "Open source model hosting",
+      "models": [
+        "meta-llama/llama-4-scout",
+        "meta-llama/llama-4-maverick",
+        "meta-llama/llama-3.3-70b-instruct",
+        "mistralai/mistral-large-3",
+        "mistralai/mistral-large-2411",
+        "deepseek/deepseek-v3.2",
+        "deepseek/deepseek-reasoner"
+      ],
+      "website": "https://together.ai"
+    },
+    "groq": {
+      "name": "Groq",
+      "description": "Ultra-fast inference on LPU",
+      "models": [
+        "meta-llama/llama-4-maverick",
+        "meta-llama/llama-3.3-70b-instruct",
+        "mistralai/mistral-large-3"
+      ],
+      "website": "https://groq.com"
+    },
+    "perplexity": {
+      "name": "Perplexity",
+      "description": "Search-enhanced AI",
+      "models": [
+        "perplexity/sonar-pro",
+        "perplexity/sonar"
+      ],
+      "website": "https://perplexity.ai"
+    },
+    "xai": {
+      "name": "xAI",
+      "description": "Grok models with real-time info",
+      "models": [
+        "xai/grok-3"
+      ],
+      "website": "https://x.ai"
+    },
+    "deepseek": {
+      "name": "DeepSeek",
+      "description": "Direct DeepSeek API - cheapest option",
+      "models": [
+        "deepseek/deepseek-v3.2",
+        "deepseek/deepseek-reasoner",
+        "deepseek/deepseek-r1"
+      ],
+      "website": "https://deepseek.com"
+    },
+    "mistral": {
+      "name": "Mistral AI",
+      "description": "Direct Mistral API",
+      "models": [
+        "mistralai/mistral-large-3",
+        "mistralai/mistral-medium-3",
+        "mistralai/codestral-latest",
+        "mistralai/mistral-large-2411"
+      ],
+      "website": "https://mistral.ai"
+    }
+  },
+  "defaultProvider": "openrouter",
+  "providerPriority": [
+    "openai",
+    "anthropic",
+    "google",
+    "deepseek",
+    "mistral",
+    "together",
+    "groq",
+    "perplexity",
+    "xai",
+    "openrouter"
+  ]
+}

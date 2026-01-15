@@ -1,16 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Plug, ArrowRight, ArrowLeft, Loader2, CheckCircle2, ExternalLink, Globe, Code, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { db } from "@/lib/db/schema";
-import { nanoid } from "nanoid";
 
 interface McpStepProps {
     onComplete: () => void;
@@ -19,10 +16,24 @@ interface McpStepProps {
 }
 
 const MCP_FEATURES = [
-    { icon: Globe, label: "Browser Automation", description: "Control web browsers, take screenshots" },
+    { icon: Globe, label: "150+ App Integrations", description: "Gmail, Slack, GitHub, and more" },
     { icon: Code, label: "Code Execution", description: "Run code in sandboxed environments" },
-    { icon: FileText, label: "File Operations", description: "Read, write, and manage files" },
+    { icon: FileText, label: "File & Web Tools", description: "Read files, browse web, manage data" },
 ];
+
+// Composio config stored in localStorage (same as settings page)
+const COMPOSIO_STORAGE_KEY = "composio_config";
+
+interface ComposioConfig {
+    apiKey: string;
+    userId: string;
+    enabledToolkits: string[];
+}
+
+function saveComposioConfig(config: ComposioConfig) {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(COMPOSIO_STORAGE_KEY, JSON.stringify(config));
+}
 
 export function McpStep({ onComplete, onBack, onSkip }: McpStepProps) {
     const [composioKey, setComposioKey] = useState("");
@@ -37,23 +48,17 @@ export function McpStep({ onComplete, onBack, onSkip }: McpStepProps) {
 
         setIsLoading(true);
         try {
-            // Save the Composio server configuration
-            await db.mcpServers.add({
-                id: nanoid(),
-                name: "Composio",
-                type: "sse",
-                url: "https://mcp.composio.dev/sse",
-                apiKey: composioKey,
-                enabled: true,
-                tools: [],
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-                collection: "custom",
-            });
+            // Save Composio config to localStorage (same format as settings page)
+            const config: ComposioConfig = {
+                apiKey: composioKey.trim(),
+                userId: "default",
+                enabledToolkits: [],
+            };
+            saveComposioConfig(config);
             setIsSaved(true);
             setTimeout(() => onComplete(), 800);
         } catch (error) {
-            console.error("Failed to save MCP settings:", error);
+            console.error("Failed to save Composio settings:", error);
             setIsLoading(false);
         }
     };
@@ -125,12 +130,12 @@ export function McpStep({ onComplete, onBack, onSkip }: McpStepProps) {
                         <p className="text-xs text-muted-foreground">
                             Get your free API key at{" "}
                             <a
-                                href="https://app.composio.dev"
+                                href="https://platform.composio.dev/settings"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-primary hover:underline inline-flex items-center gap-0.5"
                             >
-                                composio.dev <ExternalLink className="h-2.5 w-2.5" />
+                                Composio Platform → Settings <ExternalLink className="h-2.5 w-2.5" />
                             </a>
                         </p>
                     </div>

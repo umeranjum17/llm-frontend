@@ -4,6 +4,38 @@ import type { McpServer } from "@/lib/db/schema";
 
 export const runtime = "nodejs";
 
+const MAX_INPUT_SIZE = 100000; // 100KB max input size
+
+/**
+ * Sanitize error messages to avoid leaking implementation details
+ */
+function sanitizeErrorMessage(error: unknown): string {
+    if (!(error instanceof Error)) {
+        return "Tool execution failed";
+    }
+
+    const message = error.message;
+
+    // Whitelist of safe error patterns to pass through
+    const safePatterns = [
+        /^Tool not found:/i,
+        /^No MCP servers/i,
+        /^Invalid request/i,
+        /rate limit/i,
+        /timeout/i,
+        /connection refused/i,
+    ];
+
+    for (const pattern of safePatterns) {
+        if (pattern.test(message)) {
+            return message;
+        }
+    }
+
+    // Generic message for other errors
+    return "Tool execution failed. Please try again.";
+}
+
 const RequestSchema = z.object({
   toolName: z.string().min(1),
   args: z.record(z.any()).optional(),
@@ -83,12 +115,33 @@ export async function POST(req: Request) {
     // If args provided, use them; otherwise use input as a fallback
     let toolArgs = args || {};
     if (Object.keys(toolArgs).length === 0 && input) {
+      // Validate input size to prevent DoS
+      if (typeof input !== "string" || input.length > MAX_INPUT_SIZE) {
+        return new Response(
+          JSON.stringify({ error: "Invalid input: must be a string under 100KB" }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
       // Try to parse input as JSON, otherwise use as a query/input param
       try {
-        toolArgs = JSON.parse(input);
+        const parsed = JSON.parse(input);
+        // Ensure parsed result is a plain object (not array or primitive)
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          toolArgs = parsed;
+        } else {
+          toolArgs = { query: input, input: input };
+        }
       } catch {
-        // Use input as a generic query parameter if the tool accepts it
-        toolArgs = { query: input, input: input };
+        // Only use as raw input if it doesn't look like malformed JSON
+        if (!input.startsWith("{") && !input.startsWith("[")) {
+          toolArgs = { query: input, input: input };
+        } else {
+          return new Response(
+            JSON.stringify({ error: "Invalid JSON in input parameter" }),
+            { status: 400, headers: { "Content-Type": "application/json" } }
+          );
+        }
       }
     }
 
@@ -109,7 +162,7 @@ export async function POST(req: Request) {
     );
   } catch (error) {
     console.error("[MCP Execute] Error:", error);
-    const errorMessage = error instanceof Error ? error.message : "Tool execution failed";
+    const errorMessage = sanitizeErrorMessage(error);
     return new Response(
       JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { "Content-Type": "application/json" } }

@@ -23,12 +23,24 @@ const DEFAULT_CACHE_TTL_MS = 30_000; // 30 seconds
 let inFlightSearch: Promise<MemoryItem[]> | null = null;
 let inFlightGetAll: Promise<MemoryItem[]> | null = null;
 
+// Track invalid API key to avoid repeated failures
+let apiKeyInvalid = false;
+
 async function getCacheTTL(): Promise<number> {
     try {
         const settings = await getSettings();
         return (settings?.memoryCacheTTL ?? 30) * 1000; // Convert seconds to ms
     } catch {
         return DEFAULT_CACHE_TTL_MS;
+    }
+}
+
+async function getUserId(): Promise<string> {
+    try {
+        const settings = await getSettings();
+        return settings?.memoryUserId || "default-user";
+    } catch {
+        return "default-user";
     }
 }
 
@@ -64,18 +76,32 @@ export function refreshCacheInBackground(query?: string) {
 
 async function getApiKey() {
     const keyRecord = await db.apiKeys.get("mem0");
-    return keyRecord?.key;
+    if (!keyRecord?.key) return undefined;
+
+    // Keys are stored encrypted in IndexedDB - decrypt before use
+    try {
+        const { decryptApiKey } = await import("@/lib/crypto/api-key-crypto");
+        return await decryptApiKey(keyRecord.key);
+    } catch {
+        // If decryption fails, key might be plaintext (legacy)
+        return keyRecord.key;
+    }
 }
 
 async function callMem0Api(action: string, payload: any) {
+    // Skip if we already know the API key is invalid
+    if (apiKeyInvalid) {
+        return null;
+    }
+
     const apiKey = await getApiKey();
     if (!apiKey) {
         console.warn("[Memory] No Mem0 API key found. Skipping memory operation.");
         return null; // Graceful degradation
     }
 
-    // Default user ID for local-first app
-    const userId = "default-user";
+    // Get user ID from settings (default: "default-user")
+    const userId = await getUserId();
 
     try {
         const response = await fetch("/api/memory", {
@@ -93,11 +119,26 @@ async function callMem0Api(action: string, payload: any) {
 
         if (!response.ok) {
             const err = await response.json();
-            throw new Error(err.error || "Mem0 API request failed");
+            const errorMsg = err.error || "Mem0 API request failed";
+
+            // Detect invalid API key and stop future requests
+            if (errorMsg.includes("Invalid API key") || errorMsg.includes("Invalid api key")) {
+                console.warn("[Memory] Invalid API key detected. Memory features disabled until key is updated.");
+                apiKeyInvalid = true;
+                return null;
+            }
+
+            throw new Error(errorMsg);
         }
 
         return await response.json();
-    } catch (error) {
+    } catch (error: any) {
+        // Also catch invalid key errors from exceptions
+        if (error?.message?.includes("Invalid API key") || error?.message?.includes("Invalid api key")) {
+            console.warn("[Memory] Invalid API key detected. Memory features disabled until key is updated.");
+            apiKeyInvalid = true;
+            return null;
+        }
         console.error(`[Memory] Failed to ${action}:`, error);
         return null;
     }
@@ -214,6 +255,15 @@ export async function deleteMemory(memoryId: string) {
  */
 export async function getMemoryHistory(memoryId: string) {
     return callMem0Api("history", { memoryId });
+}
+
+/**
+ * Invalidate the memory cache (call when user ID or API key changes)
+ */
+export function clearMemoryCache() {
+    invalidateCache();
+    // Reset invalid key flag so we retry with the new key
+    apiKeyInvalid = false;
 }
 
 // Re-export types that might be needed

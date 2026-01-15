@@ -17,6 +17,7 @@ export interface EncryptedData {
 }
 
 export type ExpirationOption = "1d" | "7d" | "30d" | "never";
+export type ShareLinkExpirationOption = "1h" | "6h" | "24h";
 
 export function getExpirationTimestamp(option: ExpirationOption): number | undefined {
   const now = Date.now();
@@ -29,6 +30,18 @@ export function getExpirationTimestamp(option: ExpirationOption): number | undef
       return now + 30 * 24 * 60 * 60 * 1000;
     case "never":
       return undefined;
+  }
+}
+
+export function getShareLinkExpirationTimestamp(option: ShareLinkExpirationOption): number {
+  const now = Date.now();
+  switch (option) {
+    case "1h":
+      return now + 60 * 60 * 1000;
+    case "6h":
+      return now + 6 * 60 * 60 * 1000;
+    case "24h":
+      return now + 24 * 60 * 60 * 1000;
   }
 }
 
@@ -205,4 +218,159 @@ export function isValidEncryptedFormat(data: string): boolean {
   } catch {
     return false;
   }
+}
+
+// ============================================
+// Shareable URL Functions
+// ============================================
+
+/**
+ * Converts a string to URL-safe base64
+ * Replaces + with -, / with _, and removes = padding
+ */
+function toUrlSafeBase64(str: string): string {
+  return btoa(str)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+/**
+ * Converts URL-safe base64 back to regular string
+ */
+function fromUrlSafeBase64(str: string): string {
+  // Add back padding if needed
+  let base64 = str.replace(/-/g, "+").replace(/_/g, "/");
+  const padding = base64.length % 4;
+  if (padding) {
+    base64 += "=".repeat(4 - padding);
+  }
+  return atob(base64);
+}
+
+/**
+ * Compresses a string using gzip (browser native)
+ */
+async function compressString(str: string): Promise<Uint8Array> {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(str));
+      controller.close();
+    },
+  });
+  const compressedStream = stream.pipeThrough(new CompressionStream("gzip"));
+  const reader = compressedStream.getReader();
+  const chunks: Uint8Array[] = [];
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+  }
+
+  const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
+}
+
+/**
+ * Decompresses gzipped data back to string
+ */
+async function decompressString(data: Uint8Array): Promise<string> {
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(data);
+      controller.close();
+    },
+  });
+  const decompressedStream = stream.pipeThrough(new DecompressionStream("gzip"));
+  const reader = decompressedStream.getReader();
+  const chunks: Uint8Array[] = [];
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+  }
+
+  const decoder = new TextDecoder();
+  return chunks.map(chunk => decoder.decode(chunk, { stream: true })).join("") + decoder.decode();
+}
+
+/**
+ * Creates a shareable URL containing encrypted settings
+ * Uses compression to minimize URL length
+ * @param settings - Settings object to encrypt
+ * @param password - Password for encryption
+ * @param expiresAt - Expiration timestamp (required for share links)
+ * @returns The shareable URL
+ */
+export async function createShareableUrl(
+  settings: object,
+  password: string,
+  expiresAt: number
+): Promise<string> {
+  // Encrypt the settings
+  const encrypted = await encryptSettings(settings, password, expiresAt);
+
+  // Compress the encrypted JSON
+  const compressed = await compressString(encrypted);
+
+  // Convert to URL-safe base64
+  const base64 = toUrlSafeBase64(String.fromCharCode(...compressed));
+
+  // Build the URL with hash fragment (data never sent to server)
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return `${origin}/import#${base64}`;
+}
+
+/**
+ * Parses encrypted settings from a shareable URL hash
+ * @param hash - The URL hash (without the # prefix)
+ * @returns The encrypted JSON string, or null if invalid
+ */
+export async function parseShareableUrl(hash: string): Promise<string | null> {
+  try {
+    if (!hash) return null;
+
+    // Decode from URL-safe base64
+    const decoded = fromUrlSafeBase64(hash);
+
+    // Convert string back to Uint8Array
+    const compressed = new Uint8Array(decoded.length);
+    for (let i = 0; i < decoded.length; i++) {
+      compressed[i] = decoded.charCodeAt(i);
+    }
+
+    // Decompress
+    const encrypted = await decompressString(compressed);
+
+    // Validate it's proper encrypted format
+    if (!isValidEncryptedFormat(encrypted)) {
+      return null;
+    }
+
+    return encrypted;
+  } catch (error) {
+    console.error("[ShareableURL] Failed to parse:", error);
+    return null;
+  }
+}
+
+/**
+ * Estimates the URL length for given settings (for UI warnings)
+ */
+export async function estimateShareableUrlLength(settings: object): Promise<number> {
+  const json = JSON.stringify(settings);
+  // Rough estimate: encryption adds ~30% overhead, compression removes ~50%, base64 adds ~33%
+  // Actual: encrypt JSON, compress, then base64
+  const estimatedCompressed = json.length * 0.5; // Assume 50% compression
+  const estimatedBase64 = Math.ceil(estimatedCompressed * 1.33);
+  return "/import#".length + estimatedBase64;
 }

@@ -180,8 +180,12 @@ export async function getMessageById(id: string) {
 }
 
 export async function getLastMessage(chatId: string) {
-  const messages = await db.messages.where("chatId").equals(chatId).sortBy("createdAt");
-  return messages[messages.length - 1];
+  // Use reverse().first() to get last message efficiently without loading all messages
+  return await db.messages
+    .where("chatId")
+    .equals(chatId)
+    .reverse()
+    .first();
 }
 
 /**
@@ -326,20 +330,21 @@ export async function deleteProject(id: string, cascadeDeleteChats: boolean = tr
 
   // Get chats in this project
   const chats = await db.chats.where("projectId").equals(id).toArray();
+  const chatIds = chats.map((c) => c.id);
   let deletedChats = 0;
 
-  if (cascadeDeleteChats) {
-    // Delete all chats and their messages
-    for (const chat of chats) {
-      await db.messages.where("chatId").equals(chat.id).delete();
-      await db.chats.delete(chat.id);
-      deletedChats++;
-    }
-  } else {
-    // Move chats to the default project
-    for (const chat of chats) {
-      await db.chats.update(chat.id, { projectId: DEFAULT_PROJECT_ID });
-    }
+  if (cascadeDeleteChats && chatIds.length > 0) {
+    // Batch delete all messages for these chats, then delete the chats
+    await db.messages.where("chatId").anyOf(chatIds).delete();
+    await db.chats.bulkDelete(chatIds);
+    deletedChats = chatIds.length;
+  } else if (!cascadeDeleteChats && chatIds.length > 0) {
+    // Batch move chats to the default project
+    await db.transaction("rw", db.chats, async () => {
+      for (const chatId of chatIds) {
+        await db.chats.update(chatId, { projectId: DEFAULT_PROJECT_ID });
+      }
+    });
   }
 
   // Delete the project
@@ -388,6 +393,20 @@ export async function getRecentModels(limit: number = 5) {
     .reverse()
     .limit(limit)
     .toArray();
+}
+
+/**
+ * Batch query for model picker data - reduces 3 queries to 1 transaction
+ */
+export async function getModelPickerData() {
+  return await db.transaction("r", [db.modelFavorites, db.modelAliases], async () => {
+    const [favorites, recent, aliases] = await Promise.all([
+      db.modelFavorites.orderBy("lastUsed").reverse().toArray(),
+      db.modelFavorites.orderBy("lastUsed").reverse().limit(6).toArray(),
+      db.modelAliases.toArray(),
+    ]);
+    return { favorites, recent, aliases };
+  });
 }
 
 export async function toggleModelFavorite(modelId: string, category: string) {
@@ -525,6 +544,41 @@ export async function incrementAgentUsage(agentId: string) {
     usageCount: (agent.usageCount || 0) + 1,
     updatedAt: Date.now(),
   });
+}
+
+export async function resetAgentToDefault(agentId: string): Promise<string | undefined> {
+  // Dynamic import to avoid circular dependency
+  const { BUILTIN_AGENTS } = await import("@/lib/constants/agents");
+
+  const builtInAgent = BUILTIN_AGENTS.find((a) => a.id === agentId);
+  if (!builtInAgent) {
+    throw new Error("Agent is not a built-in agent");
+  }
+
+  const existingAgent = await db.agents.get(agentId);
+  if (!existingAgent) {
+    throw new Error("Agent not found");
+  }
+
+  // Reset to built-in defaults while preserving usage count and timestamps
+  await db.agents.update(agentId, {
+    name: builtInAgent.name,
+    description: builtInAgent.description,
+    avatar: builtInAgent.avatar,
+    systemPrompt: builtInAgent.systemPrompt,
+    modelId: builtInAgent.modelId,
+    enabledTools: builtInAgent.enabledTools,
+    mcpServerIds: builtInAgent.mcpServerIds,
+    mcpToolPolicy: undefined,
+    knowledgeBaseIds: builtInAgent.knowledgeBaseIds,
+    parameters: builtInAgent.parameters,
+    isActive: builtInAgent.isActive,
+    executionType: builtInAgent.executionType,
+    pipeline: builtInAgent.pipeline,
+    updatedAt: Date.now(),
+  });
+
+  return builtInAgent.modelId;
 }
 
 // ============= PROMPT QUERIES =============
@@ -737,17 +791,21 @@ export async function deleteFolder(id: string) {
 }
 
 export async function reorderChats(chatIds: string[]) {
-  // Update order for all chats
-  for (let i = 0; i < chatIds.length; i++) {
-    await db.chats.update(chatIds[i], { order: i });
-  }
+  // Batch update order for all chats in a single transaction
+  await db.transaction("rw", db.chats, async () => {
+    for (let i = 0; i < chatIds.length; i++) {
+      await db.chats.update(chatIds[i], { order: i });
+    }
+  });
 }
 
 export async function reorderFolders(folderIds: string[]) {
-  // Update order for all folders
-  for (let i = 0; i < folderIds.length; i++) {
-    await db.folders.update(folderIds[i], { order: i });
-  }
+  // Batch update order for all folders in a single transaction
+  await db.transaction("rw", db.folders, async () => {
+    for (let i = 0; i < folderIds.length; i++) {
+      await db.folders.update(folderIds[i], { order: i });
+    }
+  });
 }
 
 export async function moveChatToFolder(chatId: string, folderId: string | null) {

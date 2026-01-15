@@ -10,18 +10,44 @@ export function providerLabel(providerId: string) {
 const DIRECT_MODEL_PREFIX_TO_PROVIDER_ID = new Set([
   "openai",
   "anthropic",
+  "google",
+  "deepseek",
+  "mistral",
+  "mistralai", // Model IDs use mistralai/ prefix
+  "xai",
   "groq",
   "together",
   "perplexity",
   "anyscale",
   "ollama",
   "lmstudio",
+  "meta-llama", // Llama models via Together/Groq
 ]);
+
+// Map model prefixes to their native provider IDs
+const MODEL_PREFIX_TO_PROVIDER: Record<string, string> = {
+  "openai": "openai",
+  "anthropic": "anthropic",
+  "google": "google",
+  "deepseek": "deepseek",
+  "mistralai": "mistral",
+  "mistral": "mistral",
+  "xai": "xai",
+  "x-ai": "xai",
+  "groq": "groq",
+  "together": "together",
+  "perplexity": "perplexity",
+  "anyscale": "anyscale",
+  "ollama": "ollama",
+  "lmstudio": "lmstudio",
+  // Open source models - prefer Together as default host
+  "meta-llama": "together",
+};
 
 export function inferDirectProviderFromModelId(modelId: string): string | null {
   const prefix = modelId.split("/")[0];
   if (!prefix) return null;
-  return DIRECT_MODEL_PREFIX_TO_PROVIDER_ID.has(prefix) ? prefix : null;
+  return MODEL_PREFIX_TO_PROVIDER[prefix] || null;
 }
 
 export function isModelIdCompatibleWithProviderId(providerId: string, modelId: string): boolean {
@@ -29,6 +55,32 @@ export function isModelIdCompatibleWithProviderId(providerId: string, modelId: s
   if (providerId === "anthropic") return modelId.startsWith("anthropic/") || !modelId.includes("/");
   if (providerId === "openai" || providerId.startsWith(CUSTOM_OPENAI_PREFIX)) {
     return modelId.startsWith("openai/") || !modelId.includes("/");
+  }
+  // Google AI can serve google/ prefixed models (Gemini)
+  if (providerId === "google") {
+    return modelId.startsWith("google/") || !modelId.includes("/");
+  }
+  // DeepSeek can serve deepseek/ prefixed models
+  if (providerId === "deepseek") {
+    return modelId.startsWith("deepseek/") || !modelId.includes("/");
+  }
+  // Mistral AI can serve mistralai/ prefixed models
+  if (providerId === "mistral") {
+    return modelId.startsWith("mistralai/") || modelId.startsWith("mistral/") || !modelId.includes("/");
+  }
+  // xAI can serve xai/ prefixed models (Grok)
+  if (providerId === "xai") {
+    return modelId.startsWith("xai/") || modelId.startsWith("x-ai/") || !modelId.includes("/");
+  }
+  // Together AI can serve meta-llama/, mistralai/, deepseek/ models
+  if (providerId === "together") {
+    return modelId.startsWith("meta-llama/") || modelId.startsWith("mistralai/") ||
+           modelId.startsWith("deepseek/") || modelId.startsWith("together/") || !modelId.includes("/");
+  }
+  // Groq can serve meta-llama/, mistralai/ models
+  if (providerId === "groq") {
+    return modelId.startsWith("meta-llama/") || modelId.startsWith("mistralai/") ||
+           modelId.startsWith("groq/") || !modelId.includes("/");
   }
 
   const prefix = `${providerId}/`;

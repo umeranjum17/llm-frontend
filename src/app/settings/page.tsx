@@ -94,7 +94,7 @@ export default function SettingsPage() {
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="flex overflow-x-auto sm:flex-wrap sm:justify-start gap-1 h-auto p-1 sm:p-1.5 mb-4 sm:mb-8 w-full scrollbar-none">
+            <TabsList className="relative flex overflow-x-auto sm:flex-wrap sm:justify-start gap-1 h-auto p-1 sm:p-1.5 mb-4 sm:mb-8 w-full scrollbar-none z-10">
               <TabsTrigger value="general" className="gap-1.5 text-xs shrink-0 px-2 sm:px-3">
                 <SettingsIcon className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">General</span>

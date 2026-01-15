@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
             case "search":
                 if (!query) throw new Error("Query is required for search");
                 try {
-                    result = await memoryClient.search(query, { user_id: finalUserId, limit: 10 });
+                    result = await memoryClient.search(query, { user_id: finalUserId, limit: 5 });
                 } catch (searchError: any) {
                     // Handle "User not found" error - user has no memories yet
                     if (searchError?.message?.includes("User not found") ||

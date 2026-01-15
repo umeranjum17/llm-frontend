@@ -7,6 +7,38 @@ import { PROVIDERS } from "@/lib/providers/registry";
 
 export const runtime = "nodejs";
 
+/**
+ * Sanitize error messages to avoid leaking implementation details
+ */
+function sanitizeErrorMessage(error: unknown): string {
+    if (!(error instanceof Error)) {
+        return "Agent execution failed";
+    }
+
+    const message = error.message;
+
+    // Whitelist of safe error patterns to pass through
+    const safePatterns = [
+        /^API key required$/i,
+        /^Agent not found:/i,
+        /^Pipeline execution failed$/i,
+        /^Invalid request/i,
+        /rate limit/i,
+        /unauthorized/i,
+        /forbidden/i,
+        /timeout/i,
+    ];
+
+    for (const pattern of safePatterns) {
+        if (pattern.test(message)) {
+            return message;
+        }
+    }
+
+    // Generic message for other errors
+    return "Agent execution failed. Please try again.";
+}
+
 const RequestSchema = z.object({
     agentId: z.string(),
     userMessage: z.string(),
@@ -192,9 +224,10 @@ export async function POST(req: Request) {
         );
     } catch (error) {
         console.error("[Agent Run API] Error:", error);
-        const errorMessage = error instanceof Error ? error.message : "Agent execution failed";
+        // Sanitize error message to avoid leaking implementation details
+        const sanitizedMessage = sanitizeErrorMessage(error);
         return new Response(
-            JSON.stringify({ error: errorMessage }),
+            JSON.stringify({ error: sanitizedMessage }),
             { status: 500, headers: { "Content-Type": "application/json" } }
         );
     }

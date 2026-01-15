@@ -122,6 +122,7 @@ export interface UserSettings {
   memoryAutoExtract?: boolean;       // Auto-learn from conversations
   memoryCacheTTL?: number;           // Cache TTL in seconds (default: 30)
   memoryMaxItems?: number;           // Limit total memories
+  memoryUserId?: string;             // Mem0 user ID (default: "default-user")
   titleModelId?: string;             // Which model to use for title generation (deprecated, use titleModelIdsByProvider)
   titleModelIdsByProvider?: Record<string, string>; // Per-provider title generation models
   embeddingsProvider?: "openrouter" | "openai"; // Which provider to use for embeddings (default: openrouter)
@@ -334,8 +335,9 @@ export interface McpServer {
   toolCaps?: number; // Maximum number of tools to inject (safety limit)
 
   // Marketplace fields
-  type: "sse" | "stdio";
+  type: "sse" | "stdio" | "http";
   collection: "curated" | "custom";
+  headers?: Record<string, string>; // HTTP headers for authentication
   logoUrl?: string;
   author?: string;
   kind?: "hub" | "connector" | "tool"; // Integration kind
@@ -345,6 +347,14 @@ export interface McpServer {
   args?: string[];
   env?: Record<string, string>;
   category?: string; // For marketplace filtering: search, code, data, security
+
+  // Composio consolidated server fields
+  composioToolkits?: Array<{
+    key: string;
+    name: string;
+    logo?: string;
+    isEnabled: boolean;
+  }>;
 }
 
 export interface ModelAlias {

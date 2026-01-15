@@ -15,6 +15,7 @@ import {
     getAllMemories,
     addMemory,
     deleteMemory,
+    clearMemoryCache,
     type MemoryItem,
 } from "@/lib/memory";
 import { db } from "@/lib/db/schema";
@@ -28,6 +29,7 @@ export function MemorySettings() {
     const [isLoadingMemories, setIsLoadingMemories] = useState(false);
     const [newMemory, setNewMemory] = useState("");
     const [isAdding, setIsAdding] = useState(false);
+    const [userIdInput, setUserIdInput] = useState("");
 
     // Load memories on mount and when refreshed
     const loadMemories = useCallback(async () => {
@@ -46,6 +48,15 @@ export function MemorySettings() {
     useEffect(() => {
         loadMemories();
     }, [loadMemories]);
+
+    // Sync userIdInput with settings when settings load
+    useEffect(() => {
+        if (settings?.memoryUserId !== undefined) {
+            setUserIdInput(settings.memoryUserId || "default-user");
+        } else if (settings) {
+            setUserIdInput("default-user");
+        }
+    }, [settings?.memoryUserId]);
 
     const handleToggleMemory = async (enabled: boolean) => {
         await updateSettings({ memoryEnabled: enabled });
@@ -139,6 +150,8 @@ export function MemorySettings() {
                                                     createdAt: Date.now(),
                                                     label: "Mem0 API Key"
                                                 });
+                                                // Reset cache/invalid state so we retry with the new key
+                                                clearMemoryCache();
                                                 // Initialize Mem0 user by adding a seed memory
                                                 // This prevents "User not found" errors on first search
                                                 try {
@@ -150,6 +163,7 @@ export function MemorySettings() {
                                                 }
                                             } else {
                                                 await db.apiKeys.delete("mem0");
+                                                clearMemoryCache();
                                             }
                                         }}
                                     />
@@ -162,6 +176,30 @@ export function MemorySettings() {
                                 </div>
                                 <p className="text-xs text-muted-foreground">
                                     The Free Tier provides 10,000 memories, which is enough for years of typical usage.
+                                </p>
+                            </div>
+
+                            {/* User ID Setting */}
+                            <div className="space-y-2 pt-3 border-t">
+                                <Label>User ID</Label>
+                                <Input
+                                    type="text"
+                                    value={userIdInput}
+                                    placeholder="default-user"
+                                    onChange={(e) => setUserIdInput(e.target.value)}
+                                    onBlur={async (e) => {
+                                        const value = e.target.value.trim() || "default-user";
+                                        const currentValue = settings?.memoryUserId || "default-user";
+                                        if (value !== currentValue) {
+                                            await updateSettings({ memoryUserId: value });
+                                            clearMemoryCache();
+                                            toast.success("User ID updated");
+                                            await loadMemories();
+                                        }
+                                    }}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    The user identifier for Mem0. Change this to sync memories across devices or use different memory profiles.
                                 </p>
                             </div>
 

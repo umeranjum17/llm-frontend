@@ -6,6 +6,7 @@ import { normalizeModelIdForProviderId } from "@/lib/ai/provider-routing";
 import { isCustomOpenAIProvider, resolveProvider } from "@/lib/providers";
 import { McpManager, type ToolMetadata } from "@/lib/mcp/mcp-manager";
 import type { McpServer } from "@/lib/db/schema";
+import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 
 // Node.js runtime required for MCP SDK SSE transport
 export const runtime = "nodejs";
@@ -141,8 +142,13 @@ export async function POST(req: Request) {
     const effectiveApiKey = apiKey || "local";
     const normalizedModelId = normalizeModelIdForProviderId(resolved.id, modelId);
 
+    // Get model capabilities for advanced features
+    const capabilities = getModelCapabilities(modelId);
+    const isAnthropicProvider = resolved.kind === "anthropic";
+    const isOpenAIProvider = resolved.id === "openai";
+
     const model = (() => {
-      if (resolved.kind === "anthropic") {
+      if (isAnthropicProvider) {
         const anthropic = createAnthropic({ apiKey: effectiveApiKey });
         return anthropic(normalizedModelId);
       }
@@ -211,6 +217,34 @@ export async function POST(req: Request) {
       providerOptions.openrouter = {
         usage: { include: true }
       };
+    }
+
+    // For Anthropic, add cache breakpoints to system messages for prompt caching
+    // This marks the end of cacheable content so subsequent requests can reuse it
+    if (isAnthropicProvider && capabilities.supportsPromptCaching) {
+      // Mark the last system message for caching
+      const lastSystemIdx = coreMessages.map((m, i) => m.role === 'system' ? i : -1).filter(i => i !== -1).pop();
+      if (lastSystemIdx !== undefined && lastSystemIdx >= 0) {
+        const msg = coreMessages[lastSystemIdx] as any;
+        // Add cache control to mark this as cacheable
+        msg.experimental_providerMetadata = {
+          anthropic: { cacheControl: { type: 'ephemeral' } }
+        };
+      }
+      console.log('[Chat] Enabled Anthropic prompt caching');
+    }
+
+    // For models with extended thinking, configure thinking options
+    if (capabilities.supportsThinking) {
+      if (isAnthropicProvider) {
+        // Claude models with thinking - use provider-specific options
+        providerOptions.anthropic = {
+          ...providerOptions.anthropic,
+          thinking: { type: 'enabled', budgetTokens: 10000 }
+        };
+        console.log('[Chat] Enabled Anthropic extended thinking');
+      }
+      // Note: OpenAI o1/o3 models handle reasoning automatically
     }
 
     const result = streamText({

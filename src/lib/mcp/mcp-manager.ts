@@ -56,44 +56,46 @@ function buildSafeMcpToolName(serverId: string, toolName: string): string {
  * Convert JSON Schema to Zod schema for proper AI SDK compatibility.
  * This ensures tool parameters are properly typed instead of using generic z.record(z.any()).
  *
- * IMPORTANT: Azure OpenAI requires ALL properties to be in the 'required' array.
- * We make all properties required at the Zod level - for optional parameters,
- * the LLM should pass appropriate default values.
+ * Properties not in the 'required' array are made optional with .optional().
  */
-function jsonSchemaToZod(schema: any, isTopLevel: boolean = true): z.ZodTypeAny {
+function jsonSchemaToZod(schema: any, isTopLevel: boolean = true, requiredProps?: Set<string>, propName?: string): z.ZodTypeAny {
   // Fallback for missing or invalid schemas
   if (!schema || typeof schema !== 'object') {
-    return z.string().describe("Any value");
+    return z.any().describe("Any value");
   }
 
   // Handle object type (most common for tool parameters)
   if (schema.type === "object" || schema.properties) {
     const properties = schema.properties || {};
+    const required = new Set<string>(schema.required || []);
 
     const shape: Record<string, z.ZodTypeAny> = {};
     for (const [key, prop] of Object.entries(properties)) {
       const propSchema = prop as any;
 
-      // Skip properties without a type field - Azure requires all properties to have a type
-      if (!propSchema || (typeof propSchema === 'object' && !propSchema.type && !propSchema.properties && !propSchema.enum)) {
-        console.warn(`[MCP] Skipping property '${key}' without type definition`);
+      // Skip properties without any type info
+      if (!propSchema || typeof propSchema !== 'object') {
+        console.warn(`[MCP] Skipping property '${key}' without schema`);
         continue;
       }
 
-      let zodType = jsonSchemaToZod(propSchema, false);
+      let zodType = jsonSchemaToZod(propSchema, false, undefined, key);
 
       // Add description if available
       if (propSchema.description) {
         zodType = zodType.describe(propSchema.description);
       }
 
-      // Azure requires ALL properties in required array, so we make all properties required
-      // Do NOT call .optional() - this ensures proper Azure compatibility
+      // Make optional if not in required array
+      if (!required.has(key)) {
+        zodType = zodType.optional();
+      }
+
       shape[key] = zodType;
     }
 
-    // Return strict object - Azure requires additionalProperties: false
-    return z.object(shape).strict();
+    // Use passthrough to allow additional properties (more lenient)
+    return z.object(shape).passthrough();
   }
 
   // Handle primitive types
@@ -127,10 +129,10 @@ function jsonSchemaToZod(schema: any, isTopLevel: boolean = true): z.ZodTypeAny 
         return jsonSchemaToZod(schema.oneOf[0], false);
       }
 
-      // For unknown types or missing type field, default to string (Azure requires a type)
-      // This handles properties without a 'type' key
-      console.warn('[MCP] Unknown schema type, defaulting to string:', JSON.stringify(schema));
-      return z.string().describe(schema.description || "Value");
+      // For unknown types or missing type field, use z.any() to be lenient
+      // This allows the LLM to pass any value without validation errors
+      console.warn('[MCP] Unknown schema type, using any:', schema.type || 'undefined');
+      return z.any().describe(schema.description || "Value");
   }
 }
 
@@ -219,23 +221,30 @@ export class McpManager {
 
   /**
    * Generate a unique key for a server connection
-   * Includes server ID and API key hash to ensure different users don't share connections
+   * Includes server ID, API key hash, and headers hash to ensure:
+   * - Different users don't share connections
+   * - Session changes (e.g., Composio toolkit changes) create new connections
    */
   private getServerConnectionKey(server: McpServer): string {
     const apiKeyHash = server.apiKey ? fnv1a32(server.apiKey).toString(36) : 'nokey';
-    return `${server.id}:${apiKeyHash}`;
+    // Also hash headers for servers that use header-based auth (like Composio sessions)
+    const headersHash = server.headers ? fnv1a32(JSON.stringify(server.headers)).toString(36) : 'noheaders';
+    return `${server.id}:${apiKeyHash}:${headersHash}`;
   }
 
   /**
    * Generate a cache key from enabled servers configuration
-   * Includes server IDs, API key hashes, and tool policies to ensure per-user caching
+   * Includes server IDs, API key hashes, headers hash, and tool policies to ensure:
+   * - Per-user caching
+   * - Cache invalidation when sessions change (e.g., Composio toolkit changes)
    */
   private generateCacheKey(servers: McpServer[]): string {
     const enabledServers = servers
       .filter(s => s.enabled)
       .map(s => {
         const apiKeyHash = s.apiKey ? fnv1a32(s.apiKey).toString(36) : 'nokey';
-        return `${s.id}:${apiKeyHash}:${s.toolCaps || this.DEFAULT_TOOL_CAP}:${(s.toolPolicy?.disabledTools || []).sort().join(',')}`;
+        const headersHash = s.headers ? fnv1a32(JSON.stringify(s.headers)).toString(36) : 'noheaders';
+        return `${s.id}:${apiKeyHash}:${headersHash}:${s.toolCaps || this.DEFAULT_TOOL_CAP}:${(s.toolPolicy?.disabledTools || []).sort().join(',')}`;
       })
       .sort()
       .join('|');
@@ -249,9 +258,15 @@ export class McpManager {
     const transportType = detectTransportType(server.url);
 
     // Build headers based on server configuration
-    // Composio uses x-api-key header, others use Authorization Bearer
+    // First check for explicit headers (Composio Tool Router uses this)
+    // Then fall back to apiKey-based headers
     let headers: Record<string, string> | undefined;
-    if (server.apiKey) {
+
+    if (server.headers && Object.keys(server.headers).length > 0) {
+      // Use explicit headers from server config (e.g., Composio sessions)
+      headers = { ...server.headers };
+    } else if (server.apiKey) {
+      // Fall back to apiKey-based auth
       if (server.url.includes('composio.dev')) {
         headers = { 'x-api-key': server.apiKey };
       } else {
@@ -259,7 +274,7 @@ export class McpManager {
       }
     }
 
-    console.log(`[MCP] Using ${transportType} transport for ${server.name} (${server.url})`);
+    console.log(`[MCP] Using ${transportType} transport for ${server.name} (${server.url})`, headers ? 'with headers' : 'no auth');
 
     if (transportType === 'streamableHttp') {
       return new StreamableHTTPClientTransport(new URL(server.url), {

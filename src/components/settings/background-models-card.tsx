@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -11,15 +11,14 @@ import { useSettingsStore } from "@/stores/settings-store";
 import { toast } from "sonner";
 import { getSettings, updateSettings } from "@/lib/db/queries";
 import { useLiveQuery } from "dexie-react-hooks";
-import { useModelsStore } from "@/stores/models-store";
-import { MODELS, type Model } from "@/lib/constants/models";
 import {
     Tooltip,
     TooltipContent,
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ModelCombobox } from "@/components/model-picker/model-combobox";
+import { CheapModelSelector } from "@/components/model-picker/model-selector";
+import { useAvailableModels } from "@/hooks/use-available-models";
 
 interface BackgroundModel {
     id: string;
@@ -37,7 +36,7 @@ const BACKGROUND_MODELS: BackgroundModel[] = [
         description: "Model used to generate chat titles automatically",
         icon: FileText,
         settingKey: "titleModelId",
-        defaultModel: "openai/gpt-4o-mini",
+        defaultModel: "openai/gpt-4o-mini", // $0.15/$0.60 - cheapest capable
     },
     {
         id: "tagging",
@@ -45,7 +44,7 @@ const BACKGROUND_MODELS: BackgroundModel[] = [
         description: "Model used to generate tags for chats",
         icon: Tag,
         settingKey: "taggingModelId",
-        defaultModel: "openai/gpt-4o-mini",
+        defaultModel: "openai/gpt-4o-mini", // $0.15/$0.60 - fast & cheap
     },
     {
         id: "memory",
@@ -53,7 +52,7 @@ const BACKGROUND_MODELS: BackgroundModel[] = [
         description: "Model used to extract facts and preferences",
         icon: Brain,
         settingKey: "memoryModelId",
-        defaultModel: "openai/gpt-4o-mini",
+        defaultModel: "anthropic/claude-3-haiku", // $0.25/$1.25 - good at extraction
     },
     {
         id: "summary",
@@ -61,40 +60,18 @@ const BACKGROUND_MODELS: BackgroundModel[] = [
         description: "Model used to generate chat summaries",
         icon: MessageSquare,
         settingKey: "summaryModelId",
-        defaultModel: "openai/gpt-4o-mini",
+        defaultModel: "openai/gpt-4o-mini", // $0.15/$0.60 - good at summarization
     },
-];
-
-// Recommended fast/cheap models for background tasks
-const RECOMMENDED_MODELS = [
-    "openai/gpt-4o-mini",
-    "anthropic/claude-3-haiku-20240307",
-    "google/gemini-flash-1.5",
-    "meta-llama/llama-3.1-8b-instruct",
 ];
 
 export function BackgroundModelsCard() {
     const settings = useLiveQuery(() => getSettings());
-    const { models } = useModelsStore();
     const { autoTaggingEnabled, updateAutoTagging } = useSettingsStore();
     const [localSettings, setLocalSettings] = useState<Record<string, string>>({});
     const [hasChanges, setHasChanges] = useState(false);
 
-    // Use fetched models or fall back to constants
-    const allModels = models.length > 0 ? models : MODELS;
-
-    // Filter to fast/cheap models suitable for background tasks
-    const availableModels = useMemo(() => {
-        // Include recommended models and any model with "mini", "haiku", "flash", or "instant" in the name
-        return allModels.filter(m =>
-            RECOMMENDED_MODELS.includes(m.id) ||
-            m.id.toLowerCase().includes("mini") ||
-            m.id.toLowerCase().includes("haiku") ||
-            m.id.toLowerCase().includes("flash") ||
-            m.id.toLowerCase().includes("instant") ||
-            m.id.toLowerCase().includes("8b")
-        ).slice(0, 20); // Limit to 20 for performance
-    }, [allModels]);
+    // Use centralized hook for models
+    const { models: allModels } = useAvailableModels({ maxCost: 10, includeLegacy: true });
 
     useEffect(() => {
         if (settings) {
@@ -119,14 +96,6 @@ export function BackgroundModelsCard() {
         } catch (error) {
             toast.error("Failed to save settings");
         }
-    };
-
-    const getModelName = (modelId: string) => {
-        const model = allModels.find(m => m.id === modelId);
-        if (model) return model.name;
-        // Extract a friendly name from the model ID
-        const parts = modelId.split("/");
-        return parts[parts.length - 1] || modelId;
     };
 
     return (
@@ -200,13 +169,12 @@ export function BackgroundModelsCard() {
                                     />
                                 )}
                                 <div className={`w-full sm:w-[220px] ${isDisabled ? "opacity-50 pointer-events-none" : ""}`}>
-                                    <ModelCombobox
-                                        models={availableModels}
+                                    <CheapModelSelector
                                         value={currentModel}
                                         onValueChange={(v) => handleModelChange(bg.settingKey, v)}
                                         disabled={isDisabled}
                                         placeholder="Select model..."
-                                        className="h-8 text-xs"
+                                        compact
                                     />
                                 </div>
                             </div>

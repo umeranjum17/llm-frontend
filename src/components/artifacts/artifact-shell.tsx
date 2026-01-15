@@ -18,6 +18,7 @@ import {
 import { useUIStore, Artifact } from "@/stores/ui-store";
 import { MonacoEditor } from "@/components/artifacts/monaco-editor";
 import { SandpackExecutor } from "@/components/artifacts/sandpack-executor";
+import { E2BExecutor } from "@/components/artifacts/e2b-executor";
 import { DataViewer } from "@/components/artifacts/data-viewer";
 import { DocxViewer } from "@/components/artifacts/docx-viewer";
 import { ArtifactErrorBoundary } from "@/components/artifacts/artifact-error-boundary";
@@ -49,7 +50,9 @@ export function ArtifactShell() {
     // Determine artifact type for routing
     const isProject =
         activeArtifact?.type === "project" || !!activeArtifact?.files;
-    const isRunnable =
+
+    // Languages that run in Sandpack (browser-based JS/TS)
+    const isSandpackRunnable =
         activeArtifact &&
         (isProject ||
             [
@@ -61,6 +64,14 @@ export function ArtifactShell() {
                 "react",
                 "node",
             ].includes(activeArtifact.language));
+
+    // Languages that run in E2B (remote sandbox - Python, Node.js, Bash)
+    const isE2BRunnable =
+        activeArtifact &&
+        ["python", "py", "bash", "sh", "shell"].includes(activeArtifact.language || "");
+
+    const isRunnable = isSandpackRunnable || isE2BRunnable;
+
     const isData =
         activeArtifact &&
         ["csv", "tsv", "sheet"].includes(
@@ -76,7 +87,7 @@ export function ArtifactShell() {
     // Switch to appropriate tab on artifact change
     useEffect(() => {
         if (activeArtifact) {
-            if (isProject || isRunnable) {
+            if (isRunnable) {
                 setActiveTab("run");
             } else if (isData || isDoc || isHtml || isSvg) {
                 setActiveTab("preview");
@@ -84,7 +95,7 @@ export function ArtifactShell() {
                 setActiveTab("code");
             }
         }
-    }, [activeArtifact, isProject, isRunnable, isData, isDoc, isHtml, isSvg]);
+    }, [activeArtifact, isRunnable, isData, isDoc, isHtml, isSvg]);
 
     // Handle escape key for fullscreen
     useEffect(() => {
@@ -311,20 +322,32 @@ export function ArtifactShell() {
                                 </TabsList>
                             </div>
 
-                            {/* RUN TAB (Sandpack) */}
+                            {/* RUN TAB (Sandpack or E2B) */}
                             <TabsContent
                                 value="run"
                                 className="flex-1 m-0 p-0 overflow-hidden h-full"
                             >
                                 <ArtifactErrorBoundary fallbackTitle="Failed to load code executor">
-                                    <SandpackExecutor
-                                        id={activeArtifact.id}
-                                        code={activeArtifact.code || ""}
-                                        language={activeArtifact.language}
-                                        template={activeArtifact.template}
-                                        files={activeArtifact.files}
-                                        entry={activeArtifact.entry}
-                                    />
+                                    {isE2BRunnable ? (
+                                        <E2BExecutor
+                                            id={activeArtifact.id}
+                                            code={activeArtifact.code || ""}
+                                            language={
+                                                activeArtifact.language === "py" ? "python" :
+                                                activeArtifact.language === "sh" || activeArtifact.language === "shell" ? "bash" :
+                                                activeArtifact.language as "python" | "javascript" | "bash"
+                                            }
+                                        />
+                                    ) : (
+                                        <SandpackExecutor
+                                            id={activeArtifact.id}
+                                            code={activeArtifact.code || ""}
+                                            language={activeArtifact.language}
+                                            template={activeArtifact.template}
+                                            files={activeArtifact.files}
+                                            entry={activeArtifact.entry}
+                                        />
+                                    )}
                                 </ArtifactErrorBoundary>
                             </TabsContent>
 

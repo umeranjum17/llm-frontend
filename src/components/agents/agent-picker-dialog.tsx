@@ -210,6 +210,12 @@ export function AgentPickerDialog({
             if (savedAgent && !editingAgent) selectAgent(savedAgent);
           });
         }}
+        onReset={async (agentId, newModelId) => {
+          // Update the current chat's model if it's using this agent
+          if (currentAgentId === agentId && newModelId) {
+            await updateChat(chatId, { modelId: newModelId });
+          }
+        }}
       />
     </Dialog>
   );

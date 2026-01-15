@@ -81,6 +81,7 @@ export async function buildContextMessages(
       if (memories && memories.length > 0) {
         // Format memories into a single context string
         const memoryContext = "Active Memories:\n" + memories.map((m: any) => `- ${m.memory}`).join("\n");
+        const memoryTokens = Math.ceil(memoryContext.length / 4); // ~4 chars per token
 
         messages.push({
           id: "memory-context",
@@ -89,7 +90,7 @@ export async function buildContextMessages(
           content: memoryContext,
           createdAt: Date.now(),
         });
-        console.log("[Context] Injected memories:", memories.length);
+        console.log(`[Context] 🧠 Memories: ${memories.length} items, ~${memoryTokens} tokens`);
       }
     } catch (error) {
       console.error("[Context] Failed to load memory context:", error);
@@ -173,6 +174,7 @@ export async function buildContextMessages(
     try {
       const alias = await getModelAlias(chat.modelId);
       if (alias?.systemPrompt) {
+        const aliasTokens = Math.ceil(alias.systemPrompt.length / 4);
         messages.push({
           id: `system-model-alias-${chat.modelId}`,
           chatId,
@@ -180,6 +182,7 @@ export async function buildContextMessages(
           content: alias.systemPrompt,
           createdAt: Date.now(),
         });
+        console.log(`[Context] 🏷️ Model alias prompt: ~${aliasTokens} tokens`);
       }
     } catch (error) {
       console.error("Failed to load model alias:", error);
@@ -191,6 +194,7 @@ export async function buildContextMessages(
     try {
       const agent = await getAgentById(chat.agentId);
       if (agent?.isActive && agent.systemPrompt) {
+        const agentTokens = Math.ceil(agent.systemPrompt.length / 4);
         messages.push({
           id: `system-agent-${agent.id}`,
           chatId,
@@ -198,6 +202,7 @@ export async function buildContextMessages(
           content: agent.systemPrompt,
           createdAt: Date.now(),
         });
+        console.log(`[Context] 🤖 Agent "${agent.name}" prompt: ~${agentTokens} tokens`);
       }
     } catch (error) {
       console.error("Failed to load agent:", error);

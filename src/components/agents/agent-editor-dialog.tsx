@@ -15,9 +15,9 @@ import { MODELS } from "@/lib/constants/models";
 import { useModelsStore } from "@/stores/models-store";
 import type { Agent, McpServer, PipelineStep } from "@/lib/db/schema";
 import { PROVIDERS } from "@/lib/providers/registry";
-import { addAgent, updateAgent, getAllMcpServers, getMcpServerById, getAllAgents } from "@/lib/db/queries";
+import { addAgent, updateAgent, getAllMcpServers, getMcpServerById, getAllAgents, resetAgentToDefault } from "@/lib/db/queries";
 import { toast } from "sonner";
-import { Eye, Brain, Wrench, Sparkles, Server, Loader2, AlertCircle, Image, Search, Check, Plus, Trash2, GripVertical, MessageSquare, ImageIcon, Bot, Settings2, LayoutGrid, List, ChevronDown, ChevronRight } from "lucide-react";
+import { Eye, Brain, Wrench, Sparkles, Server, Loader2, AlertCircle, Image, Search, Check, Plus, Trash2, GripVertical, MessageSquare, ImageIcon, Bot, Settings2, LayoutGrid, List, ChevronDown, ChevronRight, RotateCcw } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getModelCapabilities, isImageGenerationModel } from "@/lib/constants/model-capabilities";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -31,6 +31,7 @@ interface AgentEditorDialogProps {
   onOpenChange: (open: boolean) => void;
   agent?: Agent | null;
   onSaved?: (agentId: string) => void;
+  onReset?: (agentId: string, newModelId: string | undefined) => void;
 }
 
 interface McpTool {
@@ -41,7 +42,7 @@ interface McpTool {
   serverId: string;
 }
 
-export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentEditorDialogProps) {
+export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset }: AgentEditorDialogProps) {
   const isEditing = !!agent;
   const isBuiltIn = agent?.isBuiltIn ?? false;
 
@@ -56,6 +57,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
   const [disabledMcpTools, setDisabledMcpTools] = useState<string[]>([]);
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   // Pipeline state
   const [executionType, setExecutionType] = useState<"simple" | "pipeline" | "orchestrator">("simple");
@@ -315,6 +317,23 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
   };
 
   const enabledMcpToolsCount = mcpTools.filter((t) => !disabledMcpTools.includes(t.fullName)).length;
+
+  const handleReset = async () => {
+    if (!agent || !isBuiltIn) return;
+
+    setResetting(true);
+    try {
+      const newModelId = await resetAgentToDefault(agent.id);
+      onReset?.(agent.id, newModelId);
+      toast.success("Agent reset to default settings");
+      onOpenChange(false);
+    } catch (e) {
+      console.error("Failed to reset agent:", e);
+      toast.error("Failed to reset agent");
+    } finally {
+      setResetting(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1174,20 +1193,44 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
           </ScrollArea>
         </Tabs>
 
-        <div className="flex justify-end gap-2 pt-4 border-t mt-4">
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>
-            Cancel
-          </Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              "Save"
+        <div className="flex justify-between gap-2 pt-4 border-t mt-4">
+          <div>
+            {isBuiltIn && isEditing && (
+              <Button
+                variant="outline"
+                onClick={handleReset}
+                disabled={saving || resetting}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                {resetting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Resetting...
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    Reset to Default
+                  </>
+                )}
+              </Button>
             )}
-          </Button>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving || resetting}>
+              Cancel
+            </Button>
+            <Button onClick={handleSave} disabled={saving || resetting}>
+              {saving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save"
+              )}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

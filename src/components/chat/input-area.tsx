@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
-import { Send, Loader2, Paperclip, X, FileText, Image as ImageIcon, Mic, Square, Star } from "lucide-react";
+import { Send, Loader2, Paperclip, X, FileText, Image as ImageIcon, Mic, Square, Star, Code2, ChevronDown, ChevronUp } from "lucide-react";
 import { useChat } from "@/hooks/use-chat";
 import { useChatKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { TokenDisplay } from "./token-display";
@@ -39,9 +39,117 @@ interface ImageAttachment {
   dataUrl: string;
 }
 
+interface CodeSnippet {
+  id: string;
+  content: string;
+  language: string | null;
+  lineCount: number;
+}
+
 const MAX_TEXT_ATTACHMENT_BYTES = 1024 * 1024 * 2; // 2MB
 const MAX_IMAGE_ATTACHMENT_BYTES = 1024 * 1024 * 5; // 5MB
 const MAX_IMAGE_ATTACHMENTS = 4;
+const CODE_SNIPPET_LINE_THRESHOLD = 3; // Minimum lines to treat as code snippet
+
+// Detect if text looks like code
+function detectCode(text: string): { isCode: boolean; language: string | null } {
+  const lines = text.split('\n');
+  const lineCount = lines.length;
+
+  // Single line or very short text - not a code snippet
+  if (lineCount < CODE_SNIPPET_LINE_THRESHOLD) {
+    return { isCode: false, language: null };
+  }
+
+  // Language detection patterns
+  const patterns: { language: string; patterns: RegExp[] }[] = [
+    { language: 'typescript', patterns: [
+      /^import\s+.*from\s+['"]/, /^export\s+(default\s+)?(function|class|const|interface|type)/,
+      /:\s*(string|number|boolean|void|any)\b/, /<[A-Z]\w*>/
+    ]},
+    { language: 'javascript', patterns: [
+      /^import\s+.*from\s+['"]/, /^export\s+(default\s+)?(function|class|const)/,
+      /^const\s+\w+\s*=\s*(async\s+)?\(/, /^function\s+\w+\s*\(/
+    ]},
+    { language: 'python', patterns: [
+      /^def\s+\w+\s*\(/, /^class\s+\w+[:(]/, /^import\s+\w+/, /^from\s+\w+\s+import/,
+      /^\s*if\s+__name__\s*==\s*['"]__main__['"]/
+    ]},
+    { language: 'java', patterns: [
+      /^public\s+(static\s+)?(class|void|int|String)/, /^private\s+/, /^package\s+\w+/,
+      /System\.(out|err)\.print/
+    ]},
+    { language: 'rust', patterns: [
+      /^fn\s+\w+/, /^pub\s+(fn|struct|enum|mod)/, /^use\s+\w+::/, /^impl\s+/,
+      /let\s+mut\s+\w+/
+    ]},
+    { language: 'go', patterns: [
+      /^package\s+\w+/, /^func\s+(\(\w+\s+\*?\w+\)\s+)?\w+\s*\(/, /^import\s+\(/,
+      /fmt\.(Print|Sprintf)/
+    ]},
+    { language: 'html', patterns: [
+      /^<!DOCTYPE\s+html/i, /^<html/, /<\/?(div|span|head|body|script|style)\b/
+    ]},
+    { language: 'css', patterns: [
+      /^\.[a-z][\w-]*\s*\{/, /^#[a-z][\w-]*\s*\{/, /^@media\s+/, /^@import\s+/
+    ]},
+    { language: 'json', patterns: [
+      /^\s*\{[\s\S]*"[\w]+"\s*:/, /^\s*\[[\s\S]*\{/
+    ]},
+    { language: 'sql', patterns: [
+      /^SELECT\s+/i, /^INSERT\s+INTO/i, /^CREATE\s+TABLE/i, /^UPDATE\s+\w+\s+SET/i
+    ]},
+    { language: 'bash', patterns: [
+      /^#!\/bin\/(bash|sh)/, /^\s*\$\s+\w+/, /^(sudo|npm|yarn|pip|git|docker)\s+/
+    ]},
+  ];
+
+  // Check for specific language patterns
+  for (const { language, patterns: langPatterns } of patterns) {
+    for (const pattern of langPatterns) {
+      for (const line of lines.slice(0, 10)) { // Check first 10 lines
+        if (pattern.test(line)) {
+          return { isCode: true, language };
+        }
+      }
+    }
+  }
+
+  // Generic code indicators
+  const codeIndicators = [
+    /^\s*(const|let|var|function|class|def|fn|pub|import|export|return|if|else|for|while)\b/,
+    /[{}();]$/, // Line ends with code punctuation
+    /^\s*\/\//, // Single-line comment
+    /^\s*\/\*/, // Multi-line comment start
+    /^\s*#\s*\w+/, // Preprocessor or comment
+    /^\s*@\w+/, // Decorators
+    /=>\s*\{/, // Arrow functions
+    /\)\s*\{/, // Function bodies
+  ];
+
+  let codeLineCount = 0;
+  for (const line of lines) {
+    for (const indicator of codeIndicators) {
+      if (indicator.test(line)) {
+        codeLineCount++;
+        break;
+      }
+    }
+  }
+
+  // If more than 30% of lines look like code, treat as code
+  if (codeLineCount / lineCount > 0.3) {
+    return { isCode: true, language: null };
+  }
+
+  // Check for consistent indentation (common in code)
+  const indentedLines = lines.filter(l => /^\s{2,}/.test(l)).length;
+  if (indentedLines / lineCount > 0.4 && lineCount >= 5) {
+    return { isCode: true, language: null };
+  }
+
+  return { isCode: false, language: null };
+}
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -60,6 +168,8 @@ export function InputArea({ chatId }: InputAreaProps) {
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<TextAttachment[]>([]);
   const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>([]);
+  const [codeSnippets, setCodeSnippets] = useState<CodeSnippet[]>([]);
+  const [expandedSnippets, setExpandedSnippets] = useState<Set<string>>(new Set());
   const [promptLibraryOpen, setPromptLibraryOpen] = useState(false);
   const [variableModalOpen, setVariableModalOpen] = useState(false);
   const [selectedPrompt, setSelectedPrompt] = useState<Prompt | null>(null);
@@ -196,7 +306,7 @@ export function InputArea({ chatId }: InputAreaProps) {
 
   // Handle submit function for keyboard shortcut
   const handleSubmitMessage = () => {
-    if ((input.trim() || attachments.length > 0 || imageAttachments.length > 0) && !isLoading) {
+    if ((input.trim() || attachments.length > 0 || imageAttachments.length > 0 || codeSnippets.length > 0) && !isLoading) {
       // Resolve prompt references
       let resolvedMessage = input.trim();
       const promptMatches = resolvedMessage.matchAll(/@prompt:([^\[]+)\[([^\]]+)\]/g);
@@ -210,13 +320,23 @@ export function InputArea({ chatId }: InputAreaProps) {
         }
       }
 
-      const message = resolvedMessage;
+      // Append code snippets as markdown code blocks
+      let message = resolvedMessage;
+      if (codeSnippets.length > 0) {
+        const snippetText = codeSnippets
+          .map((s) => `\`\`\`${s.language || ''}\n${s.content}\n\`\`\``)
+          .join('\n\n');
+        message = message ? `${message}\n\n${snippetText}` : snippetText;
+      }
+
       const currentAttachments = [...attachments]; // Capture current state
       const currentImages = [...imageAttachments];
 
       setInput("");
       setAttachments([]); // Clear state immediately
       setImageAttachments([]);
+      setCodeSnippets([]);
+      setExpandedSnippets(new Set());
 
       const contentParts: MessageContentPart[] = [
         ...(message ? [{ type: "text" as const, text: message }] : []),
@@ -352,10 +472,31 @@ export function InputArea({ chatId }: InputAreaProps) {
     setImageAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const removeCodeSnippet = (id: string) => {
+    setCodeSnippets((prev) => prev.filter((s) => s.id !== id));
+    setExpandedSnippets((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const toggleSnippetExpanded = (id: string) => {
+    setExpandedSnippets((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
   const handleSubmit = async (e?: React.FormEvent, overrideContent?: string) => {
     e?.preventDefault();
     const finalInput = overrideContent ?? input;
-    if ((!finalInput.trim() && attachments.length === 0 && imageAttachments.length === 0) || isLoading)
+    if ((!finalInput.trim() && attachments.length === 0 && imageAttachments.length === 0 && codeSnippets.length === 0) || isLoading)
       return;
 
     // Resolve prompt references
@@ -371,13 +512,23 @@ export function InputArea({ chatId }: InputAreaProps) {
       }
     }
 
-    const message = resolvedMessage;
+    // Append code snippets as markdown code blocks
+    let message = resolvedMessage;
+    if (codeSnippets.length > 0) {
+      const snippetText = codeSnippets
+        .map((s) => `\`\`\`${s.language || ''}\n${s.content}\n\`\`\``)
+        .join('\n\n');
+      message = message ? `${message}\n\n${snippetText}` : snippetText;
+    }
+
     const currentAttachments = [...attachments];
     const currentImages = [...imageAttachments];
 
     setInput("");
     setAttachments([]);
     setImageAttachments([]);
+    setCodeSnippets([]);
+    setExpandedSnippets(new Set());
 
     const contentParts: MessageContentPart[] = [
       ...(message ? [{ type: "text" as const, text: message }] : []),
@@ -418,16 +569,34 @@ export function InputArea({ chatId }: InputAreaProps) {
     const items = e.clipboardData?.items;
     if (!items) return;
 
+    // Check for images first
     const imageItems = Array.from(items).filter((item) => item.type.startsWith("image/"));
-    if (imageItems.length === 0) return;
+    if (imageItems.length > 0) {
+      e.preventDefault();
+      for (const item of imageItems) {
+        const file = item.getAsFile();
+        if (!file) continue;
+        // eslint-disable-next-line no-await-in-loop
+        await addImageFile(file);
+      }
+      return;
+    }
 
-    e.preventDefault();
-
-    for (const item of imageItems) {
-      const file = item.getAsFile();
-      if (!file) continue;
-      // eslint-disable-next-line no-await-in-loop
-      await addImageFile(file);
+    // Check for text that looks like code
+    const text = e.clipboardData?.getData("text/plain");
+    if (text) {
+      const { isCode, language } = detectCode(text);
+      if (isCode) {
+        e.preventDefault();
+        const snippet: CodeSnippet = {
+          id: `snippet-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          content: text,
+          language,
+          lineCount: text.split('\n').length,
+        };
+        setCodeSnippets((prev) => [...prev, snippet]);
+        return;
+      }
     }
   };
 
@@ -446,48 +615,111 @@ export function InputArea({ chatId }: InputAreaProps) {
       onDrop={handleDrop}
     >
       {/* Attachments Preview */}
-      {(imageAttachments.length > 0 || attachments.length > 0) && (
-        <div className="mb-2 flex flex-wrap gap-2 rounded-xl border bg-background/60 p-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/40">
-          {imageAttachments.map((img, i) => (
-            <div
-              key={`${img.dataUrl}-${i}`}
-              className="relative overflow-hidden rounded-md border bg-background"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={img.dataUrl}
-                alt={img.name}
-                className="h-16 w-16 object-cover"
-                loading="lazy"
-              />
-              <button
-                type="button"
-                onClick={() => removeImageAttachment(i)}
-                className="absolute right-1 top-1 rounded bg-background/80 p-0.5 text-muted-foreground hover:text-foreground"
-                title="Remove image"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          ))}
+      {(imageAttachments.length > 0 || attachments.length > 0 || codeSnippets.length > 0) && (
+        <div className="mb-2 flex flex-col gap-2">
+          {/* Image and file attachments row */}
+          {(imageAttachments.length > 0 || attachments.length > 0) && (
+            <div className="flex flex-wrap gap-2 rounded-xl border bg-background/60 p-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/40">
+              {imageAttachments.map((img, i) => (
+                <div
+                  key={`${img.dataUrl}-${i}`}
+                  className="relative overflow-hidden rounded-md border bg-background"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={img.dataUrl}
+                    alt={img.name}
+                    className="h-16 w-16 object-cover"
+                    loading="lazy"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeImageAttachment(i)}
+                    className="absolute right-1 top-1 rounded bg-background/80 p-0.5 text-muted-foreground hover:text-foreground"
+                    title="Remove image"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
 
-          {attachments.map((file, i) => (
-            <div
-              key={`${file.name}-${i}`}
-              className="flex items-center gap-1 bg-background border rounded-md px-2 py-1 text-xs"
-            >
-              <FileText className="h-3 w-3 text-muted-foreground" />
-              <span className="max-w-[150px] truncate">{file.name}</span>
-              <button
-                type="button"
-                onClick={() => removeAttachment(i)}
-                className="text-muted-foreground hover:text-foreground"
-                title="Remove file"
-              >
-                <X className="h-3 w-3" />
-              </button>
+              {attachments.map((file, i) => (
+                <div
+                  key={`${file.name}-${i}`}
+                  className="flex items-center gap-1 bg-background border rounded-md px-2 py-1 text-xs"
+                >
+                  <FileText className="h-3 w-3 text-muted-foreground" />
+                  <span className="max-w-[150px] truncate">{file.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(i)}
+                    className="text-muted-foreground hover:text-foreground"
+                    title="Remove file"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
+
+          {/* Code snippets */}
+          {codeSnippets.map((snippet) => {
+            const isExpanded = expandedSnippets.has(snippet.id);
+            const previewLines = snippet.content.split('\n').slice(0, 4);
+            const hasMore = snippet.lineCount > 4;
+
+            return (
+              <div
+                key={snippet.id}
+                className="rounded-xl border bg-zinc-950 shadow-sm overflow-hidden"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-900/80 border-b border-zinc-800">
+                  <div className="flex items-center gap-2 text-xs text-zinc-400">
+                    <Code2 className="h-3.5 w-3.5" />
+                    <span>{snippet.language || 'code'}</span>
+                    <span className="text-zinc-600">•</span>
+                    <span>{snippet.lineCount} lines</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {hasMore && (
+                      <button
+                        type="button"
+                        onClick={() => toggleSnippetExpanded(snippet.id)}
+                        className="p-1 text-zinc-500 hover:text-zinc-300 transition-colors"
+                        title={isExpanded ? "Collapse" : "Expand"}
+                      >
+                        {isExpanded ? (
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        ) : (
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeCodeSnippet(snippet.id)}
+                      className="p-1 text-zinc-500 hover:text-zinc-300 transition-colors"
+                      title="Remove snippet"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Code preview */}
+                <pre className={`px-3 py-2 text-xs font-mono text-zinc-300 overflow-x-auto ${isExpanded ? 'max-h-[300px]' : 'max-h-[100px]'} overflow-y-auto`}>
+                  <code>
+                    {isExpanded ? snippet.content : previewLines.join('\n')}
+                    {!isExpanded && hasMore && (
+                      <span className="text-zinc-600">{'\n'}...</span>
+                    )}
+                  </code>
+                </pre>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -500,7 +732,7 @@ export function InputArea({ chatId }: InputAreaProps) {
         accept="image/*,.txt,.md,.js,.ts,.tsx,.jsx,.json,.csv,.py,.java,.c,.cpp,.h,.css,.html"
       />
 
-      <div className="flex gap-1.5 sm:gap-2 rounded-xl sm:rounded-2xl border border-border/70 bg-card/80 p-1.5 sm:p-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/60 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background">
+      <div className="flex gap-1.5 sm:gap-2 rounded-xl sm:rounded-2xl border border-border/70 bg-card/80 p-1.5 sm:p-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/60 focus-within:border-ring">
         <Button
           type="button"
           variant="ghost"
@@ -556,12 +788,12 @@ export function InputArea({ chatId }: InputAreaProps) {
             onEnter={handleMentionTextareaEnter}
             onPaste={handlePaste}
             placeholder="Message Lumina… (@ for agents/prompts, # for chats)"
-            className="w-full resize-none bg-transparent px-2 py-2 pr-10 text-sm leading-6 focus:outline-none min-h-10 max-h-[200px] disabled:opacity-60"
+            className="w-full resize-none bg-transparent px-2 py-2 pr-10 text-sm leading-6 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 min-h-10 max-h-[200px] disabled:opacity-60"
             rows={1}
             disabled={isLoading}
           />
 
-          {(imageAttachments.length > 0 || attachments.length > 0) && (
+          {(imageAttachments.length > 0 || attachments.length > 0 || codeSnippets.length > 0) && (
             <div className="pointer-events-none absolute right-2 top-2 flex items-center gap-2 text-muted-foreground">
               {imageAttachments.length > 0 ? (
                 <span className="inline-flex items-center gap-1 text-[11px]">
@@ -573,6 +805,12 @@ export function InputArea({ chatId }: InputAreaProps) {
                 <span className="inline-flex items-center gap-1 text-[11px]">
                   <FileText className="h-3.5 w-3.5" />
                   {attachments.length}
+                </span>
+              ) : null}
+              {codeSnippets.length > 0 ? (
+                <span className="inline-flex items-center gap-1 text-[11px]">
+                  <Code2 className="h-3.5 w-3.5" />
+                  {codeSnippets.length}
                 </span>
               ) : null}
             </div>
@@ -594,7 +832,7 @@ export function InputArea({ chatId }: InputAreaProps) {
           <Button
             type="submit"
             size="icon"
-            disabled={!input.trim() && attachments.length === 0 && imageAttachments.length === 0}
+            disabled={!input.trim() && attachments.length === 0 && imageAttachments.length === 0 && codeSnippets.length === 0}
             className="h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-lg sm:rounded-xl"
             title="Send"
           >

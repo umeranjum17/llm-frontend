@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -13,13 +13,11 @@ import {
 } from "@/components/ui/select";
 import { useSettingsStore } from "@/stores/settings-store";
 import { MODELS } from "@/lib/constants/models";
-import { useModelsStore } from "@/stores/models-store";
 import { toast } from "sonner";
-import { useApiKeysStore } from "@/stores/api-keys-store";
-import { PROVIDERS, isCustomOpenAIProvider, resolveProvider } from "@/lib/providers";
 import { GraduationCap } from "lucide-react";
 import { BackgroundModelsCard } from "./background-models-card";
-import { ModelCombobox } from "@/components/model-picker/model-combobox";
+import { ModelSelector } from "@/components/model-picker/model-selector";
+import { useAvailableModels } from "@/hooks/use-available-models";
 
 export function GeneralSettings() {
   const router = useRouter();
@@ -29,8 +27,7 @@ export function GeneralSettings() {
     defaultModelIdsByProvider: savedDefaultModelIdsByProvider,
     updateDefaultChatDefaults,
   } = useSettingsStore();
-  const { keys } = useApiKeysStore();
-  const { models, loadModels } = useModelsStore();
+
   const [defaultProviderId, setDefaultProviderId] = useState(
     savedDefaultProviderId || "openrouter"
   );
@@ -38,60 +35,21 @@ export function GeneralSettings() {
     Record<string, string>
   >(() => savedDefaultModelIdsByProvider || {});
 
+  // Use centralized hook for providers and models
+  const { providers, models: providerFilteredModels, getModelsForProvider } = useAvailableModels({
+    providerId: defaultProviderId,
+  });
+
   useEffect(() => {
     if (savedDefaultProviderId) setDefaultProviderId(savedDefaultProviderId);
     setDefaultModelIdsByProvider(savedDefaultModelIdsByProvider || {});
   }, [savedDefaultProviderId, savedDefaultModelIdsByProvider]);
-
-  useEffect(() => {
-    loadModels().catch(() => { });
-  }, [loadModels]);
-
-  const providerOptions = useMemo(() => {
-    const knownProviderIds = PROVIDERS.map((p) => p.id);
-    const keyProviderIds = keys.map((k) => k.provider);
-    const ids = Array.from(new Set([...knownProviderIds, ...keyProviderIds]));
-
-    const options = ids
-      .map((id) => {
-        if (isCustomOpenAIProvider(id)) {
-          const key = keys.find((k) => k.provider === id);
-          return { id, name: key?.label || "Custom (OpenAI-compatible)" };
-        }
-
-        const resolved = resolveProvider(id);
-        if (resolved) return { id: resolved.id, name: resolved.name };
-
-        return { id, name: id };
-      })
-      .sort((a, b) => a.name.localeCompare(b.name));
-
-    // Keep OpenRouter at the top if present.
-    const openrouterIndex = options.findIndex((o) => o.id === "openrouter");
-    if (openrouterIndex > 0) {
-      const [openrouter] = options.splice(openrouterIndex, 1);
-      options.unshift(openrouter);
-    }
-
-    return options;
-  }, [keys]);
-
-  const allModels = models.length > 0 ? models : MODELS;
-
-  const providerFilteredModels = useMemo(() => {
-    if (defaultProviderId === "openrouter" || isCustomOpenAIProvider(defaultProviderId)) {
-      return allModels;
-    }
-    return allModels.filter((m) => m.id.startsWith(`${defaultProviderId}/`));
-  }, [allModels, defaultProviderId]);
 
   const defaultModelId =
     defaultModelIdsByProvider[defaultProviderId] ||
     (savedDefaultProviderId === defaultProviderId ? savedDefaultModelId : undefined) ||
     savedDefaultModelId ||
     MODELS[0].id;
-
-  const selectedModel = providerFilteredModels.find((m) => m.id === defaultModelId);
 
   // If the currently selected model isn't available for this provider, fall back to the first.
   useEffect(() => {
@@ -138,7 +96,7 @@ export function GeneralSettings() {
               <SelectValue placeholder="Select a provider" />
             </SelectTrigger>
             <SelectContent>
-              {providerOptions.map((provider) => (
+              {providers.map((provider) => (
                 <SelectItem key={provider.id} value={provider.id}>
                   {provider.name}
                 </SelectItem>
@@ -153,8 +111,7 @@ export function GeneralSettings() {
         {/* Default Model (per provider) */}
         <div className="space-y-2">
           <Label>Default Model</Label>
-          <ModelCombobox
-            models={providerFilteredModels}
+          <ModelSelector
             value={defaultModelId}
             onValueChange={(nextModelId) =>
               setDefaultModelIdsByProvider((prev) => ({
@@ -162,6 +119,7 @@ export function GeneralSettings() {
                 [defaultProviderId]: nextModelId,
               }))
             }
+            providerId={defaultProviderId}
             placeholder="Search and select a model..."
           />
           <p className="text-xs text-muted-foreground">

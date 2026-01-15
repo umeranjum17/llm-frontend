@@ -1,54 +1,26 @@
 import { create } from "zustand";
-import { MODELS, type Model, setDynamicModels } from "@/lib/constants/models";
+import {
+  FEATURED_MODELS,
+  ALL_STATIC_MODELS,
+  DEFAULT_MODEL,
+  getStaticModelById,
+  CATALOG_VERSION,
+} from "@/lib/models/static-models";
+import type { Model } from "@/lib/constants/models";
+import { setDynamicModels } from "@/lib/constants/models";
 
-type ModelsPayload = { fetchedAt: number; models: Model[] };
-
-const LS_KEY = "lumina:models-cache:v1";
-const CACHE_TTL_MS = 60 * 60_000; // 1 hour
-
-// Get hardcoded image generation models that should always be included
-function getImageGenModels(): Model[] {
-  return MODELS.filter(m => m.category.includes("image-generation"));
-}
-
-// Merge image generation models into any model list
-function mergeWithImageModels(models: Model[]): Model[] {
-  const imageModels = getImageGenModels();
-  const existingIds = new Set(models.map(m => m.id));
-  const missingImageModels = imageModels.filter(m => !existingIds.has(m.id));
-  return [...models, ...missingImageModels];
-}
-
-function readCache(): ModelsPayload | null {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as ModelsPayload;
-    if (!parsed || !Array.isArray(parsed.models) || typeof parsed.fetchedAt !== "number") {
-      return null;
-    }
-    if (Date.now() - parsed.fetchedAt > CACHE_TTL_MS) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-function writeCache(payload: ModelsPayload) {
-  try {
-    localStorage.setItem(LS_KEY, JSON.stringify(payload));
-  } catch {
-    // ignore
-  }
-}
-
-function clearCache() {
-  try {
-    localStorage.removeItem(LS_KEY);
-  } catch {
-    // ignore
-  }
-}
+/**
+ * Models Store
+ *
+ * Uses a static, curated model catalog by default (no API calls needed).
+ * The "refresh" option can optionally merge in new models from the API.
+ *
+ * Benefits:
+ * - Instant startup (no API latency)
+ * - Curated, high-quality model list
+ * - Users see the best models, not hundreds of outdated ones
+ * - Full control over model metadata
+ */
 
 interface ModelsState {
   isLoaded: boolean;
@@ -56,95 +28,114 @@ interface ModelsState {
   error?: string;
   models: Model[];
   fetchedAt?: number;
+  catalogVersion: string;
 
   loadModels: (opts?: { refresh?: boolean }) => Promise<{ success: boolean; count?: number; error?: string }>;
   clearModelsCache: () => void;
+  getDefaultModel: () => Model;
 }
 
 export const useModelsStore = create<ModelsState>((set, get) => ({
-  isLoaded: false,
+  isLoaded: true, // Static models are always "loaded"
   isLoading: false,
-  models: MODELS,
+  models: FEATURED_MODELS,
+  fetchedAt: Date.now(),
+  catalogVersion: CATALOG_VERSION,
+
+  getDefaultModel: () => DEFAULT_MODEL,
 
   clearModelsCache: () => {
-    clearCache();
+    // Reset to static models
+    set({
+      models: FEATURED_MODELS,
+      fetchedAt: Date.now(),
+      isLoaded: true,
+      error: undefined,
+    });
+    setDynamicModels(FEATURED_MODELS);
   },
 
   loadModels: async (opts) => {
     const refresh = !!opts?.refresh;
 
-    // If already loading and not a refresh request, skip
-    if (get().isLoading && !refresh) {
-      return { success: true, count: get().models.length };
+    // If not refreshing, just return static models immediately
+    if (!refresh) {
+      const models = get().models;
+      if (models.length > 0) {
+        return { success: true, count: models.length };
+      }
+
+      // Initialize with static models
+      set({
+        models: FEATURED_MODELS,
+        fetchedAt: Date.now(),
+        isLoaded: true,
+        isLoading: false,
+      });
+      setDynamicModels(FEATURED_MODELS);
+      return { success: true, count: FEATURED_MODELS.length };
     }
 
-    // For refresh, clear the cache first
-    if (refresh) {
-      clearCache();
-    }
-
+    // Refresh: Optionally fetch from API to discover new models
     set({ isLoading: true, error: undefined });
 
     try {
-      if (!refresh) {
-        const cached = readCache();
-        if (cached && cached.models.length > 0) {
-          const mergedModels = mergeWithImageModels(cached.models);
-          set({
-            models: mergedModels,
-            fetchedAt: cached.fetchedAt,
-            isLoaded: true,
-            isLoading: false,
-          });
-          setDynamicModels(mergedModels);
-          return { success: true, count: mergedModels.length };
-        }
-      }
-
-      // Add cache-busting for refresh requests
-      const url = refresh
-        ? `/api/models?refresh=1&_t=${Date.now()}`
-        : "/api/models";
+      const url = `/api/models?refresh=1&_t=${Date.now()}`;
       const res = await fetch(url, {
         method: "GET",
-        cache: refresh ? "no-store" : "default",
+        cache: "no-store",
       });
 
       if (!res.ok) {
-        const errorText = await res.text().catch(() => "Unknown error");
-        throw new Error(`Failed to load models (${res.status}): ${errorText}`);
+        // API failed, but we still have static models
+        console.warn("[ModelsStore] API fetch failed, using static models");
+        set({ isLoading: false });
+        return { success: true, count: FEATURED_MODELS.length };
       }
 
-      const payload = (await res.json()) as ModelsPayload;
+      const payload = await res.json();
       if (!payload || !Array.isArray(payload.models)) {
-        throw new Error("Invalid models payload");
+        set({ isLoading: false });
+        return { success: true, count: FEATURED_MODELS.length };
       }
 
-      console.log("[ModelsStore] Received models from API:", payload.models.length);
-      const imageGenCount = payload.models.filter(m => m.category?.includes("image-generation")).length;
-      console.log("[ModelsStore] Image generation models from API:", imageGenCount);
+      console.log("[ModelsStore] API returned models:", payload.models.length);
 
-      writeCache(payload);
-      const mergedModels = payload.models.length > 0
-        ? mergeWithImageModels(payload.models)
-        : MODELS;
+      // Merge: Static models take priority, but add any new models from API
+      const staticIds = new Set(ALL_STATIC_MODELS.map(m => m.id));
+      const newFromApi = (payload.models as Model[]).filter(m => !staticIds.has(m.id));
 
-      console.log("[ModelsStore] After merge, total models:", mergedModels.length);
+      if (newFromApi.length > 0) {
+        console.log("[ModelsStore] New models from API:", newFromApi.length);
+      }
+
+      // Combine: Featured first, then any new from API
+      const mergedModels = [...FEATURED_MODELS, ...newFromApi];
 
       set({
         models: mergedModels,
-        fetchedAt: payload.fetchedAt,
+        fetchedAt: Date.now(),
         isLoaded: true,
         isLoading: false,
         error: undefined,
       });
       setDynamicModels(mergedModels);
+
       return { success: true, count: mergedModels.length };
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Failed to load models";
-      set({ error: message, isLoaded: true, isLoading: false, models: MODELS });
-      setDynamicModels(null);
-      return { success: false, error: message };
+      const message = e instanceof Error ? e.message : "Failed to refresh models";
+      console.warn("[ModelsStore] Refresh failed:", message);
+
+      // Still return success since we have static models
+      set({ error: message, isLoading: false });
+      return { success: true, count: FEATURED_MODELS.length };
     }
   },
 }));
+
+// Export convenience functions
+export function getModelById(modelId: string): Model | undefined {
+  return getStaticModelById(modelId);
+}
+
+export { DEFAULT_MODEL };

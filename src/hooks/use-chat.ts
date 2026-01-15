@@ -194,7 +194,7 @@ async function handlePipelineExecution(
     failPipeline: (error: string) => void;
     clearPipeline: () => void;
   },
-  mcpServers?: Array<{ id: string; name: string; url: string; apiKey?: string; enabled: boolean; type: "sse" | "stdio"; collection: "curated" | "custom"; toolPolicy?: { disabledTools?: string[] }; toolCaps?: number }>
+  mcpServers?: Array<{ id: string; name: string; url: string; apiKey?: string; enabled: boolean; type: "sse" | "stdio" | "http"; collection: "curated" | "custom"; toolPolicy?: { disabledTools?: string[] }; toolCaps?: number }>
 ): Promise<void> {
   const { addMessage, updateMessage, updateChat } = await import("@/lib/db/queries");
   type PipelineExecutionStep = import("@/lib/db/schema").PipelineExecutionStep;
@@ -775,6 +775,11 @@ export function useChat(chatId: string) {
 
         try {
           const parsed = JSON.parse(data);
+
+          // Debug: Log all event types to trace tool events
+          if (parsed.type && !['text-delta'].includes(parsed.type)) {
+            console.log(`[Chat Stream] Event type: ${parsed.type}`, parsed);
+          }
 
           const extractUsage = (value: any): { inTok?: number; outTok?: number; cost?: number } => {
             if (!value || typeof value !== "object") return {};

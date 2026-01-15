@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   Dialog,
@@ -16,11 +16,16 @@ import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Star, ChevronRight, ChevronDown, RefreshCcw, TrendingUp, Code, Zap, DollarSign, Brain, BookOpen, Palette } from "lucide-react";
-import { type Model, getModelById } from "@/lib/constants/models";
+import {
+  Search, Star, ChevronRight, ChevronDown, RefreshCcw,
+  Code, Zap, DollarSign, Brain, BookOpen, Palette,
+  Eye, Sparkles, Crown, Gauge, Image as ImageIcon,
+  ArrowRight, Check, Clock, MessageSquare
+} from "lucide-react";
+import { type Model, getModelById, USE_CASE_RECOMMENDATIONS, MODEL_CATALOG } from "@/lib/constants/models";
 import { cn } from "@/lib/utils";
 import { Virtuoso } from "react-virtuoso";
-import { ModelItem } from "./model-item";
+import { ModelItem, formatModelCost } from "./model-item";
 import {
   getFavoriteModels,
   getRecentModels,
@@ -32,7 +37,6 @@ import { ParameterPresets } from "@/components/settings/parameter-presets";
 import { useModelsStore } from "@/stores/models-store";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { isModelIdCompatibleWithProviderId, pickBestProviderId, providerLabel } from "@/lib/ai/provider-routing";
-import { getRuleEngine } from "@/lib/models/rule-engine";
 import { getRankingService } from "@/lib/models/ranking/ranking-service";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { toast } from "sonner";
@@ -49,6 +53,92 @@ interface ModelPickerDialogProps {
   onSelectProviderId?: (providerId: string | undefined) => void;
 }
 
+// Tier badge component
+function TierBadge({ tier }: { tier?: string }) {
+  if (!tier) return null;
+
+  const config = {
+    flagship: { label: "Flagship", className: "bg-amber-500/10 text-amber-500 border-amber-500/20" },
+    balanced: { label: "Balanced", className: "bg-blue-500/10 text-blue-500 border-blue-500/20" },
+    fast: { label: "Fast", className: "bg-orange-500/10 text-orange-500 border-orange-500/20" },
+    budget: { label: "Budget", className: "bg-green-500/10 text-green-500 border-green-500/20" },
+  }[tier];
+
+  if (!config) return null;
+
+  return (
+    <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full border font-medium", config.className)}>
+      {config.label}
+    </span>
+  );
+}
+
+// Quick pick card component
+function QuickPickCard({
+  model,
+  intent,
+  icon: Icon,
+  color,
+  isSelected,
+  onClick,
+  routingProvider,
+}: {
+  model: Model;
+  intent: string;
+  icon: React.ElementType;
+  color: string;
+  isSelected: boolean;
+  onClick: () => void;
+  routingProvider?: string;
+}) {
+  const costDisplay = formatModelCost(model.inputCost, model.outputCost);
+  // Show routing provider if different from model vendor
+  const showRouting = routingProvider && routingProvider.toLowerCase() !== model.provider.toLowerCase();
+
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "relative flex flex-col items-start p-3 rounded-xl border-2 transition-all text-left w-full group",
+        "hover:scale-[1.02] hover:shadow-lg",
+        isSelected
+          ? "border-primary bg-primary/5 shadow-md"
+          : "border-border/50 hover:border-border bg-card/50 hover:bg-card"
+      )}
+    >
+      {isSelected && (
+        <div className="absolute top-2 right-2">
+          <Check className="h-4 w-4 text-primary" />
+        </div>
+      )}
+
+      <div className={cn("p-1.5 rounded-lg mb-2", color)}>
+        <Icon className="h-4 w-4" />
+      </div>
+
+      <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">
+        {intent}
+      </span>
+
+      <span className="font-semibold text-sm truncate w-full">
+        {model.name}
+      </span>
+
+      <div className="flex items-center gap-2 mt-1.5 text-[10px] text-muted-foreground">
+        <span className={model.inputCost === 0 ? "text-green-500 font-medium" : ""}>
+          {costDisplay}
+        </span>
+        {model.tier && <TierBadge tier={model.tier} />}
+        {showRouting && (
+          <span className="px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+            via {routingProvider}
+          </span>
+        )}
+      </div>
+    </button>
+  );
+}
+
 export function ModelPickerDialog({
   open,
   onOpenChange,
@@ -59,15 +149,14 @@ export function ModelPickerDialog({
 }: ModelPickerDialogProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  // Use API provider (openrouter, anthropic, etc.) not model vendor
   const [selectedApiProvider, setSelectedApiProvider] = useState<string>(currentProviderId || "auto");
   const [sortBy, setSortBy] = useState<string>("default");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [manualModelId, setManualModelId] = useState<string>(currentModelId);
+  const [showAllModels, setShowAllModels] = useState(false);
 
   const { models, isLoading: modelsLoading, fetchedAt, loadModels } = useModelsStore();
   const keys = useApiKeysStore((s) => s.keys);
-  const ruleEngine = getRuleEngine();
   const rankingService = getRankingService();
   const [localModels, setLocalModels] = useState<Array<{ id: string; name: string; provider: string; baseUrl: string }>>([]);
 
@@ -130,7 +219,7 @@ export function ModelPickerDialog({
           keys
             .map((k) => k.provider)
             .filter((p) =>
-              ["openrouter", "openai", "anthropic", "groq", "together", "perplexity", "anyscale", "ollama", "lmstudio"].includes(p) ||
+              ["openrouter", "openai", "anthropic", "google", "deepseek", "mistral", "xai", "groq", "together", "perplexity", "anyscale", "ollama", "lmstudio"].includes(p) ||
               p.startsWith("custom-openai:")
             )
         )
@@ -143,7 +232,7 @@ export function ModelPickerDialog({
       new Map(
         keys
           .filter((k) =>
-            ["openrouter", "openai", "anthropic", "groq", "together", "perplexity", "anyscale", "ollama", "lmstudio"].includes(k.provider) ||
+            ["openrouter", "openai", "anthropic", "google", "deepseek", "mistral", "xai", "groq", "together", "perplexity", "anyscale", "ollama", "lmstudio"].includes(k.provider) ||
             k.provider.startsWith("custom-openai:")
           )
           .map((k) => [k.provider, { id: k.provider, name: k.label || providerLabel(k.provider) }] as const)
@@ -165,11 +254,9 @@ export function ModelPickerDialog({
     return map;
   }, [open, models, llmProviderIds]);
 
-  // Get unique (model vendor) providers for filtering
-  const providers = useMemo(
-    () => Array.from(new Set(models.map((m) => m.provider))).sort(),
-    [models]
-  );
+  // Check if OpenRouter is available
+  const hasOpenRouter = llmProviderIds.includes("openrouter");
+  const canUseAnyModel = hasOpenRouter || currentProviderId === "openrouter";
 
   // Create Fuse.js instance for fuzzy search
   const fuse = useMemo(() => {
@@ -181,9 +268,9 @@ export function ModelPickerDialog({
         { name: "provider", weight: 0.15 },
         { name: "description", weight: 0.05 },
       ],
-      threshold: 0.4, // More forgiving (0 = exact, 1 = match anything)
-      distance: 100, // How far to search for match
-      ignoreLocation: true, // Don't require the match to be at the start
+      threshold: 0.4,
+      distance: 100,
+      ignoreLocation: true,
       includeScore: true,
       minMatchCharLength: 2,
       useExtendedSearch: false,
@@ -191,34 +278,75 @@ export function ModelPickerDialog({
     });
   }, [models, open]);
 
-  // Filter models by search, category, and provider
+  // Helper to get the best model for a use case (respects selected provider)
+  const getBestModelForUseCase = useCallback((useCase: string): Model | null => {
+    const rec = USE_CASE_RECOMMENDATIONS[useCase];
+    if (!rec) return null;
+
+    for (const id of rec.models) {
+      const model = models.find(m => m.id === id) || MODEL_CATALOG.find(m => m.id === id);
+      if (!model) continue;
+
+      // If specific provider is selected, check compatibility
+      if (selectedApiProvider !== "auto") {
+        if (isModelIdCompatibleWithProviderId(selectedApiProvider, id)) {
+          return model;
+        }
+        continue;
+      }
+
+      // Auto mode: check if any provider can handle it
+      if (bestProviderByModelId.get(id)) return model;
+
+      // If OpenRouter is available, use catalog
+      if (canUseAnyModel) return model;
+    }
+    return null;
+  }, [models, bestProviderByModelId, canUseAnyModel, selectedApiProvider]);
+
+  // Quick pick models for each intent (respects selected provider)
+  const quickPicks = useMemo(() => {
+    if (!open) return [];
+
+    const picks: Array<{ model: Model; intent: string; icon: React.ElementType; color: string }> = [];
+
+    const coding = getBestModelForUseCase("coding");
+    if (coding) picks.push({ model: coding, intent: "Code", icon: Code, color: "bg-blue-500/10 text-blue-500" });
+
+    const reasoning = getBestModelForUseCase("reasoning");
+    if (reasoning) picks.push({ model: reasoning, intent: "Reason", icon: Brain, color: "bg-purple-500/10 text-purple-500" });
+
+    const chat = getBestModelForUseCase("chat");
+    if (chat) picks.push({ model: chat, intent: "Chat", icon: Zap, color: "bg-orange-500/10 text-orange-500" });
+
+    const budget = getBestModelForUseCase("budget");
+    if (budget) picks.push({ model: budget, intent: "Budget", icon: DollarSign, color: "bg-green-500/10 text-green-500" });
+
+    return picks;
+  }, [open, getBestModelForUseCase]);
+
+  // Filter models
   const filteredModels = useMemo(() => {
     if (!open) return [];
 
     const q = searchQuery.trim();
-
-    // Map UI categories to model categories
     const categoryMapping: Record<string, string[]> = {
       "coding": ["coding"],
       "research": ["balanced", "reasoning"],
-      "deep-thinking": ["reasoning"],
+      "reasoning": ["reasoning"],
       "fast": ["fast"],
       "vision": ["vision"],
       "budget": ["cheap", "fast"],
       "image-gen": ["image-generation"],
     };
 
-    // Get search matches using fuzzy search
     let searchMatches: Model[];
     if (!q) {
-      // No search query - show all models
       searchMatches = models;
     } else if (fuse) {
-      // Use fuzzy search
       const results = fuse.search(q);
       searchMatches = results.map((r) => r.item);
     } else {
-      // Fallback to basic search
       const lowerQ = q.toLowerCase();
       searchMatches = models.filter((model) => {
         const haystack = `${model.name} ${model.id} ${model.provider} ${model.description || ""}`.toLowerCase();
@@ -226,18 +354,14 @@ export function ModelPickerDialog({
       });
     }
 
-    // Now apply category and provider filters
     return searchMatches.filter((model) => {
-      // Handle category mapping
       let matchesCategory = selectedCategory === "all";
       if (!matchesCategory) {
         const mappedCategories = categoryMapping[selectedCategory] || [selectedCategory];
         matchesCategory = mappedCategories.some(cat => model.category.includes(cat));
-        // For deep-thinking, also match models with reasoning support
-        if (selectedCategory === "deep-thinking" && model.supportsReasoning) {
+        if (selectedCategory === "reasoning" && model.supportsReasoning) {
           matchesCategory = true;
         }
-        // For image-gen, ALSO check the isImageGeneration capability (use OR logic)
         if (selectedCategory === "image-gen" && !matchesCategory) {
           const caps = getModelCapabilities(model.id);
           matchesCategory = caps.isImageGeneration;
@@ -246,30 +370,17 @@ export function ModelPickerDialog({
 
       if (!matchesCategory) return false;
 
-      // Filter by selected API provider
       if (selectedApiProvider !== "auto") {
         if (!llmProviderIds.includes(selectedApiProvider)) return false;
         return isModelIdCompatibleWithProviderId(selectedApiProvider, model.id);
       }
 
-      // Auto mode: show models compatible with any configured provider
       return bestProviderByModelId.get(model.id) != null;
     });
-  }, [
-    bestProviderByModelId,
-    fuse,
-    llmProviderIds,
-    models,
-    open,
-    searchQuery,
-    selectedCategory,
-    selectedApiProvider,
-  ]);
+  }, [bestProviderByModelId, fuse, llmProviderIds, models, open, searchQuery, selectedCategory, selectedApiProvider]);
 
   const sortedModels = useMemo(() => {
     if (!open) return [];
-
-    // When user is actively searching, preserve the fuzzy search relevance order
     const hasSearchQuery = searchQuery.trim() !== "";
 
     if (sortBy === "cost") {
@@ -281,69 +392,20 @@ export function ModelPickerDialog({
     if (sortBy === "name") {
       return [...filteredModels].sort((a, b) => a.name.localeCompare(b.name));
     }
-
-    // When searching, preserve fuzzy relevance order (Fuse.js already sorted by score)
     if (hasSearchQuery) {
       return filteredModels;
     }
-
-    // Default: use ranking score only when not searching
     return rankingService.rankModels(filteredModels, {
       useCase: selectedCategory !== "all" ? selectedCategory : undefined,
     });
   }, [filteredModels, open, rankingService, searchQuery, selectedCategory, sortBy]);
 
-  const availableModelsForRecs = useMemo(() => {
-    if (!open) return [];
-
-    if (currentProviderId) {
-      if (!llmProviderIds.includes(currentProviderId)) return [];
-      return models.filter((model) => isModelIdCompatibleWithProviderId(currentProviderId, model.id));
-    }
-
-    return models.filter((model) => bestProviderByModelId.get(model.id) != null);
-  }, [bestProviderByModelId, currentProviderId, llmProviderIds, models, open]);
-
-  // Get use case recommendations (only from available models)
-  const codingModels = useMemo(
-    () => ruleEngine.getRecommendedModelsForUseCase("coding", availableModelsForRecs).slice(0, 5),
-    [availableModelsForRecs, ruleEngine]
-  );
-  const researchModels = useMemo(
-    () => ruleEngine.getRecommendedModelsForUseCase("research", availableModelsForRecs).slice(0, 5),
-    [availableModelsForRecs, ruleEngine]
-  );
-  const deepThinkingModels = useMemo(
-    () => availableModelsForRecs
-      .filter(m => m.supportsReasoning || m.category.includes("reasoning"))
-      .slice(0, 5),
-    [availableModelsForRecs]
-  );
-  const fastModels = useMemo(
-    () => ruleEngine.getRecommendedModelsForUseCase("fast", availableModelsForRecs).slice(0, 5),
-    [availableModelsForRecs, ruleEngine]
-  );
-  const valueModels = useMemo(
-    () => ruleEngine.getRecommendedModelsForUseCase("cost-effective", availableModelsForRecs).slice(0, 5),
-    [availableModelsForRecs, ruleEngine]
-  );
-  const imageGenModels = useMemo(
-    () => availableModelsForRecs
-      .filter(m => {
-        const caps = getModelCapabilities(m.id);
-        return caps.isImageGeneration || m.category.includes("image-generation");
-      })
-      .slice(0, 5),
-    [availableModelsForRecs]
-  );
-
-  // Convert favorite/recent IDs to full model objects
+  // Recent + favorite models
   const favoriteModelObjects = useMemo(() => {
     const list = (favoriteModels || [])
       .map((fav) => modelById.get(fav.id) || getModelById(fav.id))
       .filter((m): m is Model => m !== undefined);
 
-    // Filter out models that aren't usable with the currently configured provider set.
     if (currentProviderId) {
       if (!llmProviderIds.includes(currentProviderId)) return [];
       return list.filter((m) => isModelIdCompatibleWithProviderId(currentProviderId, m.id));
@@ -363,17 +425,6 @@ export function ModelPickerDialog({
     return list.filter((m) => bestProviderByModelId.get(m.id) != null);
   }, [bestProviderByModelId, currentProviderId, llmProviderIds, modelById, recentModels]);
 
-  const categories = [
-    { id: "all", label: "All" },
-    { id: "coding", label: "Code" },
-    { id: "research", label: "Research" },
-    { id: "deep-thinking", label: "Reasoning" },
-    { id: "fast", label: "Fast" },
-    { id: "vision", label: "Vision" },
-    { id: "budget", label: "Cheap" },
-    { id: "image-gen", label: "Image Gen" },
-  ];
-
   const handleSelectModel = async (modelId: string) => {
     if (currentProviderId && !llmProviderIds.includes(currentProviderId)) {
       toast.error(`Missing API key for ${providerLabel(currentProviderId)}.`);
@@ -381,7 +432,7 @@ export function ModelPickerDialog({
     }
 
     const autoProviderId = bestProviderByModelId.get(modelId) ?? null;
-    if (!currentProviderId && !autoProviderId) {
+    if (!currentProviderId && !autoProviderId && !canUseAnyModel) {
       toast.error("No compatible provider configured for this model. Add an OpenRouter key to use it.");
       return;
     }
@@ -391,11 +442,7 @@ export function ModelPickerDialog({
     onOpenChange(false);
   };
 
-  const handleToggleFavorite = async (
-    modelId: string,
-    category: string,
-    e: React.MouseEvent
-  ) => {
+  const handleToggleFavorite = async (modelId: string, category: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const isFavorited = await toggleModelFavorite(modelId, category);
     toast.success(isFavorited ? "Added to favorites" : "Removed from favorites");
@@ -405,202 +452,188 @@ export function ModelPickerDialog({
     return favoriteModels?.some((fav) => fav.id === modelId) || false;
   };
 
-  type ListItem =
-    | { kind: "message"; message: string }
-    | { kind: "heading"; title: string; icon?: "star" | "code" | "research" | "deep-thinking" | "fast" | "value" | "image-gen" }
-    | { kind: "model"; model: Model; forceFavorite?: boolean };
-
-  const listItems: ListItem[] = useMemo(() => {
-    if (!open) return [];
-
-    const items: ListItem[] = [];
-    const showSections = selectedCategory === "all" && selectedApiProvider === "auto" && searchQuery.trim() === "";
-
-    if (currentProviderId && !llmProviderIds.includes(currentProviderId)) {
-      items.push({
-        kind: "message",
-        message: `Missing API key for ${providerLabel(currentProviderId)}. Select Auto or add the key in Settings.`,
-      });
-    }
-
-    if (favoriteModelObjects.length > 0 && selectedCategory === "all" && selectedApiProvider === "auto") {
-      items.push({ kind: "heading", title: "Favorites", icon: "star" });
-      for (const model of favoriteModelObjects) {
-        items.push({ kind: "model", model, forceFavorite: true });
-      }
-    }
-
-    if (recentModelObjects.length > 0 && selectedCategory === "all" && selectedApiProvider === "auto") {
-      items.push({ kind: "heading", title: "Recently Used" });
-      for (const model of recentModelObjects) {
-        items.push({ kind: "model", model });
-      }
-    }
-
-    // Add local models section if available
-    if (localModels.length > 0 && (selectedApiProvider === "auto" || selectedApiProvider === "ollama" || selectedApiProvider === "lmstudio")) {
-      items.push({ kind: "heading", title: "Local Models", icon: "star" });
-      localModels.forEach(localModel => {
-        // Create a model-like object for local models
-        const model: Model = {
-          id: localModel.id,
-          name: localModel.name,
-          provider: localModel.provider,
-          description: `Local model running on ${localModel.provider === "ollama" ? "Ollama" : "LM Studio"}`,
-          contextLength: 0, // Unknown
-          inputCost: 0,
-          outputCost: 0,
-          category: ["local"],
-          supportsVision: false,
-          supportsReasoning: false,
-        };
-        items.push({ kind: "model", model });
-      });
-    }
-
-    if (showSections) {
-      if (codingModels.length > 0) {
-        items.push({ kind: "heading", title: "Best for Coding", icon: "code" });
-        for (const model of codingModels) items.push({ kind: "model", model });
-      }
-      if (researchModels.length > 0) {
-        items.push({ kind: "heading", title: "Best for Research", icon: "research" });
-        for (const model of researchModels) items.push({ kind: "model", model });
-      }
-      if (deepThinkingModels.length > 0) {
-        items.push({ kind: "heading", title: "Best for Deep Thinking", icon: "deep-thinking" });
-        for (const model of deepThinkingModels) items.push({ kind: "model", model });
-      }
-      if (fastModels.length > 0) {
-        items.push({ kind: "heading", title: "Best for Speed", icon: "fast" });
-        for (const model of fastModels) items.push({ kind: "model", model });
-      }
-      if (valueModels.length > 0) {
-        items.push({ kind: "heading", title: "Best Value", icon: "value" });
-        for (const model of valueModels) items.push({ kind: "model", model });
-      }
-      if (imageGenModels.length > 0) {
-        items.push({ kind: "heading", title: "Best for Image Generation", icon: "image-gen" });
-        for (const model of imageGenModels) items.push({ kind: "model", model });
-      }
-    }
-
-
-
-    items.push({
-      kind: "heading",
-      title:
-        selectedCategory !== "all" || selectedApiProvider !== "auto" || searchQuery.trim()
-          ? "Filtered Models"
-          : "All Models",
-    });
-
-    if (sortedModels.length === 0) {
-      items.push({ kind: "message", message: "No models found" });
-      return items;
-    }
-
-    for (const model of sortedModels) items.push({ kind: "model", model });
-    return items;
-  }, [
-    codingModels,
-    currentProviderId,
-    favoriteModelObjects,
-    fastModels,
-    llmProviderIds,
-    open,
-    researchModels,
-    deepThinkingModels,
-    recentModelObjects,
-    searchQuery,
-    selectedCategory,
-    selectedApiProvider,
-    sortedModels,
-    valueModels,
-    imageGenModels,
-    localModels,
-  ]);
+  // Check if we're in search/filter mode
+  const isSearching = searchQuery.trim() !== "" || selectedCategory !== "all" || selectedApiProvider !== "auto";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl h-[85vh] sm:h-[95vh] max-h-[95vh] flex flex-col p-0 gap-0 overflow-hidden bg-background/95 backdrop-blur-xl border-border/50 shadow-2xl">
-        {/* Header Section */}
-        <div className="flex-none p-3 sm:p-6 pb-3 sm:pb-4 border-b bg-muted/10 z-10 space-y-2 sm:space-y-4">
-          <div className="flex items-start justify-between gap-2 sm:gap-4">
+      <DialogContent className="max-w-4xl h-[90vh] max-h-[800px] flex flex-col p-0 gap-0 overflow-hidden bg-background border-border/50 shadow-2xl">
+        {/* Header */}
+        <div className="flex-none px-6 pt-6 pb-4 border-b bg-gradient-to-b from-muted/20 to-transparent">
+          <div className="flex items-start justify-between gap-4 mb-4">
             <div>
-              <DialogTitle className="text-base sm:text-xl font-bold tracking-tight">Select Model</DialogTitle>
-              <DialogDescription className="text-muted-foreground mt-0.5 sm:mt-1 text-xs sm:text-sm hidden sm:block">
-                Choose the best AI model for your task
+              <DialogTitle className="text-xl font-bold tracking-tight">Choose a Model</DialogTitle>
+              <DialogDescription className="text-muted-foreground mt-1 text-sm">
+                Pick the best AI for your task
               </DialogDescription>
             </div>
-            <div className="hidden sm:block">
-              <ParameterPresets />
-            </div>
+            <ParameterPresets />
           </div>
 
-          <div className="flex flex-col gap-2 sm:gap-4">
-            {/* Search Bar */}
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
-              </div>
-              <Input
-                placeholder="Search models..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 h-9 sm:h-11 bg-background/50 border-muted-foreground/20 focus:bg-background transition-all rounded-lg sm:rounded-xl text-sm"
-              />
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search models... (e.g., GPT-5, Claude, Gemini)"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 h-11 bg-background border-border/60 focus:border-primary rounded-xl"
+            />
+          </div>
+
+          {/* Provider Selector - Top Level */}
+          {llmProviderOptions.length > 0 && (
+            <div className="flex items-center gap-2 mt-4 overflow-x-auto no-scrollbar">
+              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider shrink-0">Via:</span>
+              <button
+                onClick={() => {
+                  setSelectedApiProvider("auto");
+                  if (onSelectProviderId) onSelectProviderId(undefined);
+                }}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap border",
+                  selectedApiProvider === "auto"
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-muted/50 hover:bg-muted border-border/50 hover:border-border text-muted-foreground"
+                )}
+              >
+                Auto
+              </button>
+              {llmProviderOptions.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    setSelectedApiProvider(p.id);
+                    if (onSelectProviderId) onSelectProviderId(p.id);
+                  }}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap border",
+                    selectedApiProvider === p.id
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-muted/50 hover:bg-muted border-border/50 hover:border-border text-muted-foreground"
+                  )}
+                >
+                  {p.name}
+                </button>
+              ))}
             </div>
+          )}
+        </div>
 
-            {/* Filters Row - scrollable on mobile */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
-              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
-                <div className="flex bg-muted/50 p-0.5 sm:p-1 rounded-lg border border-border/50 shrink-0">
-                  {categories.map((category) => (
-                    <button
-                      key={category.id}
-                      onClick={() => setSelectedCategory(category.id)}
-                      className={cn(
-                        "px-2 sm:px-3 py-1 sm:py-1.5 rounded-md text-[10px] sm:text-xs font-medium transition-all whitespace-nowrap",
-                        selectedCategory === category.id
-                          ? "bg-background text-foreground shadow-sm ring-1 ring-border"
-                          : "text-muted-foreground hover:text-foreground hover:bg-background/50"
-                      )}
-                    >
-                      {category.label}
-                    </button>
-                  ))}
-                </div>
+        {/* Main Content */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Quick Picks - Show when not searching */}
+          {!isSearching && quickPicks.length > 0 && (
+            <div className="px-6 py-5 border-b bg-muted/5">
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles className="h-4 w-4 text-amber-500" />
+                <h3 className="text-sm font-semibold">Quick Pick</h3>
+                <span className="text-xs text-muted-foreground">Recommended for your task</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {quickPicks.map(({ model, intent, icon, color }) => (
+                  <QuickPickCard
+                    key={model.id}
+                    model={model}
+                    intent={intent}
+                    icon={icon}
+                    color={color}
+                    isSelected={model.id === currentModelId}
+                    onClick={() => handleSelectModel(model.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
 
-                <div className="hidden sm:block h-6 w-px bg-border/60 mx-1 shrink-0" />
-
-                <Select value={selectedApiProvider} onValueChange={setSelectedApiProvider}>
-                  <SelectTrigger className="h-8 sm:h-9 w-[120px] sm:w-[160px] text-[10px] sm:text-xs bg-muted/30 border-dashed border-border/60 rounded-lg shrink-0">
-                    <div className="flex items-center gap-1 sm:gap-2 truncate">
-                      <span className="text-muted-foreground hidden sm:inline">Via:</span>
-                      <span className="font-medium truncate">
-                        {selectedApiProvider === "auto"
-                          ? "Auto"
-                          : llmProviderOptions.find(p => p.id === selectedApiProvider)?.name || selectedApiProvider}
-                      </span>
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="auto">Auto (Best Available)</SelectItem>
-                    {llmProviderOptions.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+          {/* Favorites & Recent */}
+          {!isSearching && (favoriteModelObjects.length > 0 || recentModelObjects.length > 0) && (
+            <div className="px-6 py-4 border-b">
+              {favoriteModelObjects.length > 0 && (
+                <div className="mb-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Star className="h-3.5 w-3.5 fill-yellow-500 text-yellow-500" />
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Favorites</h3>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {favoriteModelObjects.slice(0, 6).map(model => (
+                      <button
+                        key={model.id}
+                        onClick={() => handleSelectModel(model.id)}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg border text-sm font-medium transition-all",
+                          model.id === currentModelId
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-card hover:bg-muted border-border/60 hover:border-border"
+                        )}
+                      >
+                        {model.name}
+                      </button>
                     ))}
-                  </SelectContent>
-                </Select>
+                  </div>
+                </div>
+              )}
+
+              {recentModelObjects.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recent</h3>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {recentModelObjects.slice(0, 5).map(model => (
+                      <button
+                        key={model.id}
+                        onClick={() => handleSelectModel(model.id)}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg border text-sm font-medium transition-all",
+                          model.id === currentModelId
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-card/50 hover:bg-muted border-border/40 hover:border-border"
+                        )}
+                      >
+                        {model.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Filters Bar */}
+          <div className="px-6 py-3 border-b bg-muted/10 sticky top-0 z-10 backdrop-blur-sm">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                {[
+                  { id: "all", label: "All", icon: null },
+                  { id: "coding", label: "Code", icon: Code },
+                  { id: "reasoning", label: "Reasoning", icon: Brain },
+                  { id: "fast", label: "Fast", icon: Zap },
+                  { id: "budget", label: "Budget", icon: DollarSign },
+                  { id: "vision", label: "Vision", icon: Eye },
+                  { id: "image-gen", label: "Images", icon: ImageIcon },
+                ].map(({ id, label, icon: Icon }) => (
+                  <button
+                    key={id}
+                    onClick={() => setSelectedCategory(id)}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap",
+                      selectedCategory === id
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    )}
+                  >
+                    {Icon && <Icon className="h-3 w-3" />}
+                    {label}
+                  </button>
+                ))}
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
                 <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger className="h-8 sm:h-9 w-[100px] sm:w-[130px] text-[10px] sm:text-xs bg-muted/30 border-dashed border-border/60 rounded-lg">
-                    <div className="flex items-center gap-1 sm:gap-2 text-muted-foreground">
-                      <TrendingUp className="h-3 w-3 sm:h-3.5 sm:w-3.5 hidden sm:block" />
-                      <span className="font-medium text-foreground truncate">{sortBy === "default" ? "Best" : sortBy === "cost" ? "Cost" : sortBy === "context" ? "Context" : "Name"}</span>
-                    </div>
+                  <SelectTrigger className="h-8 w-28 text-xs bg-background border-border/60">
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="default">Best Match</SelectItem>
@@ -611,239 +644,226 @@ export function ModelPickerDialog({
                 </Select>
 
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
-                  className="h-8 sm:h-9 px-2 sm:px-3 rounded-lg text-muted-foreground hover:text-foreground gap-1 sm:gap-2"
+                  className="h-8 px-2"
                   onClick={async () => {
                     const result = await loadModels({ refresh: true });
                     if (result.success) {
-                      toast.success(`Model catalog refreshed`, {
-                        description: `${result.count} models loaded`,
-                      });
+                      toast.success(`Refreshed ${result.count} models`);
                     } else {
-                      toast.error("Failed to refresh models", {
-                        description: result.error,
-                      });
+                      toast.error("Failed to refresh", { description: result.error });
                     }
                   }}
                   disabled={modelsLoading}
-                  title="Refresh model catalog from providers"
                 >
-                  <RefreshCcw className={cn("h-3.5 w-3.5 sm:h-4 sm:w-4", modelsLoading && "animate-spin")} />
-                  <span className="text-[10px] sm:text-xs hidden sm:inline">Refresh</span>
+                  <RefreshCcw className={cn("h-4 w-4", modelsLoading && "animate-spin")} />
                 </Button>
               </div>
             </div>
+          </div>
 
-            {fetchedAt && (
-              <div className="hidden sm:flex items-center gap-2 px-1">
-                <div className="h-1.5 w-1.5 rounded-full bg-green-500/50 animate-pulse" />
-                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
-                  Catalog updated {new Date(fetchedAt).toLocaleTimeString()}
+          {/* Model List */}
+          <div className="px-6 py-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {isSearching ? `${sortedModels.length} Results` : "All Models"}
+              </h3>
+              {fetchedAt && (
+                <span className="text-[10px] text-muted-foreground">
+                  Updated {new Date(fetchedAt).toLocaleTimeString()}
                 </span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Scrollable Content */}
-        <div className="flex-1 min-h-0 bg-muted/5 relative">
-          <Virtuoso
-            data={listItems}
-            className="flex-1 h-full"
-            computeItemKey={(index, item) => item.kind === "model" ? item.model.id : `${item.kind}-${index}`}
-            increaseViewportBy={{ top: 200, bottom: 200 }}
-            overscan={50}
-            itemContent={(index, item) => {
-              if (item.kind === "heading") {
-                const icon = (() => {
-                  if (item.icon === "star") return <Star className="h-3 w-3 sm:h-3.5 sm:w-3.5 fill-yellow-500 text-yellow-500" />;
-                  if (item.icon === "code") return <Code className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-blue-500" />;
-                  if (item.icon === "research") return <BookOpen className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-teal-500" />;
-                  if (item.icon === "deep-thinking") return <Brain className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-purple-500" />;
-                  if (item.icon === "fast") return <Zap className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-orange-500" />;
-                  if (item.icon === "value") return <DollarSign className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-green-500" />;
-                  if (item.icon === "image-gen") return <Palette className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-pink-500" />;
-                  return null;
-                })();
-
-                return (
-                  <div className={cn("px-3 sm:px-6 pb-2 sm:pb-3 flex items-center gap-2", index === 0 ? "pt-3 sm:pt-6" : "pt-4 sm:pt-8")}>
-                    {icon}
-                    <h3 className="text-xs sm:text-sm font-semibold text-foreground tracking-tight">
-                      {item.title}
-                    </h3>
-                    <div className="h-px bg-border/50 flex-1 ml-2" />
-                  </div>
-                );
-              }
-
-              if (item.kind === "message") {
-                return (
-                  <div className="px-3 sm:px-6 py-4 sm:py-8 text-center">
-                    <p className="text-xs sm:text-sm text-muted-foreground bg-background/50 border border-border/50 rounded-xl py-4 sm:py-8 px-3 sm:px-4 inline-block mx-auto max-w-sm">
-                      {item.message}
-                    </p>
-                  </div>
-                );
-              }
-
-              // Card Item
-              const model = item.model;
-              // Compute which API providers can serve this model
-              const availableProviders = llmProviderIds.filter(pid =>
-                isModelIdCompatibleWithProviderId(pid, model.id)
-              );
-              return (
-                <div className="px-2 sm:px-5 py-1">
-                  <ModelItem
-                    key={model.id}
-                    model={model}
-                    variant="card"
-                    isSelected={model.id === currentModelId}
-                    isFavorite={item.forceFavorite ? true : isFavorite(model.id)}
-                    showFavoriteButton={true}
-                    showCapabilities={true}
-                    showCost={true}
-                    showContext={true}
-                    showDescription={true}
-                    showProviderBadge={true}
-                    availableProviders={availableProviders}
-                    onClick={() => handleSelectModel(model.id)}
-                    onToggleFavorite={(e) =>
-                      handleToggleFavorite(model.id, model.category[0], e)
-                    }
-                  />
-                </div>
-              );
-            }}
-          />
-        </div>
-
-        {/* Footer / Advanced Settings */}
-        <div className="flex-none border-t bg-background/50 backdrop-blur-sm p-1.5 sm:p-2">
-          <div className="w-full">
-            <button
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center justify-between w-full px-3 sm:px-4 py-2 sm:py-2.5 text-[10px] sm:text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-all"
-            >
-              <span className="flex items-center gap-2">
-                {showAdvanced ? <ChevronDown className="h-3 w-3 sm:h-3.5 sm:w-3.5" /> : <ChevronRight className="h-3 w-3 sm:h-3.5 sm:w-3.5" />}
-                <span className="hidden sm:inline">Advanced Parameters & System Prompt</span>
-                <span className="sm:hidden">Advanced Settings</span>
-              </span>
-              {showAdvanced && (
-                <span className="text-[9px] sm:text-[10px] uppercase tracking-wider opacity-70">Close</span>
               )}
-            </button>
+            </div>
 
-            {showAdvanced && (
-              <div className="px-4 pb-4 pt-2 space-y-6 animate-in slide-in-from-bottom-2 duration-200 h-[300px] overflow-y-auto custom-scrollbar">
-                {onSelectProviderId && (
-                  <div className="space-y-2">
-                    <Label className="text-xs">Provider Routing</Label>
-                    <Select
-                      value={currentProviderId || "auto"}
-                      onValueChange={(value) =>
-                        onSelectProviderId(value === "auto" ? undefined : value)
-                      }
+            {sortedModels.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <p>No models found</p>
+                <p className="text-sm mt-1">Try adjusting your search or filters</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {sortedModels.slice(0, showAllModels ? undefined : 20).map(model => {
+                  const caps = getModelCapabilities(model.id);
+                  const costDisplay = formatModelCost(model.inputCost, model.outputCost);
+                  const isSelected = model.id === currentModelId;
+                  const isFav = isFavorite(model.id);
+
+                  return (
+                    <button
+                      key={model.id}
+                      onClick={() => handleSelectModel(model.id)}
+                      className={cn(
+                        "w-full text-left p-4 rounded-xl border transition-all",
+                        "hover:shadow-md hover:border-border",
+                        isSelected
+                          ? "bg-primary/5 border-primary shadow-sm"
+                          : "bg-card/50 border-border/40 hover:bg-card"
+                      )}
                     >
-                      <SelectTrigger className="h-9">
-                        <SelectValue placeholder="Auto" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="auto">Auto (Recommended)</SelectItem>
-                        {llmProviderOptions.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-[10px] text-muted-foreground">
-                      Auto prefers direct providers when available, otherwise falls back to OpenRouter.
-                    </p>
-                  </div>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-semibold text-sm">{model.name}</span>
+                            {model.tier && <TierBadge tier={model.tier} />}
+                            {isSelected && <Check className="h-4 w-4 text-primary" />}
+                          </div>
+
+                          <p className="text-xs text-muted-foreground line-clamp-1 mb-2">
+                            {model.description || `${model.provider} model`}
+                          </p>
+
+                          <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                            <span className={model.inputCost === 0 ? "text-green-500 font-medium" : ""}>
+                              {costDisplay}
+                            </span>
+
+                            {model.contextLength > 0 && (
+                              <span>{(model.contextLength / 1000).toFixed(0)}K ctx</span>
+                            )}
+
+                            <div className="flex items-center gap-1">
+                              {caps.supportsVision && <Eye className="h-3 w-3 text-sky-500" />}
+                              {caps.supportsReasoning && <Brain className="h-3 w-3 text-purple-500" />}
+                              {caps.supportsTools && <Code className="h-3 w-3 text-blue-500" />}
+                            </div>
+
+                            <span className="text-muted-foreground/60">{model.provider}</span>
+
+                            {/* Show routing provider if different from model vendor */}
+                            {(() => {
+                              const routingProvider = bestProviderByModelId.get(model.id);
+                              if (!routingProvider) return null;
+                              const routingLabel = providerLabel(routingProvider);
+                              // Don't show if it matches the model vendor
+                              if (routingLabel.toLowerCase() === model.provider.toLowerCase()) return null;
+                              return (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                                  via {routingLabel}
+                                </span>
+                              );
+                            })()}
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={(e) => handleToggleFavorite(model.id, model.category[0] || "general", e)}
+                          className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+                        >
+                          <Star className={cn(
+                            "h-4 w-4 transition-colors",
+                            isFav ? "fill-yellow-500 text-yellow-500" : "text-muted-foreground/40 hover:text-muted-foreground"
+                          )} />
+                        </button>
+                      </div>
+                    </button>
+                  );
+                })}
+
+                {sortedModels.length > 20 && !showAllModels && (
+                  <button
+                    onClick={() => setShowAllModels(true)}
+                    className="w-full py-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Show all {sortedModels.length} models
+                    <ArrowRight className="inline h-4 w-4 ml-1" />
+                  </button>
                 )}
-
-                <div className="space-y-2">
-                  <Label className="text-xs">Manual Model ID</Label>
-                  <Input
-                    className="h-9 font-mono text-xs"
-                    placeholder="e.g., gpt-4o / claude-3-5-sonnet-20241022 / llama3.1"
-                    value={manualModelId}
-                    onChange={(e) => setManualModelId(e.target.value)}
-                    onBlur={() => {
-                      const trimmed = manualModelId.trim();
-                      if (trimmed && trimmed !== currentModelId) onSelectModel(trimmed);
-                    }}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <Label className="text-xs">Temperature</Label>
-                        <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{currentSettings.temperature}</span>
-                      </div>
-                      <Slider
-                        value={[currentSettings.temperature]}
-                        max={2}
-                        step={0.1}
-                        onValueChange={([val]) => updateSettings({ temperature: val })}
-                        className="py-1"
-                      />
-                    </div>
-
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <Label className="text-xs">Top P</Label>
-                        <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{currentSettings.topP}</span>
-                      </div>
-                      <Slider
-                        value={[currentSettings.topP]}
-                        max={1}
-                        step={0.05}
-                        onValueChange={([val]) => updateSettings({ topP: val })}
-                        className="py-1"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <Label className="text-xs">Max Tokens</Label>
-                        <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{currentSettings.maxTokens}</span>
-                      </div>
-                      <Slider
-                        value={[currentSettings.maxTokens]}
-                        min={256}
-                        max={32000}
-                        step={256}
-                        onValueChange={([val]) => updateSettings({ maxTokens: val })}
-                        className="py-1"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-xs">System Prompt</Label>
-                      <Textarea
-                        placeholder="You are a helpful assistant..."
-                        value={currentSettings.systemPrompt || ''}
-                        onChange={(e) => setSystemPrompt(e.target.value)}
-                        className="h-[80px] text-xs resize-none"
-                      />
-                    </div>
-                  </div>
-                </div>
               </div>
             )}
           </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex-none border-t bg-muted/10 p-2">
+          <button
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="flex items-center justify-between w-full px-4 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-all"
+          >
+            <span className="flex items-center gap-2">
+              {showAdvanced ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+              Advanced Settings
+            </span>
+          </button>
+
+          {showAdvanced && (
+            <div className="px-4 pb-4 pt-2 space-y-6 animate-in slide-in-from-bottom-2 duration-200 max-h-[300px] overflow-y-auto">
+              {onSelectProviderId && (
+                <div className="space-y-2">
+                  <Label className="text-xs">Provider Routing</Label>
+                  <Select
+                    value={currentProviderId || "auto"}
+                    onValueChange={(value) => onSelectProviderId(value === "auto" ? undefined : value)}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Auto" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">Auto (Recommended)</SelectItem>
+                      {llmProviderOptions.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label className="text-xs">Manual Model ID</Label>
+                <Input
+                  className="h-9 font-mono text-xs"
+                  placeholder="e.g., gpt-5.2 / claude-opus-4.5"
+                  value={manualModelId}
+                  onChange={(e) => setManualModelId(e.target.value)}
+                  onBlur={() => {
+                    const trimmed = manualModelId.trim();
+                    if (trimmed && trimmed !== currentModelId) onSelectModel(trimmed);
+                  }}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <Label className="text-xs">Temperature</Label>
+                    <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded">{currentSettings.temperature}</span>
+                  </div>
+                  <Slider
+                    value={[currentSettings.temperature]}
+                    max={2}
+                    step={0.1}
+                    onValueChange={([val]) => updateSettings({ temperature: val })}
+                  />
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <Label className="text-xs">Max Tokens</Label>
+                    <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded">{currentSettings.maxTokens}</span>
+                  </div>
+                  <Slider
+                    value={[currentSettings.maxTokens]}
+                    min={256}
+                    max={32000}
+                    step={256}
+                    onValueChange={([val]) => updateSettings({ maxTokens: val })}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs">System Prompt</Label>
+                <Textarea
+                  placeholder="You are a helpful assistant..."
+                  value={currentSettings.systemPrompt || ''}
+                  onChange={(e) => setSystemPrompt(e.target.value)}
+                  className="h-[80px] text-xs resize-none"
+                />
+              </div>
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>
   );
 }
-

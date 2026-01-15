@@ -1,34 +1,45 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef, lazy, Suspense } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRouter } from "next/navigation";
 import { useUIStore } from "@/stores/ui-store";
+import { useShallow } from "zustand/react/shallow";
 import {
   createChat,
   getChatById,
-  getFavoriteModels,
-  getRecentModels,
+  getModelPickerData,
   updateChat,
   updateModelLastUsed,
   getMessages,
-  getAllModelAliases,
   getAgentById,
+  updateAgent,
 } from "@/lib/db/queries";
-import { MODELS, type Model, getModelById } from "@/lib/constants/models";
+import { MODELS, type Model, getModelById, USE_CASE_RECOMMENDATIONS, MODEL_CATALOG } from "@/lib/constants/models";
 import { MessageList } from "./message-list";
 import { InputArea } from "./input-area";
 import { TagList } from "./tag-list";
 import { cn } from "@/lib/utils";
 import { useAutoTags } from "@/hooks/use-auto-tags";
 import { useChatSummary } from "@/hooks/use-chat-summary";
-import { ModelPickerDialog } from "@/components/model-picker/model-picker-dialog";
 import { BudgetSettingsDialog } from "./budget-settings-dialog";
 import { ChatSettingsPopover } from "./chat-settings-popover";
 import { ToolQuickToggle } from "./tool-quick-toggle";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+
+// Lazy load heavy dialog components for better initial load
+const ModelPickerDialog = lazy(() =>
+  import("@/components/model-picker/model-picker-dialog").then((m) => ({
+    default: m.ModelPickerDialog,
+  }))
+);
+const AgentPickerDialog = lazy(() =>
+  import("@/components/agents/agent-picker-dialog").then((m) => ({
+    default: m.AgentPickerDialog,
+  }))
+);
 import {
   Check,
   Settings,
@@ -42,7 +53,6 @@ import {
 } from "lucide-react";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { ArtifactShell } from "@/components/artifacts/artifact-shell";
-import { AgentPickerDialog } from "@/components/agents/agent-picker-dialog";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useModelsStore } from "@/stores/models-store";
@@ -59,27 +69,49 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/empty-state";
-import { MessageSquare, Eye, Brain, Wrench } from "lucide-react";
+import { MessageSquare, Eye, Brain, Wrench, Code, Zap, DollarSign, Sparkles } from "lucide-react";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { formatModelCost } from "@/components/model-picker/model-item";
 import { OfflineIndicator } from "@/components/pwa";
 
 export function ChatShell() {
   const router = useRouter();
-  const activeChatId = useUIStore((state) => state.activeChatId);
-  const setActiveChatId = useUIStore((state) => state.setActiveChatId);
-  const secondaryChatId = useUIStore((state) => state.secondaryChatId);
-  const setSecondaryChatId = useUIStore((state) => state.setSecondaryChatId);
-  const isSplitView = useUIStore((state) => state.isSplitView);
-  const setIsSplitView = useUIStore((state) => state.setIsSplitView);
-  const showArtifacts = useUIStore((state) => state.showArtifacts);
-  const setShowArtifacts = useUIStore((state) => state.setShowArtifacts);
-  const isArenaMode = useUIStore((state) => state.isArenaMode);
-  const setIsArenaMode = useUIStore((state) => state.setIsArenaMode);
-  const arenaModelIds = useUIStore((state) => state.arenaModelIds);
-  const setArenaModelIds = useUIStore((state) => state.setArenaModelIds);
-  const isFocusMode = useUIStore((state) => state.isFocusMode);
-  const setIsFocusMode = useUIStore((state) => state.setIsFocusMode);
+
+  // Use shallow comparison to prevent re-renders when unrelated state changes
+  const {
+    activeChatId,
+    setActiveChatId,
+    secondaryChatId,
+    setSecondaryChatId,
+    isSplitView,
+    setIsSplitView,
+    showArtifacts,
+    setShowArtifacts,
+    isArenaMode,
+    setIsArenaMode,
+    arenaModelIds,
+    setArenaModelIds,
+    isFocusMode,
+    setIsFocusMode,
+  } = useUIStore(
+    useShallow((state) => ({
+      activeChatId: state.activeChatId,
+      setActiveChatId: state.setActiveChatId,
+      secondaryChatId: state.secondaryChatId,
+      setSecondaryChatId: state.setSecondaryChatId,
+      isSplitView: state.isSplitView,
+      setIsSplitView: state.setIsSplitView,
+      showArtifacts: state.showArtifacts,
+      setShowArtifacts: state.setShowArtifacts,
+      isArenaMode: state.isArenaMode,
+      setIsArenaMode: state.setIsArenaMode,
+      arenaModelIds: state.arenaModelIds,
+      setArenaModelIds: state.setArenaModelIds,
+      isFocusMode: state.isFocusMode,
+      setIsFocusMode: state.setIsFocusMode,
+    }))
+  );
+
   const getKeyForProvider = useApiKeysStore((s) => s.getKeyForProvider);
   const keys = useApiKeysStore((s) => s.keys);
   const models = useModelsStore((state) => state.models);
@@ -92,7 +124,7 @@ export function ChatShell() {
           keys
             .map((k) => k.provider)
             .filter((p) =>
-              ["openrouter", "openai", "anthropic", "groq", "together", "perplexity", "anyscale", "ollama", "lmstudio"].includes(p) ||
+              ["openrouter", "openai", "anthropic", "google", "deepseek", "mistral", "xai", "groq", "together", "perplexity", "anyscale", "ollama", "lmstudio"].includes(p) ||
               p.startsWith("custom-openai:")
             )
         )
@@ -144,13 +176,15 @@ export function ChatShell() {
     updateChat(chat.id, { providerId: undefined }).catch(() => { });
   }, [chat?.id, chat?.modelId, chat?.providerId]);
 
-  const favoriteModelEntries = useLiveQuery(() => getFavoriteModels(), []);
-  const recentModelEntries = useLiveQuery(() => getRecentModels(6), []);
-  const modelAliases = useLiveQuery(() => getAllModelAliases(), []);
+  // Batch query for model picker data - reduces 3 queries to 1 transaction
+  const modelPickerData = useLiveQuery(() => getModelPickerData(), []);
+  const favoriteModelEntries = modelPickerData?.favorites;
+  const recentModelEntries = modelPickerData?.recent;
+  const modelAliases = modelPickerData?.aliases;
 
   const modelAliasMap = useMemo(() => {
     const map = new Map<string, string>();
-    (modelAliases || []).forEach(a => map.set(a.id, a.alias));
+    (modelAliases || []).forEach((a: { id: string; alias: string }) => map.set(a.id, a.alias));
     return map;
   }, [modelAliases]);
 
@@ -217,19 +251,44 @@ export function ChatShell() {
     return combined.slice(0, 9);
   }, [favoriteModelObjects, recentModelObjects]);
 
-  // Keyboard shortcut: Cmd/Ctrl+M to open model picker
-  useHotkeys(
-    "mod+m",
-    (e) => {
-      e.preventDefault();
-      if (!isArenaMode && activeChatId) {
-        setModelPickerOpen(true);
-      }
-    },
-    { enableOnFormTags: false }
-  );
+  // Check if OpenRouter is available - it can route to any model
+  const hasOpenRouter = llmProviderIds.includes("openrouter");
+  const canUseAnyModel = hasOpenRouter || chat?.providerId === "openrouter";
 
-  // Number hotkeys 1-9 for quick model switching (when dropdown is NOT open, use Alt+1-9)
+  // Use-case based recommendations (prioritizes catalog models when OpenRouter is available)
+  const useCaseRecommendations = useMemo(() => {
+    const cases = ["coding", "reasoning", "chat", "budget"] as const;
+    const result: Record<string, Model[]> = {};
+
+    for (const useCase of cases) {
+      const rec = USE_CASE_RECOMMENDATIONS[useCase];
+      if (!rec) continue;
+
+      const models = rec.models
+        .map(id => {
+          // Try to find in allModels first (has provider data)
+          const fromAll = allModels.find(m => m.id === id);
+          if (fromAll) return fromAll;
+
+          // If OpenRouter is available, use catalog models directly
+          if (canUseAnyModel) {
+            return MODEL_CATALOG.find(m => m.id === id);
+          }
+
+          return undefined;
+        })
+        .filter((m): m is Model => m !== undefined)
+        .slice(0, 2); // Top 2 per category
+
+      if (models.length > 0) {
+        result[useCase] = models;
+      }
+    }
+
+    return result;
+  }, [allModels, canUseAnyModel]);
+
+  // Number hotkeys Alt+1-9 for quick model switching
   useHotkeys(
     "alt+1,alt+2,alt+3,alt+4,alt+5,alt+6,alt+7,alt+8,alt+9",
     (e) => {
@@ -247,13 +306,19 @@ export function ChatShell() {
     [quickSwitchModels, activeChatId]
   );
 
+  // Use ref to avoid recreating listener on isArenaMode changes
+  const isArenaModeRef = useRef(isArenaMode);
+  useEffect(() => {
+    isArenaModeRef.current = isArenaMode;
+  }, [isArenaMode]);
+
   useEffect(() => {
     const handler = () => {
-      if (!isArenaMode) setModelPickerOpen(true);
+      if (!isArenaModeRef.current) setModelPickerOpen(true);
     };
-    window.addEventListener("lumina:open-model-picker", handler as EventListener);
-    return () => window.removeEventListener("lumina:open-model-picker", handler as EventListener);
-  }, [isArenaMode]);
+    window.addEventListener("lumina:open-model-picker", handler);
+    return () => window.removeEventListener("lumina:open-model-picker", handler);
+  }, []); // Empty deps - listener registered once
 
   const handleModelChange = async (modelId: string) => {
     if (activeChatId) {
@@ -266,6 +331,11 @@ export function ChatShell() {
       }
 
       await updateChat(activeChatId, updates);
+
+      // Also persist model preference to the agent if one is selected
+      if (chat?.agentId && currentAgent && currentAgent.executionType !== "pipeline") {
+        await updateAgent(chat.agentId, { modelId });
+      }
     }
   };
 
@@ -278,6 +348,11 @@ export function ChatShell() {
       updates.providerId = next || undefined;
     }
     await updateChat(activeChatId, updates);
+
+    // Also persist model preference to the agent if one is selected
+    if (chat?.agentId && currentAgent && currentAgent.executionType !== "pipeline") {
+      await updateAgent(chat.agentId, { modelId });
+    }
   };
 
   const handleArenaModelChange = (modelId: string) => {
@@ -442,55 +517,52 @@ export function ChatShell() {
                           <ChevronDown className="h-3 w-3 opacity-60" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-80">
+                      <DropdownMenuContent align="end" className="w-96 max-h-[70vh] overflow-y-auto">
                         {/* Provider Section */}
-                        {providerId && (
-                          <div className="space-y-3">
-                            <div className="p-3 pb-0">
-                              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Provider</span>
-                            </div>
-                            <div className="grid grid-cols-1 gap-1 px-1">
-                              {(() => {
-                                const compatibleProviders = llmProviderIds
-                                  .filter(pid => isModelIdCompatibleWithProviderId(pid, chat.modelId))
-                                  .map(pid => ({ id: pid, label: providerLabel(pid) }))
-                                  .sort((a, b) => a.label.localeCompare(b.label));
+                        {providerId && (() => {
+                          const compatibleProviders = llmProviderIds
+                            .filter(pid => isModelIdCompatibleWithProviderId(pid, chat.modelId))
+                            .map(pid => ({ id: pid, label: providerLabel(pid) }))
+                            .sort((a, b) => a.label.localeCompare(b.label));
 
-                                if (compatibleProviders.length > 1) {
-                                  return (
-                                    <>
-                                      {compatibleProviders.map((p) => (
-                                        <DropdownMenuItem
-                                          key={p.id}
-                                          onClick={() => activeChatId && updateChat(activeChatId, { providerId: p.id })}
-                                          className="cursor-pointer"
-                                        >
-                                          <div className="flex w-full items-center gap-2">
-                                            <span>{p.label}</span>
-                                            {providerId === p.id && (
-                                              <Check className="ml-auto h-4 w-4 text-primary" />
-                                            )}
-                                          </div>
-                                        </DropdownMenuItem>
-                                      ))}
-                                      <DropdownMenuSeparator />
-                                    </>
-                                  );
-                                }
-                                return null;
-                              })()}
-                            </div>
-                          </div>
-                        )}
+                          if (compatibleProviders.length > 1) {
+                            return (
+                              <>
+                                <DropdownMenuLabel className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                                  Provider
+                                </DropdownMenuLabel>
+                                {compatibleProviders.map((p) => (
+                                  <DropdownMenuItem
+                                    key={p.id}
+                                    onClick={() => activeChatId && updateChat(activeChatId, { providerId: p.id })}
+                                    className="cursor-pointer"
+                                  >
+                                    <div className="flex w-full items-center gap-2">
+                                      <span>{p.label}</span>
+                                      {providerId === p.id && (
+                                        <Check className="ml-auto h-4 w-4 text-primary" />
+                                      )}
+                                    </div>
+                                  </DropdownMenuItem>
+                                ))}
+                                <DropdownMenuSeparator />
+                              </>
+                            );
+                          }
+                          return null;
+                        })()}
 
-                        <div className="px-1">
-                          <DropdownMenuLabel className="flex items-center justify-between">
-                            Quick Switch
-                            <span className="text-xs text-muted-foreground font-normal">Alt+1-9</span>
-                          </DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          {quickSwitchModels.length > 0 ? (
-                            quickSwitchModels.map((model, idx) => {
+                        {/* Quick Switch (Favorites + Recent) */}
+                        {quickSwitchModels.length > 0 && (
+                          <>
+                            <DropdownMenuLabel className="flex items-center justify-between">
+                              <span className="flex items-center gap-1.5">
+                                <Sparkles className="h-3 w-3 text-yellow-500" />
+                                Quick Switch
+                              </span>
+                              <span className="text-[10px] text-muted-foreground font-normal">Alt+1-9</span>
+                            </DropdownMenuLabel>
+                            {quickSwitchModels.slice(0, 5).map((model, idx) => {
                               const capabilities = getModelCapabilities(model.id);
                               const costDisplay = formatModelCost(model.inputCost, model.outputCost);
                               const isFree = model.inputCost + model.outputCost === 0;
@@ -498,52 +570,147 @@ export function ChatShell() {
                                 <DropdownMenuItem
                                   key={model.id}
                                   onClick={() => handleQuickModelChange(model.id)}
-                                  className="cursor-pointer py-2"
+                                  className="cursor-pointer py-1.5"
                                 >
                                   <div className="flex w-full items-center gap-2">
-                                    <span className="w-5 h-5 rounded bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground shrink-0">
+                                    <span className="w-4 h-4 rounded bg-muted flex items-center justify-center text-[10px] font-medium text-muted-foreground shrink-0">
                                       {idx + 1}
                                     </span>
-                                    <span className="truncate flex-1">{model.name}</span>
+                                    <span className="truncate flex-1 text-sm">{model.name}</span>
                                     <div className="flex items-center gap-0.5 shrink-0">
-                                      {capabilities.supportsVision && (
-                                        <span title="Vision"><Eye className="h-3 w-3 text-sky-500" /></span>
-                                      )}
-                                      {capabilities.supportsReasoning && (
-                                        <span title="Reasoning"><Brain className="h-3 w-3 text-purple-500" /></span>
-                                      )}
-                                      {capabilities.supportsTools && (
-                                        <span title="Tools"><Wrench className="h-3 w-3 text-amber-500" /></span>
-                                      )}
+                                      {capabilities.supportsVision && <Eye className="h-3 w-3 text-sky-500" />}
+                                      {capabilities.supportsReasoning && <Brain className="h-3 w-3 text-purple-500" />}
                                     </div>
-                                    <span className={cn(
-                                      "text-xs shrink-0",
-                                      isFree ? "text-green-500" : "text-muted-foreground"
-                                    )}>
+                                    <span className={cn("text-[10px] shrink-0", isFree ? "text-green-500" : "text-muted-foreground")}>
                                       {costDisplay}
                                     </span>
-                                    <span className="text-xs text-muted-foreground/70 shrink-0">
-                                      {model.provider}
-                                    </span>
-                                    {chat?.modelId === model.id && (
-                                      <Check className="h-4 w-4 text-primary shrink-0" />
-                                    )}
+                                    {chat?.modelId === model.id && <Check className="h-3 w-3 text-primary shrink-0" />}
                                   </div>
                                 </DropdownMenuItem>
                               );
-                            })
-                          ) : (
-                            <div className="px-4 py-3 text-sm text-muted-foreground text-center">
-                              No favorites or recent models.
-                              <br />
-                              Browse to add some!
-                            </div>
-                          )}
-                        </div>
-                        <DropdownMenuSeparator />
+                            })}
+                            <DropdownMenuSeparator />
+                          </>
+                        )}
+
+                        {/* Use Case Recommendations */}
+                        {Object.keys(useCaseRecommendations).length > 0 && (
+                          <>
+                            <DropdownMenuLabel className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                              Recommended for
+                            </DropdownMenuLabel>
+
+                            {/* Coding */}
+                            {useCaseRecommendations.coding && (
+                              <div className="px-2 py-1">
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  <Code className="h-3 w-3 text-blue-500" />
+                                  <span className="text-[10px] font-medium text-muted-foreground">Coding</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {useCaseRecommendations.coding.map(model => (
+                                    <button
+                                      key={model.id}
+                                      onClick={() => handleQuickModelChange(model.id)}
+                                      className={cn(
+                                        "px-2 py-0.5 text-[11px] rounded-md border transition-colors",
+                                        chat?.modelId === model.id
+                                          ? "bg-primary text-primary-foreground border-primary"
+                                          : "bg-muted/50 hover:bg-muted border-border/50 hover:border-border"
+                                      )}
+                                    >
+                                      {model.name}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Reasoning */}
+                            {useCaseRecommendations.reasoning && (
+                              <div className="px-2 py-1">
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  <Brain className="h-3 w-3 text-purple-500" />
+                                  <span className="text-[10px] font-medium text-muted-foreground">Reasoning</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {useCaseRecommendations.reasoning.map(model => (
+                                    <button
+                                      key={model.id}
+                                      onClick={() => handleQuickModelChange(model.id)}
+                                      className={cn(
+                                        "px-2 py-0.5 text-[11px] rounded-md border transition-colors",
+                                        chat?.modelId === model.id
+                                          ? "bg-primary text-primary-foreground border-primary"
+                                          : "bg-muted/50 hover:bg-muted border-border/50 hover:border-border"
+                                      )}
+                                    >
+                                      {model.name}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Fast Chat */}
+                            {useCaseRecommendations.chat && (
+                              <div className="px-2 py-1">
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  <Zap className="h-3 w-3 text-orange-500" />
+                                  <span className="text-[10px] font-medium text-muted-foreground">Fast</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {useCaseRecommendations.chat.map(model => (
+                                    <button
+                                      key={model.id}
+                                      onClick={() => handleQuickModelChange(model.id)}
+                                      className={cn(
+                                        "px-2 py-0.5 text-[11px] rounded-md border transition-colors",
+                                        chat?.modelId === model.id
+                                          ? "bg-primary text-primary-foreground border-primary"
+                                          : "bg-muted/50 hover:bg-muted border-border/50 hover:border-border"
+                                      )}
+                                    >
+                                      {model.name}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Budget */}
+                            {useCaseRecommendations.budget && (
+                              <div className="px-2 py-1">
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  <DollarSign className="h-3 w-3 text-green-500" />
+                                  <span className="text-[10px] font-medium text-muted-foreground">Budget</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {useCaseRecommendations.budget.map(model => (
+                                    <button
+                                      key={model.id}
+                                      onClick={() => handleQuickModelChange(model.id)}
+                                      className={cn(
+                                        "px-2 py-0.5 text-[11px] rounded-md border transition-colors",
+                                        chat?.modelId === model.id
+                                          ? "bg-primary text-primary-foreground border-primary"
+                                          : "bg-muted/50 hover:bg-muted border-border/50 hover:border-border"
+                                      )}
+                                    >
+                                      {model.name}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            <DropdownMenuSeparator />
+                          </>
+                        )}
+
+                        {/* Browse all */}
                         <DropdownMenuItem
                           onClick={() => setModelPickerOpen(true)}
-                          className="cursor-pointer"
+                          className="cursor-pointer font-medium"
                         >
                           Browse all models
                           <DropdownMenuShortcut>⌘M</DropdownMenuShortcut>
@@ -700,33 +867,40 @@ export function ChatShell() {
         )}
       </ResizablePanelGroup>
 
-      {/* Model Picker Dialog */}
+      {/* Model Picker Dialog - Lazy loaded */}
       {chat && (
-        <ModelPickerDialog
-          open={modelPickerOpen}
-          onOpenChange={setModelPickerOpen}
-          currentModelId={chat.modelId}
-          onSelectModel={handleModelChange}
-          currentProviderId={chat.providerId}
-          onSelectProviderId={(providerId) => activeChatId && updateChat(activeChatId, { providerId })}
-        />
+        <Suspense fallback={null}>
+          <ModelPickerDialog
+            open={modelPickerOpen}
+            onOpenChange={setModelPickerOpen}
+            currentModelId={chat.modelId}
+            onSelectModel={handleModelChange}
+            currentProviderId={chat.providerId}
+            onSelectProviderId={(providerId) => activeChatId && updateChat(activeChatId, { providerId })}
+          />
+        </Suspense>
       )}
 
-      {/* Arena Model Picker */}
-      <ModelPickerDialog
-        open={arenaPickerOpen.open}
-        onOpenChange={(open) => setArenaPickerOpen(prev => ({ ...prev, open }))}
-        currentModelId={arenaModelIds[arenaPickerOpen.index]}
-        onSelectModel={handleArenaModelChange}
-      />
-
-      {chat && (
-        <AgentPickerDialog
-          open={agentPickerOpen}
-          onOpenChange={setAgentPickerOpen}
-          chatId={chat.id}
-          currentAgentId={chat.agentId}
+      {/* Arena Model Picker - Lazy loaded */}
+      <Suspense fallback={null}>
+        <ModelPickerDialog
+          open={arenaPickerOpen.open}
+          onOpenChange={(open) => setArenaPickerOpen(prev => ({ ...prev, open }))}
+          currentModelId={arenaModelIds[arenaPickerOpen.index]}
+          onSelectModel={handleArenaModelChange}
         />
+      </Suspense>
+
+      {/* Agent Picker - Lazy loaded */}
+      {chat && (
+        <Suspense fallback={null}>
+          <AgentPickerDialog
+            open={agentPickerOpen}
+            onOpenChange={setAgentPickerOpen}
+            chatId={chat.id}
+            currentAgentId={chat.agentId}
+          />
+        </Suspense>
       )}
 
       {/* Budget Settings Dialog */}

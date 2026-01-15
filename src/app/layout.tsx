@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { GeistSans } from "geist/font/sans";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import { GlobalHooks } from "@/components/providers/global-hooks";
 import { Toaster as SonnerToaster } from "sonner";
 import { CommandPalette } from "@/components/command-palette/command-palette";
 import { MobileNav } from "@/components/mobile-nav";
@@ -42,6 +43,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+          <GlobalHooks />
           {children}
           <CommandPalette />
           <MobileNav />

@@ -71,17 +71,50 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, isStre
             {children}
           </code>
         ),
-        a: ({ node, children, href, ...props }) => (
-          <a
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-primary hover:underline"
-            {...props}
-          >
-            {children}
-          </a>
-        ),
+        a: ({ node, children, href, ...props }) => {
+          // Block javascript: URLs to prevent XSS
+          const isUnsafe = href?.trim().toLowerCase().startsWith("javascript:");
+          const safeHref = isUnsafe ? "#blocked" : href;
+
+          // Check if this is a "View Image" link that should be rendered as an inline image
+          const linkText = typeof children === "string" ? children :
+            (Array.isArray(children) && typeof children[0] === "string" ? children[0] : "");
+          const isViewImageLink = /^view\s*image$/i.test(linkText.trim());
+
+          // Check if URL looks like an image (common image extensions or image hosting domains)
+          const imageExtensions = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|tiff|avif)(\?.*)?$/i;
+          const imageHostingDomains = /(images\.unsplash\.com|i\.imgur\.com|pbs\.twimg\.com|cdn\.discordapp\.com|upload\.wikimedia\.org|googleusercontent\.com|bing\.com\/th|serpapi\.com|gstatic\.com|pinimg\.com|flickr\.com|staticflickr\.com|media\.tumblr\.com|redd\.it|preview\.redd\.it|external-preview\.redd\.it|gettyimages\.com|istockphoto\.com|shutterstock\.com|alamy\.com|depositphotos\.com|dreamstime\.com|fotolia\.com|123rf\.com|rawpixel\.com|pixabay\.com|pexels\.com|freepik\.com|stock\.adobe\.com|licdn\.com|fbcdn\.net|twimg\.com|cdninstagram\.com|media-amazon\.com|ssl-images-amazon\.com|googleapis\.com|cloudfront\.net|akamaihd\.net)/i;
+          // Also check for common image URL patterns (query params containing image indicators)
+          const imageUrlPatterns = /[?&](image|img|photo|pic|thumb|w=|h=|width=|height=|format=)/i;
+          const isImageUrl = href && (imageExtensions.test(href) || imageHostingDomains.test(href) || imageUrlPatterns.test(href));
+
+          // Render as image if it's a "View Image" link - if URL detection fails, still try to render
+          // since the AI specifically labeled it as an image link
+          if (isViewImageLink && !isUnsafe && href) {
+            return (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={href}
+                alt="Image"
+                className="rounded-lg my-2 max-w-full max-h-80 object-contain"
+                loading="lazy"
+              />
+            );
+          }
+
+          return (
+            <a
+              href={safeHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+              onClick={isUnsafe ? (e) => e.preventDefault() : undefined}
+              {...props}
+            >
+              {children}
+            </a>
+          );
+        },
         table: ({ node, children, ...props }) => (
           <div className="my-4 overflow-x-auto">
             <table className="w-full border-collapse" {...props}>

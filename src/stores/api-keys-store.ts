@@ -4,8 +4,14 @@ import {
   getApiKeyByProvider,
   addApiKey as dbAddApiKey,
   deleteApiKey as dbDeleteApiKey,
+  updateApiKey as dbUpdateApiKey,
 } from "@/lib/db/queries";
 import type { ApiKey } from "@/lib/db/schema";
+import {
+  encryptApiKey,
+  decryptApiKey,
+  isEncryptedKey,
+} from "@/lib/crypto/api-key-crypto";
 
 interface ApiKeysState {
   keys: ApiKey[];
@@ -24,8 +30,32 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
   isLoaded: false,
 
   loadKeys: async () => {
-    const keys = await getAllApiKeys();
-    set({ keys, isLoaded: true });
+    const encryptedKeys = await getAllApiKeys();
+
+    // Decrypt keys and migrate any plaintext keys to encrypted format
+    const decryptedKeys: ApiKey[] = [];
+    for (const storedKey of encryptedKeys) {
+      try {
+        const decryptedKeyValue = await decryptApiKey(storedKey.key);
+
+        // Migrate plaintext keys to encrypted format
+        if (!isEncryptedKey(storedKey.key)) {
+          const encryptedValue = await encryptApiKey(decryptedKeyValue);
+          await dbUpdateApiKey(storedKey.id, { key: encryptedValue });
+        }
+
+        decryptedKeys.push({
+          ...storedKey,
+          key: decryptedKeyValue, // Store decrypted value in memory
+        });
+      } catch (error) {
+        console.error(`[API Keys] Failed to process key for ${storedKey.provider}:`, error);
+        // Include key as-is if decryption fails
+        decryptedKeys.push(storedKey);
+      }
+    }
+
+    set({ keys: decryptedKeys, isLoaded: true });
   },
 
   getKeyForProvider: (provider) => {
@@ -33,8 +63,17 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
   },
 
   addKey: async (provider, key, label, baseUrl) => {
-    const newKey = await dbAddApiKey({ provider, key, label, baseUrl });
-    set({ keys: [...get().keys, newKey] });
+    // Encrypt the key before storing
+    const encryptedKey = await encryptApiKey(key);
+    const newKey = await dbAddApiKey({ provider, key: encryptedKey, label, baseUrl });
+
+    // Store decrypted key in memory for immediate use
+    set({
+      keys: [
+        ...get().keys,
+        { ...newKey, key }, // Use plaintext key in memory
+      ],
+    });
   },
 
   removeKey: async (id) => {

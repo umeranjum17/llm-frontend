@@ -53,12 +53,12 @@ export function useKeyboardShortcuts() {
     enableOnFormTags: false,
   });
 
-  // Alt/Option + Shift + M - Open model picker
-  useHotkeys("alt+shift+m", (e) => {
+  // Cmd/Ctrl + M - Open model picker (unified shortcut)
+  useHotkeys("mod+m", (e) => {
     e.preventDefault();
     window.dispatchEvent(new CustomEvent("lumina:open-model-picker"));
   }, {
-    enableOnFormTags: true,
+    enableOnFormTags: false, // Don't trigger while typing
   });
 
   // Cmd/Ctrl + / - Keyboard Shortcuts Help
