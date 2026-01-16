@@ -207,8 +207,12 @@ export const USE_CASE_RECOMMENDATIONS: Record<string, { models: string[]; descri
     description: "Image understanding and analysis",
   },
   agents: {
-    models: ["anthropic/claude-sonnet-4.5", "anthropic/claude-opus-4.5", "openai/gpt-5.2", "google/gemini-3-flash-preview"],
+    models: ["moonshotai/kimi-k2", "anthropic/claude-sonnet-4.5", "cohere/command-a-03-2025", "anthropic/claude-opus-4.5"],
     description: "Best for autonomous agent workflows",
+  },
+  "tool-calling": {
+    models: ["moonshotai/kimi-k2", "anthropic/claude-sonnet-4.5", "cohere/command-a-03-2025", "qwen/qwen-max"],
+    description: "Excellent at function calling and complex tool workflows (BFCL >65%)",
   },
   "long-context": {
     models: ["meta-llama/llama-4-scout", "google/gemini-3-pro", "google/gemini-3-flash-preview", "openai/gpt-5.2"],

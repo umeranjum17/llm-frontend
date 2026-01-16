@@ -436,6 +436,124 @@
       ]
     },
     {
+      "id": "moonshotai/kimi-k2",
+      "name": "Kimi K2",
+      "provider": "Moonshot",
+      "description": "Best-in-class tool calling. Handles 200-300 sequential calls. 1T MoE, 32B active. SWE-bench 65.8%. Apache 2.0.",
+      "contextLength": 131072,
+      "inputCost": 0.6,
+      "outputCost": 2.5,
+      "category": [
+        "balanced",
+        "coding",
+        "agents",
+        "open-source"
+      ],
+      "tier": "balanced",
+      "supportsReasoning": true,
+      "releaseDate": "2025-07",
+      "recommendedFor": [
+        "Tool calling",
+        "Agentic workflows",
+        "MCP integrations",
+        "Long tool sequences"
+      ]
+    },
+    {
+      "id": "moonshotai/kimi-k2-thinking",
+      "name": "Kimi K2 Thinking",
+      "provider": "Moonshot",
+      "description": "Advanced reasoning + tool use. Interleaves step-by-step reasoning with autonomous tool calls. 256K context.",
+      "contextLength": 262144,
+      "inputCost": 0.4,
+      "outputCost": 1.75,
+      "category": [
+        "reasoning",
+        "agents",
+        "open-source"
+      ],
+      "tier": "balanced",
+      "supportsReasoning": true,
+      "supportsThinking": true,
+      "releaseDate": "2025-07",
+      "recommendedFor": [
+        "Complex reasoning",
+        "Autonomous agents",
+        "Research tasks"
+      ]
+    },
+    {
+      "id": "cohere/command-a-03-2025",
+      "name": "Command A",
+      "provider": "Cohere",
+      "description": "111B open-weights optimized for tool use. Excels at RAG, agents, and multilingual. 256K context. Apache 2.0.",
+      "contextLength": 262144,
+      "inputCost": 2.5,
+      "outputCost": 10.0,
+      "category": [
+        "balanced",
+        "agents",
+        "coding",
+        "open-source"
+      ],
+      "tier": "balanced",
+      "supportsReasoning": true,
+      "releaseDate": "2025-03",
+      "recommendedFor": [
+        "Tool calling",
+        "Enterprise RAG",
+        "Agentic workflows",
+        "Multilingual"
+      ]
+    },
+    {
+      "id": "qwen/qwen-max",
+      "name": "Qwen Max",
+      "provider": "Alibaba",
+      "description": "Large MoE flagship. 20T+ tokens training. Strong on complex multi-step and tool use tasks.",
+      "contextLength": 131072,
+      "inputCost": 1.6,
+      "outputCost": 6.4,
+      "category": [
+        "balanced",
+        "coding",
+        "reasoning"
+      ],
+      "tier": "balanced",
+      "supportsReasoning": true,
+      "supportsVision": true,
+      "releaseDate": "2025-01",
+      "recommendedFor": [
+        "Complex reasoning",
+        "Tool calling",
+        "Coding",
+        "Multilingual"
+      ]
+    },
+    {
+      "id": "qwen/qwen3-max",
+      "name": "Qwen3 Max",
+      "provider": "Alibaba",
+      "description": "Latest Qwen flagship. Improved reasoning, math, coding. 100+ languages. 256K context.",
+      "contextLength": 262144,
+      "inputCost": 1.2,
+      "outputCost": 6.0,
+      "category": [
+        "flagship",
+        "coding",
+        "reasoning"
+      ],
+      "tier": "flagship",
+      "supportsReasoning": true,
+      "releaseDate": "2025-12",
+      "recommendedFor": [
+        "Complex reasoning",
+        "Coding",
+        "Tool calling",
+        "Multilingual"
+      ]
+    },
+    {
       "id": "openai/gpt-5-image",
       "name": "GPT-5 Image",
       "provider": "OpenAI",

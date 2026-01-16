@@ -69,7 +69,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/empty-state";
-import { MessageSquare, Eye, Brain, Wrench, Code, Zap, DollarSign, Sparkles } from "lucide-react";
+import { MessageSquare, Eye, Brain, Wrench, Code, Zap, DollarSign, Sparkles, AlertTriangle } from "lucide-react";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { formatModelCost } from "@/components/model-picker/model-item";
 import { OfflineIndicator } from "@/components/pwa";
@@ -287,6 +287,23 @@ export function ChatShell() {
 
     return result;
   }, [allModels, canUseAnyModel]);
+
+  // Check if we should show tool calling warning
+  // Shows when MCP tools are enabled but model has "basic" tool calling tier
+  const toolCallingWarning = useMemo(() => {
+    if (!chat?.modelId) return null;
+    const hasToolsEnabled = (chat?.activeMcpServerIds?.length ?? 0) > 0;
+    if (!hasToolsEnabled) return null;
+
+    const capabilities = getModelCapabilities(chat.modelId);
+    if (capabilities.toolCallingTier !== "basic") return null;
+
+    const modelName = currentModel?.name || chat.modelId.split("/").pop() || "This model";
+    return {
+      message: `${modelName} has limited tool calling ability (BFCL <65%). For complex MCP workflows, try Claude Sonnet, Kimi K2, or Command A.`,
+      modelName,
+    };
+  }, [chat?.modelId, chat?.activeMcpServerIds, currentModel?.name]);
 
   // Number hotkeys Alt+1-9 for quick model switching
   useHotkeys(
@@ -781,6 +798,22 @@ export function ChatShell() {
                 </div>
               </div>
             </header>
+
+            {/* Tool Calling Warning Banner */}
+            {toolCallingWarning && (
+              <div className="px-4 py-2 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800 flex items-center gap-2 text-sm text-amber-800 dark:text-amber-200">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span className="flex-1">{toolCallingWarning.message}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/50"
+                  onClick={() => setModelPickerOpen(true)}
+                >
+                  Switch Model
+                </Button>
+              </div>
+            )}
 
             {/* Messages Area */}
             <div className="flex-1 overflow-hidden relative bg-background/20">

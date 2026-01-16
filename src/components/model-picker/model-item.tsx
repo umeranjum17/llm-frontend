@@ -10,6 +10,8 @@ import {
   Sparkles,
   Zap,
   Brain,
+  AlertTriangle,
+  BadgeCheck,
 } from "lucide-react";
 import { type Model } from "@/lib/constants/models";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
@@ -130,17 +132,33 @@ function CapabilityBadges({
           {showLabels && <span className="ml-1">Reasoning</span>}
         </Badge>
       )}
-      {capabilities.supportsTools && (
+      {/* Tool calling tier badges - show quality level */}
+      {capabilities.toolCallingTier === "advanced" && (
+        <Badge
+          variant="outline"
+          className={cn(
+            badgeClass,
+            "border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30"
+          )}
+          title="Advanced Tool Calling - Reliable for complex multi-step workflows"
+        >
+          <Wrench className={iconSize} />
+          <BadgeCheck className={cn(iconSize, "ml-0.5 -mr-0.5")} />
+          {showLabels && <span className="ml-1">Tools Pro</span>}
+        </Badge>
+      )}
+      {capabilities.toolCallingTier === "basic" && (
         <Badge
           variant="outline"
           className={cn(
             badgeClass,
             "border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30"
           )}
-          title="Tools"
+          title="Basic Tool Calling - May struggle with complex workflows (e.g., Composio)"
         >
           <Wrench className={iconSize} />
-          {showLabels && <span className="ml-1">Tools</span>}
+          <AlertTriangle className={cn(iconSize, "ml-0.5 -mr-0.5")} />
+          {showLabels && <span className="ml-1">Tools Limited</span>}
         </Badge>
       )}
     </div>

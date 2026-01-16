@@ -43,37 +43,83 @@ const capabilitiesCache = new Map<string, ModelCapabilities>();
 
 /**
  * Models known to handle complex multi-step tool workflows reliably.
- * These can handle patterns like Composio's SEARCH_TOOLS → read schemas → MULTI_EXECUTE.
+ * Based on BFCL (Berkeley Function Calling Leaderboard) scores and real-world testing.
+ *
+ * BFCL Scores (2025):
+ * - GLM-4.5: 70.85%, Claude Opus 4.1: 70.36%, Claude Sonnet 4: 70.29%
+ * - GPT-5: 59.22% (mediocre), DeepSeek V3: 58.55% (weak)
+ *
+ * Sources:
+ * - https://gorilla.cs.berkeley.edu/leaderboard.html
+ * - https://www.klavis.ai/blog/function-calling-and-agentic-ai-in-2025
  */
 const ADVANCED_TOOL_CALLING_PATTERNS = [
-  // Anthropic Claude 3+ models
-  "claude-3", "claude-3.5", "claude-3.6", "claude-4",
-  // OpenAI GPT-4+ class models
-  "gpt-4o", "gpt-4-turbo", "gpt-4.1", "gpt-4.5", "gpt-5",
-  // OpenAI reasoning models (excellent at following instructions)
-  "o1", "o3", "o4",
-  // Google Gemini Pro/Ultra
-  "gemini-1.5-pro", "gemini-2", "gemini-pro",
-  // Meta Llama 3.1+ 70B+
-  "llama-3.1-70b", "llama-3.1-405b", "llama-3.2-90b", "llama-3.3", "llama-4",
-  // Mistral Large
-  "mistral-large", "mistral-medium",
-  // DeepSeek
-  "deepseek-v3", "deepseek-r1",
+  // Anthropic Claude - TOP TIER on BFCL (~70%)
+  // Claude leads function calling benchmarks consistently
+  "claude-3.5", "claude-3.6", "claude-4", "claude-sonnet-4", "claude-opus-4",
+
+  // Moonshot Kimi K2 - EXCEPTIONAL at tool use
+  // Handles 200-300 sequential tool calls, beats GPT/Claude on agentic benchmarks
+  // Source: https://fireworks.ai/blog/kimi-k2-deepdive
+  "kimi-k2",
+
+  // Zhipu GLM-4.5 - TOP of BFCL (70.85%)
+  "glm-4", "glm-4.5",
+
+  // Meta Llama 3.1 405B - Strong on BFCL (81.1%)
+  // Only the largest Llama models are reliable
+  "llama-3.1-405b", "llama-3.3-70b",
+
+  // Cohere Command - Designed specifically for RAG and tool use
+  "command-r-plus", "command-r+", "command-a-03-2025", "command-a",
+
+  // Alibaba Qwen large models - Good BFCL performance
+  "qwen-2.5-72b", "qwen-max", "qwen-2.5-max",
 ];
 
 /**
- * Models that support tools but struggle with complex workflows.
- * Good for simple single-tool calls.
+ * Models that support tools but struggle with complex multi-step workflows.
+ * May work for simple single-tool calls but unreliable for agentic patterns.
+ *
+ * GPT-4o/GPT-5 issues documented:
+ * - https://community.openai.com/t/gpt-4o-cannot-properly-call-custom-functions-more-than-half-the-time/754926
+ * - https://community.openai.com/t/the-failure-rate-of-function-calls-of-gpt-4o-mini-is-increasing/918874
  */
 const BASIC_TOOL_CALLING_PATTERNS = [
-  // Smaller/faster models
+  // OpenAI models - WORSE than Claude on BFCL (~59%)
+  // GPT-4o and GPT-5 have documented function calling issues
+  "gpt-4o", "gpt-4-turbo", "gpt-4.1", "gpt-4.5", "gpt-5",
   "gpt-4o-mini", "gpt-3.5",
-  "claude-instant", "claude-2",
-  "gemini-flash", "gemini-1.0",
-  "llama-3.1-8b", "llama-3.2-1b", "llama-3.2-3b", "llama-3.2-11b",
-  "mistral-7b", "mistral-small", "mixtral",
-  "phi-", "qwen",
+
+  // OpenAI o-series reasoning models - Good at reasoning but tool calling varies
+  "o1", "o3", "o4",
+
+  // DeepSeek - Weak on BFCL (58.55%), "significant weakness" in tool use
+  "deepseek-v3", "deepseek-r1", "deepseek-reasoner",
+
+  // Google Gemini - Mixed results, Flash is speed-optimized not accuracy
+  "gemini-flash", "gemini-1.0", "gemini-1.5", "gemini-2.0", "gemini-3",
+
+  // Anthropic older/smaller models
+  "claude-instant", "claude-2", "claude-3-haiku",
+
+  // Meta smaller Llama models
+  "llama-3.1-8b", "llama-3.1-70b", "llama-3.2", "llama-4-scout", "llama-4-maverick",
+
+  // Mistral models
+  "mistral-7b", "mistral-small", "mistral-medium", "mistral-large", "mixtral", "codestral",
+
+  // Microsoft Phi models
+  "phi-", "phi-3", "phi-4",
+
+  // Alibaba Qwen smaller models
+  "qwen-2.5-7b", "qwen-2.5-14b", "qwen-2.5-32b", "qwen-turbo", "qwen-plus",
+
+  // xAI Grok
+  "grok-2", "grok-3",
+
+  // Other models
+  "gemma", "olmo", "internlm", "yi-", "reka",
 ];
 
 /**
