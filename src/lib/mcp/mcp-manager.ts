@@ -1,7 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { z } from "zod";
+import { jsonSchema } from "ai";
 import { McpServer } from "@/lib/db/schema";
 
 export interface ToolMetadata {
@@ -53,87 +53,71 @@ function buildSafeMcpToolName(serverId: string, toolName: string): string {
 }
 
 /**
- * Convert JSON Schema to Zod schema for proper AI SDK compatibility.
- * This ensures tool parameters are properly typed instead of using generic z.record(z.any()).
+ * Patch JSON Schema for OpenAI strict mode compatibility.
  *
- * Properties not in the 'required' array are made optional with .optional().
+ * OpenAI strict mode requires:
+ * 1. All properties must be in the 'required' array
+ * 2. additionalProperties must be false
+ * 3. All types must be explicitly specified
+ *
+ * We patch the schema recursively to satisfy these requirements.
+ * Using raw JSON Schema (via AI SDK's jsonSchema()) instead of Zod avoids
+ * validation errors when the LLM omits optional fields.
  */
-function jsonSchemaToZod(schema: any, isTopLevel: boolean = true, requiredProps?: Set<string>, propName?: string): z.ZodTypeAny {
-  // Fallback for missing or invalid schemas
+function patchSchemaForStrictMode(schema: any): any {
   if (!schema || typeof schema !== 'object') {
-    return z.any().describe("Any value");
+    return { type: "string" }; // Default to string for invalid schemas
   }
 
-  // Handle object type (most common for tool parameters)
+  // Deep clone to avoid mutating original
+  const patched = JSON.parse(JSON.stringify(schema));
+
+  return patchSchemaRecursive(patched);
+}
+
+function patchSchemaRecursive(schema: any): any {
+  if (!schema || typeof schema !== 'object') {
+    return schema;
+  }
+
+  // Handle object type
   if (schema.type === "object" || schema.properties) {
-    const properties = schema.properties || {};
-    const required = new Set<string>(schema.required || []);
+    schema.type = "object";
+    schema.additionalProperties = false;
 
-    const shape: Record<string, z.ZodTypeAny> = {};
-    for (const [key, prop] of Object.entries(properties)) {
-      const propSchema = prop as any;
+    if (schema.properties && typeof schema.properties === 'object') {
+      // Make ALL properties required (OpenAI strict mode requirement)
+      schema.required = Object.keys(schema.properties);
 
-      // Skip properties without any type info
-      if (!propSchema || typeof propSchema !== 'object') {
-        console.warn(`[MCP] Skipping property '${key}' without schema`);
-        continue;
+      // Recursively patch nested properties
+      for (const key of Object.keys(schema.properties)) {
+        schema.properties[key] = patchSchemaRecursive(schema.properties[key]);
       }
-
-      let zodType = jsonSchemaToZod(propSchema, false, undefined, key);
-
-      // Add description if available
-      if (propSchema.description) {
-        zodType = zodType.describe(propSchema.description);
-      }
-
-      // Make optional if not in required array
-      if (!required.has(key)) {
-        zodType = zodType.optional();
-      }
-
-      shape[key] = zodType;
+    } else {
+      schema.properties = {};
+      schema.required = [];
     }
-
-    // Use passthrough to allow additional properties (more lenient)
-    return z.object(shape).passthrough();
   }
 
-  // Handle primitive types
-  switch (schema.type) {
-    case "string":
-      if (schema.enum && Array.isArray(schema.enum) && schema.enum.length > 0) {
-        return z.enum(schema.enum as [string, ...string[]]);
-      }
-      return z.string();
-
-    case "number":
-    case "integer":
-      return z.number();
-
-    case "boolean":
-      return z.boolean();
-
-    case "array":
-      const itemSchema = schema.items ? jsonSchemaToZod(schema.items, false) : z.string();
-      return z.array(itemSchema);
-
-    case "null":
-      return z.null();
-
-    default:
-      // Handle anyOf/oneOf by taking the first option (simplified)
-      if (schema.anyOf && Array.isArray(schema.anyOf) && schema.anyOf.length > 0) {
-        return jsonSchemaToZod(schema.anyOf[0], false);
-      }
-      if (schema.oneOf && Array.isArray(schema.oneOf) && schema.oneOf.length > 0) {
-        return jsonSchemaToZod(schema.oneOf[0], false);
-      }
-
-      // For unknown types or missing type field, use z.any() to be lenient
-      // This allows the LLM to pass any value without validation errors
-      console.warn('[MCP] Unknown schema type, using any:', schema.type || 'undefined');
-      return z.any().describe(schema.description || "Value");
+  // Handle array type - patch items schema
+  if (schema.type === "array" && schema.items) {
+    schema.items = patchSchemaRecursive(schema.items);
   }
+
+  // Handle anyOf/oneOf - patch each variant
+  if (schema.anyOf && Array.isArray(schema.anyOf)) {
+    schema.anyOf = schema.anyOf.map(patchSchemaRecursive);
+  }
+  if (schema.oneOf && Array.isArray(schema.oneOf)) {
+    schema.oneOf = schema.oneOf.map(patchSchemaRecursive);
+  }
+
+  // Ensure type is specified for primitives without type
+  if (!schema.type && !schema.anyOf && !schema.oneOf && !schema.properties) {
+    schema.type = "string"; // Default to string
+  }
+
+  return schema;
 }
 
 /**
@@ -475,14 +459,15 @@ export class McpManager {
             inputSchema: tool.inputSchema,
           });
 
-          // Convert JSON Schema to Zod for proper AI SDK compatibility
-          console.log(`[MCP] Converting schema for ${tool.name}:`, JSON.stringify(tool.inputSchema).substring(0, 200));
-          const zodParameters = jsonSchemaToZod(tool.inputSchema);
-          console.log(`[MCP] Converted to Zod schema for ${tool.name}`);
+          // Patch JSON Schema for strict mode compatibility (OpenAI, etc.)
+          // Using jsonSchema() avoids Zod validation errors when LLM omits optional fields
+          console.log(`[MCP] Patching schema for ${tool.name}:`, JSON.stringify(tool.inputSchema).substring(0, 200));
+          const patchedSchema = patchSchemaForStrictMode(tool.inputSchema);
+          console.log(`[MCP] Patched schema for ${tool.name}`);
 
           allTools[fullName] = {
             description: tool.description || "MCP tool",
-            parameters: zodParameters,
+            parameters: jsonSchema(patchedSchema),
             execute: async (args: any) => {
               console.log(`[MCP] Executing ${tool.name} on ${server.name} with args:`, JSON.stringify(args));
 
