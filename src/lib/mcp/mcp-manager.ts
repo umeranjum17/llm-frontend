@@ -205,20 +205,21 @@ export class McpManager {
 
   /**
    * Generate a unique key for a server connection
-   * Includes server ID, API key hash, and headers hash to ensure:
+   * Includes server ID, URL hash, API key hash, and headers hash to ensure:
    * - Different users don't share connections
    * - Session changes (e.g., Composio toolkit changes) create new connections
    */
   private getServerConnectionKey(server: McpServer): string {
+    const urlHash = fnv1a32(server.url).toString(36);
     const apiKeyHash = server.apiKey ? fnv1a32(server.apiKey).toString(36) : 'nokey';
     // Also hash headers for servers that use header-based auth (like Composio sessions)
     const headersHash = server.headers ? fnv1a32(JSON.stringify(server.headers)).toString(36) : 'noheaders';
-    return `${server.id}:${apiKeyHash}:${headersHash}`;
+    return `${server.id}:${urlHash}:${apiKeyHash}:${headersHash}`;
   }
 
   /**
    * Generate a cache key from enabled servers configuration
-   * Includes server IDs, API key hashes, headers hash, and tool policies to ensure:
+   * Includes server IDs, URL hashes, API key hashes, headers hash, and tool policies to ensure:
    * - Per-user caching
    * - Cache invalidation when sessions change (e.g., Composio toolkit changes)
    */
@@ -226,9 +227,10 @@ export class McpManager {
     const enabledServers = servers
       .filter(s => s.enabled)
       .map(s => {
+        const urlHash = fnv1a32(s.url).toString(36);
         const apiKeyHash = s.apiKey ? fnv1a32(s.apiKey).toString(36) : 'nokey';
         const headersHash = s.headers ? fnv1a32(JSON.stringify(s.headers)).toString(36) : 'noheaders';
-        return `${s.id}:${apiKeyHash}:${headersHash}:${s.toolCaps || this.DEFAULT_TOOL_CAP}:${(s.toolPolicy?.disabledTools || []).sort().join(',')}`;
+        return `${s.id}:${urlHash}:${apiKeyHash}:${headersHash}:${s.toolCaps || this.DEFAULT_TOOL_CAP}:${(s.toolPolicy?.disabledTools || []).sort().join(',')}`;
       })
       .sort()
       .join('|');
