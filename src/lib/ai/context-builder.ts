@@ -144,8 +144,13 @@ export async function buildContextMessages(
         const budgetedMemories = budgetMemories(rawMemories);
 
         if (budgetedMemories.length > 0) {
-          // Format memories into a single context string
-          const memoryContext = "Active Memories:\n" + budgetedMemories.map((m) => `- ${m.memory}`).join("\n");
+          // Format memories with clear instructions for the model
+          const memoryContext = `## User Memory (Personal Context)
+The following are stored memories about this user. Use this information to personalize responses and answer questions about the user WITHOUT using external tools or web search:
+
+${budgetedMemories.map((m) => `- ${m.memory}`).join("\n")}
+
+When the user asks "what do you know about me" or similar personal questions, refer to these memories first.`;
           const memoryTokens = Math.ceil(memoryContext.length / 4); // ~4 chars per token
 
           messages.push({
