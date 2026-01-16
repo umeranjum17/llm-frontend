@@ -364,7 +364,7 @@ export function ChatShell() {
 
   const handleNewChat = async () => {
     try {
-      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider } =
+      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultMcpServerIds } =
         useSettingsStore.getState();
       const { providerId, modelId } = getDefaultChatConfig({
         defaultProviderId,
@@ -375,6 +375,7 @@ export function ChatShell() {
         title: "New Chat",
         modelId,
         providerId: providerId || undefined,
+        activeMcpServerIds: defaultMcpServerIds,
       });
       setActiveChatId(newChat.id);
       toast.success("New chat created");
@@ -736,10 +737,8 @@ export function ChatShell() {
                     </Badge>
                   )}
 
-                  {/* Tool toggle - hidden on mobile */}
-                  <div className="hidden sm:block">
-                    <ToolQuickToggle chatId={activeChatId} />
-                  </div>
+                  {/* Tool toggle - visible on all screen sizes */}
+                  <ToolQuickToggle chatId={activeChatId} />
 
                   <ChatSettingsPopover
                     chatId={activeChatId}

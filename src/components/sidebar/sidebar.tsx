@@ -32,7 +32,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
     onNavigate?.();
 
     try {
-      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider } =
+      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultMcpServerIds } =
         useSettingsStore.getState();
       const { providerId, modelId } = getDefaultChatConfig({
         defaultProviderId,
@@ -45,6 +45,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         modelId,
         providerId: providerId || undefined,
         projectId: currentProjectId,
+        activeMcpServerIds: defaultMcpServerIds,
       });
 
       setActiveChatId(newChat.id);

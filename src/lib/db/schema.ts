@@ -130,6 +130,8 @@ export interface UserSettings {
   onboardingCompletedAt?: number; // Timestamp when onboarding was completed
   // Auto-tagging settings
   autoTaggingEnabled?: boolean;      // Whether to auto-generate tags for new chats (default: false)
+  // Default MCP server settings
+  defaultMcpServerIds?: string[];    // Default MCP servers to enable for new chats
 }
 
 export interface ModelFavorite {

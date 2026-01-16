@@ -16,7 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { getAllMcpServers, getChatById, updateChat } from "@/lib/db/queries";
+import { getAllMcpServers, getChatById, updateChat, updateSettings } from "@/lib/db/queries";
 import { toast } from "sonner";
 import { McpServer } from "@/lib/db/schema";
 import Link from "next/link";
@@ -364,17 +364,13 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
         });
     }, [filteredServers, chat?.activeMcpServerIds]);
 
-    if (!mcpServers || mcpServers.length === 0) {
-        return null;
-    }
-
     const activeServerIds = chat?.activeMcpServerIds !== undefined
         ? new Set(chat.activeMcpServerIds || [])
         : new Set<string>();
 
-    const enabledCount = mcpServers.filter((s) => activeServerIds.has(s.id)).length;
-    const totalCount = mcpServers.length;
-    const totalTools = mcpServers.reduce((acc, s) => {
+    const enabledCount = (mcpServers || []).filter((s) => activeServerIds.has(s.id)).length;
+    const totalCount = (mcpServers || []).length;
+    const totalTools = (mcpServers || []).reduce((acc, s) => {
         if (!activeServerIds.has(s.id)) return acc;
 
         // For Composio consolidated server, count enabled toolkits
@@ -397,7 +393,11 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
             ? currentActive.filter(id => id !== server.id)
             : [...currentActive, server.id];
 
-        await updateChat(chatId, { activeMcpServerIds: newActive });
+        // Update both the chat and the default settings
+        await Promise.all([
+            updateChat(chatId, { activeMcpServerIds: newActive }),
+            updateSettings({ defaultMcpServerIds: newActive }),
+        ]);
         toast.success(
             newActive.includes(server.id)
                 ? `${server.name} enabled`
@@ -418,15 +418,21 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
     };
 
     const enableAll = async () => {
-        if (!chatId) return;
+        if (!chatId || !mcpServers) return;
         const allIds = mcpServers.map(s => s.id);
-        await updateChat(chatId, { activeMcpServerIds: allIds });
+        await Promise.all([
+            updateChat(chatId, { activeMcpServerIds: allIds }),
+            updateSettings({ defaultMcpServerIds: allIds }),
+        ]);
         toast.success("All MCP servers enabled");
     };
 
     const disableAll = async () => {
         if (!chatId) return;
-        await updateChat(chatId, { activeMcpServerIds: [] });
+        await Promise.all([
+            updateChat(chatId, { activeMcpServerIds: [] }),
+            updateSettings({ defaultMcpServerIds: [] }),
+        ]);
         toast.success("All MCP servers disabled");
     };
 
