@@ -49,18 +49,84 @@ function isWebSearchResponse(value: unknown): value is WebSearchResponse {
   );
 }
 
+/** Human-friendly tool name mappings */
+const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  // Web & Search
+  webSearch: "Web Search",
+  COMPOSIO_SEARCH_TOOLS: "Finding tools",
+  COMPOSIO_MULTI_EXECUTE_TOOL: "Executing actions",
+  MULTI_EXECUTE_TOOL: "Executing actions",
+  COMPOSIO_REMOTE_WORKBENCH: "Processing data",
+  COMPOSIO_GET_TOOL_SCHEMAS: "Loading tool details",
+
+  // Reddit
+  REDDIT_SEARCH_ACROSS_SUBREDDITS: "Searching Reddit",
+  REDDIT_RETRIEVE_REDDIT_POST: "Getting Reddit posts",
+  REDDIT_RETRIEVE_POST_COMMENTS: "Reading comments",
+  REDDIT_RETRIEVE_SPECIFIC_COMMENT: "Getting comment",
+  REDDIT_POST_REDDIT_COMMENT: "Posting comment",
+  REDDIT_CREATE_REDDIT_POST: "Creating post",
+  REDDIT_GET_USER_FLAIR: "Getting user flair",
+
+  // GitHub
+  GITHUB_CREATE_ISSUE: "Creating issue",
+  GITHUB_GET_ISSUE: "Getting issue",
+  GITHUB_LIST_ISSUES: "Listing issues",
+  GITHUB_CREATE_PULL_REQUEST: "Creating PR",
+  GITHUB_GET_PULL_REQUEST: "Getting PR",
+  GITHUB_MERGE_PULL_REQUEST: "Merging PR",
+  GITHUB_LIST_REPOS: "Listing repos",
+  GITHUB_GET_REPO: "Getting repo info",
+  GITHUB_SEARCH_CODE: "Searching code",
+
+  // Email
+  GMAIL_SEND_EMAIL: "Sending email",
+  GMAIL_GET_EMAIL: "Reading email",
+  GMAIL_LIST_EMAILS: "Listing emails",
+  GMAIL_CREATE_DRAFT: "Creating draft",
+
+  // Calendar
+  GOOGLE_CALENDAR_CREATE_EVENT: "Creating event",
+  GOOGLE_CALENDAR_LIST_EVENTS: "Listing events",
+  GOOGLE_CALENDAR_GET_EVENT: "Getting event",
+
+  // Slack
+  SLACK_SEND_MESSAGE: "Sending message",
+  SLACK_LIST_CHANNELS: "Listing channels",
+  SLACK_GET_CHANNEL: "Getting channel",
+
+  // Twitter/X
+  TWITTER_POST_TWEET: "Posting tweet",
+  TWITTER_SEARCH_TWEETS: "Searching tweets",
+  TWITTER_GET_USER: "Getting user profile",
+};
+
 /** Extract a friendly tool name from namespaced MCP tool names */
 function getToolDisplayName(name: string): string {
   // Handle namespaced MCP tools like "server_id__TOOL_NAME"
+  let toolName = name;
   if (name.includes("__")) {
-    const toolPart = name.split("__").pop() || name;
-    // Convert SCREAMING_SNAKE_CASE to Title Case
-    return toolPart
+    toolName = name.split("__").pop() || name;
+  }
+
+  // Check for known friendly names
+  if (TOOL_DISPLAY_NAMES[toolName]) {
+    return TOOL_DISPLAY_NAMES[toolName];
+  }
+
+  // Convert SCREAMING_SNAKE_CASE to Title Case
+  if (toolName.includes("_")) {
+    return toolName
       .split("_")
       .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(" ");
   }
-  return name === "webSearch" ? "Web Search" : name;
+
+  // camelCase to Title Case
+  return toolName
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, str => str.toUpperCase())
+    .trim();
 }
 
 /** Collapsible section for tool calls */
@@ -88,6 +154,12 @@ function ToolCallsSection({
   const errorCount = toolEvents.filter(e => e.result && (e.result as any).isError).length;
   const doneCount = toolEvents.length - runningCount - errorCount;
 
+  // Get unique friendly tool names for summary
+  const toolSummary = [...new Set(toolEvents.map(e => getToolDisplayName(e.name)))];
+  const summaryText = toolSummary.length <= 3
+    ? toolSummary.join(", ")
+    : `${toolSummary.slice(0, 2).join(", ")} +${toolSummary.length - 2} more`;
+
   return (
     <div className="mt-3 border rounded-lg bg-muted/30 overflow-hidden">
       {/* Collapsed header */}
@@ -97,15 +169,15 @@ function ToolCallsSection({
         className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
       >
         {isExpanded ? (
-          <ChevronDown className="h-4 w-4" />
+          <ChevronDown className="h-4 w-4 shrink-0" />
         ) : (
-          <ChevronRight className="h-4 w-4" />
+          <ChevronRight className="h-4 w-4 shrink-0" />
         )}
-        <Wrench className="h-3.5 w-3.5" />
-        <span className="font-medium">
-          {toolEvents.length} tool{toolEvents.length !== 1 ? "s" : ""} used
+        <Wrench className="h-3.5 w-3.5 shrink-0" />
+        <span className="font-medium truncate">
+          {summaryText}
         </span>
-        <span className="text-xs opacity-70 flex items-center gap-2">
+        <span className="text-xs opacity-70 flex items-center gap-2 shrink-0">
           {runningCount > 0 && <span className="text-yellow-600 flex items-center gap-0.5"><Loader2 className="h-3 w-3 animate-spin" /> {runningCount} running</span>}
         </span>
       </button>
