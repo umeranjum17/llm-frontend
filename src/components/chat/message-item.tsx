@@ -117,6 +117,11 @@ function getToolDisplayName(name: string): string {
     toolName = toolName.split("__").pop() || toolName;
   }
 
+  // Strip COMPOSIO_ prefix
+  if (toolName.startsWith("COMPOSIO_")) {
+    toolName = toolName.replace("COMPOSIO_", "");
+  }
+
   // Check for known friendly names
   if (TOOL_DISPLAY_NAMES[toolName]) {
     return TOOL_DISPLAY_NAMES[toolName];
@@ -126,6 +131,7 @@ function getToolDisplayName(name: string): string {
   if (toolName.includes("_")) {
     return toolName
       .split("_")
+      .filter(word => word.toLowerCase() !== "composio") // Filter composio from parts
       .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(" ");
   }
@@ -134,6 +140,7 @@ function getToolDisplayName(name: string): string {
   return toolName
     .replace(/([A-Z])/g, ' $1')
     .replace(/^./, str => str.toUpperCase())
+    .replace(/composio/gi, '') // Remove composio
     .trim();
 }
 

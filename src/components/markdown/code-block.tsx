@@ -155,20 +155,48 @@ export function CodeBlock({ language, code, filename, isStreaming = false }: Cod
     const codeBlocks = codeBlockContext.getCodeBlocks();
     if (codeBlocks.length < 2) return;
 
+    // First pass: find HTML and extract referenced files
+    let htmlBlock = codeBlocks.find(b => b.language === "html" || b.language === "htm");
+    const referencedScripts: string[] = [];
+    const referencedStyles: string[] = [];
+
+    if (htmlBlock) {
+      // Extract script src references
+      const scriptMatches = htmlBlock.code.matchAll(/<script[^>]+src=["']([^"']+)["']/gi);
+      for (const match of scriptMatches) {
+        referencedScripts.push(match[1]);
+      }
+      // Extract link href references (CSS)
+      const linkMatches = htmlBlock.code.matchAll(/<link[^>]+href=["']([^"']+\.css)["']/gi);
+      for (const match of linkMatches) {
+        referencedStyles.push(match[1]);
+      }
+    }
+
     // Build files object for Sandpack
     const files: Record<string, string> = {};
     let entryFile: string | undefined;
+    let jsFileIndex = 0;
+    let cssFileIndex = 0;
 
     for (const block of codeBlocks) {
       // Determine file path
       let filePath = block.filename;
       if (!filePath) {
-        // Auto-generate filename based on language
         const ext = getExtensionForLanguage(block.language);
-        filePath = block.language === "html" ? "index.html"
-          : block.language === "css" ? "styles.css"
-          : block.language === "javascript" || block.language === "js" ? "script.js"
-          : `file.${ext}`;
+        if (block.language === "html" || block.language === "htm") {
+          filePath = "index.html";
+        } else if (block.language === "css") {
+          // Use referenced CSS filename if available
+          filePath = referencedStyles[cssFileIndex] || "styles.css";
+          cssFileIndex++;
+        } else if (block.language === "javascript" || block.language === "js") {
+          // Use referenced JS filename if available
+          filePath = referencedScripts[jsFileIndex] || "script.js";
+          jsFileIndex++;
+        } else {
+          filePath = `file.${ext}`;
+        }
       }
 
       // Ensure path starts with /
