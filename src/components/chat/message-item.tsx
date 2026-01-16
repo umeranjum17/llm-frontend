@@ -103,10 +103,18 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
 
 /** Extract a friendly tool name from namespaced MCP tool names */
 function getToolDisplayName(name: string): string {
-  // Handle namespaced MCP tools like "server_id__TOOL_NAME"
   let toolName = name;
-  if (name.includes("__")) {
-    toolName = name.split("__").pop() || name;
+
+  // Strip MCP prefix patterns like "mcp_abc123_" or "mcp_gt2yps_"
+  // Format: mcp_{serverId}_{TOOL_NAME}
+  const mcpMatch = toolName.match(/^mcp_[a-z0-9]+_(.+)$/i);
+  if (mcpMatch) {
+    toolName = mcpMatch[1];
+  }
+
+  // Handle double-underscore namespaced tools like "server_id__TOOL_NAME"
+  if (toolName.includes("__")) {
+    toolName = toolName.split("__").pop() || toolName;
   }
 
   // Check for known friendly names
