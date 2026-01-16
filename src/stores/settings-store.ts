@@ -19,12 +19,14 @@ interface SettingsState extends Partial<UserSettings> {
   updateSidebarWidth: (width: number) => Promise<void>;
   updateCurrentProject: (projectId: string | undefined) => Promise<void>;
   updateAutoTagging: (enabled: boolean) => Promise<void>;
+  updateDefaultMcpServerIds: (serverIds: string[]) => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   isLoaded: false,
   theme: "system",
   defaultModelIdsByProvider: {},
+  defaultMcpServerIds: [],
   enabledTools: [],
   shortcuts: {},
   autoTaggingEnabled: false,
@@ -80,5 +82,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateAutoTagging: async (enabled) => {
     await updateSettings({ autoTaggingEnabled: enabled });
     set({ autoTaggingEnabled: enabled });
+  },
+
+  updateDefaultMcpServerIds: async (serverIds) => {
+    await updateSettings({ defaultMcpServerIds: serverIds });
+    set({ defaultMcpServerIds: serverIds });
   },
 }));

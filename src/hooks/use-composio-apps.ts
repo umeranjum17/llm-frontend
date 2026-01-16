@@ -140,6 +140,11 @@ async function cleanupComposioServers(keepIds?: string[]) {
   }
 }
 
+// Clear ALL MCP servers (for resetting to clean state)
+async function clearAllMcpServers() {
+  await db.mcpServers.clear();
+}
+
 // Get icon URL for a toolkit
 function getIconUrl(key: string, logo?: string | null): string | undefined {
   if (logo) return logo;
@@ -636,6 +641,16 @@ export function useComposioApps() {
     [availableToolkits]
   );
 
+  // Reset all MCP servers and re-sync with Composio
+  const resetMcpServers = useCallback(async () => {
+    await clearAllMcpServers();
+    setMcpUrl(null);
+    // If we have enabled toolkits, recreate the session
+    if (config?.enabledToolkits.length) {
+      await createSession();
+    }
+  }, [config?.enabledToolkits.length, createSession]);
+
   return {
     // Config
     apiKey: config?.apiKey || null,
@@ -667,6 +682,7 @@ export function useComposioApps() {
       setMcpUrl(null); // Reset session so it recreates with fresh connection data
       return fetchConnectionStatus();
     }, [fetchConnectionStatus]),
+    resetMcpServers,
     connectingToolkit,
 
     // State

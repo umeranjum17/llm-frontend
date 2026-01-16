@@ -150,6 +150,99 @@ function validateRemoteUrl(urlString: string): { valid: boolean; error?: string 
  * - URLs containing /mcp or Composio URLs use Streamable HTTP
  * - Default to SSE for backwards compatibility
  */
+/**
+ * Build a human-readable parameter guide from Composio tool schemas.
+ * This helps smaller models understand required parameters for MULTI_EXECUTE_TOOL.
+ *
+ * The guide is injected into COMPOSIO_SEARCH_TOOLS results so models see it
+ * exactly when they need it - right before calling MULTI_EXECUTE.
+ */
+function buildToolParameterGuide(toolSchemas: Record<string, any>): string {
+  if (!toolSchemas || typeof toolSchemas !== 'object') return '';
+
+  const entries = Object.entries(toolSchemas);
+  if (entries.length === 0) return '';
+
+  const lines: string[] = [
+    '',
+    '════════════════════════════════════════════════════════════════',
+    '  ACTION REQUIRED: READ BEFORE CALLING MULTI_EXECUTE_TOOL',
+    '════════════════════════════════════════════════════════════════',
+    '',
+  ];
+
+  // Collect example for first tool with required params
+  let exampleToolName: string | null = null;
+  let exampleArgs: Record<string, any> = {};
+
+  for (const [toolName, schema] of entries) {
+    if (!schema?.properties) continue;
+
+    const required = new Set(schema.required || []);
+    const requiredParams: string[] = [];
+    const optionalParams: string[] = [];
+
+    for (const [param, def] of Object.entries(schema.properties)) {
+      const d = def as any;
+      const type = d.type || 'string';
+      const desc = d.description ? ` — ${d.description.substring(0, 80)}` : '';
+
+      if (required.has(param)) {
+        requiredParams.push(`     ★ ${param} (${type})${desc}`);
+        // Build example
+        if (!exampleToolName) {
+          exampleToolName = toolName;
+          if (type === 'number' || type === 'integer') {
+            exampleArgs[param] = 10;
+          } else if (type === 'boolean') {
+            exampleArgs[param] = true;
+          } else {
+            exampleArgs[param] = `<your_${param}>`;
+          }
+        }
+      } else {
+        optionalParams.push(param);
+      }
+    }
+
+    lines.push(`  ${toolName}:`);
+    if (requiredParams.length > 0) {
+      lines.push('     REQUIRED:');
+      lines.push(...requiredParams);
+    } else {
+      lines.push('     (no required parameters)');
+    }
+    if (optionalParams.length > 0) {
+      lines.push(`     Optional: ${optionalParams.slice(0, 5).join(', ')}${optionalParams.length > 5 ? '...' : ''}`);
+    }
+    lines.push('');
+  }
+
+  // Add concrete example
+  if (exampleToolName) {
+    lines.push('────────────────────────────────────────────────────────────────');
+    lines.push('  EXAMPLE MULTI_EXECUTE_TOOL CALL:');
+    lines.push('────────────────────────────────────────────────────────────────');
+    lines.push('');
+    lines.push(JSON.stringify({
+      tools: [{
+        tool_slug: exampleToolName,
+        arguments: exampleArgs
+      }],
+      session_id: '<use session.id from above>'
+    }, null, 2));
+    lines.push('');
+  }
+
+  lines.push('════════════════════════════════════════════════════════════════');
+  lines.push('  ⚠️  NEVER call MULTI_EXECUTE_TOOL with empty arguments: {}');
+  lines.push('  ⚠️  ALWAYS fill in ALL required (★) parameters above');
+  lines.push('════════════════════════════════════════════════════════════════');
+  lines.push('');
+
+  return lines.join('\n');
+}
+
 function detectTransportType(url: string): 'sse' | 'streamableHttp' {
   const urlLower = url.toLowerCase();
 
@@ -499,7 +592,19 @@ export class McpManager {
                   // If it looks like JSON, try to parse and return as object for better model interpretation
                   if (extractedText.trim().startsWith("{") || extractedText.trim().startsWith("[")) {
                     try {
-                      return JSON.parse(extractedText);
+                      const parsed = JSON.parse(extractedText);
+
+                      // Enhance COMPOSIO_SEARCH_TOOLS results with parameter guide
+                      // This helps smaller models understand required params for MULTI_EXECUTE
+                      if (tool.name === 'COMPOSIO_SEARCH_TOOLS' && parsed?.data?.tool_schemas) {
+                        const guide = buildToolParameterGuide(parsed.data.tool_schemas);
+                        if (guide) {
+                          parsed._parameter_guide = guide;
+                          console.log(`[MCP] Injected parameter guide for ${Object.keys(parsed.data.tool_schemas).length} tool schemas`);
+                        }
+                      }
+
+                      return parsed;
                     } catch {
                       return extractedText;
                     }

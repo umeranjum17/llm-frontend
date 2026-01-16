@@ -63,45 +63,67 @@ function detectCode(text: string): { isCode: boolean; language: string | null } 
 
   // Language detection patterns
   const patterns: { language: string; patterns: RegExp[] }[] = [
-    { language: 'typescript', patterns: [
-      /^import\s+.*from\s+['"]/, /^export\s+(default\s+)?(function|class|const|interface|type)/,
-      /:\s*(string|number|boolean|void|any)\b/, /<[A-Z]\w*>/
-    ]},
-    { language: 'javascript', patterns: [
-      /^import\s+.*from\s+['"]/, /^export\s+(default\s+)?(function|class|const)/,
-      /^const\s+\w+\s*=\s*(async\s+)?\(/, /^function\s+\w+\s*\(/
-    ]},
-    { language: 'python', patterns: [
-      /^def\s+\w+\s*\(/, /^class\s+\w+[:(]/, /^import\s+\w+/, /^from\s+\w+\s+import/,
-      /^\s*if\s+__name__\s*==\s*['"]__main__['"]/
-    ]},
-    { language: 'java', patterns: [
-      /^public\s+(static\s+)?(class|void|int|String)/, /^private\s+/, /^package\s+\w+/,
-      /System\.(out|err)\.print/
-    ]},
-    { language: 'rust', patterns: [
-      /^fn\s+\w+/, /^pub\s+(fn|struct|enum|mod)/, /^use\s+\w+::/, /^impl\s+/,
-      /let\s+mut\s+\w+/
-    ]},
-    { language: 'go', patterns: [
-      /^package\s+\w+/, /^func\s+(\(\w+\s+\*?\w+\)\s+)?\w+\s*\(/, /^import\s+\(/,
-      /fmt\.(Print|Sprintf)/
-    ]},
-    { language: 'html', patterns: [
-      /^<!DOCTYPE\s+html/i, /^<html/, /<\/?(div|span|head|body|script|style)\b/
-    ]},
-    { language: 'css', patterns: [
-      /^\.[a-z][\w-]*\s*\{/, /^#[a-z][\w-]*\s*\{/, /^@media\s+/, /^@import\s+/
-    ]},
-    { language: 'json', patterns: [
-      /^\s*\{[\s\S]*"[\w]+"\s*:/, /^\s*\[[\s\S]*\{/
-    ]},
-    { language: 'sql', patterns: [
-      /^SELECT\s+/i, /^INSERT\s+INTO/i, /^CREATE\s+TABLE/i, /^UPDATE\s+\w+\s+SET/i
-    ]},
-    { language: 'bash', patterns: [
-      /^#!\/bin\/(bash|sh)/, /^\s*\$\s+\w+/, /^(sudo|npm|yarn|pip|git|docker)\s+/
-    ]},
+    {
+      language: 'typescript', patterns: [
+        /^import\s+.*from\s+['"]/, /^export\s+(default\s+)?(function|class|const|interface|type)/,
+        /:\s*(string|number|boolean|void|any)\b/, /<[A-Z]\w*>/
+      ]
+    },
+    {
+      language: 'javascript', patterns: [
+        /^import\s+.*from\s+['"]/, /^export\s+(default\s+)?(function|class|const)/,
+        /^const\s+\w+\s*=\s*(async\s+)?\(/, /^function\s+\w+\s*\(/
+      ]
+    },
+    {
+      language: 'python', patterns: [
+        /^def\s+\w+\s*\(/, /^class\s+\w+[:(]/, /^import\s+\w+/, /^from\s+\w+\s+import/,
+        /^\s*if\s+__name__\s*==\s*['"]__main__['"]/
+      ]
+    },
+    {
+      language: 'java', patterns: [
+        /^public\s+(static\s+)?(class|void|int|String)/, /^private\s+/, /^package\s+\w+/,
+        /System\.(out|err)\.print/
+      ]
+    },
+    {
+      language: 'rust', patterns: [
+        /^fn\s+\w+/, /^pub\s+(fn|struct|enum|mod)/, /^use\s+\w+::/, /^impl\s+/,
+        /let\s+mut\s+\w+/
+      ]
+    },
+    {
+      language: 'go', patterns: [
+        /^package\s+\w+/, /^func\s+(\(\w+\s+\*?\w+\)\s+)?\w+\s*\(/, /^import\s+\(/,
+        /fmt\.(Print|Sprintf)/
+      ]
+    },
+    {
+      language: 'html', patterns: [
+        /^<!DOCTYPE\s+html/i, /^<html/, /<\/?(div|span|head|body|script|style)\b/
+      ]
+    },
+    {
+      language: 'css', patterns: [
+        /^\.[a-z][\w-]*\s*\{/, /^#[a-z][\w-]*\s*\{/, /^@media\s+/, /^@import\s+/
+      ]
+    },
+    {
+      language: 'json', patterns: [
+        /^\s*\{[\s\S]*"[\w]+"\s*:/, /^\s*\[[\s\S]*\{/
+      ]
+    },
+    {
+      language: 'sql', patterns: [
+        /^SELECT\s+/i, /^INSERT\s+INTO/i, /^CREATE\s+TABLE/i, /^UPDATE\s+\w+\s+SET/i
+      ]
+    },
+    {
+      language: 'bash', patterns: [
+        /^#!\/bin\/(bash|sh)/, /^\s*\$\s+\w+/, /^(sudo|npm|yarn|pip|git|docker)\s+/
+      ]
+    },
   ];
 
   // Check for specific language patterns
@@ -771,7 +793,7 @@ export function InputArea({ chatId }: InputAreaProps) {
         <div className="hidden sm:block">
           <PromptQuickSelect
             onSelect={(prompt) => {
-              incrementPromptUsage(prompt.id).catch(() => {});
+              incrementPromptUsage(prompt.id).catch(() => { });
               const reference = `@prompt:${prompt.id}[${prompt.title}]`;
               setInput((prev) => (prev ? `${prev} ${reference}` : reference));
               setTimeout(() => textareaRef.current?.focus(), 0);
@@ -842,10 +864,10 @@ export function InputArea({ chatId }: InputAreaProps) {
       </div>
 
       <div className="mt-1.5 sm:mt-2 flex items-center justify-between text-[10px] sm:text-xs text-muted-foreground">
-        <span className="hidden sm:inline">
+        <span className="text-[9px] sm:text-xs truncate max-w-[50%] sm:max-w-none">
           {voice.isListening && voiceDraft
             ? `Listening: "${voiceDraft}"`
-            : "Enter to send • Shift+Enter for new line"}
+            : "↵ Send • ⇧↵ New line"}
         </span>
         {chat && (
           <TokenCalculator

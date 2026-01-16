@@ -25,6 +25,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { formatModelCost } from "@/components/model-picker/model-item";
 import { McpManager } from "@/lib/mcp/mcp-manager";
 import { PipelineCanvas } from "./pipeline";
+import { useComposioApps } from "@/hooks/use-composio-apps";
+import { Switch } from "@/components/ui/switch";
 
 interface AgentEditorDialogProps {
   open: boolean;
@@ -69,6 +71,10 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
   const [loadingTools, setLoadingTools] = useState(false);
   const [mcpTools, setMcpTools] = useState<McpTool[]>([]);
   const [toolsError, setToolsError] = useState<string | null>(null);
+  const [expandedMcpServers, setExpandedMcpServers] = useState<Set<string>>(new Set());
+
+  // Composio hook for toolkit management
+  const { toolkits: composioToolkits, toggleToolkit } = useComposioApps();
 
   // Model picker state
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
@@ -225,6 +231,18 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
     setMcpServerIds((prev) =>
       prev.includes(serverId) ? prev.filter((id) => id !== serverId) : [...prev, serverId]
     );
+  };
+
+  const toggleMcpServerExpanded = (serverId: string) => {
+    setExpandedMcpServers((prev) => {
+      const next = new Set(prev);
+      if (next.has(serverId)) {
+        next.delete(serverId);
+      } else {
+        next.add(serverId);
+      }
+      return next;
+    });
   };
 
   const toggleMcpTool = (toolName: string) => {
@@ -1095,29 +1113,85 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
                   </div>
                 ) : (
                   <div className="space-y-2 rounded-lg border p-3">
-                    {allMcpServers.map((server) => (
-                      <div key={server.id} className="flex items-center gap-3">
-                        <Checkbox
-                          id={`mcp-${server.id}`}
-                          checked={mcpServerIds.includes(server.id)}
-                          onCheckedChange={() => toggleMcpServer(server.id)}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <label
-                            htmlFor={`mcp-${server.id}`}
-                            className="text-sm font-medium cursor-pointer truncate block"
-                          >
-                            {server.name}
-                          </label>
-                          {server.description && (
-                            <p className="text-xs text-muted-foreground truncate">
-                              {server.description}
-                            </p>
+                    {allMcpServers.map((server) => {
+                      const isComposio = server.id === "composio-consolidated" && composioToolkits.length > 0;
+                      const isExpanded = expandedMcpServers.has(server.id);
+                      const enabledToolkitsCount = composioToolkits.filter(t => t.isEnabled).length;
+
+                      return (
+                        <div key={server.id} className="space-y-2">
+                          <div className="flex items-center gap-3">
+                            <Checkbox
+                              id={`mcp-${server.id}`}
+                              checked={mcpServerIds.includes(server.id)}
+                              onCheckedChange={() => toggleMcpServer(server.id)}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <label
+                                htmlFor={`mcp-${server.id}`}
+                                className="text-sm font-medium cursor-pointer truncate block"
+                              >
+                                {isComposio ? `Composio (${enabledToolkitsCount} apps)` : server.name}
+                              </label>
+                              {server.description && !isComposio && (
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {server.description}
+                                </p>
+                              )}
+                            </div>
+                            {isComposio ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0"
+                                onClick={() => toggleMcpServerExpanded(server.id)}
+                              >
+                                {isExpanded ? (
+                                  <ChevronDown className="h-4 w-4" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4" />
+                                )}
+                              </Button>
+                            ) : (
+                              <Server className="h-4 w-4 text-muted-foreground shrink-0" />
+                            )}
+                          </div>
+
+                          {/* Expandable Composio Toolkits */}
+                          {isComposio && isExpanded && (
+                            <div className="ml-7 pl-3 border-l space-y-1 max-h-[200px] overflow-y-auto">
+                              {composioToolkits.map((toolkit) => (
+                                <div key={toolkit.key} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted/50">
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    {toolkit.logo ? (
+                                      <img
+                                        src={toolkit.logo}
+                                        alt={toolkit.name}
+                                        className="h-4 w-4 object-contain"
+                                        onError={(e) => {
+                                          (e.target as HTMLImageElement).style.display = 'none';
+                                        }}
+                                      />
+                                    ) : (
+                                      <Server className="h-4 w-4 text-muted-foreground" />
+                                    )}
+                                    <span className="text-sm truncate">{toolkit.name}</span>
+                                    {toolkit.isConnected && (
+                                      <Badge variant="outline" className="text-[9px] h-4 px-1.5">Connected</Badge>
+                                    )}
+                                  </div>
+                                  <Switch
+                                    checked={toolkit.isEnabled}
+                                    onCheckedChange={() => toggleToolkit(toolkit.key)}
+                                    className="scale-75"
+                                  />
+                                </div>
+                              ))}
+                            </div>
                           )}
                         </div>
-                        <Server className="h-4 w-4 text-muted-foreground shrink-0" />
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

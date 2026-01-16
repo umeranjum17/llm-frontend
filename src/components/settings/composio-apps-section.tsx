@@ -77,16 +77,16 @@ const ToolkitItem = memo(function ToolkitItem({
         )}>
           <ToolkitLogo src={toolkit.logo} alt={toolkit.name} />
         </div>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium truncate">{toolkit.name}</span>
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium truncate max-w-[120px] sm:max-w-none">{toolkit.name}</span>
             {toolkit.isConnected && (
-              <Badge variant="outline" className="text-[10px] h-4 px-1 text-green-600 border-green-600/30">
+              <Badge variant="outline" className="text-[10px] h-4 px-1 text-green-600 border-green-600/30 flex-shrink-0">
                 Connected
               </Badge>
             )}
             {needsAuth && (
-              <Badge variant="outline" className="text-[10px] h-4 px-1 text-yellow-600 border-yellow-600/30">
+              <Badge variant="outline" className="text-[10px] h-4 px-1 text-yellow-600 border-yellow-600/30 flex-shrink-0">
                 Auth
               </Badge>
             )}
@@ -143,6 +143,7 @@ export function ComposioAppsSection() {
     authorize,
     fetchToolkits,
     fetchConnectionStatus,
+    resetMcpServers,
   } = useComposioApps();
 
   const [inputApiKey, setInputApiKey] = useState("");
@@ -185,20 +186,11 @@ export function ComposioAppsSection() {
     });
   }, [filteredToolkits]);
 
-  // Group toolkits into rows of 2 for virtualization
-  const rows = useMemo(() => {
-    const result: ComposioToolkit[][] = [];
-    for (let i = 0; i < sortedToolkits.length; i += 2) {
-      result.push(sortedToolkits.slice(i, i + 2));
-    }
-    return result;
-  }, [sortedToolkits]);
-
-  // Virtualizer for rows
+  // Virtualizer for individual items
   const rowVirtualizer = useVirtualizer({
-    count: rows.length,
+    count: sortedToolkits.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 76, // Approximate height of each row
+    estimateSize: () => 68, // Approximate height of each item
     overscan: 5,
   });
 
@@ -247,6 +239,11 @@ export function ComposioAppsSection() {
     await fetchToolkits();
     await fetchConnectionStatus();
   }, [fetchToolkits, fetchConnectionStatus]);
+
+  const handleResetMcp = useCallback(async () => {
+    await resetMcpServers();
+    toast.success("MCP servers reset and synced with Composio");
+  }, [resetMcpServers]);
 
   const connectedCount = useMemo(() => toolkits.filter((t) => t.isConnected).length, [toolkits]);
 
@@ -326,10 +323,20 @@ export function ComposioAppsSection() {
                   size="sm"
                   onClick={handleRefresh}
                   disabled={isLoading || isLoadingToolkits}
+                  title="Refresh toolkits"
                 >
                   <RefreshCw className={cn("h-4 w-4", (isLoading || isLoadingToolkits) && "animate-spin")} />
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleRemoveApiKey}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleResetMcp}
+                  disabled={isLoading}
+                  title="Reset MCP servers (removes old servers)"
+                >
+                  <AlertCircle className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleRemoveApiKey} title="Disconnect Composio">
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
@@ -391,8 +398,8 @@ export function ComposioAppsSection() {
                 </div>
               )}
 
-              {/* Virtualized Toolkit Grid */}
-              {rows.length > 0 && (
+              {/* Virtualized Toolkit List */}
+              {sortedToolkits.length > 0 && (
                 <div
                   ref={parentRef}
                   className="h-[400px] overflow-y-auto pr-1"
@@ -404,30 +411,27 @@ export function ComposioAppsSection() {
                       position: "relative",
                     }}
                   >
-                    {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                      const rowToolkits = rows[virtualRow.index];
+                    {rowVirtualizer.getVirtualItems().map((virtualItem) => {
+                      const toolkit = sortedToolkits[virtualItem.index];
                       return (
                         <div
-                          key={virtualRow.key}
+                          key={virtualItem.key}
                           style={{
                             position: "absolute",
                             top: 0,
                             left: 0,
                             width: "100%",
-                            height: `${virtualRow.size}px`,
-                            transform: `translateY(${virtualRow.start}px)`,
+                            height: `${virtualItem.size}px`,
+                            transform: `translateY(${virtualItem.start}px)`,
                           }}
-                          className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-2"
+                          className="pb-2"
                         >
-                          {rowToolkits.map((toolkit) => (
-                            <ToolkitItem
-                              key={toolkit.key}
-                              toolkit={toolkit}
-                              isConnecting={connectingToolkit === toolkit.key}
-                              onToggle={handleToggle}
-                              onAuthorize={handleAuthorize}
-                            />
-                          ))}
+                          <ToolkitItem
+                            toolkit={toolkit}
+                            isConnecting={connectingToolkit === toolkit.key}
+                            onToggle={handleToggle}
+                            onAuthorize={handleAuthorize}
+                          />
                         </div>
                       );
                     })}

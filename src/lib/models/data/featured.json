@@ -8,20 +8,30 @@
   },
   "models": [
     {
-      "id": "google/gemini-3-flash",
+      "id": "google/gemini-3-flash-preview",
       "name": "Gemini 3 Flash",
       "provider": "Google",
       "description": "Best value model. Pro-level intelligence at Flash speed. Users love its conversational fluidity. 1M context.",
       "contextLength": 1000000,
       "inputCost": 0.5,
       "outputCost": 3.0,
-      "category": ["balanced", "fast", "coding", "vision"],
+      "category": [
+        "balanced",
+        "fast",
+        "coding",
+        "vision"
+      ],
       "tier": "balanced",
       "supportsReasoning": true,
       "supportsVision": true,
       "supportsPromptCaching": true,
       "releaseDate": "2026-01",
-      "recommendedFor": ["General chat", "Coding", "Fast tasks", "Daily driver"],
+      "recommendedFor": [
+        "General chat",
+        "Coding",
+        "Fast tasks",
+        "Daily driver"
+      ],
       "isDefault": true
     },
     {
@@ -32,13 +42,22 @@
       "contextLength": 400000,
       "inputCost": 1.75,
       "outputCost": 14.0,
-      "category": ["flagship", "reasoning", "coding", "vision"],
+      "category": [
+        "flagship",
+        "reasoning",
+        "coding",
+        "vision"
+      ],
       "tier": "flagship",
       "supportsReasoning": true,
       "supportsVision": true,
       "supportsPromptCaching": true,
       "releaseDate": "2026-01",
-      "recommendedFor": ["Complex reasoning", "Agentic coding", "Scientific research"]
+      "recommendedFor": [
+        "Complex reasoning",
+        "Agentic coding",
+        "Scientific research"
+      ]
     },
     {
       "id": "openai/gpt-5.2-pro",
@@ -48,14 +67,21 @@
       "contextLength": 400000,
       "inputCost": 3.5,
       "outputCost": 28.0,
-      "category": ["flagship", "reasoning"],
+      "category": [
+        "flagship",
+        "reasoning"
+      ],
       "tier": "flagship",
       "supportsReasoning": true,
       "supportsVision": true,
       "supportsThinking": true,
       "supportsPromptCaching": true,
       "releaseDate": "2026-01",
-      "recommendedFor": ["Hardest problems", "Extended reasoning", "Research synthesis"]
+      "recommendedFor": [
+        "Hardest problems",
+        "Extended reasoning",
+        "Research synthesis"
+      ]
     },
     {
       "id": "openai/gpt-5",
@@ -65,13 +91,21 @@
       "contextLength": 400000,
       "inputCost": 1.25,
       "outputCost": 10.0,
-      "category": ["balanced", "coding", "vision"],
+      "category": [
+        "balanced",
+        "coding",
+        "vision"
+      ],
       "tier": "balanced",
       "supportsReasoning": true,
       "supportsVision": true,
       "supportsPromptCaching": true,
       "releaseDate": "2025-08",
-      "recommendedFor": ["Creative writing", "Brainstorming", "General tasks"]
+      "recommendedFor": [
+        "Creative writing",
+        "Brainstorming",
+        "General tasks"
+      ]
     },
     {
       "id": "anthropic/claude-opus-4.5",
@@ -81,14 +115,22 @@
       "contextLength": 200000,
       "inputCost": 5.0,
       "outputCost": 25.0,
-      "category": ["flagship", "coding", "agents"],
+      "category": [
+        "flagship",
+        "coding",
+        "agents"
+      ],
       "tier": "flagship",
       "supportsReasoning": true,
       "supportsVision": true,
       "supportsThinking": true,
       "supportsPromptCaching": true,
       "releaseDate": "2025-11",
-      "recommendedFor": ["Agentic coding", "Computer use", "Enterprise workflows"]
+      "recommendedFor": [
+        "Agentic coding",
+        "Computer use",
+        "Enterprise workflows"
+      ]
     },
     {
       "id": "anthropic/claude-sonnet-4.5",
@@ -98,14 +140,23 @@
       "contextLength": 200000,
       "inputCost": 3.0,
       "outputCost": 15.0,
-      "category": ["balanced", "coding", "agents"],
+      "category": [
+        "balanced",
+        "coding",
+        "agents"
+      ],
       "tier": "balanced",
       "supportsReasoning": true,
       "supportsVision": true,
       "supportsThinking": true,
       "supportsPromptCaching": true,
       "releaseDate": "2025-10",
-      "recommendedFor": ["Coding", "Software engineering", "Code review", "Agentic tasks"]
+      "recommendedFor": [
+        "Coding",
+        "Software engineering",
+        "Code review",
+        "Agentic tasks"
+      ]
     },
     {
       "id": "anthropic/claude-sonnet-4",
@@ -115,14 +166,23 @@
       "contextLength": 200000,
       "inputCost": 3.0,
       "outputCost": 15.0,
-      "category": ["balanced", "coding", "agents"],
+      "category": [
+        "balanced",
+        "coding",
+        "agents"
+      ],
       "tier": "balanced",
       "supportsReasoning": true,
       "supportsVision": true,
       "supportsThinking": true,
       "supportsPromptCaching": true,
       "releaseDate": "2025-05",
-      "recommendedFor": ["Writing", "Content creation", "Coding", "Natural conversation"]
+      "recommendedFor": [
+        "Writing",
+        "Content creation",
+        "Coding",
+        "Natural conversation"
+      ]
     },
     {
       "id": "anthropic/claude-haiku-4",
@@ -132,13 +192,21 @@
       "contextLength": 200000,
       "inputCost": 1.0,
       "outputCost": 5.0,
-      "category": ["fast", "cheap", "agents"],
+      "category": [
+        "fast",
+        "cheap",
+        "agents"
+      ],
       "tier": "fast",
       "supportsReasoning": true,
       "supportsVision": true,
       "supportsPromptCaching": true,
       "releaseDate": "2025-05",
-      "recommendedFor": ["Real-time chat", "High volume", "Multi-agent systems"]
+      "recommendedFor": [
+        "Real-time chat",
+        "High volume",
+        "Multi-agent systems"
+      ]
     },
     {
       "id": "google/gemini-3-pro",
@@ -148,14 +216,23 @@
       "contextLength": 1000000,
       "inputCost": 2.0,
       "outputCost": 12.0,
-      "category": ["flagship", "reasoning", "coding", "vision"],
+      "category": [
+        "flagship",
+        "reasoning",
+        "coding",
+        "vision"
+      ],
       "tier": "flagship",
       "supportsReasoning": true,
       "supportsVision": true,
       "supportsThinking": true,
       "supportsPromptCaching": true,
       "releaseDate": "2025-12",
-      "recommendedFor": ["Complex reasoning", "Long documents", "Research"]
+      "recommendedFor": [
+        "Complex reasoning",
+        "Long documents",
+        "Research"
+      ]
     },
     {
       "id": "google/gemini-3-deep-think",
@@ -165,14 +242,21 @@
       "contextLength": 1000000,
       "inputCost": 4.0,
       "outputCost": 24.0,
-      "category": ["flagship", "reasoning"],
+      "category": [
+        "flagship",
+        "reasoning"
+      ],
       "tier": "flagship",
       "supportsReasoning": true,
       "supportsVision": true,
       "supportsThinking": true,
       "supportsPromptCaching": true,
       "releaseDate": "2025-12",
-      "recommendedFor": ["Hardest problems", "Research", "Scientific analysis"]
+      "recommendedFor": [
+        "Hardest problems",
+        "Research",
+        "Scientific analysis"
+      ]
     },
     {
       "id": "openai/o4-mini",
@@ -182,14 +266,22 @@
       "contextLength": 200000,
       "inputCost": 1.1,
       "outputCost": 4.4,
-      "category": ["reasoning", "coding", "fast"],
+      "category": [
+        "reasoning",
+        "coding",
+        "fast"
+      ],
       "tier": "fast",
       "supportsReasoning": true,
       "supportsVision": true,
       "supportsThinking": true,
       "supportsPromptCaching": true,
       "releaseDate": "2025-04",
-      "recommendedFor": ["Math problems", "Budget reasoning", "Fast iterations"]
+      "recommendedFor": [
+        "Math problems",
+        "Budget reasoning",
+        "Fast iterations"
+      ]
     },
     {
       "id": "deepseek/deepseek-v3.2",
@@ -199,12 +291,20 @@
       "contextLength": 128000,
       "inputCost": 0.28,
       "outputCost": 0.42,
-      "category": ["balanced", "cheap", "coding"],
+      "category": [
+        "balanced",
+        "cheap",
+        "coding"
+      ],
       "tier": "budget",
       "supportsReasoning": false,
       "supportsPromptCaching": true,
       "releaseDate": "2025-12",
-      "recommendedFor": ["Maximum cost savings", "High volume", "Budget coding"]
+      "recommendedFor": [
+        "Maximum cost savings",
+        "High volume",
+        "Budget coding"
+      ]
     },
     {
       "id": "deepseek/deepseek-reasoner",
@@ -214,13 +314,19 @@
       "contextLength": 128000,
       "inputCost": 0.55,
       "outputCost": 2.19,
-      "category": ["reasoning", "cheap"],
+      "category": [
+        "reasoning",
+        "cheap"
+      ],
       "tier": "budget",
       "supportsReasoning": true,
       "supportsThinking": true,
       "supportsPromptCaching": true,
       "releaseDate": "2025-12",
-      "recommendedFor": ["Budget reasoning", "Complex problems on a budget"]
+      "recommendedFor": [
+        "Budget reasoning",
+        "Complex problems on a budget"
+      ]
     },
     {
       "id": "mistralai/mistral-large-3",
@@ -230,11 +336,19 @@
       "contextLength": 128000,
       "inputCost": 0.5,
       "outputCost": 1.5,
-      "category": ["balanced", "coding", "open-source"],
+      "category": [
+        "balanced",
+        "coding",
+        "open-source"
+      ],
       "tier": "balanced",
       "supportsVision": true,
       "releaseDate": "2026-01",
-      "recommendedFor": ["Open source", "Self-hosting", "Cost-effective coding"]
+      "recommendedFor": [
+        "Open source",
+        "Self-hosting",
+        "Cost-effective coding"
+      ]
     },
     {
       "id": "meta-llama/llama-4-scout",
@@ -244,11 +358,18 @@
       "contextLength": 10000000,
       "inputCost": 0.1,
       "outputCost": 0.3,
-      "category": ["balanced", "open-source"],
+      "category": [
+        "balanced",
+        "open-source"
+      ],
       "tier": "balanced",
       "supportsVision": true,
       "releaseDate": "2025-04",
-      "recommendedFor": ["Massive context", "Full codebase analysis", "Document processing"]
+      "recommendedFor": [
+        "Massive context",
+        "Full codebase analysis",
+        "Document processing"
+      ]
     },
     {
       "id": "meta-llama/llama-4-maverick",
@@ -258,11 +379,20 @@
       "contextLength": 1000000,
       "inputCost": 0.2,
       "outputCost": 0.6,
-      "category": ["balanced", "coding", "open-source", "vision"],
+      "category": [
+        "balanced",
+        "coding",
+        "open-source",
+        "vision"
+      ],
       "tier": "balanced",
       "supportsVision": true,
       "releaseDate": "2025-04",
-      "recommendedFor": ["Open source", "Multimodal", "Coding"]
+      "recommendedFor": [
+        "Open source",
+        "Multimodal",
+        "Coding"
+      ]
     },
     {
       "id": "perplexity/sonar-pro",
@@ -272,10 +402,17 @@
       "contextLength": 200000,
       "inputCost": 3.0,
       "outputCost": 15.0,
-      "category": ["research", "balanced"],
+      "category": [
+        "research",
+        "balanced"
+      ],
       "tier": "balanced",
       "releaseDate": "2025-01",
-      "recommendedFor": ["Research", "Fact-checking", "Current events"]
+      "recommendedFor": [
+        "Research",
+        "Fact-checking",
+        "Current events"
+      ]
     },
     {
       "id": "xai/grok-3",
@@ -285,11 +422,18 @@
       "contextLength": 131072,
       "inputCost": 3.0,
       "outputCost": 15.0,
-      "category": ["balanced", "reasoning"],
+      "category": [
+        "balanced",
+        "reasoning"
+      ],
       "tier": "balanced",
       "supportsReasoning": true,
       "releaseDate": "2025-02",
-      "recommendedFor": ["Real-time info", "Current events", "Social media analysis"]
+      "recommendedFor": [
+        "Real-time info",
+        "Current events",
+        "Social media analysis"
+      ]
     },
     {
       "id": "openai/gpt-5-image",
@@ -299,11 +443,18 @@
       "contextLength": 400000,
       "inputCost": 10.0,
       "outputCost": 10.0,
-      "category": ["image-generation", "vision"],
+      "category": [
+        "image-generation",
+        "vision"
+      ],
       "tier": "flagship",
       "supportsVision": true,
       "releaseDate": "2025-10",
-      "recommendedFor": ["Image generation", "Visual editing", "Creative work"]
+      "recommendedFor": [
+        "Image generation",
+        "Visual editing",
+        "Creative work"
+      ]
     },
     {
       "id": "openai/dall-e-3",
@@ -313,10 +464,15 @@
       "contextLength": 0,
       "inputCost": 40.0,
       "outputCost": 0,
-      "category": ["image-generation"],
+      "category": [
+        "image-generation"
+      ],
       "tier": "balanced",
       "releaseDate": "2023-10",
-      "recommendedFor": ["Image generation", "Creative visuals"]
+      "recommendedFor": [
+        "Image generation",
+        "Creative visuals"
+      ]
     },
     {
       "id": "openai/gpt-4o",
@@ -326,12 +482,20 @@
       "contextLength": 128000,
       "inputCost": 2.5,
       "outputCost": 10.0,
-      "category": ["balanced", "coding", "vision"],
+      "category": [
+        "balanced",
+        "coding",
+        "vision"
+      ],
       "tier": "balanced",
       "supportsVision": true,
       "supportsPromptCaching": true,
       "releaseDate": "2024-05",
-      "recommendedFor": ["General tasks", "Multimodal", "Coding"]
+      "recommendedFor": [
+        "General tasks",
+        "Multimodal",
+        "Coding"
+      ]
     },
     {
       "id": "openai/gpt-4o-mini",
@@ -341,12 +505,21 @@
       "contextLength": 128000,
       "inputCost": 0.15,
       "outputCost": 0.6,
-      "category": ["fast", "cheap", "vision"],
+      "category": [
+        "fast",
+        "cheap",
+        "vision"
+      ],
       "tier": "budget",
       "supportsVision": true,
       "supportsPromptCaching": true,
       "releaseDate": "2024-07",
-      "recommendedFor": ["Background tasks", "Title generation", "Tagging", "High volume"]
+      "recommendedFor": [
+        "Background tasks",
+        "Title generation",
+        "Tagging",
+        "High volume"
+      ]
     },
     {
       "id": "google/gemini-2.0-flash-exp",
@@ -356,29 +529,43 @@
       "contextLength": 1000000,
       "inputCost": 0,
       "outputCost": 0,
-      "category": ["fast", "cheap", "free"],
+      "category": [
+        "fast",
+        "cheap",
+        "free"
+      ],
       "tier": "budget",
       "supportsVision": true,
       "supportsPromptCaching": true,
       "releaseDate": "2024-12",
-      "recommendedFor": ["Free usage", "Testing", "Background tasks"]
+      "recommendedFor": [
+        "Free usage",
+        "Testing",
+        "Background tasks"
+      ]
     },
     {
-      "id": "google/gemini-3-flash-thinking",
+      "id": "google/gemini-3-flash-preview-thinking",
       "name": "Gemini 3 Flash Thinking",
       "provider": "Google",
       "description": "Flash-speed reasoning. Cheap thinking mode for complex tasks.",
       "contextLength": 1000000,
       "inputCost": 0.5,
       "outputCost": 3.0,
-      "category": ["fast", "reasoning"],
+      "category": [
+        "fast",
+        "reasoning"
+      ],
       "tier": "fast",
       "supportsReasoning": true,
       "supportsVision": true,
       "supportsThinking": true,
       "supportsPromptCaching": true,
       "releaseDate": "2025-12",
-      "recommendedFor": ["Fast reasoning", "Budget thinking tasks"]
+      "recommendedFor": [
+        "Fast reasoning",
+        "Budget thinking tasks"
+      ]
     },
     {
       "id": "anthropic/claude-3-haiku",
@@ -388,12 +575,19 @@
       "contextLength": 200000,
       "inputCost": 0.25,
       "outputCost": 1.25,
-      "category": ["fast", "cheap"],
+      "category": [
+        "fast",
+        "cheap"
+      ],
       "tier": "budget",
       "supportsVision": true,
       "supportsPromptCaching": true,
       "releaseDate": "2024-03",
-      "recommendedFor": ["Background tasks", "Simple queries", "High volume"]
+      "recommendedFor": [
+        "Background tasks",
+        "Simple queries",
+        "High volume"
+      ]
     },
     {
       "id": "mistralai/mistral-medium-3",
@@ -403,10 +597,17 @@
       "contextLength": 128000,
       "inputCost": 0.4,
       "outputCost": 1.2,
-      "category": ["balanced", "coding"],
+      "category": [
+        "balanced",
+        "coding"
+      ],
       "tier": "budget",
       "releaseDate": "2025-06",
-      "recommendedFor": ["General tasks", "Coding", "Budget applications"]
+      "recommendedFor": [
+        "General tasks",
+        "Coding",
+        "Budget applications"
+      ]
     },
     {
       "id": "mistralai/codestral-latest",
@@ -416,10 +617,17 @@
       "contextLength": 32000,
       "inputCost": 0.3,
       "outputCost": 0.9,
-      "category": ["coding", "fast"],
+      "category": [
+        "coding",
+        "fast"
+      ],
       "tier": "fast",
       "releaseDate": "2024-05",
-      "recommendedFor": ["Code generation", "Code completion", "Budget coding"]
+      "recommendedFor": [
+        "Code generation",
+        "Code completion",
+        "Budget coding"
+      ]
     }
   ]
 }

@@ -16,7 +16,8 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { getAllMcpServers, getChatById, updateChat, updateSettings } from "@/lib/db/queries";
+import { getAllMcpServers, getChatById, updateChat } from "@/lib/db/queries";
+import { useSettingsStore } from "@/stores/settings-store";
 import { toast } from "sonner";
 import { McpServer } from "@/lib/db/schema";
 import Link from "next/link";
@@ -319,6 +320,9 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
     // Composio hook for toggling individual toolkits
     const { toggleToolkit, hasApiKey: hasComposioKey } = useComposioApps();
 
+    // Settings store for persisting default MCP servers
+    const updateDefaultMcpServerIds = useSettingsStore((s) => s.updateDefaultMcpServerIds);
+
     // Handler for toggling individual Composio toolkits
     const handleToolkitToggle = useCallback((toolkitKey: string) => {
         toggleToolkit(toolkitKey);
@@ -393,10 +397,10 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
             ? currentActive.filter(id => id !== server.id)
             : [...currentActive, server.id];
 
-        // Update both the chat and the default settings
+        // Update both the chat and the default settings (via store for proper sync)
         await Promise.all([
             updateChat(chatId, { activeMcpServerIds: newActive }),
-            updateSettings({ defaultMcpServerIds: newActive }),
+            updateDefaultMcpServerIds(newActive),
         ]);
         toast.success(
             newActive.includes(server.id)
@@ -422,7 +426,7 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
         const allIds = mcpServers.map(s => s.id);
         await Promise.all([
             updateChat(chatId, { activeMcpServerIds: allIds }),
-            updateSettings({ defaultMcpServerIds: allIds }),
+            updateDefaultMcpServerIds(allIds),
         ]);
         toast.success("All MCP servers enabled");
     };
@@ -431,7 +435,7 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
         if (!chatId) return;
         await Promise.all([
             updateChat(chatId, { activeMcpServerIds: [] }),
-            updateSettings({ defaultMcpServerIds: [] }),
+            updateDefaultMcpServerIds([]),
         ]);
         toast.success("All MCP servers disabled");
     };

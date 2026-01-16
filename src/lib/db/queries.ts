@@ -48,21 +48,29 @@ export async function moveChatsToProject(fromProjectId: string, toProjectId: str
 
 export async function getAllChats() {
   const chats = await db.chats.toArray();
-  // Sort by: pinned first, then manual order when both have it, otherwise recency
+  // Sort by: pinned first, then by explicit order if set, otherwise by recency
   return chats.sort((a, b) => {
+    // Pinned chats always come first
     if (a.pinned && !b.pinned) return -1;
     if (!a.pinned && b.pinned) return 1;
 
     const aHasOrder = a.order !== undefined;
     const bHasOrder = b.order !== undefined;
 
-    if (aHasOrder && bHasOrder) {
-      if (a.order !== b.order) return (a.order ?? 0) - (b.order ?? 0);
-      // stable within ordered items: newest first
-      return b.updatedAt - a.updatedAt;
+    // Within the same folder, respect order
+    if (a.folderId === b.folderId) {
+      // If both have explicit order, sort by order
+      if (aHasOrder && bHasOrder) {
+        if (a.order !== b.order) return (a.order ?? 0) - (b.order ?? 0);
+        // Fallback to recency for same order
+        return b.updatedAt - a.updatedAt;
+      }
+      // If only one has order, that one comes first (manually sorted items stay in place)
+      if (aHasOrder && !bHasOrder) return -1;
+      if (!aHasOrder && bHasOrder) return 1;
     }
 
-    // Default to newest first so fresh chats rise to the top
+    // Default to newest first for items without explicit order
     return b.updatedAt - a.updatedAt;
   });
 }

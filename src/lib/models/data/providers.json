@@ -49,10 +49,10 @@
       "name": "Google AI",
       "description": "Direct Google AI Studio / Vertex AI access",
       "models": [
-        "google/gemini-3-flash",
+        "google/gemini-3-flash-preview",
         "google/gemini-3-pro",
         "google/gemini-3-deep-think",
-        "google/gemini-3-flash-thinking",
+        "google/gemini-3-flash-preview-thinking",
         "google/gemini-2.5-pro",
         "google/gemini-2.5-flash",
         "google/gemini-2.0-flash-exp:free",

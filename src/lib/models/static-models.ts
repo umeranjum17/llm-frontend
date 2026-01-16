@@ -179,7 +179,7 @@ export function searchStaticModels(query: string, includeLegacy = false): Model[
 // Use case recommendations (from featured models only)
 export const USE_CASE_RECOMMENDATIONS: Record<string, { models: string[]; description: string }> = {
   coding: {
-    models: ["anthropic/claude-sonnet-4.5", "openai/gpt-5.2", "anthropic/claude-opus-4.5", "google/gemini-3-flash"],
+    models: ["anthropic/claude-sonnet-4.5", "openai/gpt-5.2", "anthropic/claude-opus-4.5", "google/gemini-3-flash-preview"],
     description: "Best for writing, debugging, and reviewing code",
   },
   reasoning: {
@@ -187,11 +187,11 @@ export const USE_CASE_RECOMMENDATIONS: Record<string, { models: string[]; descri
     description: "Complex problem-solving and multi-step reasoning",
   },
   chat: {
-    models: ["google/gemini-3-flash", "openai/gpt-5", "anthropic/claude-haiku-4", "deepseek/deepseek-v3.2"],
+    models: ["google/gemini-3-flash-preview", "openai/gpt-5", "anthropic/claude-haiku-4", "deepseek/deepseek-v3.2"],
     description: "Fast, natural conversation",
   },
   budget: {
-    models: ["deepseek/deepseek-v3.2", "deepseek/deepseek-reasoner", "meta-llama/llama-4-scout", "google/gemini-3-flash"],
+    models: ["deepseek/deepseek-v3.2", "deepseek/deepseek-reasoner", "meta-llama/llama-4-scout", "google/gemini-3-flash-preview"],
     description: "Maximum value for cost-sensitive applications",
   },
   creative: {
@@ -207,11 +207,11 @@ export const USE_CASE_RECOMMENDATIONS: Record<string, { models: string[]; descri
     description: "Image understanding and analysis",
   },
   agents: {
-    models: ["anthropic/claude-sonnet-4.5", "anthropic/claude-opus-4.5", "openai/gpt-5.2", "google/gemini-3-flash"],
+    models: ["anthropic/claude-sonnet-4.5", "anthropic/claude-opus-4.5", "openai/gpt-5.2", "google/gemini-3-flash-preview"],
     description: "Best for autonomous agent workflows",
   },
   "long-context": {
-    models: ["meta-llama/llama-4-scout", "google/gemini-3-pro", "google/gemini-3-flash", "openai/gpt-5.2"],
+    models: ["meta-llama/llama-4-scout", "google/gemini-3-pro", "google/gemini-3-flash-preview", "openai/gpt-5.2"],
     description: "Processing very long documents or codebases",
   },
   "image-generation": {

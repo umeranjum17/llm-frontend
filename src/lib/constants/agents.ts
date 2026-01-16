@@ -10,7 +10,7 @@ export const RECOMMENDED_MODELS = {
   coding: "anthropic/claude-sonnet-4.5",        // Best for code & software engineering
   reasoning: "deepseek/deepseek-reasoner",      // Best for math, logic, complex reasoning
   general: "openai/gpt-5.2",                    // Best overall & general purpose
-  fast: "google/gemini-3-flash",                // Best for speed & scale
+  fast: "google/gemini-3-flash-preview",                // Best for speed & scale
   imageGeneration: "openai/gpt-5-image",        // Best for logos & text rendering
   mascotGeneration: "openai/gpt-5-image",       // Best for character consistency
   diagram: "anthropic/claude-sonnet-4.5",       // Good at structured output

@@ -10,6 +10,14 @@ import capabilityRulesData from "@/lib/models/rules/capability-rules.json";
 
 const capabilityRules = capabilityRulesData as any;
 
+/**
+ * Tool calling capability tiers:
+ * - "none": Model doesn't support tool/function calling
+ * - "basic": Supports simple single-tool calls but may struggle with complex workflows
+ * - "advanced": Reliably handles multi-step tool workflows (e.g., Composio SEARCH→READ→EXECUTE)
+ */
+export type ToolCallingTier = "none" | "basic" | "advanced";
+
 export interface ModelCapabilities {
   supportsSystemPrompt: boolean;
   supportsTemperature: boolean;
@@ -27,10 +35,72 @@ export interface ModelCapabilities {
   // Advanced features
   supportsPromptCaching: boolean; // Anthropic prompt caching
   supportsThinking: boolean; // Extended thinking (Claude, o1, o3, etc.)
+  toolCallingTier: ToolCallingTier; // How well the model handles tool calling
 }
 
 // Cache for resolved capabilities
 const capabilitiesCache = new Map<string, ModelCapabilities>();
+
+/**
+ * Models known to handle complex multi-step tool workflows reliably.
+ * These can handle patterns like Composio's SEARCH_TOOLS → read schemas → MULTI_EXECUTE.
+ */
+const ADVANCED_TOOL_CALLING_PATTERNS = [
+  // Anthropic Claude 3+ models
+  "claude-3", "claude-3.5", "claude-3.6", "claude-4",
+  // OpenAI GPT-4+ class models
+  "gpt-4o", "gpt-4-turbo", "gpt-4.1", "gpt-4.5", "gpt-5",
+  // OpenAI reasoning models (excellent at following instructions)
+  "o1", "o3", "o4",
+  // Google Gemini Pro/Ultra
+  "gemini-1.5-pro", "gemini-2", "gemini-pro",
+  // Meta Llama 3.1+ 70B+
+  "llama-3.1-70b", "llama-3.1-405b", "llama-3.2-90b", "llama-3.3", "llama-4",
+  // Mistral Large
+  "mistral-large", "mistral-medium",
+  // DeepSeek
+  "deepseek-v3", "deepseek-r1",
+];
+
+/**
+ * Models that support tools but struggle with complex workflows.
+ * Good for simple single-tool calls.
+ */
+const BASIC_TOOL_CALLING_PATTERNS = [
+  // Smaller/faster models
+  "gpt-4o-mini", "gpt-3.5",
+  "claude-instant", "claude-2",
+  "gemini-flash", "gemini-1.0",
+  "llama-3.1-8b", "llama-3.2-1b", "llama-3.2-3b", "llama-3.2-11b",
+  "mistral-7b", "mistral-small", "mixtral",
+  "phi-", "qwen",
+];
+
+/**
+ * Determine tool calling tier based on model ID
+ */
+function getToolCallingTier(modelId: string, supportsTools: boolean): ToolCallingTier {
+  if (!supportsTools) return "none";
+
+  const lowerModelId = modelId.toLowerCase();
+
+  // Check for advanced tier first (order matters - check specific patterns)
+  if (ADVANCED_TOOL_CALLING_PATTERNS.some(pattern => lowerModelId.includes(pattern.toLowerCase()))) {
+    // Exclude mini/small variants from advanced tier
+    if (lowerModelId.includes("mini") || lowerModelId.includes("small") || lowerModelId.includes("flash")) {
+      return "basic";
+    }
+    return "advanced";
+  }
+
+  // Check for basic tier
+  if (BASIC_TOOL_CALLING_PATTERNS.some(pattern => lowerModelId.includes(pattern.toLowerCase()))) {
+    return "basic";
+  }
+
+  // Default: if model supports tools but we don't know it, assume basic
+  return "basic";
+}
 
 /**
  * Get model capabilities using rule engine
@@ -49,6 +119,7 @@ export function getModelCapabilities(modelId: string): ModelCapabilities {
     const defaults = capabilityRules.defaults;
     // Check if this is an image generation model by ID pattern
     const isImageGen = isImageGenerationModel(modelId);
+    const supportsTools = defaults.supportsTools ?? false;
     return {
       supportsSystemPrompt: defaults.supportsSystemPrompt,
       supportsTemperature: defaults.supportsTemperature,
@@ -60,11 +131,12 @@ export function getModelCapabilities(modelId: string): ModelCapabilities {
       supportsMaxTokens: defaults.supportsMaxTokens,
       supportsReasoning: false,
       supportsVision: false,
-      supportsTools: defaults.supportsTools ?? false,
+      supportsTools,
       supportsStreaming: defaults.supportsStreaming ?? true,
       isImageGeneration: isImageGen,
       supportsPromptCaching: false,
       supportsThinking: false,
+      toolCallingTier: getToolCallingTier(modelId, supportsTools),
     };
   }
 
@@ -79,6 +151,7 @@ export function getModelCapabilities(modelId: string): ModelCapabilities {
 
   // Build capabilities object
   const isImageGen = isImageGenerationModel(modelId);
+  const supportsTools = (detected.supportsTools as boolean) ?? (defaults.supportsTools ?? false);
 
   const capabilities: ModelCapabilities = {
     supportsSystemPrompt: (detected.supportsSystemPrompt as boolean) ?? defaults.supportsSystemPrompt,
@@ -91,12 +164,13 @@ export function getModelCapabilities(modelId: string): ModelCapabilities {
     supportsMaxTokens: (detected.supportsMaxTokens as boolean) ?? defaults.supportsMaxTokens,
     supportsReasoning: (detected.supportsReasoning as boolean) ?? (model.supportsReasoning ?? false),
     supportsVision: (detected.supportsVision as boolean) ?? (model.supportsVision ?? false),
-    supportsTools: (detected.supportsTools as boolean) ?? (defaults.supportsTools ?? false),
+    supportsTools,
     supportsStreaming: (detected.supportsStreaming as boolean) ?? (defaults.supportsStreaming ?? true),
     isImageGeneration: isImageGen,
     // Use stable boolean flags from model data
     supportsPromptCaching: (model as any).supportsPromptCaching ?? false,
     supportsThinking: (model as any).supportsThinking ?? false,
+    toolCallingTier: getToolCallingTier(modelId, supportsTools),
   };
 
   // Cache the result
@@ -159,4 +233,5 @@ export const DEFAULT_CAPABILITIES: ModelCapabilities = {
   isImageGeneration: false,
   supportsPromptCaching: false,
   supportsThinking: false,
+  toolCallingTier: "none",
 };
