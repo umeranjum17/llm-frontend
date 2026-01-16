@@ -15,8 +15,9 @@ const capabilityRules = capabilityRulesData as any;
  * - "none": Model doesn't support tool/function calling
  * - "basic": Supports simple single-tool calls but may struggle with complex workflows
  * - "advanced": Reliably handles multi-step tool workflows (e.g., Composio SEARCH→READ→EXECUTE)
+ * - "elite": Best-in-class tool calling, top performers on OpenRouter benchmarks (Jan 2026)
  */
-export type ToolCallingTier = "none" | "basic" | "advanced";
+export type ToolCallingTier = "none" | "basic" | "advanced" | "elite";
 
 export interface ModelCapabilities {
   supportsSystemPrompt: boolean;
@@ -42,48 +43,73 @@ export interface ModelCapabilities {
 const capabilitiesCache = new Map<string, ModelCapabilities>();
 
 /**
- * Models known to handle complex multi-step tool workflows reliably.
- * Based on BFCL (Berkeley Function Calling Leaderboard) scores and real-world testing.
+ * Elite tier: Best-in-class tool calling models based on OpenRouter rankings (Jan 2026)
+ * These models consistently score at the top of t2-bench and BFCL benchmarks.
  *
- * BFCL Scores (2025):
- * - GLM-4.5: 70.85%, Claude Opus 4.1: 70.36%, Claude Sonnet 4: 70.29%
- * - GPT-5: 59.22% (mediocre), DeepSeek V3: 58.55% (weak)
+ * OpenRouter Tool Calling Rankings (Jan 2026):
+ * #1 Claude Opus 4.5, #2 GPT-5.2, #3 Claude Sonnet 4.5, #4 Gemini 3 Flash (90.2% t2-bench!)
+ */
+const ELITE_TOOL_CALLING_PATTERNS = [
+  "claude-opus-4.5", "claude-sonnet-4.5",  // #1, #3 OpenRouter
+  "gpt-5.2", "gpt-5.2-codex",              // #2 OpenRouter, Codex: SWE-bench Pro SOTA
+  "gemini-3-flash",                         // #4 OpenRouter (exceptional t2-bench: 90.2%)
+  "kimi-k2",                                // Exceptional agentic - 200-300 sequential tool calls
+  "glm-4.7",                                // 90.6% tool use, 96% τ2-Bench
+];
+
+/**
+ * Models known to handle complex multi-step tool workflows reliably.
+ * Based on multiple benchmarks and real-world community feedback.
+ *
+ * Benchmark Sources (2025-2026):
+ * - BFCL: GLM-4.5 (70.85%), Claude Opus 4.1 (70.36%), Claude Sonnet 4 (70.29%)
+ * - Enterprise Tool Use (Scale.com): o1 (70.14%), o1-Pro (67.01%), Gemini 2.5 Pro (68.75%)
+ * - τ2-Bench: GLM-4.7 (96% telecom), Grok 4.1 Fast (100% telecom)
+ * - SWE-bench: Gemini 3 Flash (78%), Claude Sonnet 4.5 (77.2%)
  *
  * Sources:
  * - https://gorilla.cs.berkeley.edu/leaderboard.html
+ * - https://scale.com/leaderboard/tool_use_enterprise
+ * - https://whatllm.org/blog/best-agentic-models-january-2026
  * - https://www.klavis.ai/blog/function-calling-and-agentic-ai-in-2025
  */
 const ADVANCED_TOOL_CALLING_PATTERNS = [
   // Anthropic Claude - TOP TIER on BFCL (~70%)
-  // Claude leads function calling benchmarks consistently
+  // Note: claude-opus-4.5 and claude-sonnet-4.5 are in elite tier
   "claude-3.5", "claude-3.6", "claude-4", "claude-sonnet-4", "claude-opus-4",
 
-  // Moonshot Kimi K2 - EXCEPTIONAL at tool use
-  // Handles 200-300 sequential tool calls, beats GPT/Claude on agentic benchmarks
-  // Source: https://fireworks.ai/blog/kimi-k2-deepdive
-  "kimi-k2",
+  // OpenAI o1 series - TOP of Enterprise Tool Use (o1: 70.14%, o1-Pro: 67.01%)
+  "o1", "o1-pro",
 
-  // Zhipu GLM-4.5 - TOP of BFCL (70.85%)
-  "glm-4", "glm-4.5",
+  // xAI Grok 4.1 Fast - BFCL 72%, SOTA tool invocation, halved hallucination rate
+  "grok-4.1-fast",
+  // xAI Grok Code Fast 1 - Agentic by design, trained for tool calling, SWE-bench 70.8%, 92 tok/s
+  "grok-code-fast-1",
 
-  // Meta Llama 3.1 405B - Strong on BFCL (81.1%)
-  // Only the largest Llama models are reliable
-  "llama-3.1-405b", "llama-3.3-70b",
+  // Google Gemini - #4 Gemini 3 Flash is elite, 2.5 Flash is advanced
+  "gemini-2.5-flash",
 
-  // Cohere Command - Designed specifically for RAG and tool use
-  "command-r-plus", "command-r+", "command-a-03-2025", "command-a",
+  // Zhipu GLM - TOP of BFCL (GLM-4.5: 70.85%), GLM-4.7: 90.6% tool use, τ2-Bench 96%
+  "glm-4", "glm-4.5", "glm-4.7",
 
-  // Alibaba Qwen large models - Good BFCL performance
-  "qwen-2.5-72b", "qwen-max", "qwen-2.5-max",
+  // Meta Llama - Strong on BFCL (405B: 81.1%)
+  "llama-3.1-405b", "llama-3.3-70b", "llama-4-405b",
+
+  // Cohere Command A - "most performant for tool use", strong real-world feedback
+  // Note: Command R+ demoted to basic (Enterprise Tool Use only 30.21%)
+  "command-a-03-2025", "command-a",
 ];
 
 /**
  * Models that support tools but struggle with complex multi-step workflows.
  * May work for simple single-tool calls but unreliable for agentic patterns.
  *
- * GPT-4o/GPT-5 issues documented:
- * - https://community.openai.com/t/gpt-4o-cannot-properly-call-custom-functions-more-than-half-the-time/754926
- * - https://community.openai.com/t/the-failure-rate-of-function-calls-of-gpt-4o-mini-is-increasing/918874
+ * Community Feedback Sources:
+ * - GPT-4o issues: https://community.openai.com/t/gpt-4o-cannot-properly-call-custom-functions-more-than-half-the-time/754926
+ * - GPT-4o-mini failures: https://community.openai.com/t/the-failure-rate-of-function-calls-of-gpt-4o-mini-is-increasing/918874
+ * - DeepSeek issues: https://github.com/deepseek-ai/DeepSeek-V3/issues/826
+ * - Qwen issues: https://github.com/QwenLM/Qwen3-Coder/issues/475
+ * - Command R+ Enterprise Tool Use: 30.21% (Scale.com)
  */
 const BASIC_TOOL_CALLING_PATTERNS = [
   // OpenAI models - WORSE than Claude on BFCL (~59%)
@@ -91,13 +117,14 @@ const BASIC_TOOL_CALLING_PATTERNS = [
   "gpt-4o", "gpt-4-turbo", "gpt-4.1", "gpt-4.5", "gpt-5",
   "gpt-4o-mini", "gpt-3.5",
 
-  // OpenAI o-series reasoning models - Good at reasoning but tool calling varies
-  "o1", "o3", "o4",
+  // OpenAI o-series reasoning models (o3, o4 only - o1/o1-pro promoted to ADVANCED)
+  "o3", "o4",
 
-  // DeepSeek - Weak on BFCL (58.55%), "significant weakness" in tool use
-  "deepseek-v3", "deepseek-r1", "deepseek-reasoner",
+  // DeepSeek - Community reports: "significant weakness", auto mode broken, random Chinese text
+  // V3.2 demoted from advanced due to reliability issues
+  "deepseek-v3", "deepseek-v3.2", "deepseek-r1", "deepseek-reasoner",
 
-  // Google Gemini - Mixed results, Flash is speed-optimized not accuracy
+  // Google Gemini - Mixed results, older versions
   "gemini-flash", "gemini-1.0", "gemini-1.5", "gemini-2.0", "gemini-3",
 
   // Anthropic older/smaller models
@@ -106,21 +133,32 @@ const BASIC_TOOL_CALLING_PATTERNS = [
   // Meta smaller Llama models
   "llama-3.1-8b", "llama-3.1-70b", "llama-3.2", "llama-4-scout", "llama-4-maverick",
 
-  // Mistral models
+  // Mistral models - Enterprise Tool Use 50.35% (below threshold)
+  // Community: "struggles parallel", template issues
   "mistral-7b", "mistral-small", "mistral-medium", "mistral-large", "mixtral", "codestral",
 
   // Microsoft Phi models
   "phi-", "phi-3", "phi-4",
 
-  // Alibaba Qwen smaller models
-  "qwen-2.5-7b", "qwen-2.5-14b", "qwen-2.5-32b", "qwen-turbo", "qwen-plus",
+  // Alibaba Qwen - Community: "extremely unreliable" native function calling
+  // Requires Qwen-Agent framework for reliable tool use
+  "qwen-2.5-7b", "qwen-2.5-14b", "qwen-2.5-32b", "qwen-2.5-72b",
+  "qwen-turbo", "qwen-plus", "qwen-max", "qwen-2.5-max", "qwen3-max",
 
-  // xAI Grok
+  // Cohere Command R+ - Enterprise Tool Use only 30.21%
+  "command-r-plus", "command-r+",
+
+  // xAI Grok (older versions - Grok 4.1 Fast is in ADVANCED)
   "grok-2", "grok-3",
 
   // Other models
   "gemma", "olmo", "internlm", "yi-", "reka",
 ];
+
+/**
+ * Flash models that have exceptional tool calling (not downgraded to basic)
+ */
+const ADVANCED_FLASH_MODELS = ["gemini-3-flash", "gemini-2.5-flash"];
 
 /**
  * Determine tool calling tier based on model ID
@@ -130,10 +168,19 @@ function getToolCallingTier(modelId: string, supportsTools: boolean): ToolCallin
 
   const lowerModelId = modelId.toLowerCase();
 
-  // Check for advanced tier first (order matters - check specific patterns)
+  // Check for elite tier first (best-in-class tool calling)
+  if (ELITE_TOOL_CALLING_PATTERNS.some(pattern => lowerModelId.includes(pattern.toLowerCase()))) {
+    return "elite";
+  }
+
+  // Check for advanced tier (order matters - check specific patterns)
   if (ADVANCED_TOOL_CALLING_PATTERNS.some(pattern => lowerModelId.includes(pattern.toLowerCase()))) {
-    // Exclude mini/small variants from advanced tier
-    if (lowerModelId.includes("mini") || lowerModelId.includes("small") || lowerModelId.includes("flash")) {
+    // Exclude mini/small variants from advanced tier, but not special flash models
+    if (lowerModelId.includes("mini") || lowerModelId.includes("small")) {
+      return "basic";
+    }
+    // Only downgrade flash models that aren't in the advanced flash list
+    if (lowerModelId.includes("flash") && !ADVANCED_FLASH_MODELS.some(m => lowerModelId.includes(m))) {
       return "basic";
     }
     return "advanced";

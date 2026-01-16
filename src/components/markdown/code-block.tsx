@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useContext } from "react";
 import { Button } from "@/components/ui/button";
-import { Copy, Check, Maximize2, ChevronRight, Eye, Code } from "lucide-react";
+import { Copy, Check, Maximize2, ChevronRight, Eye, Code, FolderOpen } from "lucide-react";
 import { codeToHtml } from "shiki";
 import { useUIStore } from "@/stores/ui-store";
 import { cn } from "@/lib/utils";
+import { CodeBlockContext } from "./markdown-renderer";
 
 // Global cache for highlighted code - survives component unmount/remount
 const highlightCache = new Map<string, string>();
@@ -37,6 +38,7 @@ function setCachedHighlight(code: string, language: string, html: string): void 
 interface CodeBlockProps {
   language: string;
   code: string;
+  filename?: string | null;
   isStreaming?: boolean;
 }
 
@@ -50,7 +52,7 @@ function getShikiLanguage(lang: string): string {
   return langMap[lang.toLowerCase()] || lang || "text";
 }
 
-export function CodeBlock({ language, code, isStreaming = false }: CodeBlockProps) {
+export function CodeBlock({ language, code, filename, isStreaming = false }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
   // Start collapsed while streaming, expand when done
   const [isExpanded, setIsExpanded] = useState(!isStreaming);
@@ -65,6 +67,15 @@ export function CodeBlock({ language, code, isStreaming = false }: CodeBlockProp
   const lastCodeRef = useRef(code);
   const setShowArtifacts = useUIStore((state) => state.setShowArtifacts);
   const setActiveArtifact = useUIStore((state) => state.setActiveArtifact);
+
+  // Register with context for multi-file project detection
+  const codeBlockContext = useContext(CodeBlockContext);
+
+  useEffect(() => {
+    if (codeBlockContext && code) {
+      codeBlockContext.registerCodeBlock({ language, filename: filename || null, code });
+    }
+  }, [codeBlockContext, language, filename, code]);
 
   // Auto-expand when streaming finishes
   useEffect(() => {
@@ -128,7 +139,7 @@ export function CodeBlock({ language, code, isStreaming = false }: CodeBlockProp
   const handleOpenArtifact = () => {
     setActiveArtifact({
       id: crypto.randomUUID(),
-      title: language ? `${language.charAt(0).toUpperCase() + language.slice(1)} Code` : "Code Snippet",
+      title: filename || (language ? `${language.charAt(0).toUpperCase() + language.slice(1)} Code` : "Code Snippet"),
       code,
       language: language || "text",
       type: 'code',
@@ -136,6 +147,83 @@ export function CodeBlock({ language, code, isStreaming = false }: CodeBlockProp
     setShowArtifacts(true);
     setArtifactsFullscreen(true);
   };
+
+  // Open all code blocks as a multi-file project
+  const handleOpenAsProject = () => {
+    if (!codeBlockContext) return;
+
+    const codeBlocks = codeBlockContext.getCodeBlocks();
+    if (codeBlocks.length < 2) return;
+
+    // Build files object for Sandpack
+    const files: Record<string, string> = {};
+    let entryFile: string | undefined;
+
+    for (const block of codeBlocks) {
+      // Determine file path
+      let filePath = block.filename;
+      if (!filePath) {
+        // Auto-generate filename based on language
+        const ext = getExtensionForLanguage(block.language);
+        filePath = block.language === "html" ? "index.html"
+          : block.language === "css" ? "styles.css"
+          : block.language === "javascript" || block.language === "js" ? "script.js"
+          : `file.${ext}`;
+      }
+
+      // Ensure path starts with /
+      if (!filePath.startsWith("/")) {
+        filePath = "/" + filePath;
+      }
+
+      files[filePath] = block.code;
+
+      // Set entry file (prefer index.html, then first file)
+      if (filePath === "/index.html" || filePath.endsWith("index.html")) {
+        entryFile = filePath;
+      } else if (!entryFile) {
+        entryFile = filePath;
+      }
+    }
+
+    // Determine template based on files
+    const hasReact = Object.keys(files).some(f => f.endsWith(".jsx") || f.endsWith(".tsx"));
+    const hasTs = Object.keys(files).some(f => f.endsWith(".ts") || f.endsWith(".tsx"));
+    const template = hasReact
+      ? (hasTs ? "react-ts" : "react")
+      : (hasTs ? "vanilla-ts" : "vanilla");
+
+    setActiveArtifact({
+      id: crypto.randomUUID(),
+      title: "Multi-File Project",
+      code: "", // Not used for projects
+      language: "project",
+      type: "project",
+      files,
+      template,
+      entry: entryFile,
+    });
+    setShowArtifacts(true);
+    setArtifactsFullscreen(true);
+  };
+
+  // Get file extension for a language
+  function getExtensionForLanguage(lang: string): string {
+    const extMap: Record<string, string> = {
+      javascript: "js", js: "js", jsx: "jsx",
+      typescript: "ts", ts: "ts", tsx: "tsx",
+      html: "html", htm: "html",
+      css: "css", scss: "scss", less: "less",
+      python: "py", py: "py",
+      json: "json",
+      markdown: "md", md: "md",
+      yaml: "yaml", yml: "yml",
+    };
+    return extMap[lang.toLowerCase()] || lang || "txt";
+  }
+
+  // Check if we can open as project (multiple code blocks available)
+  const canOpenAsProject = codeBlockContext && codeBlockContext.getCodeBlocks().length >= 2;
 
   const lineCount = code.split('\n').length;
 
@@ -157,14 +245,24 @@ export function CodeBlock({ language, code, isStreaming = false }: CodeBlockProp
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded)}
-          className="flex items-center gap-1.5 hover:text-primary/80 transition-colors"
+          className="flex items-center gap-1.5 hover:text-primary/80 transition-colors min-w-0"
         >
-          <span className="transition-transform duration-150" style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+          <span className="transition-transform duration-150 shrink-0" style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
             <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           </span>
-          <span>{language || "text"}</span>
+          <span className="truncate">
+            {filename ? (
+              <>
+                <span className="text-muted-foreground">{language}</span>
+                <span className="mx-1 text-muted-foreground/50">·</span>
+                <span>{filename}</span>
+              </>
+            ) : (
+              language || "text"
+            )}
+          </span>
           <span className={cn(
-            "text-muted-foreground text-xs ml-1 transition-opacity duration-150",
+            "text-muted-foreground text-xs ml-1 transition-opacity duration-150 shrink-0",
             isExpanded ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
           )}>
             {isStreaming ? (
@@ -174,7 +272,18 @@ export function CodeBlock({ language, code, isStreaming = false }: CodeBlockProp
             )}
           </span>
         </button>
-        <div className="flex items-center gap-0.5 sm:gap-1">
+        <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
+          {canOpenAsProject && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 sm:h-8 sm:w-8 text-blue-500 hover:text-blue-600"
+              onClick={handleOpenAsProject}
+              title="Open all files as project"
+            >
+              <FolderOpen className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            </Button>
+          )}
           {isSvgLang && (
             <Button
               variant="ghost"

@@ -3,6 +3,65 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { jsonSchema } from "ai";
 import { McpServer } from "@/lib/db/schema";
+import { type ToolCallingTier } from "@/lib/constants/model-capabilities";
+
+/**
+ * Router-first tool allowlist for Composio servers.
+ *
+ * Research shows that large tool lists degrade accuracy (BFCL, MCP-Bench).
+ * By default, we only expose the router tools which let the model:
+ * 1. COMPOSIO_SEARCH_TOOLS - Search for relevant tools
+ * 2. MULTI_EXECUTE_TOOL - Execute searched tools
+ *
+ * This keeps the tool surface small and forces the search→execute pattern.
+ */
+export const COMPOSIO_ROUTER_TOOLS = [
+  "COMPOSIO_SEARCH_TOOLS",    // Search for tools - MUST be called first
+  "MULTI_EXECUTE_TOOL",       // Execute tools from search results
+  // Helper tools that may be needed for session/auth management
+  "COMPOSIO_CHECK_ACTIVE_CONNECTION",
+  "COMPOSIO_INITIATE_CONNECTION",
+  "COMPOSIO_GET_EXPECTED_PARAMS_FOR_USER",
+] as const;
+
+/**
+ * Maximum number of tools to return from COMPOSIO_SEARCH_TOOLS.
+ * Research shows even router-first fails if search returns 30-50 tools.
+ * Cap at 8 to balance coverage vs accuracy.
+ */
+export const COMPOSIO_SEARCH_RESULTS_CAP = 8;
+
+/**
+ * Tool calling telemetry for debugging and improvement.
+ */
+export interface ToolCallTelemetry {
+  timestamp: number;
+  toolName: string;
+  modelId?: string;
+  success: boolean;
+  error?: string;
+  paramsMissing?: string[];
+  executionTimeMs?: number;
+}
+
+// In-memory telemetry buffer (could be persisted later)
+const telemetryBuffer: ToolCallTelemetry[] = [];
+const MAX_TELEMETRY_ENTRIES = 100;
+
+export function logToolTelemetry(entry: ToolCallTelemetry) {
+  telemetryBuffer.push(entry);
+  if (telemetryBuffer.length > MAX_TELEMETRY_ENTRIES) {
+    telemetryBuffer.shift();
+  }
+  // Log to console for debugging
+  if (!entry.success) {
+    console.warn(`[MCP Telemetry] Tool failure:`, entry);
+  }
+}
+
+export function getToolTelemetry(): ToolCallTelemetry[] {
+  return [...telemetryBuffer];
+}
 
 export interface ToolMetadata {
   fullName: string;        // "server_id/tool_name"
@@ -526,6 +585,46 @@ export class McpManager {
         // Get disabled tools from policy
         const disabledTools = new Set(server.toolPolicy?.disabledTools || []);
 
+        // Check if this is a Composio server (for router-first mode)
+        const isComposioServer = server.url.toLowerCase().includes('composio.dev') ||
+                                  server.id.startsWith('composio-');
+
+        // Log what tools Composio actually returned (detailed)
+        if (isComposioServer) {
+          console.log(`[MCP] ========== COMPOSIO TOOLS DEBUG ==========`);
+          console.log(`[MCP] Composio listTools() returned ${tools.length} tools:`);
+          tools.forEach((t, i) => {
+            console.log(`[MCP]   ${i + 1}. ${t.name} - ${t.description?.substring(0, 80)}...`);
+          });
+          console.log(`[MCP] ==========================================`);
+        }
+
+        // Router-first: For Composio servers, we previously tried to filter to only
+        // COMPOSIO_SEARCH_TOOLS + MULTI_EXECUTE_TOOL. However, Composio's tool router
+        // may return different tool sets based on configuration:
+        // - Some configs return only COMPOSIO_SEARCH_TOOLS (search-only mode)
+        // - Some return SEARCH + EXECUTE (router-first mode)
+        // - Some return all tools directly (legacy mode)
+        //
+        // Since we can't predict what Composio returns, we now:
+        // 1. Let ALL tools through (no filtering)
+        // 2. Adapt instructions based on what tools are actually available
+        // 3. Power users can still use disableRouterFirst for explicit control
+        const composioToolNames = new Set(tools.map(t => t.name));
+        const hasSearchTool = composioToolNames.has('COMPOSIO_SEARCH_TOOLS');
+        // Check both possible names for the execute tool
+        const hasExecuteTool = composioToolNames.has('COMPOSIO_MULTI_EXECUTE_TOOL') || composioToolNames.has('MULTI_EXECUTE_TOOL');
+
+        if (isComposioServer) {
+          if (hasSearchTool && hasExecuteTool) {
+            console.log(`[MCP] Composio router mode: search→execute (both tools present)`);
+          } else if (hasSearchTool && !hasExecuteTool) {
+            console.log(`[MCP] Composio router mode: search-only (execute tool not present)`);
+          } else {
+            console.log(`[MCP] Composio mode: direct tools (no search tool present)`);
+          }
+        }
+
         // Apply tool cap (max tools per server)
         const toolCap = server.toolCaps || this.DEFAULT_TOOL_CAP;
         let addedCount = 0;
@@ -564,57 +663,130 @@ export class McpManager {
             description: tool.description || "MCP tool",
             parameters: jsonSchema(patchedSchema),
             execute: async (args: any) => {
+              const startTime = Date.now();
               console.log(`[MCP] Executing ${tool.name} on ${server.name} with args:`, JSON.stringify(args));
 
-              const execTimeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error(`Execution timeout after 30s`)), 30000)
+              // Check for empty/missing required args (common failure mode)
+              const requiredParams = tool.inputSchema?.required || [];
+              const missingParams = requiredParams.filter((p: string) =>
+                args[p] === undefined || args[p] === null || args[p] === ''
               );
 
-              const result = await Promise.race([
-                client.callTool({
-                  name: tool.name,
-                  arguments: args,
-                }),
-                execTimeoutPromise
-              ]) as any;
-
-              console.log(`[MCP] Tool ${tool.name} completed successfully`);
-
-              // Extract text content from MCP result format
-              // MCP returns: { content: [{ type: "text", text: "..." }], isError: boolean }
-              if (result?.content && Array.isArray(result.content)) {
-                const textParts = result.content
-                  .filter((c: any) => c.type === "text" && c.text)
-                  .map((c: any) => c.text);
-
-                if (textParts.length > 0) {
-                  const extractedText = textParts.join("\n");
-                  // If it looks like JSON, try to parse and return as object for better model interpretation
-                  if (extractedText.trim().startsWith("{") || extractedText.trim().startsWith("[")) {
-                    try {
-                      const parsed = JSON.parse(extractedText);
-
-                      // Enhance COMPOSIO_SEARCH_TOOLS results with parameter guide
-                      // This helps smaller models understand required params for MULTI_EXECUTE
-                      if (tool.name === 'COMPOSIO_SEARCH_TOOLS' && parsed?.data?.tool_schemas) {
-                        const guide = buildToolParameterGuide(parsed.data.tool_schemas);
-                        if (guide) {
-                          parsed._parameter_guide = guide;
-                          console.log(`[MCP] Injected parameter guide for ${Object.keys(parsed.data.tool_schemas).length} tool schemas`);
-                        }
-                      }
-
-                      return parsed;
-                    } catch {
-                      return extractedText;
-                    }
-                  }
-                  return extractedText;
-                }
+              if (missingParams.length > 0) {
+                logToolTelemetry({
+                  timestamp: Date.now(),
+                  toolName: tool.name,
+                  success: false,
+                  error: 'Missing required parameters',
+                  paramsMissing: missingParams,
+                });
+                console.warn(`[MCP] Tool ${tool.name} called with missing params: ${missingParams.join(', ')}`);
+                // Don't fail - let the tool try anyway, but log for telemetry
               }
 
-              // Return raw result if we can't extract text content
-              return result;
+              try {
+                const execTimeoutPromise = new Promise((_, reject) =>
+                  setTimeout(() => reject(new Error(`Execution timeout after 30s`)), 30000)
+                );
+
+                const result = await Promise.race([
+                  client.callTool({
+                    name: tool.name,
+                    arguments: args,
+                  }),
+                  execTimeoutPromise
+                ]) as any;
+
+                const executionTimeMs = Date.now() - startTime;
+                console.log(`[MCP] Tool ${tool.name} completed successfully in ${executionTimeMs}ms`);
+
+                // Log success telemetry
+                logToolTelemetry({
+                  timestamp: Date.now(),
+                  toolName: tool.name,
+                  success: true,
+                  executionTimeMs,
+                });
+
+                // Extract text content from MCP result format
+                // MCP returns: { content: [{ type: "text", text: "..." }], isError: boolean }
+                if (result?.content && Array.isArray(result.content)) {
+                  const textParts = result.content
+                    .filter((c: any) => c.type === "text" && c.text)
+                    .map((c: any) => c.text);
+
+                  if (textParts.length > 0) {
+                    const extractedText = textParts.join("\n");
+                    // If it looks like JSON, try to parse and return as object for better model interpretation
+                    if (extractedText.trim().startsWith("{") || extractedText.trim().startsWith("[")) {
+                      try {
+                        const parsed = JSON.parse(extractedText);
+
+                        // Enhance COMPOSIO_SEARCH_TOOLS results with parameter guide
+                        // This helps smaller models understand required params for MULTI_EXECUTE
+                        if (tool.name === 'COMPOSIO_SEARCH_TOOLS' && parsed?.data?.tool_schemas) {
+                          // Log detailed search results for debugging
+                          const schemas = parsed.data.tool_schemas;
+                          const schemaKeys = Object.keys(schemas);
+                          console.log(`[MCP] ========== COMPOSIO SEARCH RESULTS DEBUG ==========`);
+                          console.log(`[MCP] Search returned ${schemaKeys.length} tool schemas:`);
+                          schemaKeys.forEach((key, i) => {
+                            console.log(`[MCP]   ${i + 1}. ${key}`);
+                          });
+                          if (parsed.data.session) {
+                            console.log(`[MCP] Session:`, JSON.stringify(parsed.data.session));
+                          }
+                          if (parsed.data.next_steps_guidance) {
+                            console.log(`[MCP] Next steps guidance:`, parsed.data.next_steps_guidance);
+                          }
+                          console.log(`[MCP] =====================================================`);
+
+                          // Cap search results to prevent tool overload
+                          if (schemaKeys.length > COMPOSIO_SEARCH_RESULTS_CAP) {
+                            console.log(`[MCP] Capping search results from ${schemaKeys.length} to ${COMPOSIO_SEARCH_RESULTS_CAP} tools`);
+                            const cappedSchemas: Record<string, any> = {};
+                            schemaKeys.slice(0, COMPOSIO_SEARCH_RESULTS_CAP).forEach(key => {
+                              cappedSchemas[key] = schemas[key];
+                            });
+                            parsed.data.tool_schemas = cappedSchemas;
+                            parsed._search_capped = true;
+                            parsed._original_count = schemaKeys.length;
+                          }
+
+                          const guide = buildToolParameterGuide(parsed.data.tool_schemas);
+                          if (guide) {
+                            parsed._parameter_guide = guide;
+                            console.log(`[MCP] Injected parameter guide for ${Object.keys(parsed.data.tool_schemas).length} tool schemas`);
+                          }
+                        }
+
+                        return parsed;
+                      } catch {
+                        return extractedText;
+                      }
+                    }
+                    return extractedText;
+                  }
+                }
+
+                // Return raw result if we can't extract text content
+                return result;
+              } catch (error) {
+                const executionTimeMs = Date.now() - startTime;
+                const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+
+                // Log failure telemetry
+                logToolTelemetry({
+                  timestamp: Date.now(),
+                  toolName: tool.name,
+                  success: false,
+                  error: errorMsg,
+                  executionTimeMs,
+                });
+
+                console.error(`[MCP] Tool ${tool.name} failed after ${executionTimeMs}ms:`, errorMsg);
+                throw error;
+              }
             }
           };
 
@@ -649,7 +821,7 @@ export class McpManager {
   /**
    * Build structured system instructions for MCP tools
    */
-  buildToolInstructions(metadata: ToolMetadata[]): string {
+  buildToolInstructions(metadata: ToolMetadata[], tier: ToolCallingTier = "basic"): string {
     if (metadata.length === 0) return "";
 
     const groupedByServer = metadata.reduce((acc, tool) => {
@@ -658,7 +830,79 @@ export class McpManager {
       return acc;
     }, {} as Record<string, ToolMetadata[]>);
 
+    // Check if Composio tools are present (router-first mode)
+    // Look up the ACTUAL provider-safe names the model must use
+    const searchTool = metadata.find(t => t.toolName === 'COMPOSIO_SEARCH_TOOLS');
+    // Check both possible names for the execute tool
+    const executeTool = metadata.find(t => t.toolName === 'COMPOSIO_MULTI_EXECUTE_TOOL' || t.toolName === 'MULTI_EXECUTE_TOOL');
+    const hasComposioSearchOnly = searchTool && !executeTool;
+    const hasComposioSearchAndExecute = searchTool && executeTool;
+
     let instructions = "You have access to the following external tools via MCP plugins. Use the exact tool name shown (provider-safe).\n\n";
+
+    // Add Composio-specific instructions based on what tools are actually available
+    if (hasComposioSearchAndExecute) {
+      // Full router-first flow: search → execute
+      instructions += `## ⚠️ CRITICAL: Composio Tool Usage Rules
+
+**MANDATORY WORKFLOW - You MUST follow this order:**
+
+1. **ALWAYS call \`${searchTool.fullName}\` first** before any execute call
+   - Search describes what action you need (e.g., "send email", "create github issue")
+   - The search returns tool schemas with required parameters
+
+2. **Follow the returned plan from search results:**
+   - Execute \`recommended_plan_steps\` sequentially - these are optimized for the task
+   - Check \`known_pitfalls\` before each tool call to avoid common errors
+   - Use \`tool_schemas\` for exact parameter requirements
+   - Only execute steps marked "Required" - skip "Optional" steps unless needed
+
+3. **THEN call \`${executeTool.fullName}\`** with the exact tool_slug from search results
+   - Use the parameter guide in search results to fill ALL required parameters
+   - NEVER call with empty arguments \`{}\` - this will fail
+
+4. **ALWAYS follow \`next_steps\` guidance in tool responses:**
+   - Tool responses include \`next_steps\` telling you what to do (or NOT do) next
+   - If \`next_steps\` says "DO NOT call workbench tools" - do NOT call them
+   - This runtime guidance overrides optional steps in the original plan
+
+5. **If \`${executeTool.fullName}\` fails:**
+   - Check the error message for missing parameters
+   - Re-read the _parameter_guide from search results
+   - Retry with correct parameters, or ask the user for missing information
+
+**NEVER skip the search tool and guess tool names - this causes failures.**
+
+`;
+    } else if (hasComposioSearchOnly) {
+      // Search-only mode: search returns tool schemas, call those tools directly
+      instructions += `## ⚠️ CRITICAL: Composio Tool Usage Rules
+
+**WORKFLOW:**
+
+1. **First call \`${searchTool.fullName}\`** to find available tools
+   - Search describes what action you need (e.g., "send email", "search reddit")
+   - The search returns tool_schemas with the tools you can call
+
+2. **Follow the returned plan from search results:**
+   - Execute \`recommended_plan_steps\` sequentially - these are optimized by Composio for the task
+   - Check \`known_pitfalls\` before each tool call to avoid common errors (e.g., pagination limits, rate limits, response shapes)
+   - Use \`tool_schemas\` for exact parameter requirements
+   - Focus on "Required" steps first - skip "Optional" steps unless specifically needed
+
+3. **Then call the specific tools** returned in the search results (e.g., REDDIT_SEARCH_ACROSS_SUBREDDITS)
+   - Use the exact tool names from the tool_schemas in search results
+   - Fill ALL required parameters as shown in the _parameter_guide
+
+4. **ALWAYS follow \`next_steps\` guidance in tool responses:**
+   - Tool responses include \`next_steps\` telling you what to do (or NOT do) next
+   - If \`next_steps\` says "DO NOT call workbench tools" - do NOT call them
+   - This runtime guidance overrides optional steps in the original plan
+
+**NEVER guess tool names - always search first to find available tools.**
+
+`;
+    }
 
     for (const [serverName, tools] of Object.entries(groupedByServer)) {
       instructions += `## ${serverName}\n`;
@@ -671,7 +915,21 @@ export class McpManager {
       instructions += "\n";
     }
 
-    instructions += "Always prefer using these tools for complex tasks or when direct integration is available.";
+    instructions += "Only use these tools when external service integration is explicitly needed (e.g., posting to Reddit, sending emails, fetching live data). For tasks you can do directly (writing code, answering questions, creating content), respond without tools.\n";
+
+    // Add tier-based efficiency guidance
+    const tierGuidance: Record<ToolCallingTier, string> = {
+      none: "",
+      basic: "Complete tool operations in 2-3 calls maximum. ",
+      advanced: "Complete tool operations in 4-5 calls. ",
+      elite: "Use as many tool calls as needed for complex tasks. ",
+    };
+
+    instructions += "\n## Response Requirements\n";
+    instructions += tierGuidance[tier] || tierGuidance.basic;
+    instructions += "After completing tool operations, ALWAYS provide a final text response summarizing what was accomplished. ";
+    instructions += "Never end your turn with only tool calls.\n";
+
     return instructions;
   }
 

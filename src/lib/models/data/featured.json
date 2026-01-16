@@ -84,6 +84,29 @@
       ]
     },
     {
+      "id": "openai/gpt-5.2-codex",
+      "name": "GPT-5.2 Codex",
+      "provider": "OpenAI",
+      "description": "Best-in-class coding model. SOTA on SWE-bench Pro (56.4%), 80% SWE-bench Verified, 91.7% HumanEval.",
+      "contextLength": 256000,
+      "inputCost": 2.5,
+      "outputCost": 10.0,
+      "category": [
+        "coding",
+        "reasoning"
+      ],
+      "tier": "balanced",
+      "supportsReasoning": true,
+      "supportsVision": false,
+      "supportsPromptCaching": true,
+      "releaseDate": "2025-12",
+      "recommendedFor": [
+        "Coding",
+        "Agentic development",
+        "Code review"
+      ]
+    },
+    {
       "id": "openai/gpt-5",
       "name": "GPT-5",
       "provider": "OpenAI",
@@ -284,6 +307,30 @@
       ]
     },
     {
+      "id": "openai/o3-mini",
+      "name": "o3-mini",
+      "provider": "OpenAI",
+      "description": "Compact reasoning model. #3 on OpenRouter reasoning. Cost-efficient for complex problems.",
+      "contextLength": 200000,
+      "inputCost": 1.1,
+      "outputCost": 4.4,
+      "category": [
+        "reasoning",
+        "fast"
+      ],
+      "tier": "fast",
+      "supportsReasoning": true,
+      "supportsVision": true,
+      "supportsThinking": true,
+      "supportsPromptCaching": true,
+      "releaseDate": "2025-12",
+      "recommendedFor": [
+        "Complex reasoning",
+        "Budget thinking",
+        "Fast iterations"
+      ]
+    },
+    {
       "id": "deepseek/deepseek-v3.2",
       "name": "DeepSeek V3.2",
       "provider": "DeepSeek",
@@ -415,7 +462,7 @@
       ]
     },
     {
-      "id": "xai/grok-3",
+      "id": "x-ai/grok-3",
       "name": "Grok 3",
       "provider": "xAI",
       "description": "Real-time X/Twitter information access. Strong reasoning with current events awareness.",
@@ -433,6 +480,26 @@
         "Real-time info",
         "Current events",
         "Social media analysis"
+      ]
+    },
+    {
+      "id": "x-ai/grok-code-fast-1",
+      "name": "Grok Code Fast 1",
+      "provider": "xAI",
+      "description": "Fastest code generation. #1 on OpenRouter coding benchmarks Jan 2026.",
+      "contextLength": 131072,
+      "inputCost": 0.5,
+      "outputCost": 1.5,
+      "category": [
+        "coding",
+        "fast"
+      ],
+      "tier": "fast",
+      "releaseDate": "2026-01",
+      "recommendedFor": [
+        "Fast coding",
+        "Code completion",
+        "Rapid prototyping"
       ]
     },
     {
@@ -554,6 +621,176 @@
       ]
     },
     {
+      "id": "xiaomi/mimo-v2-flash",
+      "name": "MiMo-V2-Flash",
+      "provider": "Xiaomi",
+      "description": "Ultra-fast coding model. #3 on OpenRouter coding benchmarks Jan 2026. Excellent value.",
+      "contextLength": 32000,
+      "inputCost": 0.1,
+      "outputCost": 0.3,
+      "category": [
+        "coding",
+        "fast"
+      ],
+      "tier": "fast",
+      "releaseDate": "2026-01",
+      "recommendedFor": [
+        "Fast coding",
+        "Code completion",
+        "Budget coding"
+      ]
+    },
+    {
+      "id": "z-ai/glm-4.5",
+      "name": "GLM-4.5",
+      "provider": "Z.AI",
+      "description": "#1 on BFCL tool calling (70.85%). Exceptional function calling and agentic workflows.",
+      "contextLength": 128000,
+      "inputCost": 0.5,
+      "outputCost": 2.0,
+      "category": [
+        "balanced",
+        "agents",
+        "coding"
+      ],
+      "tier": "balanced",
+      "supportsReasoning": true,
+      "releaseDate": "2025-06",
+      "recommendedFor": [
+        "Tool calling",
+        "Function calling",
+        "Agentic workflows",
+        "Complex tool chains"
+      ]
+    },
+    {
+      "id": "z-ai/glm-4.7",
+      "name": "GLM-4.7",
+      "provider": "Z.AI",
+      "description": "Latest GLM flagship. 90.6% tool use accuracy, 96% on τ2-Bench telecom. Best-in-class agentic.",
+      "contextLength": 128000,
+      "inputCost": 0.8,
+      "outputCost": 3.2,
+      "category": [
+        "flagship",
+        "agents",
+        "coding"
+      ],
+      "tier": "flagship",
+      "supportsReasoning": true,
+      "releaseDate": "2025-11",
+      "recommendedFor": [
+        "Tool calling",
+        "Enterprise agents",
+        "Complex workflows"
+      ]
+    },
+    {
+      "id": "deepseek/deepseek-r1",
+      "name": "DeepSeek R1",
+      "provider": "DeepSeek",
+      "description": "Open-source reasoning model rivaling o1. Chain-of-thought with 64K output. Extremely cost-effective.",
+      "contextLength": 128000,
+      "inputCost": 0.55,
+      "outputCost": 2.19,
+      "category": [
+        "reasoning",
+        "cheap"
+      ],
+      "tier": "budget",
+      "supportsReasoning": true,
+      "supportsThinking": true,
+      "releaseDate": "2025-01",
+      "recommendedFor": [
+        "Complex reasoning",
+        "Math problems",
+        "Budget thinking"
+      ]
+    },
+    {
+      "id": "deepseek/deepseek-chat-v3-0324",
+      "name": "DeepSeek Chat V3",
+      "provider": "DeepSeek",
+      "description": "671B MoE model with excellent coding. 95% cheaper than GPT-5. Great for high volume.",
+      "contextLength": 128000,
+      "inputCost": 0.14,
+      "outputCost": 0.28,
+      "category": [
+        "coding",
+        "cheap"
+      ],
+      "tier": "budget",
+      "releaseDate": "2025-03",
+      "recommendedFor": [
+        "Code generation",
+        "Budget coding",
+        "High volume"
+      ]
+    },
+    {
+      "id": "01-ai/yi-large-turbo",
+      "name": "Yi Large Turbo",
+      "provider": "01.AI",
+      "description": "Fast and efficient Chinese/English bilingual model. Strong reasoning at budget prices.",
+      "contextLength": 16384,
+      "inputCost": 0.19,
+      "outputCost": 0.19,
+      "category": [
+        "fast",
+        "cheap"
+      ],
+      "tier": "budget",
+      "supportsReasoning": true,
+      "releaseDate": "2024-09",
+      "recommendedFor": [
+        "Fast tasks",
+        "Bilingual",
+        "Budget applications"
+      ]
+    },
+    {
+      "id": "nvidia/nemotron-3-nano-30b-a3b",
+      "name": "Nemotron 3 Nano 30B",
+      "provider": "NVIDIA",
+      "description": "NVIDIA's efficient MoE model. Highest compute efficiency for agentic AI. Fully open weights.",
+      "contextLength": 32768,
+      "inputCost": 0.1,
+      "outputCost": 0.2,
+      "category": [
+        "balanced",
+        "agents",
+        "open-source"
+      ],
+      "tier": "budget",
+      "supportsReasoning": true,
+      "releaseDate": "2025-06",
+      "recommendedFor": [
+        "Agentic tasks",
+        "Open source",
+        "Budget applications"
+      ]
+    },
+    {
+      "id": "qwen/qwen3-coder",
+      "name": "Qwen3 Coder 480B",
+      "provider": "Qwen",
+      "description": "480B MoE coding model (35B active). Top 2 on OpenRouter. Excellent agentic coding and tool use.",
+      "contextLength": 262144,
+      "inputCost": 0.3,
+      "outputCost": 1.2,
+      "category": [
+        "coding",
+        "agents"
+      ],
+      "tier": "balanced",
+      "releaseDate": "2025-07",
+      "recommendedFor": [
+        "Code generation",
+        "Agentic coding",
+        "Tool use"
+      ]
+    },
+    {
       "id": "openai/gpt-5-image",
       "name": "GPT-5 Image",
       "provider": "OpenAI",
@@ -660,29 +897,6 @@
         "Free usage",
         "Testing",
         "Background tasks"
-      ]
-    },
-    {
-      "id": "google/gemini-3-flash-preview-thinking",
-      "name": "Gemini 3 Flash Thinking",
-      "provider": "Google",
-      "description": "Flash-speed reasoning. Cheap thinking mode for complex tasks.",
-      "contextLength": 1000000,
-      "inputCost": 0.5,
-      "outputCost": 3.0,
-      "category": [
-        "fast",
-        "reasoning"
-      ],
-      "tier": "fast",
-      "supportsReasoning": true,
-      "supportsVision": true,
-      "supportsThinking": true,
-      "supportsPromptCaching": true,
-      "releaseDate": "2025-12",
-      "recommendedFor": [
-        "Fast reasoning",
-        "Budget thinking tasks"
       ]
     },
     {

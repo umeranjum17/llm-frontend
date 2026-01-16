@@ -12,6 +12,13 @@ export const metadata: Metadata = {
   title: "Lumina - AI Chat Workstation",
   description: "Premium LLM chat frontend with model control, context management, and agentic tools",
   manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/icons/icon.svg", type: "image/svg+xml" },
+      { url: "/icons/icon-96x96.png", sizes: "96x96", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

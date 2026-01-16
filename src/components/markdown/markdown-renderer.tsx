@@ -1,6 +1,6 @@
 "use client";
 
-import { isValidElement, memo } from "react";
+import { isValidElement, memo, createContext, useContext, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -16,56 +16,120 @@ import { MermaidDiagram } from "./mermaid-diagram";
 import { ChartRenderer } from "./chart-renderer";
 import "katex/dist/katex.min.css";
 
+// Context to collect code blocks for multi-file project detection
+export interface CodeFile {
+  language: string;
+  filename: string | null;
+  code: string;
+}
+
+interface CodeBlockContextType {
+  registerCodeBlock: (file: CodeFile) => void;
+  getCodeBlocks: () => CodeFile[];
+}
+
+export const CodeBlockContext = createContext<CodeBlockContextType | null>(null);
+
+// Parse language:filename format (e.g., "html:index.html", "css:styles/main.css")
+function parseCodeFenceInfo(className: string): { language: string; filename: string | null } {
+  const match = /language-(\S+)/.exec(className);
+  if (!match) return { language: "", filename: null };
+
+  const info = match[1];
+  const colonIndex = info.indexOf(":");
+
+  if (colonIndex > 0) {
+    return {
+      language: info.slice(0, colonIndex),
+      filename: info.slice(colonIndex + 1),
+    };
+  }
+
+  return { language: info, filename: null };
+}
+
 interface MarkdownRendererProps {
   content: string;
   isStreaming?: boolean;
+  onCodeBlocksCollected?: (blocks: CodeFile[]) => void;
 }
 
-export const MarkdownRenderer = memo(function MarkdownRenderer({ content, isStreaming = false }: MarkdownRendererProps) {
+export const MarkdownRenderer = memo(function MarkdownRenderer({
+  content,
+  isStreaming = false,
+  onCodeBlocksCollected
+}: MarkdownRendererProps) {
+  // Collect code blocks for multi-file project detection
+  const codeBlocksRef = useRef<CodeFile[]>([]);
+
+  const registerCodeBlock = useCallback((file: CodeFile) => {
+    // Avoid duplicates
+    const exists = codeBlocksRef.current.some(
+      f => f.code === file.code && f.language === file.language
+    );
+    if (!exists) {
+      codeBlocksRef.current.push(file);
+      onCodeBlocksCollected?.(codeBlocksRef.current);
+    }
+  }, [onCodeBlocksCollected]);
+
+  const getCodeBlocks = useCallback(() => codeBlocksRef.current, []);
+
+  const contextValue = { registerCodeBlock, getCodeBlocks };
+
   return (
-    <ReactMarkdown
-      remarkPlugins={[
-        remarkGfm,
-        remarkMath,
-        remarkGemoji,
-        remarkBreaks,
-      ]}
-      rehypePlugins={[
-        rehypeRaw,
-        rehypeSanitize,
-        rehypeSlug,
-        [rehypeAutolinkHeadings, { behavior: "wrap" }],
-        rehypeKatex,
-      ]}
-      components={{
-        pre: ({ children }) => {
-          const child = Array.isArray(children) ? children[0] : children;
-          if (!isValidElement(child)) {
-            return <pre>{children}</pre>;
-          }
+    <CodeBlockContext.Provider value={contextValue}>
+      <ReactMarkdown
+        remarkPlugins={[
+          remarkGfm,
+          remarkMath,
+          remarkGemoji,
+          remarkBreaks,
+        ]}
+        rehypePlugins={[
+          rehypeRaw,
+          rehypeSanitize,
+          rehypeSlug,
+          [rehypeAutolinkHeadings, { behavior: "wrap" }],
+          rehypeKatex,
+        ]}
+        components={{
+          pre: ({ children }) => {
+            const child = Array.isArray(children) ? children[0] : children;
+            if (!isValidElement(child)) {
+              return <pre>{children}</pre>;
+            }
 
-          const className = String((child.props as { className?: unknown }).className || "");
-          const match = /language-(\w+)/.exec(className);
-          const language = match ? match[1] : "";
-          // Handle children that could be string, array of strings, or nested arrays
-          const rawChildren = (child.props as { children?: unknown }).children;
-          const code = (Array.isArray(rawChildren)
-            ? rawChildren.flat(Infinity).join("")
-            : String(rawChildren || "")
-          ).replace(/\n$/, "");
+            const className = String((child.props as { className?: unknown }).className || "");
+            // Parse language:filename format (e.g., "html:index.html")
+            const { language, filename } = parseCodeFenceInfo(className);
 
-          // Handle mermaid diagrams
-          if (language === "mermaid") {
-            return <MermaidDiagram code={code} />;
-          }
+            // Handle children that could be string, array of strings, or nested arrays
+            const rawChildren = (child.props as { children?: unknown }).children;
+            const code = (Array.isArray(rawChildren)
+              ? rawChildren.flat(Infinity).join("")
+              : String(rawChildren || "")
+            ).replace(/\n$/, "");
 
-          // Handle chart/graph data (JSON-based charts)
-          if (language === "chart" || language === "graph") {
-            return <ChartRenderer code={code} />;
-          }
+            // Handle mermaid diagrams
+            if (language === "mermaid") {
+              return <MermaidDiagram code={code} />;
+            }
 
-          return <CodeBlock language={language} code={code} isStreaming={isStreaming} />;
-        },
+            // Handle chart/graph data (JSON-based charts)
+            if (language === "chart" || language === "graph") {
+              return <ChartRenderer code={code} />;
+            }
+
+            return (
+              <CodeBlock
+                language={language}
+                code={code}
+                filename={filename}
+                isStreaming={isStreaming}
+              />
+            );
+          },
         code: ({ node, className, children, ...props }) => (
           <code className={className} {...props}>
             {children}
@@ -190,9 +254,10 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, isStre
         hr: ({ node, ...props }) => (
           <hr className="my-6 border-border" {...props} />
         ),
-      }}
-    >
-      {content}
-    </ReactMarkdown>
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </CodeBlockContext.Provider>
   );
 });

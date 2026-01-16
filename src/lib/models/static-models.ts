@@ -176,14 +176,36 @@ export function searchStaticModels(query: string, includeLegacy = false): Model[
   });
 }
 
-// Use case recommendations (from featured models only)
+// Use case recommendations based on OpenRouter rankings (Jan 2026)
 export const USE_CASE_RECOMMENDATIONS: Record<string, { models: string[]; description: string }> = {
+  "tool-calling": {
+    models: [
+      "z-ai/glm-4.7",                  // #1 BFCL (90.6% tool use, 96% τ2-Bench)
+      "z-ai/glm-4.5",                  // #1 BFCL (70.85%)
+      "anthropic/claude-opus-4.5",      // Top tier tool calling
+      "anthropic/claude-sonnet-4.5",    // Excellent agentic
+      "moonshotai/kimi-k2",             // 200-300 sequential tool calls
+    ],
+    description: "Best for function calling and agentic workflows",
+  },
   coding: {
-    models: ["anthropic/claude-sonnet-4.5", "openai/gpt-5.2", "anthropic/claude-opus-4.5", "google/gemini-3-flash-preview"],
-    description: "Best for writing, debugging, and reviewing code",
+    models: [
+      "anthropic/claude-opus-4.5",      // SWE-bench 80.9% (highest)
+      "openai/gpt-5.2-codex",           // SWE-bench 80.0%, HumanEval 91.7%
+      "anthropic/claude-sonnet-4.5",    // SWE-bench 77.2%, great balance
+      "x-ai/grok-code-fast-1",          // SWE-bench 70.8%, fastest (92 tok/s), #1 usage
+      "qwen/qwen3-coder",               // #2 OpenRouter, strong tool use
+    ],
+    description: "Best for code generation and programming",
   },
   reasoning: {
-    models: ["openai/gpt-5.2-pro", "google/gemini-3-deep-think", "anthropic/claude-opus-4.5", "openai/gpt-5.2"],
+    models: [
+      "deepseek/deepseek-r1",           // Open-source o1 rival, excellent reasoning
+      "anthropic/claude-sonnet-4.5",    // Strong reasoning
+      "openai/o3-mini",                 // Cost-efficient reasoning
+      "google/gemini-3-deep-think",     // Google reasoning flagship
+      "deepseek/deepseek-reasoner",     // Budget reasoning with thinking
+    ],
     description: "Complex problem-solving and multi-step reasoning",
   },
   chat: {
@@ -191,7 +213,7 @@ export const USE_CASE_RECOMMENDATIONS: Record<string, { models: string[]; descri
     description: "Fast, natural conversation",
   },
   budget: {
-    models: ["deepseek/deepseek-v3.2", "deepseek/deepseek-reasoner", "meta-llama/llama-4-scout", "google/gemini-3-flash-preview"],
+    models: ["deepseek/deepseek-r1", "deepseek/deepseek-v3.2", "xiaomi/mimo-v2-flash", "z-ai/glm-4.5", "meta-llama/llama-4-scout"],
     description: "Maximum value for cost-sensitive applications",
   },
   creative: {
@@ -207,12 +229,8 @@ export const USE_CASE_RECOMMENDATIONS: Record<string, { models: string[]; descri
     description: "Image understanding and analysis",
   },
   agents: {
-    models: ["moonshotai/kimi-k2", "anthropic/claude-sonnet-4.5", "cohere/command-a-03-2025", "anthropic/claude-opus-4.5"],
+    models: ["z-ai/glm-4.7", "moonshotai/kimi-k2", "anthropic/claude-sonnet-4.5", "cohere/command-a-03-2025", "anthropic/claude-opus-4.5"],
     description: "Best for autonomous agent workflows",
-  },
-  "tool-calling": {
-    models: ["moonshotai/kimi-k2", "anthropic/claude-sonnet-4.5", "cohere/command-a-03-2025", "qwen/qwen-max"],
-    description: "Excellent at function calling and complex tool workflows (BFCL >65%)",
   },
   "long-context": {
     models: ["meta-llama/llama-4-scout", "google/gemini-3-pro", "google/gemini-3-flash-preview", "openai/gpt-5.2"],
