@@ -2,7 +2,61 @@ import { getProjectFileById, getMessages, getChatById, getAgentById, getModelAli
 import type { Message } from "@/lib/db/schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { retrieveContext } from "@/lib/rag/retrieval";
-import { searchMemories } from "@/lib/memory";
+import { searchMemories, type MemoryItem } from "@/lib/memory";
+
+/**
+ * Memory injection budget constants.
+ *
+ * Research shows memory helps, but only when bounded and relevance-scored.
+ * These defaults are conservative to avoid context pollution.
+ */
+export const MEMORY_BUDGET = {
+  /** Maximum tokens for memory context (~4 chars per token) */
+  MAX_TOKENS: 800,
+  /** Maximum characters for memory context */
+  MAX_CHARS: 3200, // 800 * 4
+  /** Maximum number of memory items to include */
+  MAX_ITEMS: 6,
+  /** Minimum relevance score (0-1) for inclusion */
+  MIN_RELEVANCE: 0.75,
+} as const;
+
+/**
+ * Filter and budget memories based on relevance and token limits.
+ */
+function budgetMemories(memories: MemoryItem[]): MemoryItem[] {
+  // Filter by relevance score (if available)
+  const relevantMemories = memories.filter(m => {
+    // If no score available, include it (backend didn't return scores)
+    if (m.score === undefined || m.score === null) return true;
+    return m.score >= MEMORY_BUDGET.MIN_RELEVANCE;
+  });
+
+  // Sort by relevance (highest first)
+  const sortedMemories = relevantMemories.sort((a, b) => {
+    const aScore = a.score ?? 0.5; // Default to 0.5 if no score
+    const bScore = b.score ?? 0.5;
+    return bScore - aScore;
+  });
+
+  // Apply item limit and character budget
+  const budgetedMemories: MemoryItem[] = [];
+  let totalChars = 0;
+
+  for (const memory of sortedMemories) {
+    // Check item limit
+    if (budgetedMemories.length >= MEMORY_BUDGET.MAX_ITEMS) break;
+
+    // Check character budget (include overhead for formatting)
+    const memoryChars = memory.memory.length + 3; // "- " prefix + newline
+    if (totalChars + memoryChars > MEMORY_BUDGET.MAX_CHARS) break;
+
+    budgetedMemories.push(memory);
+    totalChars += memoryChars;
+  }
+
+  return budgetedMemories;
+}
 
 export async function parseReferences(content: string): Promise<{
   cleanContent: string;
@@ -65,37 +119,56 @@ export async function buildContextMessages(
   options?: {
     enableRAG?: boolean;
     ragLimit?: number;
+    /** Per-chat memory disable flag (overrides global setting) */
+    memoryDisabled?: boolean;
   }
 ): Promise<Message[]> {
   const messages: Message[] = [];
 
   // Add user memory context FIRST (personalizes all conversations)
-  // Check if memory is enabled before making API calls (default to true if not set)
+  // Check if memory is enabled:
+  // 1. Global setting (default: true)
+  // 2. Per-chat override (memoryDisabled option)
   const settings = await getSettings();
-  const memoryEnabled = settings?.memoryEnabled ?? true;
+  const globalMemoryEnabled = settings?.memoryEnabled ?? true;
+  const perChatMemoryDisabled = options?.memoryDisabled ?? false;
+  const memoryEnabled = globalMemoryEnabled && !perChatMemoryDisabled;
+
   if (memoryEnabled) {
     try {
       const memoryQuery = userMessage;
-      const memories = await searchMemories(memoryQuery);
+      const rawMemories = await searchMemories(memoryQuery);
 
-      if (memories && memories.length > 0) {
-        // Format memories into a single context string
-        const memoryContext = "Active Memories:\n" + memories.map((m: any) => `- ${m.memory}`).join("\n");
-        const memoryTokens = Math.ceil(memoryContext.length / 4); // ~4 chars per token
+      if (rawMemories && rawMemories.length > 0) {
+        // Apply budgeting: relevance filter, item limit, token/char limit
+        const budgetedMemories = budgetMemories(rawMemories);
 
-        messages.push({
-          id: "memory-context",
-          chatId,
-          role: "system",
-          content: memoryContext,
-          createdAt: Date.now(),
-        });
-        console.log(`[Context] 🧠 Memories: ${memories.length} items, ~${memoryTokens} tokens`);
+        if (budgetedMemories.length > 0) {
+          // Format memories into a single context string
+          const memoryContext = "Active Memories:\n" + budgetedMemories.map((m) => `- ${m.memory}`).join("\n");
+          const memoryTokens = Math.ceil(memoryContext.length / 4); // ~4 chars per token
+
+          messages.push({
+            id: "memory-context",
+            chatId,
+            role: "system",
+            content: memoryContext,
+            createdAt: Date.now(),
+          });
+
+          // Log with budget info
+          const filtered = rawMemories.length - budgetedMemories.length;
+          console.log(`[Context] 🧠 Memories: ${budgetedMemories.length}/${rawMemories.length} items (${filtered} filtered), ~${memoryTokens} tokens`);
+        } else {
+          console.log(`[Context] 🧠 Memories: 0 items passed relevance filter (${rawMemories.length} raw)`);
+        }
       }
     } catch (error) {
       console.error("[Context] Failed to load memory context:", error);
       // Continue without memory if it fails
     }
+  } else if (perChatMemoryDisabled) {
+    console.log(`[Context] 🧠 Memory disabled for this chat`);
   }
 
   // Parse references from user message

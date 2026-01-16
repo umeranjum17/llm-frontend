@@ -278,7 +278,7 @@ export function ChatShell() {
           return undefined;
         })
         .filter((m): m is Model => m !== undefined)
-        .slice(0, 2); // Top 2 per category
+        .slice(0, 3); // Top 3 per category
 
       if (models.length > 0) {
         result[useCase] = models;
@@ -300,7 +300,7 @@ export function ChatShell() {
 
     const modelName = currentModel?.name || chat.modelId.split("/").pop() || "This model";
     return {
-      message: `${modelName} has limited tool calling ability (BFCL <65%). For complex MCP workflows, try Claude Sonnet, Kimi K2, or Command A.`,
+      message: `${modelName} has limited tool calling. For complex workflows, try models with "Tools Elite" or "Tools Pro" badges.`,
       modelName,
     };
   }, [chat?.modelId, chat?.activeMcpServerIds, currentModel?.name]);

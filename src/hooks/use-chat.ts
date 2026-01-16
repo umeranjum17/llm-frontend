@@ -650,7 +650,8 @@ export function useChat(chatId: string) {
 
     const contextMessages = await buildContextMessages(
       getTextFromMessageContent(messageContent),
-      chatId
+      chatId,
+      { memoryDisabled: chat.memoryDisabled }
     );
 
     // Memories are already loaded by buildContextMessages() - no duplicate call needed

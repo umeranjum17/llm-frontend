@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { db } from "@/lib/db/schema";
+import { McpManager } from "@/lib/mcp/mcp-manager";
 
 export interface ComposioToolkit {
   key: string;
@@ -357,6 +358,14 @@ export function useComposioApps() {
       saveConfig(newConfig);
       setConfig(newConfig);
       setMcpUrl(null); // Reset session to recreate with new toolkits (new apps filter)
+      setMcpHeaders(null);
+
+      // Invalidate MCP tools cache so new tools are fetched
+      try {
+        McpManager.getInstance().invalidateToolsCache();
+      } catch {
+        // Manager may not be initialized yet
+      }
     },
     [config, availableToolkits]
   );

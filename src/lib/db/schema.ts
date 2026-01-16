@@ -42,6 +42,7 @@ export interface Chat {
   activeBranchLeafId?: string; // Currently selected conversation leaf
   hasBranches?: boolean; // Quick indicator for sidebar/UI
   summary?: string; // AI-generated summary of the conversation
+  memoryDisabled?: boolean; // Per-chat toggle to disable memory injection
 }
 
 export type MessageContentPart =
@@ -357,6 +358,11 @@ export interface McpServer {
     logo?: string;
     isEnabled: boolean;
   }>;
+
+  // Advanced: Disable router-first mode for power users
+  // When true, exposes ALL tools from Composio instead of just SEARCH+EXECUTE
+  // WARNING: Large tool lists degrade model accuracy (BFCL, MCP-Bench research)
+  disableRouterFirst?: boolean;
 }
 
 export interface ModelAlias {

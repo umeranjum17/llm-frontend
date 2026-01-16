@@ -59,8 +59,33 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error("[Composio Session Error]", error);
+
+    const message = error.message || "Failed to create session";
+
+    // Return specific error codes for common issues
+    if (message.includes("401") || message.includes("Unauthorized") || message.includes("Invalid API")) {
+      return NextResponse.json(
+        { error: "Invalid Composio API key", code: "AUTH_FAILED" },
+        { status: 401 }
+      );
+    }
+
+    if (message.includes("429") || message.includes("rate limit") || message.includes("too many requests")) {
+      return NextResponse.json(
+        { error: "Rate limited - please try again shortly", code: "RATE_LIMITED", retryable: true },
+        { status: 429 }
+      );
+    }
+
+    if (message.includes("timeout") || message.includes("ETIMEDOUT") || message.includes("ECONNREFUSED")) {
+      return NextResponse.json(
+        { error: "Connection to Composio failed - please try again", code: "CONNECTION_FAILED", retryable: true },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json(
-      { error: error.message || "Failed to create session" },
+      { error: message, code: "UNKNOWN_ERROR" },
       { status: 500 }
     );
   }

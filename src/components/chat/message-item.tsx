@@ -137,6 +137,32 @@ function getToolDisplayName(name: string): string {
     .trim();
 }
 
+/** Extract nested tool names from MULTI_EXECUTE_TOOL args */
+function extractNestedTools(toolName: string, args: unknown): string[] {
+  // Strip MCP prefix to get base tool name
+  const mcpMatch = toolName.match(/^mcp_[a-z0-9]+_(.+)$/i);
+  const baseName = mcpMatch ? mcpMatch[1] : toolName;
+
+  // Check if this is a multi-execute tool
+  if (!baseName.includes("MULTI_EXECUTE") && !baseName.includes("EXECUTE_TOOL")) {
+    return [];
+  }
+
+  // Extract tool_slug from args.tools array
+  const argsObj = args as { tools?: Array<{ tool_slug?: string }> };
+  if (!argsObj?.tools || !Array.isArray(argsObj.tools)) {
+    return [];
+  }
+
+  const toolSlugs = argsObj.tools
+    .map(t => t.tool_slug)
+    .filter((slug): slug is string => !!slug)
+    .map(slug => getToolDisplayName(slug));
+
+  // Dedupe and return
+  return [...new Set(toolSlugs)];
+}
+
 /** Collapsible section for tool calls */
 function ToolCallsSection({
   toolEvents,
@@ -162,8 +188,11 @@ function ToolCallsSection({
   const errorCount = toolEvents.filter(e => e.result && (e.result as any).isError).length;
   const doneCount = toolEvents.length - runningCount - errorCount;
 
-  // Get unique friendly tool names for summary
-  const toolSummary = [...new Set(toolEvents.map(e => getToolDisplayName(e.name)))];
+  // Get unique friendly tool names for summary, expanding nested tools
+  const toolSummary = [...new Set(toolEvents.flatMap(e => {
+    const nested = extractNestedTools(e.name, e.args);
+    return nested.length > 0 ? nested : [getToolDisplayName(e.name)];
+  }))];
   const summaryText = toolSummary.length <= 3
     ? toolSummary.join(", ")
     : `${toolSummary.slice(0, 2).join(", ")} +${toolSummary.length - 2} more`;
@@ -199,6 +228,9 @@ function ToolCallsSection({
             const webSearch = isWebSearch ? (toolEvent.result as WebSearchResponse) : null;
             const displayName = getToolDisplayName(toolEvent.name);
 
+            // Extract nested tools from MULTI_EXECUTE_TOOL args
+            const nestedTools = extractNestedTools(toolEvent.name, toolEvent.args);
+
             // Determine status
             let status: "running" | "done" | "error" = "running";
             if (toolEvent.endTime !== undefined) status = "done";
@@ -220,12 +252,14 @@ function ToolCallsSection({
                 )}
               >
                 <div className="flex items-center justify-between px-3 py-2 bg-muted/30">
-                  <div className="flex items-center gap-2 text-sm font-medium">
+                  <div className="flex items-center gap-2 text-sm font-medium flex-wrap">
                     {status === "running" && <Loader2 className="h-3.5 w-3.5 animate-spin text-yellow-500" />}
                     {status === "done" && <Check className="h-3.5 w-3.5 text-green-500" />}
                     {status === "error" && <XIcon className="h-3.5 w-3.5 text-red-500" />}
 
-                    {displayName}
+                    {/* Show nested tools directly if available, otherwise show generic name */}
+                    {nestedTools.length > 0 ? nestedTools.join(", ") : displayName}
+
                     {webSearch?.query ? (
                       <span className="text-xs text-muted-foreground font-normal">
                         &quot;{webSearch.query}&quot;

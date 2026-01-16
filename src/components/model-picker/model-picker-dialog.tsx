@@ -20,12 +20,12 @@ import {
   Search, Star, ChevronRight, ChevronDown, RefreshCcw,
   Code, Zap, DollarSign, Brain, BookOpen, Palette,
   Eye, Sparkles, Crown, Gauge, Image as ImageIcon,
-  ArrowRight, Check, Clock, MessageSquare
+  ArrowRight, Check, Clock, MessageSquare, Wrench
 } from "lucide-react";
 import { type Model, getModelById, USE_CASE_RECOMMENDATIONS, MODEL_CATALOG } from "@/lib/constants/models";
 import { cn } from "@/lib/utils";
 import { Virtuoso } from "react-virtuoso";
-import { ModelItem, formatModelCost } from "./model-item";
+import { ModelItem, formatModelCost, CapabilityBadges } from "./model-item";
 import {
   getFavoriteModels,
   getRecentModels,
@@ -316,8 +316,9 @@ export function ModelPickerDialog({
     const reasoning = getBestModelForUseCase("reasoning");
     if (reasoning) picks.push({ model: reasoning, intent: "Reason", icon: Brain, color: "bg-purple-500/10 text-purple-500" });
 
-    const chat = getBestModelForUseCase("chat");
-    if (chat) picks.push({ model: chat, intent: "Chat", icon: Zap, color: "bg-orange-500/10 text-orange-500" });
+    // Tools/Agents quick pick - for MCP, Composio, function calling
+    const toolCalling = getBestModelForUseCase("tool-calling");
+    if (toolCalling) picks.push({ model: toolCalling, intent: "Tools", icon: Wrench, color: "bg-violet-500/10 text-violet-500" });
 
     const budget = getBestModelForUseCase("budget");
     if (budget) picks.push({ model: budget, intent: "Budget", icon: DollarSign, color: "bg-green-500/10 text-green-500" });
@@ -338,6 +339,7 @@ export function ModelPickerDialog({
       "vision": ["vision"],
       "budget": ["cheap", "fast"],
       "image-gen": ["image-generation"],
+      // Note: "tools" category uses toolCallingTier, not model.category
     };
 
     let searchMatches: Model[];
@@ -357,14 +359,21 @@ export function ModelPickerDialog({
     return searchMatches.filter((model) => {
       let matchesCategory = selectedCategory === "all";
       if (!matchesCategory) {
-        const mappedCategories = categoryMapping[selectedCategory] || [selectedCategory];
-        matchesCategory = mappedCategories.some(cat => model.category.includes(cat));
-        if (selectedCategory === "reasoning" && model.supportsReasoning) {
-          matchesCategory = true;
-        }
-        if (selectedCategory === "image-gen" && !matchesCategory) {
+        // Special handling for Tools/Agents category - filter by toolCallingTier
+        if (selectedCategory === "tools") {
           const caps = getModelCapabilities(model.id);
-          matchesCategory = caps.isImageGeneration;
+          // Only show models with advanced or elite tool calling tier
+          matchesCategory = caps.toolCallingTier === "elite" || caps.toolCallingTier === "advanced";
+        } else {
+          const mappedCategories = categoryMapping[selectedCategory] || [selectedCategory];
+          matchesCategory = mappedCategories.some(cat => model.category.includes(cat));
+          if (selectedCategory === "reasoning" && model.supportsReasoning) {
+            matchesCategory = true;
+          }
+          if (selectedCategory === "image-gen" && !matchesCategory) {
+            const caps = getModelCapabilities(model.id);
+            matchesCategory = caps.isImageGeneration;
+          }
         }
       }
 
@@ -395,6 +404,20 @@ export function ModelPickerDialog({
     if (hasSearchQuery) {
       return filteredModels;
     }
+
+    // For tools category, apply tier-aware ranking (elite > advanced)
+    if (selectedCategory === "tools") {
+      const tierOrder: Record<string, number> = { elite: 0, advanced: 1, basic: 2, none: 3 };
+      return [...filteredModels].sort((a, b) => {
+        const aTier = getModelCapabilities(a.id).toolCallingTier;
+        const bTier = getModelCapabilities(b.id).toolCallingTier;
+        const tierDiff = (tierOrder[aTier] ?? 3) - (tierOrder[bTier] ?? 3);
+        if (tierDiff !== 0) return tierDiff;
+        // Secondary sort by name within same tier
+        return a.name.localeCompare(b.name);
+      });
+    }
+
     return rankingService.rankModels(filteredModels, {
       useCase: selectedCategory !== "all" ? selectedCategory : undefined,
     });
@@ -609,6 +632,7 @@ export function ModelPickerDialog({
                   { id: "all", label: "All", icon: null },
                   { id: "coding", label: "Code", icon: Code },
                   { id: "reasoning", label: "Reasoning", icon: Brain },
+                  { id: "tools", label: "Tools", icon: Wrench },
                   { id: "fast", label: "Fast", icon: Zap },
                   { id: "budget", label: "Budget", icon: DollarSign },
                   { id: "vision", label: "Vision", icon: Eye },
@@ -722,11 +746,7 @@ export function ModelPickerDialog({
                               <span>{(model.contextLength / 1000).toFixed(0)}K ctx</span>
                             )}
 
-                            <div className="flex items-center gap-1">
-                              {caps.supportsVision && <Eye className="h-3 w-3 text-sky-500" />}
-                              {caps.supportsReasoning && <Brain className="h-3 w-3 text-purple-500" />}
-                              {caps.supportsTools && <Code className="h-3 w-3 text-blue-500" />}
-                            </div>
+                            <CapabilityBadges modelId={model.id} size="sm" />
 
                             <span className="text-muted-foreground/60">{model.provider}</span>
 

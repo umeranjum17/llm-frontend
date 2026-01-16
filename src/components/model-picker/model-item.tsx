@@ -12,6 +12,7 @@ import {
   Brain,
   AlertTriangle,
   BadgeCheck,
+  Crown,
 } from "lucide-react";
 import { type Model } from "@/lib/constants/models";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
@@ -133,6 +134,20 @@ function CapabilityBadges({
         </Badge>
       )}
       {/* Tool calling tier badges - show quality level */}
+      {capabilities.toolCallingTier === "elite" && (
+        <Badge
+          variant="outline"
+          className={cn(
+            badgeClass,
+            "border-violet-200 dark:border-violet-800 text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/30"
+          )}
+          title="Elite Tool Calling - Best-in-class, top OpenRouter rankings"
+        >
+          <Wrench className={iconSize} />
+          <Crown className={cn(iconSize, "ml-0.5 -mr-0.5")} />
+          {showLabels && <span className="ml-1">Tools Elite</span>}
+        </Badge>
+      )}
       {capabilities.toolCallingTier === "advanced" && (
         <Badge
           variant="outline"
