@@ -2,8 +2,9 @@ import { z } from "zod";
 import { generateText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
-import type { PipelineStep, PipelineConfig, Agent } from "@/lib/db/schema";
+import type { PipelineStep, PipelineConfig, Agent, McpServer } from "@/lib/db/schema";
 import { PROVIDERS } from "@/lib/providers/registry";
+import { McpManager, type ToolMetadata } from "@/lib/mcp/mcp-manager";
 
 export const runtime = "nodejs";
 
@@ -35,34 +36,13 @@ const PipelineConfigSchema = z.object({
   outputTemplate: z.string().optional(),
 });
 
-const McpToolSchema = z.object({
-  name: z.string(),
-  description: z.string().optional(),
-  inputSchema: z.any().optional(),
-});
-
-const McpServerSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  url: z.string(),
-  apiKey: z.string().optional(),
-  enabled: z.boolean(),
-  type: z.enum(["sse", "stdio"]),
-  collection: z.enum(["curated", "custom"]),
-  toolPolicy: z.object({
-    disabledTools: z.array(z.string()).optional(),
-  }).optional(),
-  toolCaps: z.number().optional(),
-  tools: z.array(McpToolSchema).optional(),
-});
-
 const RequestSchema = z.object({
   pipeline: PipelineConfigSchema,
   userInput: z.string(),
   userImages: z.array(z.string()).optional(),  // Base64 or URL images for vision models
   chatId: z.string(),
   providerBaseUrl: z.string().optional(),
-  mcpServers: z.array(McpServerSchema).optional(),
+  mcpServers: z.array(z.any()).optional(), // McpServer type from schema
 });
 
 /**
@@ -120,64 +100,31 @@ function createModel(modelId: string, apiKey: string, providerId?: string) {
 }
 
 /**
- * Build AI SDK tools from MCP server tools
+ * Build AI SDK tools from MCP servers using McpManager (new proxy system)
  */
-function buildToolsFromMcpServers(
-  mcpServers: z.infer<typeof McpServerSchema>[],
-  stepMcpServerIds?: string[],
-  baseUrl?: string,
-  apiKey?: string
-): Record<string, any> {
-  const tools: Record<string, any> = {};
-
+async function buildToolsFromMcpServers(
+  mcpServers: McpServer[],
+  stepMcpServerIds?: string[]
+): Promise<{ tools: Record<string, any>; metadata: ToolMetadata[] }> {
   // Filter servers based on step configuration
   const enabledServers = stepMcpServerIds && stepMcpServerIds.length > 0
-    ? mcpServers.filter((s) => stepMcpServerIds.includes(s.id))
+    ? mcpServers.filter((s) => stepMcpServerIds.includes(s.id) && s.enabled)
     : [];
 
-  for (const server of enabledServers) {
-    if (!server.tools) continue;
-
-    const disabledTools = server.toolPolicy?.disabledTools || [];
-
-    for (const tool of server.tools) {
-      // Skip disabled tools
-      if (disabledTools.includes(tool.name)) continue;
-
-      // Create prefixed tool name to avoid conflicts
-      const fullToolName = `mcp_${server.name.toLowerCase().replace(/[^a-z0-9]/g, "_")}_${tool.name}`;
-
-      tools[fullToolName] = {
-        description: tool.description || `Tool ${tool.name} from ${server.name}`,
-        parameters: tool.inputSchema || z.object({}),
-        execute: async (args: any) => {
-          // Call the MCP tool execution API
-          const response = await fetch(`${baseUrl}/api/mcp/execute-tool`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-API-Key": apiKey || "",
-            },
-            body: JSON.stringify({
-              toolName: tool.name,
-              args,
-              servers: [server],
-            }),
-          });
-
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error((errorData as any)?.error || `Tool ${tool.name} execution failed`);
-          }
-
-          const data = await response.json();
-          return (data as any).result || data;
-        },
-      };
-    }
+  if (enabledServers.length === 0) {
+    return { tools: {}, metadata: [] };
   }
 
-  return tools;
+  // Use McpManager to fetch tools dynamically (same as chat route)
+  const mcpManager = McpManager.getInstance();
+  try {
+    const { tools, metadata } = await mcpManager.getTools(enabledServers);
+    console.log(`[Pipeline] Loaded ${Object.keys(tools).length} tools from ${enabledServers.length} MCP servers`);
+    return { tools, metadata };
+  } catch (error) {
+    console.error("[Pipeline] Failed to load MCP tools:", error);
+    return { tools: {}, metadata: [] };
+  }
 }
 
 /**
@@ -197,7 +144,7 @@ async function executeLLMStep(
   input: string,
   apiKey: string,
   images?: string[],  // Optional images for vision models
-  mcpServers?: z.infer<typeof McpServerSchema>[],
+  mcpServers?: McpServer[],
   baseUrl?: string,
   stepIndex?: number  // Position in pipeline (0 = first step)
 ): Promise<LLMStepResult> {
@@ -233,13 +180,15 @@ async function executeLLMStep(
   }
 
   // Build tools if MCP servers are enabled for this step
-  const tools = mcpServers && step.mcpServerIds && step.mcpServerIds.length > 0
-    ? buildToolsFromMcpServers(mcpServers, step.mcpServerIds, baseUrl, apiKey)
-    : undefined;
+  let tools: Record<string, any> | undefined;
+  if (mcpServers && step.mcpServerIds && step.mcpServerIds.length > 0) {
+    const result = await buildToolsFromMcpServers(mcpServers as McpServer[], step.mcpServerIds);
+    tools = Object.keys(result.tools).length > 0 ? result.tools : undefined;
+  }
 
   const hasTools = tools && Object.keys(tools).length > 0;
 
-  console.log("[Pipeline LLM Step] Tools available:", hasTools ? Object.keys(tools).length : 0);
+  console.log("[Pipeline LLM Step] Tools available:", hasTools ? Object.keys(tools!).length : 0);
 
   // Build system prompt - add context for steps receiving input from previous steps
   let systemPrompt = step.systemPrompt || "";
@@ -393,7 +342,7 @@ async function executeToolStep(
   context: Record<string, any>,
   apiKey: string,
   baseUrl: string,
-  mcpServers?: z.infer<typeof McpServerSchema>[]
+  mcpServers?: McpServer[]
 ): Promise<any> {
   if (!step.toolName) {
     throw new Error("Tool step requires toolName");
