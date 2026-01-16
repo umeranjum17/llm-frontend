@@ -33,7 +33,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   loadSettings: async () => {
     const settings = await getSettings();
-    set({ ...settings, isLoaded: true });
+    console.log("[Settings] Loaded from DB:", settings);
+    console.log("[Settings] defaultMcpServerIds from DB:", settings.defaultMcpServerIds);
+    // Preserve defaults for arrays that might be undefined in DB
+    set({
+      ...settings,
+      defaultMcpServerIds: settings.defaultMcpServerIds ?? [],
+      enabledTools: settings.enabledTools ?? [],
+      shortcuts: settings.shortcuts ?? {},
+      isLoaded: true
+    });
   },
 
   updateTheme: async (theme) => {
@@ -85,6 +94,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   updateDefaultMcpServerIds: async (serverIds) => {
+    console.log("[Settings] Saving defaultMcpServerIds:", serverIds);
     await updateSettings({ defaultMcpServerIds: serverIds });
     set({ defaultMcpServerIds: serverIds });
   },

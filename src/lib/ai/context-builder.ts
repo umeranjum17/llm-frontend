@@ -139,6 +139,8 @@ export async function buildContextMessages(
       const memoryQuery = userMessage;
       const rawMemories = await searchMemories(memoryQuery);
 
+      console.log(`[Context] 🧠 Memory search returned ${rawMemories?.length ?? 0} items for query: "${memoryQuery.slice(0, 50)}..."`);
+
       if (rawMemories && rawMemories.length > 0) {
         // Apply budgeting: relevance filter, item limit, token/char limit
         const budgetedMemories = budgetMemories(rawMemories);
