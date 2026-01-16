@@ -357,8 +357,6 @@ export function SandpackExecutor({
           externalResources: ["https://cdn.tailwindcss.com"],
           recompileMode: "delayed",
           recompileDelay: 500,
-          showErrorScreen: true,
-          showLoadingScreen: true,
         }}
         className="flex-1 flex flex-col overflow-hidden"
       >

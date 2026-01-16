@@ -1048,14 +1048,16 @@ export const MessageItem = memo(function MessageItem({
 
               {/* Message Metadata (Tokens/Cost) */}
               {!isEditing && isAssistant && (message.inputTokens || message.outputTokens) && (
-                <div className="mt-3 flex items-center gap-3 text-[10px] text-muted-foreground/60 font-medium border-t border-border/30 pt-2">
-                  <div className="flex gap-1.5">
+                <div className="mt-3 flex items-center justify-between text-[10px] text-muted-foreground/60 font-medium border-t border-border/30 pt-2">
+                  <div className="flex items-center gap-3">
                     <span>In: <span className="text-muted-foreground">{message.inputTokens?.toLocaleString() || 0}</span></span>
+                    <span className="text-border">•</span>
                     <span>Out: <span className="text-muted-foreground">{message.outputTokens?.toLocaleString() || 0}</span></span>
+                    <span className="text-border">•</span>
                     <span className="font-bold opacity-80">Total: <span className="text-muted-foreground">{((message.inputTokens || 0) + (message.outputTokens || 0)).toLocaleString()}</span></span>
                   </div>
                   {typeof message.cost === "number" && (
-                    <div className="ml-auto flex items-center gap-1.5 bg-primary/5 px-1.5 py-0.5 rounded border border-primary/10 text-primary/70">
+                    <div className="flex items-center gap-1.5 bg-primary/5 px-1.5 py-0.5 rounded border border-primary/10 text-primary/70">
                       <span>${message.cost.toFixed(4)}</span>
                       {message.costIsEstimated && (
                         <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70">
