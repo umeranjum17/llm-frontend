@@ -32,6 +32,11 @@ export function Sidebar({ onNavigate }: SidebarProps) {
     onNavigate?.();
 
     try {
+      // Ensure settings are loaded before creating chat
+      const state = useSettingsStore.getState();
+      if (!state.isLoaded) {
+        await state.loadSettings();
+      }
       const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultMcpServerIds } =
         useSettingsStore.getState();
       const { providerId, modelId } = getDefaultChatConfig({

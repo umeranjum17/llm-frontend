@@ -165,6 +165,11 @@ export function CommandPalette() {
   }, [availableModels, fuse, search]);
 
   const handleNewChat = async () => {
+    // Ensure settings are loaded before creating chat
+    const state = useSettingsStore.getState();
+    if (!state.isLoaded) {
+      await state.loadSettings();
+    }
     const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultMcpServerIds } =
       useSettingsStore.getState();
     const { providerId, modelId } = getDefaultChatConfig({
@@ -183,6 +188,11 @@ export function CommandPalette() {
   };
 
   const handleSelectModelNewChat = async (modelId: string) => {
+    // Ensure settings are loaded before creating chat
+    const state = useSettingsStore.getState();
+    if (!state.isLoaded) {
+      await state.loadSettings();
+    }
     const { defaultMcpServerIds } = useSettingsStore.getState();
     const newChat = await createChat({
       title: "New Chat",
