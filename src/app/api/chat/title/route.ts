@@ -1,30 +1,17 @@
-import { createOpenAI } from "@ai-sdk/openai";
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { generateText } from "ai";
-
-// Smart defaults per provider for title generation (cheap, fast models)
-const DEFAULT_TITLE_MODELS: Record<string, string> = {
-    openrouter: "openai/gpt-4o-mini", // Using OpenAI model via OpenRouter
-    openai: "gpt-4o-mini",
-    anthropic: "claude-3-haiku-20240307",
-    groq: "llama-3.1-8b-instant",
-};
+import { generateSimpleText, DEFAULT_UTILITY_MODELS } from "@/lib/ai/chat-executor";
 
 export async function POST(req: Request) {
     try {
-        const { messages, providerId, providerBaseUrl, modelId, apiKey, titleModelId } = await req.json();
+        const { messages, providerId = "openrouter", providerBaseUrl, titleModelId, apiKey } = await req.json();
 
         if (!messages || messages.length === 0) {
             return new Response("No messages provided", { status: 400 });
         }
 
         // Use the titleModelId passed from client, or fall back to provider default
-        const configuredTitleModel = titleModelId || DEFAULT_TITLE_MODELS[providerId] || "gpt-4o-mini";
+        const configuredTitleModel = titleModelId || DEFAULT_UTILITY_MODELS[providerId] || "gpt-4o-mini";
 
         console.log(`[Title] Using model ${configuredTitleModel} for provider ${providerId}`);
-
-        // Construct the model instance
-        let titleModel;
 
         // Require user-provided API key for all providers
         if (!apiKey) {
@@ -33,50 +20,17 @@ export async function POST(req: Request) {
             });
         }
 
-        // Helper to Create model based on provider
-        if (providerId === "openai") {
-            const openai = createOpenAI({
-                apiKey,
-                baseURL: providerBaseUrl
-            });
-            titleModel = openai(configuredTitleModel);
-        } else if (providerId === "anthropic") {
-            const anthropic = createAnthropic({ apiKey });
-            titleModel = anthropic(configuredTitleModel);
-        } else if (providerId === "openrouter") {
-            const openrouter = createOpenAI({
-                apiKey,
-                baseURL: "https://openrouter.ai/api/v1",
-            });
-            // Use configured model or default to cheapest option
-            titleModel = openrouter(configuredTitleModel);
-        } else {
-            // Fallback for custom providers or google (via openai-compatible if needed)
-            // Default to a generic OpenAI-compatible client
-            const generic = createOpenAI({
-                apiKey: apiKey,
-                baseURL: providerBaseUrl
-            });
-            // If modelId is something helpful, use it, otherwise fallback might fail
-            titleModel = generic(modelId || configuredTitleModel);
-        }
-
-        console.log("[Title] Generating title using provider:", providerId);
-
-        // Request usage data from OpenRouter
-        const providerOptions: Record<string, any> = {};
-        if (providerId === "openrouter") {
-            providerOptions.openrouter = { usage: { include: true } };
-        }
-
         // Build conversation summary for title generation
         const conversationPreview = messages.slice(0, 3).map((m: any) => {
             const content = typeof m.content === 'string' ? m.content : '[Complex Content]';
             return `${m.role}: ${content.slice(0, 200)}`;
         }).join('\n');
 
-        const { text, usage } = await generateText({
-            model: titleModel,
+        const { text, usage } = await generateSimpleText({
+            providerId,
+            providerBaseUrl,
+            modelId: configuredTitleModel,
+            apiKey,
             messages: [
                 {
                     role: "user",
@@ -90,7 +44,6 @@ Title:`,
             ],
             maxTokens: 30,
             temperature: 0.5,
-            providerOptions,
         });
 
         // Clean up the title - remove quotes, "Title:" prefix, newlines
@@ -115,18 +68,13 @@ Title:`,
             }
         }
 
-        // Extract cost from usage if available
-        const cost = (usage as any)?.cost ?? 0;
-        const inputTokens = usage?.promptTokens ?? 0;
-        const outputTokens = usage?.completionTokens ?? 0;
-
-        console.log("[Title] Generated title:", title, `(cost: $${cost}, tokens: ${inputTokens}/${outputTokens})`);
+        console.log("[Title] Generated title:", title, `(cost: $${usage?.cost ?? 0}, tokens: ${usage?.inputTokens ?? 0}/${usage?.outputTokens ?? 0})`);
 
         return new Response(JSON.stringify({
             title,
-            cost,
-            inputTokens,
-            outputTokens,
+            cost: usage?.cost ?? 0,
+            inputTokens: usage?.inputTokens ?? 0,
+            outputTokens: usage?.outputTokens ?? 0,
         }), {
             headers: { "Content-Type": "application/json" },
         });

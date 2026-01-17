@@ -69,7 +69,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/empty-state";
-import { MessageSquare, Eye, Brain, Wrench, Code, Zap, DollarSign, Sparkles, AlertTriangle } from "lucide-react";
+import { MessageSquare, Eye, Brain, Wrench, Code, Zap, DollarSign, Sparkles, AlertTriangle, ImageIcon } from "lucide-react";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { formatModelCost } from "@/components/model-picker/model-item";
 import { OfflineIndicator } from "@/components/pwa";
@@ -258,7 +258,7 @@ export function ChatShell() {
 
   // Use-case based recommendations (prioritizes catalog models when OpenRouter is available)
   const useCaseRecommendations = useMemo(() => {
-    const cases = ["coding", "reasoning", "chat", "budget"] as const;
+    const cases = ["coding", "reasoning", "chat", "budget", "image-generation"] as const;
     const result: Record<string, Model[]> = {};
 
     for (const useCase of cases) {
@@ -390,7 +390,7 @@ export function ChatShell() {
         await state.loadSettings();
         console.log("[NewChat] Settings loaded, defaultMcpServerIds:", useSettingsStore.getState().defaultMcpServerIds);
       }
-      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultMcpServerIds } =
+      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultMcpServerIds, defaultReasoningLevel } =
         useSettingsStore.getState();
       console.log("[NewChat] Creating chat with MCP servers:", defaultMcpServerIds);
       const { providerId, modelId } = getDefaultChatConfig({
@@ -403,6 +403,7 @@ export function ChatShell() {
         modelId,
         providerId: providerId || undefined,
         activeMcpServerIds: defaultMcpServerIds,
+        reasoningLevel: (defaultReasoningLevel as "low" | "medium" | "high" | "xhigh") || "medium",
       });
       setActiveChatId(newChat.id);
       toast.success("New chat created");
@@ -710,6 +711,32 @@ export function ChatShell() {
                                 </div>
                                 <div className="flex flex-wrap gap-1">
                                   {useCaseRecommendations.budget.map(model => (
+                                    <button
+                                      key={model.id}
+                                      onClick={() => handleQuickModelChange(model.id)}
+                                      className={cn(
+                                        "px-2 py-0.5 text-[11px] rounded-md border transition-colors",
+                                        chat?.modelId === model.id
+                                          ? "bg-primary text-primary-foreground border-primary"
+                                          : "bg-muted/50 hover:bg-muted border-border/50 hover:border-border"
+                                      )}
+                                    >
+                                      {model.name}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Image Generation */}
+                            {useCaseRecommendations["image-generation"] && (
+                              <div className="px-2 py-1">
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  <ImageIcon className="h-3 w-3 text-pink-500" />
+                                  <span className="text-[10px] font-medium text-muted-foreground">Image</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {useCaseRecommendations["image-generation"].map(model => (
                                     <button
                                       key={model.id}
                                       onClick={() => handleQuickModelChange(model.id)}

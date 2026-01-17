@@ -1,46 +1,20 @@
-import { generateText } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
-import { createAnthropic } from "@ai-sdk/anthropic";
-
-const DEFAULT_SUGGESTION_MODELS: Record<string, string> = {
-    openrouter: "openai/gpt-4o-mini",
-    openai: "gpt-4o-mini",
-    anthropic: "claude-3-haiku-20240307",
-    google: "gemini-1.5-flash",
-};
+import { generateSimpleText, DEFAULT_UTILITY_MODELS } from "@/lib/ai/chat-executor";
 
 export async function POST(req: Request) {
     try {
-        const { messages, providerId, providerBaseUrl, modelId, apiKey } = await req.json();
+        const { messages, providerId = "openrouter", providerBaseUrl, apiKey } = await req.json();
 
         if (!messages || messages.length === 0) {
             return new Response("No messages provided", { status: 400 });
         }
 
-        const configuredModel = DEFAULT_SUGGESTION_MODELS[providerId] || "gpt-4o-mini";
+        const configuredModel = DEFAULT_UTILITY_MODELS[providerId] || "gpt-4o-mini";
 
-        let suggestionModel;
-
-        if (providerId === "openrouter") {
-            const openrouter = createOpenAI({
-                apiKey,
-                baseURL: "https://openrouter.ai/api/v1",
-            });
-            suggestionModel = openrouter(configuredModel);
-        } else if (providerId === "openai") {
-            const openai = createOpenAI({ apiKey, baseURL: providerBaseUrl });
-            suggestionModel = openai(configuredModel);
-        } else if (providerId === "anthropic") {
-            const anthropic = createAnthropic({ apiKey });
-            suggestionModel = anthropic(configuredModel);
-        } else {
-            // Default to OpenAI-compatible for other providers
-            const custom = createOpenAI({ apiKey, baseURL: providerBaseUrl });
-            suggestionModel = custom(modelId || "gpt-4o-mini");
-        }
-
-        const { text } = await generateText({
-            model: suggestionModel,
+        const { text } = await generateSimpleText({
+            providerId,
+            providerBaseUrl,
+            modelId: configuredModel,
+            apiKey,
             messages: [
                 {
                     role: "system",
@@ -52,7 +26,7 @@ Rules:
 - No numbering, no bullets, no introductory text.`,
                 },
                 ...messages.slice(-5).map((m: any) => ({
-                    role: m.role,
+                    role: m.role as "system" | "user" | "assistant",
                     content: typeof m.content === 'string' ? m.content : '[Complex Content]'
                 }))
             ],

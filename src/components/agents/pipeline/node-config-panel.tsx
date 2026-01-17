@@ -111,6 +111,21 @@ export function NodeConfigPanel({
     onUpdate({ enabledTools: next.length > 0 ? next : undefined });
   };
 
+  // Toggle Composio toolkit override for this step
+  const toggleToolkitOverride = (toolkitKey: string, globalEnabled: boolean) => {
+    const currentOverrides = step.toolkitOverrides || {};
+    const currentValue = currentOverrides[toolkitKey] ?? globalEnabled;
+    const newValue = !currentValue;
+
+    // If new value matches global, remove the override; otherwise set it
+    if (newValue === globalEnabled) {
+      const { [toolkitKey]: _, ...rest } = currentOverrides;
+      onUpdate({ toolkitOverrides: Object.keys(rest).length > 0 ? rest : undefined });
+    } else {
+      onUpdate({ toolkitOverrides: { ...currentOverrides, [toolkitKey]: newValue } });
+    }
+  };
+
   const config = stepTypeConfig[step.type];
   const Icon = config.icon;
 
@@ -409,6 +424,36 @@ export function NodeConfigPanel({
             </div>
           )}
 
+          {/* Memory & History settings for LLM steps */}
+          {step.type === "llm" && (
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-xs">Memory Context</Label>
+                  <p className="text-[10px] text-muted-foreground">
+                    Include relevant memories in this step
+                  </p>
+                </div>
+                <Switch
+                  checked={step.memoryEnabled ?? true}
+                  onCheckedChange={(checked) => onUpdate({ memoryEnabled: checked })}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-xs">Chat History</Label>
+                  <p className="text-[10px] text-muted-foreground">
+                    Include conversation history for context
+                  </p>
+                </div>
+                <Switch
+                  checked={step.includeHistory ?? false}
+                  onCheckedChange={(checked) => onUpdate({ includeHistory: checked })}
+                />
+              </div>
+            </div>
+          )}
+
           {/* MCP Tools for LLM steps */}
           {step.type === "llm" && mcpServers.length > 0 && (
             <div className="space-y-2">
@@ -466,17 +511,29 @@ export function NodeConfigPanel({
                               No tools loaded for this server yet.
                             </div>
                           ) : composioToolkits.length > 0 ? (
-                            composioToolkits.map((toolkit) => (
+                            composioToolkits.map((toolkit) => {
+                            const stepOverrides = step.toolkitOverrides || {};
+                            const effectiveEnabled = stepOverrides[toolkit.key] ?? toolkit.isEnabled;
+                            const hasOverride = toolkit.key in stepOverrides;
+                            return (
                               <div key={toolkit.key} className="flex items-center justify-between gap-2">
-                                <div className="min-w-0">
-                                  <div className="text-xs font-medium truncate">{toolkit.name}</div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-xs font-medium truncate flex items-center gap-1">
+                                    {toolkit.name}
+                                    {hasOverride && (
+                                      <span className="text-[9px] text-primary">(override)</span>
+                                    )}
+                                  </div>
                                   <div className="text-[10px] text-muted-foreground">{toolkit.key}</div>
                                 </div>
-                                <Badge variant={toolkit.isEnabled ? "secondary" : "outline"} className="text-[10px] h-4">
-                                  {toolkit.isEnabled ? "Enabled" : "Disabled"}
-                                </Badge>
+                                <Switch
+                                  checked={effectiveEnabled}
+                                  onCheckedChange={() => toggleToolkitOverride(toolkit.key, toolkit.isEnabled)}
+                                  className="scale-75"
+                                />
                               </div>
-                            ))
+                            );
+                          })
                           ) : (
                             serverTools.map((tool) => {
                               const toolId = `${server.id}/${tool.name}`;

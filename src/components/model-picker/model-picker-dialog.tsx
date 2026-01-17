@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   Dialog,
@@ -153,8 +153,16 @@ export function ModelPickerDialog({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [manualModelId, setManualModelId] = useState<string>(currentModelId);
   const [showAllModels, setShowAllModels] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const { models, isLoading: modelsLoading, fetchedAt, loadModels } = useModelsStore();
+
+  // Auto-focus search input when dialog opens
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => searchInputRef.current?.focus(), 50);
+    }
+  }, [open]);
   const keys = useApiKeysStore((s) => s.keys);
   const rankingService = getRankingService();
 
@@ -455,6 +463,7 @@ export function ModelPickerDialog({
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
+              ref={searchInputRef}
               placeholder="Search models... (e.g., GPT-5, Claude, Gemini)"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}

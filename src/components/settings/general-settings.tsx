@@ -75,6 +75,7 @@ export function GeneralSettings() {
       defaultModelId: nextDefaultModelId,
       defaultModelIdsByProvider: nextMap,
     });
+
     toast.success("Settings saved successfully");
   };
 

@@ -107,6 +107,7 @@ export interface ApiKey {
 export interface UserSettings {
   id: string; // Always 'default'
   theme: "light" | "dark" | "system";
+  displayName?: string; // User's display name (shows initial in avatar)
   defaultProviderId?: string;
   defaultModelId?: string;
   defaultModelIdsByProvider?: Record<string, string>;
@@ -209,6 +210,9 @@ export interface PipelineStep {
   providerId?: string; // Provider to use for this step (openrouter, anthropic, etc.)
   enabledTools?: string[]; // Tool names available to this LLM step
   mcpServerIds?: string[]; // MCP servers available to this LLM step
+  toolkitOverrides?: Record<string, boolean>; // Per-step Composio toolkit enable/disable overrides (key -> enabled)
+  memoryEnabled?: boolean; // Whether to include memory context for this step (default: true for first step)
+  includeHistory?: boolean; // Whether to include chat history context (default: false)
 
   // For image steps - generate image
   imageModelId?: string; // Image generation model
@@ -307,7 +311,7 @@ export interface Skill {
   id: string;
   name: string;
   description: string;           // Used for embedding-based matching (be descriptive!)
-  category: "creation" | "visualization" | "coding" | "analysis" | "writing";
+  category: "creation" | "visualization" | "coding" | "analysis" | "writing" | "search";
 
   // Core behavior (progressive disclosure: only loaded when skill activates)
   systemPrompt: string;           // Full instructions injected into context

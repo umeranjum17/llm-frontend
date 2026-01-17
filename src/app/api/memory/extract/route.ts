@@ -1,9 +1,5 @@
-import { generateObject } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
-import { createAnthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
-import { normalizeModelIdForProviderId } from "@/lib/ai/provider-routing";
-import { isCustomOpenAIProvider, resolveProvider } from "@/lib/providers";
+import { generateStructuredOutput, validateProvider } from "@/lib/ai/chat-executor";
 
 export const runtime = "edge";
 
@@ -79,55 +75,21 @@ export async function POST(req: Request) {
       );
     }
 
-    const resolved = resolveProvider(providerId, { baseUrl: providerBaseUrl });
-    if (!resolved) {
-      return new Response(
-        JSON.stringify({ error: "Unknown provider", providerId }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
+    // Validate provider
+    const validation = validateProvider(providerId, providerBaseUrl, apiKey);
+    if ("error" in validation) {
+      return validation.error;
     }
-
-    if (isCustomOpenAIProvider(providerId) && !providerBaseUrl) {
-      return new Response(
-        JSON.stringify({ error: "Missing providerBaseUrl for custom provider", providerId }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    if (resolved.apiKeyRequired && !apiKey) {
-      return new Response(
-        JSON.stringify({ error: "No API key provided" }),
-        { status: 401, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    const effectiveApiKey = apiKey || "local";
-    const normalizedModelId = normalizeModelIdForProviderId(resolved.id, modelId);
-
-    const model = (() => {
-      if (resolved.kind === "anthropic") {
-        const anthropic = createAnthropic({ apiKey: effectiveApiKey });
-        return anthropic(normalizedModelId);
-      }
-
-      if (resolved.baseUrl) {
-        const openrouter = createOpenAI({
-          apiKey: effectiveApiKey,
-          baseURL: resolved.baseUrl,
-        });
-        return openrouter(normalizedModelId);
-      }
-
-      const openai = createOpenAI({ apiKey: effectiveApiKey });
-      return openai(normalizedModelId);
-    })();
 
     const prompt = EXTRACTION_PROMPT.replace("{{CONVERSATION}}", conversation);
 
-    const result = await generateObject({
-      model,
-      schema: MemoryExtractionSchema,
+    const result = await generateStructuredOutput({
+      providerId,
+      providerBaseUrl,
+      modelId,
+      apiKey,
       prompt,
+      schema: MemoryExtractionSchema,
     });
 
     return new Response(

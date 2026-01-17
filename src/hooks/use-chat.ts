@@ -10,16 +10,19 @@ import { getImagesFromMessageContent, getTextFromMessageContent, mapTextInMessag
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { toast } from "sonner";
 import { isModelIdCompatibleWithProviderId, pickBestProviderId, providerLabel } from "@/lib/ai/provider-routing";
-import { addMemory, refreshCacheInBackground } from "@/lib/memory";
+import { addMemory, refreshCacheInBackground, searchMemories } from "@/lib/memory";
 import { generateAndApplySummary } from "@/lib/ai/summarization";
 import { getSettings } from "@/lib/db/queries";
 import { matchSkill } from "@/lib/skills/skill-matcher";
-import type { Message } from "ai";
+import type { UIMessage } from "ai";
 
 function cleanReferencesForLLM(content: string) {
   return content
     .replace(/@file:[^\[]+\[([^\]]+)\]/g, "[$1]")
-    .replace(/#chat:[^\[]+\[([^\]]+)\]/g, "[$1]");
+    .replace(/#chat:[^\[]+\[([^\]]+)\]/g, "[$1]")
+    // Remove agent mentions entirely (they're used to select the agent, not as content)
+    .replace(/@agent:[^\[]+\[[^\]]+\]\s*/g, "")
+    .trim();
 }
 
 /**
@@ -236,11 +239,56 @@ async function handlePipelineExecution(
   }
 
   try {
+    // Fetch memory context if any step needs it
+    let memoryContext: string | undefined;
+    const needsMemory = agent.pipeline.steps.some(s => s.memoryEnabled !== false);
+    if (needsMemory) {
+      const settings = await getSettings();
+      if (settings?.memoryEnabled) {
+        const memories = await searchMemories(userInput);
+        if (memories?.length > 0) {
+          memoryContext = memories.map(m => `- ${m.memory}`).join("\n");
+        }
+      }
+    }
+
+    // Fetch chat history if any step needs it
+    let chatHistory: Array<{ role: "system" | "user" | "assistant"; content: string }> | undefined;
+    const needsHistory = agent.pipeline.steps.some(s => s.includeHistory);
+    if (needsHistory && parentUserMessageId) {
+      const history = await getMessagesForBranch(chatId, parentUserMessageId);
+      chatHistory = history
+        .filter(m => ["system", "user", "assistant"].includes(m.role))
+        .slice(-20) // Limit history
+        .map(m => ({
+          role: m.role as "system" | "user" | "assistant",
+          content: typeof m.content === "string" ? m.content : getTextFromMessageContent(m.content),
+        }));
+    }
+
+    // Get Composio API key if any step uses Composio (for step-specific session creation)
+    const hasComposioServer = mcpServers?.some(s => s.id === "composio-consolidated");
+    let composioApiKey: string | undefined;
+    let composioGlobalToolkits: string[] | undefined;
+    if (hasComposioServer && typeof window !== "undefined") {
+      try {
+        const composioConfig = localStorage.getItem("composio_config");
+        if (composioConfig) {
+          const parsed = JSON.parse(composioConfig);
+          composioApiKey = parsed.apiKey;
+          composioGlobalToolkits = parsed.enabledToolkits;
+        }
+      } catch {
+        // Ignore localStorage errors
+      }
+    }
+
     const response = await fetch("/api/agents/pipeline", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...(apiKey?.key ? { "X-API-Key": apiKey.key } : {}),
+        ...(composioApiKey ? { "X-Composio-Key": composioApiKey } : {}),
       },
       body: JSON.stringify({
         pipeline: agent.pipeline,
@@ -249,6 +297,12 @@ async function handlePipelineExecution(
         chatId,
         providerBaseUrl: apiKey?.baseUrl,
         mcpServers,
+        agentSystemPrompt: agent.systemPrompt,  // Include agent-level system prompt
+        memoryContext,
+        chatHistory,
+        agentToolPolicy: agent.mcpToolPolicy,  // Agent-level tool restrictions
+        agentEnabledTools: agent.enabledTools,  // Agent-level enabled tools
+        composioGlobalToolkits,  // For step-specific session creation
       }),
       signal,
     });
@@ -316,9 +370,13 @@ async function handlePipelineExecution(
               if (pipelineActions) {
                 pipelineActions.setStepError(event.stepIndex, event.error);
               }
-              if (!event.continuing) {
+              // Only throw if it's a fatal error that can't be recovered
+              // For tool errors, we let the pipeline continue if possible
+              if (!event.continuing && !event.recoverable) {
                 throw new Error(event.error);
               }
+              // Log the error but continue - the pipeline may recover
+              console.warn(`[Pipeline] Step ${event.stepIndex} error (continuing):`, event.error);
               break;
 
             case "step-retry":
@@ -351,10 +409,14 @@ async function handlePipelineExecution(
               break;
           }
         } catch (e) {
-          if (e instanceof Error && e.message !== "Failed to parse stream data") {
+          // Only re-throw fatal errors, not parse errors
+          if (e instanceof Error &&
+              e.message !== "Failed to parse stream data" &&
+              !e.message.includes("Unexpected token") &&
+              !e.message.includes("JSON")) {
             throw e;
           }
-          console.warn("Failed to parse pipeline stream data:", data);
+          console.warn("Failed to parse pipeline stream data:", data, e);
         }
       }
     }
@@ -595,8 +657,15 @@ export function useChat(chatId: string) {
     if (agent?.executionType === "pipeline" && agent.pipeline?.steps?.length) {
       abortControllerRef.current = new AbortController();
       try {
-        // Get MCP servers for tool steps
-        const mcpServers = await getActiveMcpServersForChat(chat.activeMcpServerIds || agent.mcpServerIds || []);
+        // Get MCP servers for tool steps - include servers from all pipeline step configurations
+        // Steps can have their own mcpServerIds that need to be fetched
+        const allStepMcpServerIds = agent.pipeline.steps.flatMap(step => step.mcpServerIds || []);
+        const uniqueMcpServerIds = [...new Set([
+          ...(chat.activeMcpServerIds || []),
+          ...(agent.mcpServerIds || []),
+          ...allStepMcpServerIds
+        ])];
+        const mcpServers = await getActiveMcpServersForChat(uniqueMcpServerIds);
 
         // Extract images from message content for vision-enabled pipeline steps
         const userImages = getImagesFromMessageContent(messageContent);
@@ -605,7 +674,7 @@ export function useChat(chatId: string) {
           chatId,
           agent,
           apiKey,
-          getTextFromMessageContent(messageContent),
+          cleanReferencesForLLM(getTextFromMessageContent(messageContent)),
           userImages,  // Pass images for vision models in pipeline
           parentUserMessageId,
           abortControllerRef.current.signal,
@@ -669,7 +738,7 @@ export function useChat(chatId: string) {
         activeLabel: activeSkill.ui.activeLabel,
       });
       // Increment skill usage
-      incrementSkillUsage(activeSkill.id).catch(() => {});
+      incrementSkillUsage(activeSkill.id).catch(() => { });
     }
 
     const contextMessages = await buildContextMessages(
@@ -682,9 +751,11 @@ export function useChat(chatId: string) {
     const history = await getMessagesForBranch(chatId, parentUserMessageId);
 
     const llmMessages = [
+      // Context messages (system prompts from memory, agent, skill, etc.)
+      // Need to convert to AI SDK format in case content is an array
       ...contextMessages.map((m) => ({
         role: m.role as "system" | "user" | "assistant",
-        content: m.content,
+        content: convertToAISDKContent(m.content, m.role as "system" | "user" | "assistant"),
       })),
       ...(attachments || []).map((file) => ({
         role: "system" as const,
@@ -723,7 +794,8 @@ export function useChat(chatId: string) {
     // and subsequent operations have the correct parent reference
     await updateChat(chatId, { activeBranchLeafId: assistantMessage.id });
 
-    // Set streaming state for real-time UI updates
+    // Set streaming message immediately - this shows the assistant loading state
+    // All processing (embedding, memory, etc.) is part of the assistant's response
     setStreamingMessage(assistantMessage.id);
 
     // Create abort controller for this request
@@ -740,349 +812,434 @@ export function useChat(chatId: string) {
     }, 30000);
 
     try {
-    // Call API route for streaming
-    const response = await fetch("/api/chat", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiKey?.key ? { "X-API-Key": apiKey.key } : {}),
-      },
-      body: JSON.stringify({
-        providerId,
-        providerBaseUrl: apiKey?.baseUrl,
-        modelId,
-        messages: llmMessages,
-        enabledTools,
-        mcpServers: await getActiveMcpServersForChat(chat.activeMcpServerIds),
-      }),
-      signal: abortControllerRef.current.signal,
-    });
+      // Call API route for streaming
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(apiKey?.key ? { "X-API-Key": apiKey.key } : {}),
+        },
+        body: JSON.stringify({
+          providerId,
+          providerBaseUrl: apiKey?.baseUrl,
+          modelId,
+          messages: llmMessages,
+          enabledTools,
+          mcpServers: await getActiveMcpServersForChat(chat.activeMcpServerIds),
+          reasoningLevel: chat.reasoningLevel, // Pass reasoning level to backend
+        }),
+        signal: abortControllerRef.current.signal,
+      });
 
-    // Clear connection timeout once response is received
-    clearTimeout(connectionTimeoutId);
+      // Clear connection timeout once response is received
+      clearTimeout(connectionTimeoutId);
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const errorMessage = (errorData as any)?.error || (errorData as any)?.message || response.statusText;
-      throw new Error(errorMessage);
-    }
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = (errorData as any)?.error || (errorData as any)?.message || response.statusText;
+        throw new Error(errorMessage);
+      }
 
-    // Handle streaming response with real-time updates
-    const reader = response.body?.getReader();
-    const decoder = new TextDecoder();
-    fullContent = ""; // Reset content tracking
-    let fullReasoning = ""; // For extended thinking / reasoning
-    let inputTokens: number | undefined;
-    let outputTokens: number | undefined;
-    let actualCost: number | undefined; // Actual cost from provider (OpenRouter, etc.)
-    let costIsEstimated = false;
-    const toolCalls: any[] = [];
-    const toolResults: any[] = [];
-    const toolTimings: Record<string, { start?: number; end?: number }> = {};
+      // Handle streaming response with real-time updates
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      fullContent = ""; // Reset content tracking
+      let fullReasoning = ""; // For extended thinking / reasoning
+      let inputTokens = 0; // Accumulated across all steps
+      let outputTokens = 0; // Accumulated across all steps
+      let actualCost = 0; // Accumulated cost from provider (OpenRouter, etc.)
+      let hasReceivedUsage = false; // Track if we received any usage data
+      let costIsEstimated = false;
+      const toolCalls: any[] = [];
+      const toolResults: any[] = [];
+      const toolTimings: Record<string, { start?: number; end?: number }> = {};
 
-    if (!reader) {
-      throw new Error("No response body");
-    }
+      if (!reader) {
+        throw new Error("No response body");
+      }
 
-    let buffer = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
 
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue;
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
 
-        const data = line.slice(6);
-        if (data === "[DONE]") continue;
+          const data = line.slice(6);
+          if (data === "[DONE]") continue;
 
-        try {
-          const parsed = JSON.parse(data);
+          try {
+            const parsed = JSON.parse(data);
 
-          // Debug: Log all event types to trace tool events
-          if (parsed.type && !['text-delta'].includes(parsed.type)) {
-            console.log(`[Chat Stream] Event type: ${parsed.type}`, parsed);
-          }
+            // Debug: Log event types (OpenRouter uses 'text' property for text-delta)
+            console.log(`[Chat Stream] Event type: ${parsed.type}`,
+              parsed.type === 'text-delta'
+                ? { type: parsed.type, text: parsed.text?.slice(0, 50) }
+                : parsed
+            );
 
-          const extractUsage = (value: any): { inTok?: number; outTok?: number; cost?: number } => {
-            if (!value || typeof value !== "object") return {};
-            const usage = (value.usage && typeof value.usage === "object") ? value.usage : value;
+            const extractUsage = (value: any): { inTok?: number; outTok?: number; cost?: number } => {
+              if (!value || typeof value !== "object") return {};
+              const usage = (value.usage && typeof value.usage === "object") ? value.usage : value;
 
-            const toNum = (v: any) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+              const toNum = (v: any) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 
-            // OpenRouter returns cost in experimental_providerMetadata.openrouter
-            const providerMeta = value.experimental_providerMetadata?.openrouter ||
-                                 value.providerMetadata?.openrouter ||
-                                 value.response?.providerMetadata?.openrouter ||
-                                 {};
+              // OpenRouter returns cost in experimental_providerMetadata.openrouter
+              const providerMeta = value.experimental_providerMetadata?.openrouter ||
+                value.providerMetadata?.openrouter ||
+                value.response?.providerMetadata?.openrouter ||
+                {};
 
-            return {
-              inTok:
-                toNum(usage.promptTokens) ??
-                toNum(usage.prompt_tokens) ??
-                toNum(usage.inputTokens) ??
-                toNum(usage.input_tokens) ??
-                toNum(usage.prompt_tokens_total) ??
-                toNum(usage.input_tokens_total),
-              outTok:
-                toNum(usage.completionTokens) ??
-                toNum(usage.completion_tokens) ??
-                toNum(usage.outputTokens) ??
-                toNum(usage.output_tokens) ??
-                toNum(usage.completion_tokens_total) ??
-                toNum(usage.output_tokens_total),
-              // Actual cost from provider (OpenRouter returns this in providerMetadata)
-              cost:
-                toNum(providerMeta.cost) ??
-                toNum(providerMeta.total_cost) ??
-                toNum(usage.cost) ??
-                toNum(usage.total_cost) ??
-                toNum(value.cost),
+              return {
+                inTok:
+                  toNum(usage.promptTokens) ??
+                  toNum(usage.prompt_tokens) ??
+                  toNum(usage.inputTokens) ??
+                  toNum(usage.input_tokens) ??
+                  toNum(usage.prompt_tokens_total) ??
+                  toNum(usage.input_tokens_total),
+                outTok:
+                  toNum(usage.completionTokens) ??
+                  toNum(usage.completion_tokens) ??
+                  toNum(usage.outputTokens) ??
+                  toNum(usage.output_tokens) ??
+                  toNum(usage.completion_tokens_total) ??
+                  toNum(usage.output_tokens_total),
+                // Actual cost from provider (OpenRouter returns this in providerMetadata)
+                cost:
+                  toNum(providerMeta.cost) ??
+                  toNum(providerMeta.total_cost) ??
+                  toNum(usage.cost) ??
+                  toNum(usage.total_cost) ??
+                  toNum(value.cost),
+              };
             };
-          };
 
-          if (parsed.type === "text-delta" && typeof parsed.textDelta === "string") {
-            fullContent += parsed.textDelta;
+            // AI SDK v6 + OpenRouter provider: text-delta uses 'text' property
+            // (v5 used 'textDelta', some providers use 'delta')
+            const textDelta = parsed.text ?? parsed.delta ?? parsed.textDelta;
+            if (parsed.type === "text-delta" && typeof textDelta === "string") {
+              fullContent += textDelta;
 
-            // Real-time update: Update streaming store immediately for instant UI feedback
-            appendStreamingContent(parsed.textDelta);
+              // Real-time update: Update streaming store immediately for instant UI feedback
+              appendStreamingContent(textDelta);
 
-            // Batch database updates (debounce to reduce write frequency)
-            if (dbUpdateTimeoutRef.current) {
-              clearTimeout(dbUpdateTimeoutRef.current);
+              // Batch database updates (debounce to reduce write frequency)
+              if (dbUpdateTimeoutRef.current) {
+                clearTimeout(dbUpdateTimeoutRef.current);
+              }
+              dbUpdateTimeoutRef.current = setTimeout(() => {
+                updateMessage(assistantMessage.id, {
+                  content: fullContent,
+                });
+              }, 150); // Update DB every 150ms max
             }
-            dbUpdateTimeoutRef.current = setTimeout(() => {
-              updateMessage(assistantMessage.id, {
-                content: fullContent,
+
+            // Handle reasoning/thinking events (from extended thinking models like Claude)
+            // AI SDK v6 + OpenRouter provider: uses 'text' property
+            const reasoningDelta = parsed.text ?? parsed.delta ?? parsed.textDelta;
+            if ((parsed.type === "reasoning" || parsed.type === "reasoning-delta") && typeof reasoningDelta === "string") {
+              fullReasoning += reasoningDelta;
+              appendStreamingReasoning(reasoningDelta);
+            }
+
+            if (parsed.type === "tool-call") {
+              const now = Date.now();
+              toolTimings[parsed.toolCallId] = { start: now };
+              // AI SDK v6: 'args' renamed to 'input'
+              const toolArgs = parsed.input ?? parsed.args;
+              toolCalls.push({
+                id: parsed.toolCallId,
+                name: parsed.toolName,
+                args: toolArgs,
+                startTime: now, // Add start time
               });
-            }, 150); // Update DB every 150ms max
-          }
-
-          // Handle reasoning/thinking events (from extended thinking models like Claude)
-          if (parsed.type === "reasoning" && typeof parsed.textDelta === "string") {
-            fullReasoning += parsed.textDelta;
-            appendStreamingReasoning(parsed.textDelta);
-          }
-
-          if (parsed.type === "tool-call") {
-            const now = Date.now();
-            toolTimings[parsed.toolCallId] = { start: now };
-            toolCalls.push({
-              id: parsed.toolCallId,
-              name: parsed.toolName,
-              args: parsed.args,
-              startTime: now, // Add start time
-            });
-            // Update streaming store for real-time UI
-            setStreamingToolCalls([...toolCalls]);
-            await updateMessage(assistantMessage.id, {
-              toolCalls: [...toolCalls],
-            });
-          }
-
-          if (parsed.type === "tool-result") {
-            const now = Date.now();
-            if (toolTimings[parsed.toolCallId]) {
-              toolTimings[parsed.toolCallId].end = now;
+              // Update streaming store for real-time UI
+              setStreamingToolCalls([...toolCalls]);
+              await updateMessage(assistantMessage.id, {
+                toolCalls: [...toolCalls],
+              });
             }
-            toolResults.push({
-              id: parsed.toolCallId,
-              name: parsed.toolName,
-              args: parsed.args,
-              result: parsed.result,
-              endTime: now, // Add end time
-            });
-            // Update streaming store for real-time UI
-            setStreamingToolResults([...toolResults]);
-            await updateMessage(assistantMessage.id, {
-              toolResults: [...toolResults],
-            });
-          }
 
-          // Extract token usage if available (format varies by provider/AI SDK version)
-          // Prefer last-seen values (usage often arrives only at end).
-          const u = extractUsage(parsed);
-          if (typeof u.inTok === "number") inputTokens = u.inTok;
-          if (typeof u.outTok === "number") outputTokens = u.outTok;
-          if (typeof u.cost === "number") actualCost = u.cost;
+            if (parsed.type === "tool-result") {
+              const now = Date.now();
+              if (toolTimings[parsed.toolCallId]) {
+                toolTimings[parsed.toolCallId].end = now;
+              }
+              // AI SDK v6: 'args' renamed to 'input', 'result' renamed to 'output'
+              const toolArgs = parsed.input ?? parsed.args;
+              const toolResult = parsed.output ?? parsed.result;
 
-          // Debug: Log usage data summary (no sensitive content)
-          if (u.inTok || u.outTok || u.cost) {
-            console.log("[Chat] Stream usage data:", { inputTokens: u.inTok, outputTokens: u.outTok, cost: u.cost });
-          }
+              // Check if tool result indicates an error
+              // Handle multiple error formats: { error: "..." }, { successful: false, error: "..." }, string containing "error:"
+              const isToolError = toolResult?.error ||
+                toolResult?.isError ||
+                toolResult?.successful === false ||
+                (toolResult?.result?.error) ||
+                (toolResult?.result?.successful === false) ||
+                (typeof toolResult === 'string' && toolResult.toLowerCase().includes('error:'));
 
-          // Log step-finish and finish events for debugging (only type and usage, no content)
-          if (parsed.type === "step-finish" || parsed.type === "finish") {
-            console.log(`[Chat] ${parsed.type} event:`, {
-              type: parsed.type,
-              usage: extractUsage(parsed),
-            });
-          }
+              toolResults.push({
+                id: parsed.toolCallId,
+                name: parsed.toolName,
+                args: toolArgs,
+                result: toolResult,
+                endTime: now,
+                isError: isToolError,
+              });
+              // Update streaming store for real-time UI
+              setStreamingToolResults([...toolResults]);
+              await updateMessage(assistantMessage.id, {
+                toolResults: [...toolResults],
+              });
 
-          // Handle error events that can appear in the stream (from ai SDK v4)
-          if (parsed.type === "error") {
-            const errorMessage = parsed.error?.message || parsed.error?.data?.error?.message || "Stream error occurred";
-            throw new Error(errorMessage);
+              // If tool failed, log it and track for repeated failures
+              // The LLM will see the error in the tool result and can try to recover
+              if (isToolError) {
+                // Extract error message from various formats
+                const errorMsg = toolResult?.error ||
+                  toolResult?.result?.error ||
+                  toolResult?.message ||
+                  toolResult?.result?.message ||
+                  "Tool execution failed";
+                console.warn(`[Chat] Tool ${parsed.toolName} returned error:`, errorMsg);
+
+                // Track consecutive failures for the same tool
+                const toolFailKey = `${parsed.toolName}`;
+                const currentFailures = (toolResults.filter(r =>
+                  r.name === parsed.toolName && r.isError
+                ).length);
+
+                // If same tool has failed 2+ times, add a hint for the LLM
+                if (currentFailures >= 2) {
+                  const hintNote = `\n\n💡 *Note: ${parsed.toolName} has failed ${currentFailures} times. The error suggests: "${errorMsg}". Consider using a different approach or tool.*\n\n`;
+                  fullContent += hintNote;
+                  appendStreamingContent(hintNote);
+                }
+              }
+            }
+
+            // Extract token usage if available (format varies by provider/AI SDK version)
+            // Accumulate across all steps (tool calls may have multiple steps)
+            const u = extractUsage(parsed);
+            if (typeof u.inTok === "number") {
+              inputTokens += u.inTok;
+              hasReceivedUsage = true;
+            }
+            if (typeof u.outTok === "number") {
+              outputTokens += u.outTok;
+              hasReceivedUsage = true;
+            }
+            if (typeof u.cost === "number") {
+              actualCost += u.cost;
+              hasReceivedUsage = true;
+            }
+
+            // Debug: Log usage data summary (no sensitive content)
+            if (u.inTok || u.outTok || u.cost) {
+              console.log("[Chat] Stream usage data (step):", { stepTokens: u.inTok, stepOutput: u.outTok, stepCost: u.cost, totalCost: actualCost });
+            }
+
+            // Log step-finish and finish events for debugging (only type and usage, no content)
+            if (parsed.type === "step-finish" || parsed.type === "finish") {
+              console.log(`[Chat] ${parsed.type} event:`, {
+                type: parsed.type,
+                usage: extractUsage(parsed),
+              });
+            }
+
+            // Handle error events gracefully - don't break the stream
+            // Tool errors and transient failures should allow the LLM to recover
+            if (parsed.type === "error") {
+              const errorMessage = parsed.error?.message || parsed.error?.data?.error?.message || "Stream error occurred";
+              console.warn("[Chat] Stream error event (continuing):", errorMessage);
+
+              // Categorize the error for better user feedback
+              let errorLabel = "Error";
+              const lowerMsg = errorMessage.toLowerCase();
+              if (lowerMsg.includes("model") || lowerMsg.includes("not a valid model")) {
+                errorLabel = "Model error";
+              } else if (lowerMsg.includes("api key") || lowerMsg.includes("unauthorized") || lowerMsg.includes("401") || lowerMsg.includes("403")) {
+                errorLabel = "API error";
+              } else if (lowerMsg.includes("rate limit") || lowerMsg.includes("429") || lowerMsg.includes("quota")) {
+                errorLabel = "Rate limit";
+              } else if (lowerMsg.includes("timeout") || lowerMsg.includes("timed out")) {
+                errorLabel = "Timeout";
+              } else if (lowerMsg.includes("tool") || lowerMsg.includes("validation error") || lowerMsg.includes("required at")) {
+                errorLabel = "Tool error";
+              }
+
+              // Append error to content so user sees it, but don't break the stream
+              const errorNote = `\n\n⚠️ *${errorLabel}: ${errorMessage}*\n\n`;
+              fullContent += errorNote;
+              appendStreamingContent(errorNote);
+            }
+
+            // Handle tool-retry-exhausted events (tool failed after retries)
+            if (parsed.type === "tool-retry-exhausted") {
+              const failureNote = `\n\n⚠️ *${parsed.toolName} failed after ${parsed.failCount} attempts. ${parsed.suggestion || ""}*\n\n`;
+              fullContent += failureNote;
+              appendStreamingContent(failureNote);
+            }
+          } catch (e) {
+            // Only log parse errors, don't break the stream
+            console.warn("Failed to parse stream data:", data, e);
           }
-        } catch (e) {
-          // If we threw an error above, re-throw it to the outer catch handler
-          if (e instanceof Error && e.message !== "Failed to parse stream data") {
-            throw e;
-          }
-          console.warn("Failed to parse stream data:", data);
         }
       }
-    }
 
-    // If provider didn't supply usage, fall back to local estimation so cost isn't stuck at 0.
-    if (typeof inputTokens !== "number" || typeof outputTokens !== "number") {
-      try {
-        // llmMessages is the actual request payload we sent to the server.
-        // Map it into Message-like objects so token-counter utilities can be reused.
-        const approxInput = countMessagesTokens(
-          llmMessages.map((m, idx) => ({
-            id: `req_${idx}`,
-            chatId,
-            role: m.role,
-            content: m.content as any,
-            createdAt: Date.now(),
-          }))
-        );
-        const approxOutput = countTokens(fullContent || "");
-        inputTokens = typeof inputTokens === "number" ? inputTokens : approxInput;
-        outputTokens = typeof outputTokens === "number" ? outputTokens : approxOutput;
-        costIsEstimated = true;
-      } catch {
-        // If estimation fails for any reason, fall back to 0/0 (cost will be 0).
-        inputTokens = inputTokens || 0;
-        outputTokens = outputTokens || 0;
-      }
-    }
-
-    // Use actual cost from provider if available, otherwise estimate
-    let cost: number;
-    console.log(`[Chat] Cost calculation - model: ${modelId}, provider: ${providerId}, actualCost: ${actualCost}, tokens: ${inputTokens}/${outputTokens}`);
-
-    if (typeof actualCost === "number" && actualCost > 0) {
-      cost = actualCost;
-      costIsEstimated = false;
-      console.log(`[Chat] Using actual cost from provider: $${cost.toFixed(6)}`);
-    } else {
-      cost = estimateCost(inputTokens || 0, outputTokens || 0, modelId, providerId);
-      // costIsEstimated is already true if we fell back to local token counting
-      console.log(`[Chat] Using estimated cost: $${cost.toFixed(6)} (model: ${modelId})`);
-    }
-
-    // Detect incomplete response (ends abruptly, no punctuation, or very long)
-    const isIncomplete =
-      fullContent.length > 0 &&
-      (!/[.!?]$/.test(fullContent.trim()) || fullContent.length > 3000);
-
-    // Update the assistant message with full content and metadata
-    await updateMessage(assistantMessage.id, {
-      content: fullContent,
-      reasoning: fullReasoning || undefined,
-      inputTokens: inputTokens || 0,
-      outputTokens: outputTokens || 0,
-      cost,
-      costIsEstimated: costIsEstimated || undefined,
-      isIncomplete,
-      canContinue: isIncomplete,
-      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-      toolResults: toolResults.length > 0 ? toolResults : undefined,
-    });
-
-    // Update chat's total cost (activeBranchLeafId already set when assistant message was created)
-    const currentTotalCost = chat.totalCost || 0;
-    await updateChat(chatId, {
-      totalCost: currentTotalCost + cost,
-    });
-
-    // Auto-generate title after the first exchange
-    // We check if:
-    // 1. The chat title is likely the default "New Chat" (we'll check the DB/cache state ideally, but here we can try)
-    // 2. We just finished the first real assistant response (history length is small)
-    if (chat.title === "New Chat" && history.length <= 1) { // history is PRE-current-generation, so 0 or 1 items usually
-      // We can fire-and-forget this
-      (async () => {
+      // If provider didn't supply usage, fall back to local estimation so cost isn't stuck at 0.
+      if (!hasReceivedUsage) {
         try {
-          console.log("[Chat] Auto-generating title...");
-
-          // Read title model settings from IndexedDB (client-side only!)
-          const { getSettings } = await import("@/lib/db/queries");
-          const settings = await getSettings();
-
-          const DEFAULT_TITLE_MODELS: Record<string, string> = {
-            openrouter: "openai/gpt-4o-mini",
-            openai: "gpt-4o-mini",
-            anthropic: "claude-3-haiku-20240307",
-            groq: "llama-3.1-8b-instant",
-          };
-
-          const titleModelId =
-            settings?.titleModelIdsByProvider?.[providerId] ||
-            settings?.titleModelId ||
-            DEFAULT_TITLE_MODELS[providerId] ||
-            "gpt-4o-mini";
-
-          console.log("[Chat] Using title model:", titleModelId);
-
-          const titleResponse = await fetch("/api/chat/title", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(apiKey?.key ? { "X-API-Key": apiKey.key } : {}),
-            },
-            body: JSON.stringify({
-              messages: [
-                ...llmMessages,
-                { role: "assistant", content: fullContent }
-              ],
-              modelId,
-              providerId,
-              providerBaseUrl: apiKey?.baseUrl,
-              apiKey: apiKey?.key,
-              titleModelId, // Pass the configured model from settings
-            })
-          });
-
-          if (titleResponse.ok) {
-            const { title, cost: titleCost } = await titleResponse.json();
-            console.log("[Chat] Generated title:", title, titleCost ? `(cost: $${titleCost})` : "");
-            if (title && title.length > 0) {
-              // Add title generation cost to chat total
-              const chatForCost = await getChatById(chatId);
-              const newTotalCost = (chatForCost?.totalCost || 0) + (titleCost || 0);
-              await updateChat(chatId, { title, totalCost: newTotalCost });
-            }
-          } else {
-            console.error("[Chat] Failed to generate title:", titleResponse.status, titleResponse.statusText);
-          }
-        } catch (err) {
-          console.error("Failed to auto-generate title:", err);
-          // Silently fail, it's just a title
+          // llmMessages is the actual request payload we sent to the server.
+          // Map it into Message-like objects so token-counter utilities can be reused.
+          const approxInput = countMessagesTokens(
+            llmMessages.map((m, idx) => ({
+              id: `req_${idx}`,
+              chatId,
+              role: m.role,
+              content: m.content as any,
+              createdAt: Date.now(),
+            }))
+          );
+          const approxOutput = countTokens(fullContent || "");
+          inputTokens = approxInput;
+          outputTokens = approxOutput;
+          costIsEstimated = true;
+        } catch {
+          // If estimation fails for any reason, fall back to 0/0 (cost will be 0).
+          inputTokens = 0;
+          outputTokens = 0;
         }
-      })();
-    }
+      }
 
-    // Schedule memory extraction after assistant response
-    scheduleMemoryExtraction();
+      // Use actual cost from provider if available, otherwise estimate
+      let cost: number;
+      console.log(`[Chat] Cost calculation - model: ${modelId}, provider: ${providerId}, hasReceivedUsage: ${hasReceivedUsage}, actualCost: $${actualCost.toFixed(6)}, tokens: ${inputTokens}/${outputTokens}`);
 
-    // Auto-summarize every 10 messages
-    const updatedMessages = await getMessages(chatId);
-    if (updatedMessages.length > 0 && updatedMessages.length % 10 === 0) {
-      // Map to ai Messages for the utility
-      const aiMessages: Message[] = updatedMessages.map(m => ({
-        id: m.id,
-        role: m.role as any,
-        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-        createdAt: new Date(m.createdAt)
-      }));
-      generateAndApplySummary({ chatId, messages: aiMessages, keys }).catch(console.error);
-    }
+      if (typeof actualCost === "number" && actualCost > 0) {
+        cost = actualCost;
+        costIsEstimated = false;
+        console.log(`[Chat] Using actual cost from provider: $${cost.toFixed(6)}`);
+      } else {
+        cost = estimateCost(inputTokens || 0, outputTokens || 0, modelId, providerId);
+        // costIsEstimated is already true if we fell back to local token counting
+        console.log(`[Chat] Using estimated cost: $${cost.toFixed(6)} (model: ${modelId})`);
+      }
+
+      // Detect incomplete response (ends abruptly, no punctuation, or very long)
+      const isIncomplete =
+        fullContent.length > 0 &&
+        (!/[.!?]$/.test(fullContent.trim()) || fullContent.length > 3000);
+
+      // Update the assistant message with full content and metadata
+      await updateMessage(assistantMessage.id, {
+        content: fullContent,
+        reasoning: fullReasoning || undefined,
+        inputTokens: inputTokens || 0,
+        outputTokens: outputTokens || 0,
+        cost,
+        costIsEstimated: costIsEstimated || undefined,
+        isIncomplete,
+        canContinue: isIncomplete,
+        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        toolResults: toolResults.length > 0 ? toolResults : undefined,
+      });
+
+      // Update chat's total cost (activeBranchLeafId already set when assistant message was created)
+      const currentTotalCost = chat.totalCost || 0;
+      await updateChat(chatId, {
+        totalCost: currentTotalCost + cost,
+      });
+
+      // Auto-generate title after the first exchange
+      // We check if:
+      // 1. The chat title is likely the default "New Chat" (we'll check the DB/cache state ideally, but here we can try)
+      // 2. We just finished the first real assistant response (history length is small)
+      if (chat.title === "New Chat" && history.length <= 1) { // history is PRE-current-generation, so 0 or 1 items usually
+        // We can fire-and-forget this
+        (async () => {
+          try {
+            console.log("[Chat] Auto-generating title...");
+
+            // Read title model settings from IndexedDB (client-side only!)
+            const { getSettings } = await import("@/lib/db/queries");
+            const settings = await getSettings();
+
+            const DEFAULT_TITLE_MODELS: Record<string, string> = {
+              openrouter: "openai/gpt-4o-mini",
+              openai: "gpt-4o-mini",
+              anthropic: "claude-3-haiku-20240307",
+              groq: "llama-3.1-8b-instant",
+            };
+
+            const titleModelId =
+              settings?.titleModelIdsByProvider?.[providerId] ||
+              settings?.titleModelId ||
+              DEFAULT_TITLE_MODELS[providerId] ||
+              "gpt-4o-mini";
+
+            console.log("[Chat] Using title model:", titleModelId);
+
+            const titleResponse = await fetch("/api/chat/title", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...(apiKey?.key ? { "X-API-Key": apiKey.key } : {}),
+              },
+              body: JSON.stringify({
+                messages: [
+                  ...llmMessages,
+                  { role: "assistant", content: fullContent }
+                ],
+                modelId,
+                providerId,
+                providerBaseUrl: apiKey?.baseUrl,
+                apiKey: apiKey?.key,
+                titleModelId, // Pass the configured model from settings
+              })
+            });
+
+            if (titleResponse.ok) {
+              const { title, cost: titleCost } = await titleResponse.json();
+              console.log("[Chat] Generated title:", title, titleCost ? `(cost: $${titleCost})` : "");
+              if (title && title.length > 0) {
+                // Add title generation cost to chat total
+                const chatForCost = await getChatById(chatId);
+                const newTotalCost = (chatForCost?.totalCost || 0) + (titleCost || 0);
+                await updateChat(chatId, { title, totalCost: newTotalCost });
+              }
+            } else {
+              console.error("[Chat] Failed to generate title:", titleResponse.status, titleResponse.statusText);
+            }
+          } catch (err) {
+            console.error("Failed to auto-generate title:", err);
+            // Silently fail, it's just a title
+          }
+        })();
+      }
+
+      // Schedule memory extraction after assistant response
+      scheduleMemoryExtraction();
+
+      // Auto-summarize every 10 messages
+      const updatedMessages = await getMessages(chatId);
+      if (updatedMessages.length > 0 && updatedMessages.length % 10 === 0) {
+        // Map to ai UIMessages for the utility
+        const aiMessages: UIMessage[] = updatedMessages.map(m => ({
+          id: m.id,
+          role: m.role as any,
+          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+          createdAt: new Date(m.createdAt),
+          parts: [{ type: 'text' as const, text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }]
+        }));
+        generateAndApplySummary({ chatId, messages: aiMessages, keys }).catch(console.error);
+      }
     } catch (error) {
       // Clear connection timeout on error
       clearTimeout(connectionTimeoutId);
@@ -1134,16 +1291,6 @@ export function useChat(chatId: string) {
     setIsLoading(true);
     setError(null);
 
-    // Show optimistic user message immediately for instant feedback
-    const optimisticId = `optimistic-${Date.now()}`;
-    setOptimisticMessage({
-      id: optimisticId,
-      content,
-      role: "user",
-      createdAt: Date.now(),
-      status: "sending",
-    });
-
     try {
       let chat = await getChatById(chatId);
       if (!chat) throw new Error("Chat not found");
@@ -1155,16 +1302,6 @@ export function useChat(chatId: string) {
         const mentionedAgentId = agentMentionMatch[1];
         const mentionedAgent = await getAgentById(mentionedAgentId);
         if (mentionedAgent) {
-          // Update optimistic message to show agent switching
-          setOptimisticMessage({
-            id: optimisticId,
-            content,
-            role: "user",
-            createdAt: Date.now(),
-            status: "switching-agent",
-            agentName: mentionedAgent.name,
-          });
-
           // Switch the chat to use the mentioned agent
           await updateChat(chatId, {
             agentId: mentionedAgent.id,
@@ -1200,7 +1337,7 @@ export function useChat(chatId: string) {
         parentId,
       });
 
-      // Clear optimistic message now that real message is saved
+      // Clear optimistic message immediately - user message is now in DB and will appear via live query
       clearOptimisticMessage();
 
       // Update chat's updatedAt timestamp

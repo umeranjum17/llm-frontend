@@ -138,6 +138,9 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         a: ({ node, children, href, ...props }) => {
           // Block javascript: URLs to prevent XSS
           const isUnsafe = href?.trim().toLowerCase().startsWith("javascript:");
+          
+          // Ensure links break properly and don't overflow
+          const linkClassName = "break-all text-primary hover:underline";
           const safeHref = isUnsafe ? "#blocked" : href;
 
           // Check if this is a "View Image" link that should be rendered as an inline image
@@ -171,7 +174,8 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
               href={safeHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-primary hover:underline"
+              className={linkClassName}
+              style={{ overflowWrap: 'anywhere', wordBreak: 'break-all' }}
               onClick={isUnsafe ? (e) => e.preventDefault() : undefined}
               {...props}
             >

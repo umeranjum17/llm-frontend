@@ -79,29 +79,12 @@ const ICON_MAP: Record<string, string> = {
 const STORAGE_KEY = "composio_config";
 const TOOLKITS_CACHE_KEY = "composio_toolkits_cache";
 const TOOLKITS_CACHE_TTL = 1000 * 60 * 60; // 1 hour
+const SESSION_TTL_MS = 1000 * 60 * 30; // 30 minutes - sessions expire and need refresh
 
-/**
- * Derive a unique, deterministic userId from the Composio API key.
- *
- * SECURITY: This ensures each user's Composio sessions are isolated.
- * Users with different API keys will have different userIds, preventing
- * cross-user data access.
- *
- * The hash is one-way and consistent, so:
- * 1. Same API key always produces the same userId (maintains connections)
- * 2. Different API keys produce different userIds (isolation)
- * 3. API key cannot be derived from userId (security)
- */
-function deriveUserIdFromApiKey(apiKey: string): string {
-  // Use FNV-1a hash for fast, deterministic hashing
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < apiKey.length; i++) {
-    hash ^= apiKey.charCodeAt(i);
-    hash = (hash * 0x01000193) >>> 0;
-  }
-  // Prefix with 'user_' and use base36 for compact representation
-  return `user_${hash.toString(36)}`;
-}
+// NOTE: Using "default" for userId is secure because Composio isolates ALL data by API key.
+// Each user has their own API key → their own isolated data.
+// entityId is for sub-user isolation within a single API key (SaaS scenario).
+// For personal/BYOK use, "default" is the standard approach.
 
 function getConfig(): ComposioConfig | null {
   if (typeof window === "undefined") return null;
@@ -198,15 +181,23 @@ export function useComposioApps() {
   useEffect(() => {
     let loaded = getConfig();
 
-    // SECURITY: Migrate old "default" userId to API key derived userId
-    // This ensures each user's Composio sessions are isolated by their API key
-    if (loaded && loaded.apiKey) {
-      const derivedUserId = deriveUserIdFromApiKey(loaded.apiKey);
-      if (loaded.userId !== derivedUserId) {
-        console.log("[Composio] Migrating userId to API-key-derived value for security isolation");
-        loaded = { ...loaded, userId: derivedUserId };
-        saveConfig(loaded);
-      }
+    // Migrate to "default" userId for better compatibility with existing connections
+    // This ensures connections created under "default" entityId are found
+    if (loaded && loaded.userId !== "default") {
+      console.log("[Composio] Migrating userId to 'default' for better compatibility");
+      loaded = { ...loaded, userId: "default" };
+      saveConfig(loaded);
+
+      // CRITICAL: Clear existing Composio session since entityId changed
+      // Old session was created with wrong entityId and won't find connections
+      (async () => {
+        try {
+          await db.mcpServers.delete("composio-consolidated");
+          console.log("[Composio] Cleared old session after userId migration - new session will be created");
+        } catch {
+          // Ignore
+        }
+      })();
     }
 
     if (loaded) {
@@ -224,10 +215,21 @@ export function useComposioApps() {
       );
     }
 
-    // Clean up legacy "composio-tool-router" entry (old implementation)
+    // Clean up legacy entries and check for expired sessions
     (async () => {
       try {
         await db.mcpServers.delete("composio-tool-router");
+
+        // Check if current Composio session is expired
+        const existingServer = await db.mcpServers.get("composio-consolidated");
+        if (existingServer) {
+          const sessionExpiresAt = (existingServer as any).sessionExpiresAt;
+          if (sessionExpiresAt && Date.now() > sessionExpiresAt) {
+            console.log("[Composio] Session expired, will create fresh session");
+            // Delete the expired entry so a new session gets created
+            await db.mcpServers.delete("composio-consolidated");
+          }
+        }
       } catch {
         // Ignore
       }
@@ -308,8 +310,8 @@ export function useComposioApps() {
 
   // Set API key and create initial config
   const setApiKey = useCallback(async (apiKey: string) => {
-    // SECURITY: Derive unique userId from API key to isolate user sessions
-    const userId = deriveUserIdFromApiKey(apiKey);
+    // Use "default" userId - Composio isolates data by API key, so this is safe
+    const userId = "default";
     const newConfig: ComposioConfig = {
       apiKey,
       userId,
@@ -500,6 +502,7 @@ export function useComposioApps() {
         logoUrl: "https://composio.dev/favicon.ico",
         category: "composio",
         composioToolkits, // Include toolkit metadata for individual toggling in UI
+        sessionExpiresAt: now + SESSION_TTL_MS, // Session TTL for auto-refresh
         createdAt: now,
         updatedAt: now,
       };

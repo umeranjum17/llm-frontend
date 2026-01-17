@@ -24,8 +24,43 @@ export async function POST(req: NextRequest) {
         switch (action) {
             case "add":
                 // Content can be a string (message) or array of messages
-                if (!content) throw new Error("Content is required for add");
-                result = await memoryClient.add(content, { user_id: finalUserId });
+                // Validate content more thoroughly for Mem0 API requirements
+                if (!content) {
+                    throw new Error("Content is required for add");
+                }
+
+                // Handle string content
+                if (typeof content === 'string') {
+                    const trimmed = content.trim();
+                    if (!trimmed) {
+                        throw new Error("Content cannot be empty");
+                    }
+                    result = await memoryClient.add(trimmed as any, { user_id: finalUserId });
+                }
+                // Handle array content (messages format)
+                else if (Array.isArray(content)) {
+                    if (content.length === 0) {
+                        throw new Error("Content array cannot be empty");
+                    }
+                    // Filter out empty messages
+                    const validMessages = content.filter((msg: any) => {
+                        if (typeof msg === 'string') return msg.trim().length > 0;
+                        if (typeof msg === 'object' && msg !== null) {
+                            // Handle { role, content } format
+                            const msgContent = msg.content || msg.text || msg.message;
+                            return typeof msgContent === 'string' && msgContent.trim().length > 0;
+                        }
+                        return false;
+                    });
+                    if (validMessages.length === 0) {
+                        throw new Error("No valid messages in content array");
+                    }
+                    result = await memoryClient.add(validMessages, { user_id: finalUserId });
+                }
+                // Invalid content type
+                else {
+                    throw new Error(`Invalid content type: ${typeof content}. Expected string or array.`);
+                }
                 break;
 
             case "search":

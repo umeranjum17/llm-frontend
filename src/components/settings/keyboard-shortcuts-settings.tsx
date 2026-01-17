@@ -81,8 +81,15 @@ const DEFAULT_SHORTCUTS: Shortcut[] = [
   },
   {
     id: "open-model-picker",
-    keys: ["Alt", "Shift", "M"],
+    keys: ["Cmd", "M"],
     description: "Open model picker",
+    category: "Chat",
+    editable: true,
+  },
+  {
+    id: "open-tools",
+    keys: ["Cmd", "T"],
+    description: "Open MCP tools",
     category: "Chat",
     editable: true,
   },

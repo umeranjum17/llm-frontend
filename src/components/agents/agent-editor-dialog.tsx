@@ -15,17 +15,14 @@ import { MODELS } from "@/lib/constants/models";
 import { useModelsStore } from "@/stores/models-store";
 import type { Agent, McpServer, PipelineStep } from "@/lib/db/schema";
 import { PROVIDERS } from "@/lib/providers/registry";
-import { addAgent, updateAgent, getAllMcpServers, getMcpServerById, getAllAgents, resetAgentToDefault } from "@/lib/db/queries";
+import { addAgent, updateAgent, getAllMcpServers, getAllAgents, resetAgentToDefault } from "@/lib/db/queries";
 import { toast } from "sonner";
-import { Eye, Brain, Wrench, Sparkles, Server, Loader2, AlertCircle, Image, Search, Check, Plus, Trash2, GripVertical, MessageSquare, ImageIcon, Bot, Settings2, LayoutGrid, List, ChevronDown, ChevronRight, RotateCcw } from "lucide-react";
+import { Server, Loader2, AlertCircle, Search, Check, Plus, Trash2, GripVertical, MessageSquare, ImageIcon, Bot, Settings2, LayoutGrid, List, ChevronDown, ChevronRight, RotateCcw, Wrench } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getModelCapabilities, isImageGenerationModel } from "@/lib/constants/model-capabilities";
+import { isImageGenerationModel } from "@/lib/constants/model-capabilities";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { formatModelCost } from "@/components/model-picker/model-item";
-import { McpManager } from "@/lib/mcp/mcp-manager";
 import { PipelineCanvas } from "./pipeline";
-import { useComposioApps } from "@/hooks/use-composio-apps";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
@@ -94,14 +91,6 @@ function validatePipelineSteps(steps: PipelineStep[]): PipelineValidationError[]
   return errors;
 }
 
-interface McpTool {
-  fullName: string;
-  serverName: string;
-  toolName: string;
-  description: string;
-  serverId: string;
-}
-
 export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset }: AgentEditorDialogProps) {
   const isEditing = !!agent;
   const isBuiltIn = agent?.isBuiltIn ?? false;
@@ -110,34 +99,14 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [avatar, setAvatar] = useState("");
-  const [systemPrompt, setSystemPrompt] = useState("");
-  const [modelId, setModelId] = useState<string>("__default__");
-  const [enabledTools, setEnabledTools] = useState<string[]>([]);
-  const [mcpServerIds, setMcpServerIds] = useState<string[]>([]);
-  const [disabledMcpTools, setDisabledMcpTools] = useState<string[]>([]);
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
 
-  // Pipeline state
-  const [executionType, setExecutionType] = useState<"simple" | "pipeline" | "orchestrator">("simple");
+  // Pipeline state - agents are always pipelines now
   const [pipelineSteps, setPipelineSteps] = useState<PipelineStep[]>([]);
   const [pipelineViewMode, setPipelineViewMode] = useState<"visual" | "form">("visual");
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
-
-  // MCP state
-  const [loadingTools, setLoadingTools] = useState(false);
-  const [mcpTools, setMcpTools] = useState<McpTool[]>([]);
-  const [toolsError, setToolsError] = useState<string | null>(null);
-  const [expandedMcpServers, setExpandedMcpServers] = useState<Set<string>>(new Set());
-
-  // Composio hook for toolkit management
-  const { toolkits: composioToolkits, toggleToolkit } = useComposioApps();
-
-  // Model picker state
-  const [modelPickerOpen, setModelPickerOpen] = useState(false);
-  const [modelSearch, setModelSearch] = useState("");
-  const [modelCategory, setModelCategory] = useState<"all" | "chat" | "image" | "vision">("all");
 
   // Pipeline step model picker state
   const [stepModelPickerOpen, setStepModelPickerOpen] = useState<number | null>(null);
@@ -158,117 +127,42 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
     setName(agent?.name || "");
     setDescription(agent?.description || "");
     setAvatar(agent?.avatar || "");
-    setSystemPrompt(agent?.systemPrompt || "");
-    setModelId(agent?.modelId || "__default__");
-    setEnabledTools(agent?.enabledTools || []);
-    setMcpServerIds(agent?.mcpServerIds || []);
-    setDisabledMcpTools(agent?.mcpToolPolicy?.disabledTools || []);
     setIsActive(agent?.isActive ?? true);
-    setMcpTools([]);
-    setToolsError(null);
-    // Pipeline state
-    setExecutionType(agent?.executionType || "simple");
-    // Ensure pipeline steps have default providerId values (so they get saved properly)
-    const steps = agent?.pipeline?.steps || [];
-    const stepsWithDefaults = steps.map((step) => ({
+    // Pipeline state - ensure steps have default providerId values
+    const existingSteps = agent?.pipeline?.steps || [];
+    const stepsWithDefaults = existingSteps.map((step) => ({
       ...step,
-      // Set default providerId based on step type
       providerId: step.providerId || "openrouter",
       imageProviderId: step.type === "image" ? (step.imageProviderId || "openrouter") : step.imageProviderId,
     }));
-    setPipelineSteps(stepsWithDefaults);
+
+    // For new agents, create a default first LLM step
+    if (!agent && stepsWithDefaults.length === 0) {
+      const defaultStep: PipelineStep = {
+        id: `step_${Date.now()}`,
+        name: "Step 1",
+        type: "llm",
+        providerId: "openrouter",
+        inputTemplate: "{{userInput}}",
+        outputVariable: "step1Output",
+      };
+      setPipelineSteps([defaultStep]);
+    } else {
+      setPipelineSteps(stepsWithDefaults);
+    }
   }, [open, agent, loadModels]);
 
-  // Load MCP tools when servers are selected
-  useEffect(() => {
-    if (mcpServerIds.length === 0) {
-      setMcpTools([]);
-      return;
-    }
-
-    const loadMcpTools = async () => {
-      setLoadingTools(true);
-      setToolsError(null);
-      try {
-        const selectedServers = (allMcpServers || []).filter((s) =>
-          mcpServerIds.includes(s.id)
-        );
-
-        if (selectedServers.length === 0) {
-          setMcpTools([]);
-          return;
-        }
-
-        const manager = McpManager.getInstance();
-        const { tools, metadata } = await manager.getTools(selectedServers);
-
-        // Map tools with server info
-        const toolsList: McpTool[] = metadata.map((m) => {
-          const server = selectedServers.find((s) => s.name === m.serverName);
-          return {
-            fullName: m.fullName,
-            serverName: m.serverName,
-            toolName: m.toolName,
-            description: m.description || "No description",
-            serverId: server?.id || "",
-          };
-        });
-
-        setMcpTools(toolsList);
-      } catch (err) {
-        console.error("Failed to load MCP tools:", err);
-        setToolsError(err instanceof Error ? err.message : "Failed to load tools");
-        setMcpTools([]);
-      } finally {
-        setLoadingTools(false);
-      }
-    };
-
-    loadMcpTools();
-  }, [mcpServerIds, allMcpServers]);
-
   const modelOptions = useMemo(() => (models.length > 0 ? models : MODELS), [models]);
-  const selectedModel = modelOptions.find((m) => m.id === modelId);
 
   // Validate pipeline steps
   const pipelineValidationErrors = useMemo(() => {
-    if (executionType !== "pipeline" || pipelineSteps.length === 0) {
+    if (pipelineSteps.length === 0) {
       return [];
     }
     return validatePipelineSteps(pipelineSteps);
-  }, [executionType, pipelineSteps]);
+  }, [pipelineSteps]);
 
   const hasPipelineErrors = pipelineValidationErrors.length > 0;
-
-  // Filter models by category and search
-  const filteredModels = useMemo(() => {
-    let filtered = modelOptions;
-
-    // Filter by category
-    if (modelCategory === "image") {
-      filtered = filtered.filter((m) => isImageGenerationModel(m.id));
-    } else if (modelCategory === "vision") {
-      filtered = filtered.filter((m) => {
-        const caps = getModelCapabilities(m.id);
-        return caps.supportsVision && !isImageGenerationModel(m.id);
-      });
-    } else if (modelCategory === "chat") {
-      filtered = filtered.filter((m) => !isImageGenerationModel(m.id));
-    }
-
-    // Filter by search
-    if (modelSearch.trim()) {
-      const q = modelSearch.toLowerCase();
-      filtered = filtered.filter(
-        (m) =>
-          m.name.toLowerCase().includes(q) ||
-          m.id.toLowerCase().includes(q) ||
-          m.provider.toLowerCase().includes(q)
-      );
-    }
-
-    return filtered.slice(0, 100);
-  }, [modelOptions, modelCategory, modelSearch]);
 
   // Filter models for pipeline steps (based on step type and search)
   const getFilteredModelsForStep = useCallback((stepType: "llm" | "image" | "tool" | "subagent") => {
@@ -295,57 +189,28 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
     return filtered.slice(0, 50);
   }, [modelOptions, stepModelSearch]);
 
-  const toggleMcpServer = (serverId: string) => {
-    setMcpServerIds((prev) =>
-      prev.includes(serverId) ? prev.filter((id) => id !== serverId) : [...prev, serverId]
-    );
-  };
-
-  const toggleMcpServerExpanded = (serverId: string) => {
-    setExpandedMcpServers((prev) => {
-      const next = new Set(prev);
-      if (next.has(serverId)) {
-        next.delete(serverId);
-      } else {
-        next.add(serverId);
-      }
-      return next;
-    });
-  };
-
-  const toggleMcpTool = (toolName: string) => {
-    setDisabledMcpTools((prev) =>
-      prev.includes(toolName) ? prev.filter((t) => t !== toolName) : [...prev, toolName]
-    );
-  };
-
   const handleSave = async () => {
-    // Built-in agents can only have model, MCP servers, and tool policy updated
     if (!isBuiltIn) {
       if (!name.trim()) {
         toast.error("Name is required");
         return;
       }
-      if (!systemPrompt.trim() && executionType === "simple") {
-        toast.error("System prompt is required");
-        return;
-      }
-      if (executionType === "pipeline" && pipelineSteps.length === 0) {
+      if (pipelineSteps.length === 0) {
         toast.error("Pipeline requires at least one step");
         return;
       }
     }
 
     // Check for pipeline validation errors
-    if (executionType === "pipeline" && hasPipelineErrors) {
+    if (hasPipelineErrors) {
       toast.error(`Pipeline has ${pipelineValidationErrors.length} configuration error(s)`);
       return;
     }
 
     setSaving(true);
     try {
-      // Build pipeline config if applicable
-      const pipelineConfig = executionType === "pipeline" && pipelineSteps.length > 0
+      // Build pipeline config - agents are always pipelines
+      const pipelineConfig = pipelineSteps.length > 0
         ? { steps: pipelineSteps }
         : undefined;
 
@@ -353,12 +218,8 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
         // For built-in agents, only update specific fields
         if (isBuiltIn) {
           await updateAgent(agent.id, {
-            modelId: modelId === "__default__" ? undefined : modelId,
-            mcpServerIds,
-            mcpToolPolicy: disabledMcpTools.length > 0 ? { disabledTools: disabledMcpTools } : undefined,
-            enabledTools,
             isActive,
-            executionType,
+            executionType: "pipeline",
             pipeline: pipelineConfig,
           });
           toast.success("Agent settings updated");
@@ -367,13 +228,9 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
             name: name.trim(),
             description: description.trim() || undefined,
             avatar: avatar.trim() || undefined,
-            systemPrompt,
-            modelId: modelId === "__default__" ? undefined : modelId,
-            enabledTools,
-            mcpServerIds,
-            mcpToolPolicy: disabledMcpTools.length > 0 ? { disabledTools: disabledMcpTools } : undefined,
+            systemPrompt: "", // System prompts are per-step now
             isActive,
-            executionType,
+            executionType: "pipeline",
             pipeline: pipelineConfig,
           });
           toast.success("Agent updated");
@@ -384,16 +241,14 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
           name: name.trim(),
           description: description.trim() || undefined,
           avatar: avatar.trim() || undefined,
-          systemPrompt,
-          modelId: modelId === "__default__" ? undefined : modelId,
-          enabledTools,
-          mcpServerIds,
-          mcpToolPolicy: disabledMcpTools.length > 0 ? { disabledTools: disabledMcpTools } : undefined,
+          systemPrompt: "", // System prompts are per-step now
+          enabledTools: [], // Tools are configured per-step
+          mcpServerIds: [], // MCP servers are configured per-step
           knowledgeBaseIds: [],
           parameters: undefined,
           isBuiltIn: false,
           isActive,
-          executionType,
+          executionType: "pipeline",
           pipeline: pipelineConfig,
         });
         toast.success("Agent created");
@@ -407,8 +262,6 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
       setSaving(false);
     }
   };
-
-  const enabledMcpToolsCount = mcpTools.filter((t) => !disabledMcpTools.includes(t.fullName)).length;
 
   const handleReset = async () => {
     if (!agent || !isBuiltIn) return;
@@ -441,34 +294,23 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
           )}
         </DialogHeader>
 
-        <Tabs defaultValue="general" className="flex-1 min-h-0">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="general">General</TabsTrigger>
-            <TabsTrigger value="model">Model</TabsTrigger>
+        <Tabs defaultValue="overview" className="flex-1 min-h-0">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="pipeline">
               Pipeline
-              {executionType === "pipeline" && pipelineSteps.length > 0 && (
+              {pipelineSteps.length > 0 && (
                 <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">
                   {pipelineSteps.length}
                 </Badge>
               )}
             </TabsTrigger>
-            {/* Hide Tools tab for pipeline agents - tools are per-step */}
-            {executionType !== "pipeline" && (
-              <TabsTrigger value="tools">
-                Tools
-                {mcpServerIds.length > 0 && (
-                  <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">
-                    {enabledMcpToolsCount}
-                  </Badge>
-                )}
-              </TabsTrigger>
-            )}
           </TabsList>
 
           <ScrollArea className="flex-1 mt-4 pr-4" style={{ maxHeight: "calc(90vh - 220px)" }}>
-            {/* General Tab */}
-            <TabsContent value="general" className="space-y-4 mt-0">
+            {/* Overview Tab */}
+            <TabsContent value="overview" className="space-y-4 mt-0">
+              {/* Basic Info */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Name</Label>
@@ -476,6 +318,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Agent name"
+                    disabled={isBuiltIn}
                   />
                 </div>
                 <div className="space-y-2">
@@ -484,6 +327,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
                     value={avatar}
                     onChange={(e) => setAvatar(e.target.value)}
                     placeholder="🤖"
+                    disabled={isBuiltIn}
                   />
                 </div>
 
@@ -493,288 +337,98 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="What does this agent do?"
+                    disabled={isBuiltIn}
                   />
-                </div>
-
-                <div className="sm:col-span-2 space-y-2">
-                  <Label>System Prompt</Label>
-                  <Textarea
-                    value={systemPrompt}
-                    onChange={(e) => setSystemPrompt(e.target.value)}
-                    className="min-h-[140px]"
-                    placeholder="Define the agent behavior..."
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <div className="flex items-center gap-2 p-3 rounded-lg border">
-                    <Checkbox
-                      id="agent-active"
-                      checked={isActive}
-                      onCheckedChange={(checked) => setIsActive(checked === true)}
-                    />
-                    <label htmlFor="agent-active" className="text-sm cursor-pointer">
-                      Enabled
-                    </label>
-                  </div>
                 </div>
               </div>
-            </TabsContent>
 
-            {/* Model Tab */}
-            <TabsContent value="model" className="space-y-4 mt-0">
-              {/* Show different content for pipeline agents */}
-              {executionType === "pipeline" ? (
-                <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-6 text-center">
-                  <Settings2 className="h-10 w-10 mx-auto text-blue-500/70 mb-3" />
-                  <h3 className="font-medium mb-2">Pipeline Agent</h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Pipeline agents configure models for each step individually.
-                    <br />
-                    Go to the <strong>Pipeline</strong> tab to configure step models.
-                  </p>
-                  <div className="text-xs text-muted-foreground">
-                    {pipelineSteps.length > 0 && (
-                      <div className="flex flex-col gap-1">
-                        <span className="font-medium">Current pipeline models:</span>
-                        {pipelineSteps.map((step, i) => {
-                          const stepModelId = step.type === "image" ? step.imageModelId : step.modelId;
-                          const model = modelOptions.find((m) => m.id === stepModelId);
-                          return (
-                            <span key={step.id} className="text-muted-foreground">
-                              Step {i + 1}: {model?.name || stepModelId || "Not set"}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    )}
+              {/* Pipeline Summary */}
+              {pipelineSteps.length > 0 && (
+                <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Pipeline Summary</Label>
+                    <Badge variant="outline" className="text-xs">
+                      {pipelineSteps.length} step{pipelineSteps.length !== 1 ? "s" : ""}
+                    </Badge>
                   </div>
-                </div>
-              ) : (
-              <div className="space-y-3">
-                <div>
-                  <Label>Model</Label>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Select a specific model for this agent or use the chat&apos;s default model
-                  </p>
-                </div>
+                  <div className="space-y-2">
+                    {pipelineSteps.map((step, i) => {
+                      const stepModelId = step.type === "image" ? step.imageModelId : step.modelId;
+                      const model = modelOptions.find((m) => m.id === stepModelId);
+                      const StepIcon = step.type === "llm" ? MessageSquare : step.type === "image" ? ImageIcon : step.type === "subagent" ? Bot : Server;
+                      const stepColor = step.type === "llm" ? "text-blue-500" : step.type === "image" ? "text-pink-500" : step.type === "subagent" ? "text-purple-500" : "text-amber-500";
+                      const toolCount = step.mcpServerIds?.length || 0;
 
-                {/* Category filters */}
-                <div className="flex flex-wrap gap-1.5">
-                  {[
-                    { key: "all", label: "All Models" },
-                    { key: "chat", label: "Chat" },
-                    { key: "image", label: "Image Gen", icon: Image },
-                    { key: "vision", label: "Vision", icon: Eye },
-                  ].map(({ key, label, icon: Icon }) => (
-                    <Button
-                      key={key}
-                      variant={modelCategory === key ? "default" : "outline"}
-                      size="sm"
-                      className="h-7 text-xs"
-                      onClick={() => setModelCategory(key as typeof modelCategory)}
-                    >
-                      {Icon && <Icon className="h-3 w-3 mr-1" />}
-                      {label}
-                    </Button>
-                  ))}
-                </div>
-
-                {/* Model combobox */}
-                <Popover open={modelPickerOpen} onOpenChange={setModelPickerOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={modelPickerOpen}
-                      className="w-full justify-between h-10"
-                    >
-                      {modelId === "__default__" ? (
-                        <span className="flex items-center gap-2">
-                          <Sparkles className="h-4 w-4 text-muted-foreground" />
-                          Use chat model
-                        </span>
-                      ) : selectedModel ? (
-                        <div className="flex items-center gap-2 min-w-0">
-                          {isImageGenerationModel(selectedModel.id) && (
-                            <Image className="h-4 w-4 text-pink-500 shrink-0" />
-                          )}
-                          <span className="truncate">{selectedModel.name}</span>
-                          {(() => {
-                            const caps = getModelCapabilities(selectedModel.id);
-                            return (
-                              <div className="flex items-center gap-0.5 shrink-0">
-                                {caps.supportsVision && !isImageGenerationModel(selectedModel.id) && (
-                                  <Eye className="h-3 w-3 text-sky-500" />
-                                )}
-                                {caps.supportsReasoning && <Brain className="h-3 w-3 text-purple-500" />}
-                                {caps.supportsTools && <Wrench className="h-3 w-3 text-amber-500" />}
-                              </div>
-                            );
-                          })()}
-                          <span className="text-xs text-muted-foreground shrink-0">{selectedModel.provider}</span>
+                      return (
+                        <div key={step.id} className="flex items-center gap-3 p-2 rounded-md bg-background/50">
+                          <div className="flex items-center justify-center h-6 w-6 rounded-full bg-muted text-xs font-medium">
+                            {i + 1}
+                          </div>
+                          <StepIcon className={cn("h-4 w-4", stepColor)} />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium truncate">{step.name}</div>
+                            <div className="text-xs text-muted-foreground truncate">
+                              {model?.name || stepModelId || "No model"}
+                              {toolCount > 0 && ` • ${toolCount} tool source${toolCount !== 1 ? "s" : ""}`}
+                            </div>
+                          </div>
+                          <Badge variant="secondary" className="text-[10px] shrink-0">
+                            {step.type.toUpperCase()}
+                          </Badge>
                         </div>
-                      ) : (
-                        <span className="text-muted-foreground">Select a model...</span>
-                      )}
-                      <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[400px] p-0" align="start">
-                    <Command shouldFilter={false}>
-                      <CommandInput
-                        placeholder="Search models..."
-                        value={modelSearch}
-                        onValueChange={setModelSearch}
-                      />
-                      <CommandList className="max-h-[300px]">
-                        <CommandEmpty>No models found.</CommandEmpty>
-                        <CommandGroup>
-                          {/* Default option */}
-                          <CommandItem
-                            value="__default__"
-                            onSelect={() => {
-                              setModelId("__default__");
-                              setModelPickerOpen(false);
-                            }}
-                          >
-                            <Check
-                              className={`mr-2 h-4 w-4 ${modelId === "__default__" ? "opacity-100" : "opacity-0"}`}
-                            />
-                            <Sparkles className="h-4 w-4 mr-2 text-muted-foreground" />
-                            <span>Use chat model</span>
-                          </CommandItem>
-
-                          {/* Model options */}
-                          {filteredModels.map((m) => {
-                            const capabilities = getModelCapabilities(m.id);
-                            const isImageGen = isImageGenerationModel(m.id);
-                            const costDisplay = formatModelCost(m.inputCost, m.outputCost);
-                            const isFree = costDisplay === "Free";
-                            return (
-                              <CommandItem
-                                key={m.id}
-                                value={m.id}
-                                onSelect={() => {
-                                  setModelId(m.id);
-                                  setModelPickerOpen(false);
-                                }}
-                              >
-                                <Check
-                                  className={`mr-2 h-4 w-4 shrink-0 ${modelId === m.id ? "opacity-100" : "opacity-0"}`}
-                                />
-                                <div className="flex items-center gap-2 min-w-0 flex-1">
-                                  {isImageGen && <Image className="h-4 w-4 text-pink-500 shrink-0" />}
-                                  <span className="truncate">{m.name}</span>
-                                  <div className="flex items-center gap-0.5 shrink-0">
-                                    {capabilities.supportsVision && !isImageGen && (
-                                      <Eye className="h-3 w-3 text-sky-500" />
-                                    )}
-                                    {capabilities.supportsReasoning && <Brain className="h-3 w-3 text-purple-500" />}
-                                    {capabilities.supportsTools && <Wrench className="h-3 w-3 text-amber-500" />}
-                                  </div>
-                                  <span className={`text-xs shrink-0 ${isFree ? "text-green-500" : "text-muted-foreground"}`}>
-                                    {costDisplay}
-                                  </span>
-                                  <span className="text-xs text-muted-foreground/70 shrink-0">{m.provider}</span>
-                                </div>
-                              </CommandItem>
-                            );
-                          })}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-
-                {/* Legend */}
-                <div className="flex flex-wrap gap-3 text-xs text-muted-foreground pt-2">
-                  <span className="flex items-center gap-1">
-                    <Image className="h-3 w-3 text-pink-500" /> Image Generation
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Eye className="h-3 w-3 text-sky-500" /> Vision
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Brain className="h-3 w-3 text-purple-500" /> Reasoning
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Wrench className="h-3 w-3 text-amber-500" /> Tools
-                  </span>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
               )}
+
+              {/* Status */}
+              <div className="flex items-center justify-between p-3 rounded-lg border">
+                <Label htmlFor="agent-active" className="text-sm cursor-pointer">
+                  Agent Enabled
+                </Label>
+                <Switch
+                  id="agent-active"
+                  checked={isActive}
+                  onCheckedChange={setIsActive}
+                />
+              </div>
             </TabsContent>
 
             {/* Pipeline Tab */}
             <TabsContent value="pipeline" className="space-y-4 mt-0">
               <div className="space-y-3">
-                <div>
-                  <Label className="text-base">Execution Type</Label>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    How this agent processes requests
-                  </p>
-                </div>
-                <Select
-                  value={executionType}
-                  onValueChange={(v) => setExecutionType(v as typeof executionType)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select execution type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="simple">
-                      <div className="flex items-center gap-2">
-                        <MessageSquare className="h-4 w-4" />
-                        <span>Simple</span>
-                        <span className="text-xs text-muted-foreground">- Single LLM call</span>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="pipeline">
-                      <div className="flex items-center gap-2">
-                        <Settings2 className="h-4 w-4" />
-                        <span>Pipeline</span>
-                        <span className="text-xs text-muted-foreground">- Multi-step workflow</span>
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {executionType === "pipeline" && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label className="text-base">Pipeline Steps</Label>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Define the steps this agent will execute sequentially
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {/* View mode toggle */}
-                      <div className="flex items-center border rounded-lg p-0.5">
-                        <Button
-                          variant={pipelineViewMode === "visual" ? "secondary" : "ghost"}
-                          size="sm"
-                          className="h-7 px-2"
-                          onClick={() => setPipelineViewMode("visual")}
-                        >
-                          <LayoutGrid className="h-3.5 w-3.5 mr-1" />
-                          Visual
-                        </Button>
-                        <Button
-                          variant={pipelineViewMode === "form" ? "secondary" : "ghost"}
-                          size="sm"
-                          className="h-7 px-2"
-                          onClick={() => setPipelineViewMode("form")}
-                        >
-                          <List className="h-3.5 w-3.5 mr-1" />
-                          Form
-                        </Button>
-                      </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-base">Pipeline Steps</Label>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Define the steps this agent will execute sequentially
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {/* View mode toggle */}
+                    <div className="flex items-center border rounded-lg p-0.5">
+                      <Button
+                        variant={pipelineViewMode === "visual" ? "secondary" : "ghost"}
+                        size="sm"
+                        className="h-7 px-2"
+                        onClick={() => setPipelineViewMode("visual")}
+                      >
+                        <LayoutGrid className="h-3.5 w-3.5 mr-1" />
+                        Visual
+                      </Button>
+                      <Button
+                        variant={pipelineViewMode === "form" ? "secondary" : "ghost"}
+                        size="sm"
+                        className="h-7 px-2"
+                        onClick={() => setPipelineViewMode("form")}
+                      >
+                        <List className="h-3.5 w-3.5 mr-1" />
+                        Form
+                      </Button>
                     </div>
                   </div>
+                </div>
 
                   {/* Visual Pipeline Editor */}
                   {pipelineViewMode === "visual" && (
@@ -1189,20 +843,49 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
                                                   No tools loaded for this server yet.
                                                 </div>
                                               ) : composioToolkits.length > 0 ? (
-                                                composioToolkits.map((toolkit) => (
-                                                  <div key={toolkit.key} className="flex items-center justify-between gap-2">
-                                                    <div className="min-w-0">
-                                                      <div className="text-xs font-medium truncate">{toolkit.name}</div>
-                                                      <div className="text-[10px] text-muted-foreground">{toolkit.key}</div>
+                                                composioToolkits.map((toolkit) => {
+                                                  const stepOverrides = step.toolkitOverrides || {};
+                                                  const effectiveEnabled = stepOverrides[toolkit.key] ?? toolkit.isEnabled;
+                                                  const hasOverride = toolkit.key in stepOverrides;
+                                                  return (
+                                                    <div key={toolkit.key} className="flex items-center justify-between gap-2">
+                                                      <div className="min-w-0 flex-1">
+                                                        <div className="text-xs font-medium truncate flex items-center gap-1">
+                                                          {toolkit.name}
+                                                          {hasOverride && (
+                                                            <span className="text-[9px] text-primary">(override)</span>
+                                                          )}
+                                                        </div>
+                                                        <div className="text-[10px] text-muted-foreground">{toolkit.key}</div>
+                                                      </div>
+                                                      <Switch
+                                                        checked={effectiveEnabled}
+                                                        onCheckedChange={() => {
+                                                          const updated = [...pipelineSteps];
+                                                          const currentOverrides = step.toolkitOverrides || {};
+                                                          const currentValue = currentOverrides[toolkit.key] ?? toolkit.isEnabled;
+                                                          const newValue = !currentValue;
+
+                                                          // If new value matches global, remove the override
+                                                          if (newValue === toolkit.isEnabled) {
+                                                            const { [toolkit.key]: _, ...rest } = currentOverrides;
+                                                            updated[index] = {
+                                                              ...step,
+                                                              toolkitOverrides: Object.keys(rest).length > 0 ? rest : undefined,
+                                                            };
+                                                          } else {
+                                                            updated[index] = {
+                                                              ...step,
+                                                              toolkitOverrides: { ...currentOverrides, [toolkit.key]: newValue },
+                                                            };
+                                                          }
+                                                          setPipelineSteps(updated);
+                                                        }}
+                                                        className="scale-75"
+                                                      />
                                                     </div>
-                                                    <Badge
-                                                      variant={toolkit.isEnabled ? "secondary" : "outline"}
-                                                      className="text-[10px] h-4"
-                                                    >
-                                                      {toolkit.isEnabled ? "Enabled" : "Disabled"}
-                                                    </Badge>
-                                                  </div>
-                                                ))
+                                                  );
+                                                })
                                               ) : (
                                                 serverTools.map((tool) => {
                                                   const toolId = `${server.id}/${tool.name}`;
@@ -1291,183 +974,8 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
                   )}
                   </>
                   )}
-                </div>
-              )}
-            </TabsContent>
-
-            {/* Tools Tab - Hidden for pipeline agents */}
-            {executionType !== "pipeline" && (
-            <TabsContent value="tools" className="space-y-6 mt-0">
-              {/* MCP Servers */}
-              <div className="space-y-3">
-                <div>
-                  <Label className="text-base">MCP Servers</Label>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Connect external tool servers to extend agent capabilities
-                  </p>
-                </div>
-
-                {allMcpServers.length === 0 ? (
-                  <div className="rounded-lg border border-dashed p-6 text-center">
-                    <Server className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
-                    <p className="text-sm text-muted-foreground">No MCP servers configured</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Add MCP servers in Settings → Plugins
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-2 rounded-lg border p-3">
-                    {allMcpServers.map((server) => {
-                      const isComposio = server.id === "composio-consolidated" && composioToolkits.length > 0;
-                      const isExpanded = expandedMcpServers.has(server.id);
-                      const enabledToolkitsCount = composioToolkits.filter(t => t.isEnabled).length;
-
-                      return (
-                        <div key={server.id} className="space-y-2">
-                          <div className="flex items-center gap-3">
-                            <Checkbox
-                              id={`mcp-${server.id}`}
-                              checked={mcpServerIds.includes(server.id)}
-                              onCheckedChange={() => toggleMcpServer(server.id)}
-                            />
-                            <div className="flex-1 min-w-0">
-                              <label
-                                htmlFor={`mcp-${server.id}`}
-                                className="text-sm font-medium cursor-pointer truncate block"
-                              >
-                                {isComposio ? `Composio (${enabledToolkitsCount} apps)` : server.name}
-                              </label>
-                              {server.description && !isComposio && (
-                                <p className="text-xs text-muted-foreground truncate">
-                                  {server.description}
-                                </p>
-                              )}
-                            </div>
-                            {isComposio ? (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 w-7 p-0"
-                                onClick={() => toggleMcpServerExpanded(server.id)}
-                              >
-                                {isExpanded ? (
-                                  <ChevronDown className="h-4 w-4" />
-                                ) : (
-                                  <ChevronRight className="h-4 w-4" />
-                                )}
-                              </Button>
-                            ) : (
-                              <Server className="h-4 w-4 text-muted-foreground shrink-0" />
-                            )}
-                          </div>
-
-                          {/* Expandable Composio Toolkits */}
-                          {isComposio && isExpanded && (
-                            <div className="ml-7 pl-3 border-l space-y-1 max-h-[200px] overflow-y-auto">
-                              {composioToolkits.map((toolkit) => (
-                                <div key={toolkit.key} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted/50">
-                                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                                    {toolkit.logo ? (
-                                      <img
-                                        src={toolkit.logo}
-                                        alt={toolkit.name}
-                                        className="h-4 w-4 object-contain"
-                                        onError={(e) => {
-                                          (e.target as HTMLImageElement).style.display = 'none';
-                                        }}
-                                      />
-                                    ) : (
-                                      <Server className="h-4 w-4 text-muted-foreground" />
-                                    )}
-                                    <span className="text-sm truncate">{toolkit.name}</span>
-                                    {toolkit.isConnected && (
-                                      <Badge variant="outline" className="text-[9px] h-4 px-1.5">Connected</Badge>
-                                    )}
-                                  </div>
-                                  <Switch
-                                    checked={toolkit.isEnabled}
-                                    onCheckedChange={() => toggleToolkit(toolkit.key)}
-                                    className="scale-75"
-                                  />
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
-
-              {/* MCP Tools from Selected Servers */}
-              {mcpServerIds.length > 0 && (
-                <div className="space-y-3">
-                  <div>
-                    <Label className="text-base">MCP Tools</Label>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Tools from selected MCP servers. Uncheck to disable specific tools.
-                    </p>
-                  </div>
-
-                  {loadingTools ? (
-                    <div className="rounded-lg border p-6 text-center">
-                      <Loader2 className="h-6 w-6 mx-auto animate-spin text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground mt-2">Loading tools...</p>
-                    </div>
-                  ) : toolsError ? (
-                    <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
-                      <div className="flex items-center gap-2 text-destructive">
-                        <AlertCircle className="h-4 w-4" />
-                        <span className="text-sm font-medium">Failed to load tools</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">{toolsError}</p>
-                    </div>
-                  ) : mcpTools.length === 0 ? (
-                    <div className="rounded-lg border border-dashed p-4 text-center">
-                      <p className="text-sm text-muted-foreground">No tools available from selected servers</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 rounded-lg border p-3 max-h-[250px] overflow-y-auto">
-                      {mcpTools.map((tool) => {
-                        const isEnabled = !disabledMcpTools.includes(tool.fullName);
-                        return (
-                          <div key={tool.fullName} className="flex items-start gap-3 py-1">
-                            <Checkbox
-                              id={`mcp-tool-${tool.fullName}`}
-                              checked={isEnabled}
-                              onCheckedChange={() => toggleMcpTool(tool.fullName)}
-                              className="mt-0.5"
-                            />
-                            <div className="flex-1 min-w-0">
-                              <label
-                                htmlFor={`mcp-tool-${tool.fullName}`}
-                                className="text-sm font-medium cursor-pointer block"
-                              >
-                                {tool.toolName}
-                              </label>
-                              <p className="text-xs text-muted-foreground line-clamp-2">
-                                {tool.description}
-                              </p>
-                              <Badge variant="outline" className="mt-1 text-[10px] h-4">
-                                {tool.serverName}
-                              </Badge>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {mcpTools.length > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      {enabledMcpToolsCount} of {mcpTools.length} tools enabled
-                    </p>
-                  )}
-                </div>
-              )}
             </TabsContent>
-            )}
           </ScrollArea>
         </Tabs>
 

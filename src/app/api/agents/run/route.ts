@@ -1,11 +1,9 @@
 import { generateText } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
-import { createAnthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import { BUILTIN_AGENTS } from "@/lib/constants/agents";
-import { PROVIDERS } from "@/lib/providers/registry";
 import { getAgentById } from "@/lib/db/queries";
 import type { Agent } from "@/lib/db/schema";
+import { createModel } from "@/lib/ai/chat-executor";
 
 export const runtime = "nodejs";
 
@@ -52,41 +50,6 @@ const RequestSchema = z.object({
 });
 
 /**
- * Get provider base URL from provider ID
- */
-function getProviderBaseUrl(providerId: string): string {
-    const provider = PROVIDERS.find((p) => p.id === providerId);
-    return provider?.baseUrl || "https://openrouter.ai/api/v1";
-}
-
-/**
- * Create a model instance based on provider and model ID
- */
-function createModel(modelId: string, apiKey: string, providerId?: string) {
-    const effectiveProviderId = providerId || "openrouter";
-
-    // Handle Anthropic provider (direct API)
-    if (effectiveProviderId === "anthropic") {
-        const anthropic = createAnthropic({ apiKey });
-        return anthropic(modelId.replace("anthropic/", ""));
-    }
-
-    // Handle OpenAI direct (not via OpenRouter)
-    if (effectiveProviderId === "openai") {
-        const openai = createOpenAI({ apiKey });
-        return openai(modelId.replace("openai/", ""));
-    }
-
-    // Default to OpenRouter or other OpenAI-compatible providers
-    const baseUrl = getProviderBaseUrl(effectiveProviderId);
-    const openai = createOpenAI({
-        apiKey,
-        baseURL: baseUrl,
-    });
-    return openai(modelId);
-}
-
-/**
  * Run a simple agent (single LLM call)
  */
 async function runSimpleAgent(
@@ -96,13 +59,17 @@ async function runSimpleAgent(
     providerId: string,
     apiKey: string
 ): Promise<string> {
-    const model = createModel(modelId, apiKey, providerId);
+    const model = createModel({
+        providerId,
+        modelId,
+        apiKey,
+    });
 
     const result = await generateText({
-        model,
+        model: model as any,
         system: systemPrompt,
         messages: [{ role: "user", content: userMessage }],
-        maxTokens: 2000,
+        maxOutputTokens: 2000,
     });
 
     return result.text;

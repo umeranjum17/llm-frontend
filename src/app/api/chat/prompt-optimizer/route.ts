@@ -1,6 +1,5 @@
-import { generateText } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
+import { generateSimpleText } from "@/lib/ai/chat-executor";
 
 export const runtime = "nodejs";
 
@@ -32,16 +31,11 @@ export async function POST(req: Request) {
       );
     }
 
-    // Use a fast, capable model for prompt optimization
-    const openrouter = createOpenAI({
+    const { text } = await generateSimpleText({
+      providerId: "openrouter",
+      providerBaseUrl: providerBaseUrl || undefined,
+      modelId: "openai/gpt-4o-mini",
       apiKey,
-      baseURL: providerBaseUrl || "https://openrouter.ai/api/v1",
-    });
-
-    const model = openrouter("openai/gpt-4o-mini");
-
-    const { text } = await generateText({
-      model,
       messages: [
         {
           role: "system",

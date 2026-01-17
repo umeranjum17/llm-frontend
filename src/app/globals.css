@@ -193,10 +193,15 @@
 /* Code block styles */
 .prose pre {
   @apply bg-muted rounded-lg p-3 sm:p-4 overflow-x-auto text-[11px] sm:text-[13px];
+  max-width: 100%;
+  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 .prose code {
   @apply bg-muted px-1 sm:px-1.5 py-0.5 rounded text-[11px] sm:text-sm;
+  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 .prose pre code {
@@ -206,6 +211,8 @@
 /* Markdown rendering */
 .prose {
   @apply max-w-none;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
 }
 
 .prose h1 {
@@ -250,7 +257,9 @@
 }
 
 .prose a {
-  @apply text-primary hover:underline;
+  @apply text-primary hover:underline break-all;
+  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 .prose img {

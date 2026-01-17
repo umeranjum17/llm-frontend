@@ -12,7 +12,7 @@ import type { Message } from "@/lib/db/schema";
 import { BranchNavigator } from "./branch-navigator";
 import { useSuggestedResponses } from "@/hooks/use-suggested-responses";
 import { SuggestedResponses } from "./suggested-responses";
-import { useStreamingStore, OptimisticMessage } from "@/stores/streaming-store";
+import { useStreamingStore } from "@/stores/streaming-store";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { cn } from "@/lib/utils";
 
@@ -146,42 +146,6 @@ const MessageRow = memo(function MessageRow({
   );
 });
 
-// Component to show optimistic user message while it's being saved
-function OptimisticMessageDisplay({ message }: { message: OptimisticMessage }) {
-  const textContent = typeof message.content === 'string'
-    ? message.content
-    : getTextFromMessageContent(message.content);
-
-  return (
-    <div className="py-4 animate-in fade-in duration-200">
-      <div className="flex items-start gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-medium">
-          U
-        </div>
-        <div className="flex-1 space-y-2">
-          <div className="prose prose-sm dark:prose-invert max-w-none">
-            <p className="text-foreground">{textContent}</p>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            {message.status === "sending" && (
-              <>
-                <Loader2 className="h-3 w-3 animate-spin" />
-                <span>Sending...</span>
-              </>
-            )}
-            {message.status === "switching-agent" && (
-              <>
-                <Loader2 className="h-3 w-3 animate-spin" />
-                <span>Switching to {message.agentName}...</span>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // Component to show pipeline execution progress
 function PipelineProgressIndicator({ execution }: { execution: NonNullable<ReturnType<typeof useStreamingStore.getState>['pipelineExecution']> }) {
   const currentStep = execution.steps[execution.currentStepIndex];
@@ -241,7 +205,7 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
   const previousMessageCount = useRef(0);
 
   // Get streaming state to pass to MessageRow for proper re-renders
-  const { streamingMessageId, streamingContent, streamingVersion, optimisticMessage, pipelineExecution } = useStreamingStore();
+  const { streamingMessageId, streamingContent, streamingVersion, pipelineExecution } = useStreamingStore();
 
   // Use Dexie live query for reactive updates
   const allMessages = useLiveQuery(() => getMessages(chatId), [chatId]);
@@ -430,7 +394,7 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
             />
           );
         }}
-        followOutput={isAtBottom ? "auto" : false}
+        followOutput={isAtBottom && !streamingMessageId ? "auto" : false}
         alignToBottom={true}
         atBottomThreshold={100}
         atBottomStateChange={handleAtBottomChange}
@@ -438,10 +402,6 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
         components={{
           Footer: () => (
             <div className="mx-auto max-w-3xl px-4 pb-4">
-              {/* Optimistic message - shown immediately while saving to DB */}
-              {optimisticMessage && (
-                <OptimisticMessageDisplay message={optimisticMessage} />
-              )}
               {/* Pipeline progress indicator */}
               {pipelineExecution?.isActive && (
                 <PipelineProgressIndicator execution={pipelineExecution} />

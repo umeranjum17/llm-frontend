@@ -1,18 +1,8 @@
-import { createOpenAI } from "@ai-sdk/openai";
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { generateText } from "ai";
-
-// Smart defaults per provider (cheap, fast models)
-const DEFAULT_TAG_MODELS: Record<string, string> = {
-    openrouter: "openai/gpt-4o-mini",
-    openai: "gpt-4o-mini",
-    anthropic: "claude-3-haiku-20240307",
-    groq: "llama-3.1-8b-instant",
-};
+import { generateSimpleText, DEFAULT_UTILITY_MODELS } from "@/lib/ai/chat-executor";
 
 export async function POST(req: Request) {
     try {
-        const { messages, providerId, providerBaseUrl, modelId, apiKey } = await req.json();
+        const { messages, providerId = "openrouter", providerBaseUrl, apiKey } = await req.json();
 
         if (!messages || messages.length === 0) {
             return new Response("No messages provided", { status: 400 });
@@ -25,36 +15,14 @@ export async function POST(req: Request) {
             });
         }
 
-        const configuredModel = DEFAULT_TAG_MODELS[providerId] || "gpt-4o-mini";
+        const configuredModel = DEFAULT_UTILITY_MODELS[providerId] || "gpt-4o-mini";
         console.log(`[Tags] Using model ${configuredModel} for provider ${providerId}`);
 
-        let taggingModel;
-
-        if (providerId === "openai") {
-            const openai = createOpenAI({
-                apiKey,
-                baseURL: providerBaseUrl
-            });
-            taggingModel = openai(configuredModel);
-        } else if (providerId === "anthropic") {
-            const anthropic = createAnthropic({ apiKey });
-            taggingModel = anthropic(configuredModel);
-        } else if (providerId === "openrouter") {
-            const openrouter = createOpenAI({
-                apiKey,
-                baseURL: "https://openrouter.ai/api/v1",
-            });
-            taggingModel = openrouter(configuredModel);
-        } else {
-            const generic = createOpenAI({
-                apiKey: apiKey,
-                baseURL: providerBaseUrl
-            });
-            taggingModel = generic(modelId || configuredModel);
-        }
-
-        const { text } = await generateText({
-            model: taggingModel,
+        const { text } = await generateSimpleText({
+            providerId,
+            providerBaseUrl,
+            modelId: configuredModel,
+            apiKey,
             messages: [
                 {
                     role: "system",
@@ -67,7 +35,7 @@ Rules:
 - Minimize generic tags like "coding" or "help". Focus on specific topics.`,
                 },
                 ...messages.slice(0, 5).map((m: any) => ({
-                    role: m.role,
+                    role: m.role as "system" | "user" | "assistant",
                     content: typeof m.content === 'string' ? m.content : '[Complex Content]'
                 }))
             ],

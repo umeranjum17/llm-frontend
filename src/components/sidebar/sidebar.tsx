@@ -37,7 +37,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
       if (!state.isLoaded) {
         await state.loadSettings();
       }
-      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultMcpServerIds } =
+      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultMcpServerIds, defaultReasoningLevel } =
         useSettingsStore.getState();
       const { providerId, modelId } = getDefaultChatConfig({
         defaultProviderId,
@@ -51,9 +51,15 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         providerId: providerId || undefined,
         projectId: currentProjectId,
         activeMcpServerIds: defaultMcpServerIds,
+        reasoningLevel: (defaultReasoningLevel as "low" | "medium" | "high" | "xhigh") || "medium",
       });
 
       setActiveChatId(newChat.id);
+      
+      // Dispatch event to focus input after chat is created
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("lumina:chat-created", { detail: { chatId: newChat.id } }));
+      }, 100);
     } catch (error) {
       console.error("Failed to create new chat:", error);
       toast.error("Failed to create new chat. Please try again.");

@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { pickBestProviderId } from "@/lib/ai/provider-routing";
 import { db } from "@/lib/db/schema";
-import type { Message } from "ai";
+import type { UIMessage } from "ai";
 
 export function useSuggestedResponses(
     chatId?: string,

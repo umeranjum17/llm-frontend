@@ -7,6 +7,7 @@ import {
   createModel,
   loadMcpTools,
   buildToolInstructions,
+  configurePromptCaching,
 } from "@/lib/ai/chat-executor";
 import { countTokens } from "@/lib/utils/token-counter";
 
@@ -81,6 +82,7 @@ const ChatRequestSchema = z.object({
     .min(1),
   enabledTools: z.array(z.string()).optional(),
   mcpServers: z.array(z.any()).optional(), // Config for MCP servers
+  reasoningLevel: z.enum(["low", "medium", "high", "xhigh"]).optional(), // Reasoning level for thinking models
 });
 
 function dataUrlBase64SizeBytes(dataUrl: string): number | null {
@@ -118,6 +120,7 @@ export async function POST(req: Request) {
       messages,
       enabledTools = [],
       mcpServers = [],
+      reasoningLevel,
     } = parsedBody.data;
     const apiKey = req.headers.get("X-API-Key");
 
@@ -243,7 +246,12 @@ export async function POST(req: Request) {
     // Estimate tool schema tokens (schemas sent to API)
     if (hasTools) {
       for (const [toolName, toolDef] of Object.entries(allTools)) {
-        const schemaStr = JSON.stringify(toolDef.parameters || {});
+        const schemaValue =
+          toolDef.inputSchema?.jsonSchema ??
+          toolDef.inputSchema ??
+          toolDef.parameters ??
+          {};
+        const schemaStr = JSON.stringify(schemaValue);
         const descTokens = countTokens(toolDef.description || '');
         const schemaTokens = countTokens(schemaStr);
         tokenBreakdown.toolSchemas += descTokens + schemaTokens;
@@ -266,115 +274,46 @@ export async function POST(req: Request) {
     console.log(`  ESTIMATED TOTAL: ${tokenBreakdown.total}`);
     // === END TOKEN BREAKDOWN ===
 
-    // Request usage/cost data from providers that support it (OpenRouter, OpenAI)
+    // Provider options for streamText
+    // Note: Usage and provider routing are now configured at model creation time
+    // in chat-executor.ts via createOpenRouter() model options
     const providerOptions: Record<string, any> = {};
-    if (providerId === "openrouter") {
-      // OpenRouter returns actual cost when usage is requested
-      providerOptions.openrouter = {
-        usage: { include: true }
-      };
-    }
 
-    // Prompt caching configuration by provider
+    // Configure prompt caching for all supported providers
     // See: https://openrouter.ai/docs/guides/best-practices/prompt-caching
-    //
-    // Provider support:
-    // - OpenRouter + Claude/Gemini: requires cache_control on content parts (not supported by AI SDK message format)
-    //   → For now, we rely on Gemini's implicit caching and Claude's automatic caching via OpenRouter
-    // - OpenRouter + OpenAI/Grok/DeepSeek/Groq: automatic caching (no config needed)
-    // - Anthropic (direct): uses AI SDK's providerOptions.anthropic.cacheControl on messages
-    // - OpenAI (direct): automatic for 1024+ tokens
-    // - Google Gemini: implicit caching is automatic for 2.5+ models
+    // OpenAI: Explicit caching via providerOptions.openai.promptCacheKey (1024+ tokens)
+    // Anthropic: Direct provider caching via providerOptions.anthropic.cacheControl
+    // OpenRouter: Explicit caching for Gemini/Claude via providerOptions.openrouter.cacheControl
+    const { messages: cachedMessages, providerOptions: cacheProviderOptions } = configurePromptCaching(
+      coreMessages,
+      providerId,
+      modelId,
+      capabilities
+    );
+    
+    // Merge cache provider options with existing provider options
+    Object.assign(providerOptions, cacheProviderOptions);
 
-    // Note: OpenRouter's AI SDK provider uses providerOptions for cache control:
-    //   { type: "text", text: "...", providerOptions: { openrouter: { cacheControl: { type: "ephemeral" } } } }
-    //
-    // This format is compatible with the AI SDK and properly passes through to OpenRouter.
-
-    if (providerId === 'openrouter') {
-      const isGeminiModel = modelId.toLowerCase().includes('gemini');
-      const isClaudeModel = modelId.toLowerCase().includes('claude');
-
-      // Enable explicit caching for Gemini and Claude via OpenRouter
-      // Uses providerOptions.openrouter.cacheControl format (AI SDK compatible)
-      if (isGeminiModel || isClaudeModel) {
-        // Find the last system message to add cache control breakpoint
-        const lastSystemIdx = coreMessages
-          .map((m, i) => m.role === 'system' ? i : -1)
-          .filter(i => i !== -1)
-          .pop();
-
-        if (lastSystemIdx !== undefined && lastSystemIdx >= 0) {
-          const msg = coreMessages[lastSystemIdx] as any;
-
-          // IMPORTANT: Change role to 'user' to allow array content
-          // AI SDK requires system messages to have string content
-          msg.role = 'user';
-
-          // Convert string content to array format with providerOptions
-          if (typeof msg.content === 'string') {
-            msg.content = [
-              {
-                type: 'text',
-                text: msg.content,
-                providerOptions: {
-                  openrouter: {
-                    cacheControl: { type: 'ephemeral' }
-                  }
-                }
-              }
-            ];
-          } else if (Array.isArray(msg.content)) {
-            // Add cacheControl to the last text part
-            const lastTextPartIdx = msg.content
-              .map((p: any, i: number) => p.type === 'text' ? i : -1)
-              .filter((i: number) => i !== -1)
-              .pop();
-
-            if (lastTextPartIdx !== undefined && lastTextPartIdx >= 0) {
-              msg.content[lastTextPartIdx].providerOptions = {
-                openrouter: {
-                  cacheControl: { type: 'ephemeral' }
-                }
-              };
-            }
-          }
-
-          console.log(`[Chat] Enabled prompt caching for ${isGeminiModel ? 'Gemini' : 'Claude'} via OpenRouter (as user message)`);
-        }
-      } else {
-        console.log(`[Chat] Using automatic prompt caching via OpenRouter (${modelId})`);
-      }
-    } else if (isAnthropicProvider && capabilities.supportsPromptCaching) {
-      // Direct Anthropic SDK: use AI SDK's providerOptions format for cache control
-      const lastSystemIdx = coreMessages
-        .map((m, i) => m.role === 'system' ? i : -1)
-        .filter(i => i !== -1)
-        .pop();
-
-      if (lastSystemIdx !== undefined && lastSystemIdx >= 0) {
-        (coreMessages[lastSystemIdx] as any).providerOptions = {
-          anthropic: { cacheControl: { type: 'ephemeral' } }
-        };
-        console.log(`[Chat] Enabled prompt caching (direct Anthropic)`);
-      }
-    } else if (providerId === 'openai') {
-      // OpenAI: automatic caching for 1024+ tokens, no config needed
-      console.log(`[Chat] OpenAI automatic prompt caching enabled (1024+ tokens)`);
-    }
-    // Google Gemini (direct): implicit caching is automatic for 2.5+ models, no config needed
-
-    // For models with extended thinking, configure thinking options
+    // For models with extended thinking, configure thinking options based on reasoning level
     if (capabilities.supportsThinking) {
       if (isAnthropicProvider) {
-        // Claude models with thinking - use provider-specific options
+        // Map reasoning level to budget tokens for Anthropic Claude models
+        // Low: 5000, Medium: 10000, High: 20000, Extra High: 50000
+        const budgetTokensMap: Record<string, number> = {
+          low: 5000,
+          medium: 10000,
+          high: 20000,
+          xhigh: 50000,
+        };
+        const budgetTokens = budgetTokensMap[reasoningLevel || 'medium'] || 10000;
+        
         providerOptions.anthropic = {
           ...providerOptions.anthropic,
-          thinking: { type: 'enabled', budgetTokens: 10000 }
+          thinking: { type: 'enabled', budgetTokens }
         };
-        console.log('[Chat] Enabled Anthropic extended thinking');
+        console.log(`[Chat] Enabled Anthropic extended thinking (level: ${reasoningLevel || 'medium'}, budget: ${budgetTokens} tokens)`);
       }
-      // Note: OpenAI o1/o3 models handle reasoning automatically
+      // Note: OpenAI o1/o3 models handle reasoning automatically, but we could add temperature/other params here if needed
     }
 
     // Calculate maxSteps based on model's tool calling tier
@@ -387,8 +326,8 @@ export async function POST(req: Request) {
     }
 
     const result = streamText({
-      model,
-      messages: coreMessages,
+      model: model as any,
+      messages: cachedMessages,
       // Pass undefined instead of empty object to avoid provider compatibility issues
       tools: hasTools ? allTools : undefined,
       // Tier-based step limit to prevent weaker models from spiraling
@@ -437,25 +376,90 @@ export async function POST(req: Request) {
                 console.log(`[Chat] Tool result: ${part.toolName}`, part.output);
 
                 // Track failures for retry detection
+                // Handle multiple error formats from different tools/servers
                 const resultData = part.output as any;
                 const isError = resultData?.error ||
                   resultData?.isError ||
+                  resultData?.successful === false ||
+                  resultData?.result?.error ||
+                  resultData?.result?.successful === false ||
                   (typeof resultData === 'string' && resultData.toLowerCase().includes('error'));
+
+                // Extract the actual error message for better feedback
+                const errorMessage = resultData?.error ||
+                  resultData?.result?.error ||
+                  resultData?.message ||
+                  resultData?.result?.message ||
+                  (typeof resultData === 'string' ? resultData : null);
 
                 if (isError) {
                   const failCount = (toolFailures.get(part.toolName) || 0) + 1;
                   toolFailures.set(part.toolName, failCount);
-                  console.warn(`[Chat] Tool ${part.toolName} failed (attempt ${failCount})`);
+                  console.warn(`[Chat] Tool ${part.toolName} failed (attempt ${failCount}):`, errorMessage);
+
+                  // Parse Composio-specific errors for better guidance
+                  const isComposioExecuteError = part.toolName?.includes('MULTI_EXECUTE_TOOL') || part.toolName?.includes('EXECUTE_TOOL');
+                  const isComposioSearchError = part.toolName?.includes('SEARCH_TOOLS');
+                  const errorLower = (errorMessage || '').toLowerCase();
+                  
+                  // Check if this is a non-retryable error (validation, missing params, etc.)
+                  const isValidationError = errorLower.includes('validation') ||
+                    errorLower.includes('required') ||
+                    errorLower.includes('missing') ||
+                    errorLower.includes('invalid') ||
+                    errorLower.includes('1 out of 1 tools failed') ||
+                    errorLower.includes('tools failed');
+
+                  // Check for "already defined" connection error - this means connection IS working
+                  const isAlreadyDefinedError = errorLower.includes('already defined') ||
+                    errorLower.includes('connected account already');
+                  const isManageConnectionsTool = part.toolName?.includes('MANAGE_CONNECTIONS');
+
+                  // For Composio execute errors, suggest using search first
+                  let composioHint = '';
+                  if (isManageConnectionsTool && isAlreadyDefinedError) {
+                    // This is actually a success state - connection exists and works
+                    composioHint = ' The connection IS active and working. DO NOT call MANAGE_CONNECTIONS again. Proceed to use the toolkit tools directly.';
+                    // Reset failure count since this isn't a real failure
+                    toolFailures.delete(part.toolName);
+                    console.log(`[Chat] COMPOSIO_MANAGE_CONNECTIONS "already defined" - connection is active, clearing failure count`);
+
+                    // Emit a special hint event to help guide the model
+                    controller.enqueue(
+                      encoder.encode(`data: ${JSON.stringify({
+                        type: "connection-active-hint",
+                        message: "Connection is already active. Do NOT retry COMPOSIO_MANAGE_CONNECTIONS. Proceed to execute tools with COMPOSIO_SEARCH_TOOLS → MULTI_EXECUTE_TOOL.",
+                      })}\n\n`)
+                    );
+                  } else if (isComposioExecuteError && !isComposioSearchError) {
+                    composioHint = ' Try using COMPOSIO_SEARCH_TOOLS first to find the correct tool and parameters.';
+                  }
 
                   // If we've hit retry limit, emit a hint event for the frontend
                   if (failCount > MAX_TOOL_RETRIES) {
                     console.log(`[Chat] Tool ${part.toolName} exceeded retry limit, suggesting user prompt`);
+
+                    // Generate specific suggestion based on error type
+                    let suggestion = "The tool failed repeatedly.";
+                    if (isValidationError) {
+                      suggestion = `Validation error: "${errorMessage}".${composioHint} Check the tool's required parameters and ensure all required fields are provided.`;
+                    } else if (errorLower.includes("timeout") || errorLower.includes("timed out")) {
+                      suggestion = "The tool timed out. Try again with a simpler request or try a different approach.";
+                    } else if (errorLower.includes("rate limit") || errorLower.includes("429")) {
+                      suggestion = "Rate limited. Please wait a moment before trying again.";
+                    } else if (isComposioExecuteError) {
+                      suggestion = `Composio execution failed: "${errorMessage}".${composioHint} Make sure you're using the correct tool_slug and all required arguments from the search results.`;
+                    } else {
+                      suggestion = `Error: "${errorMessage}".${composioHint} Consider using a different tool or approach.`;
+                    }
+
                     controller.enqueue(
                       encoder.encode(`data: ${JSON.stringify({
                         type: "tool-retry-exhausted",
                         toolName: part.toolName,
                         failCount,
-                        suggestion: "The tool failed repeatedly. Please provide more specific information or check if the required parameters are correct."
+                        error: errorMessage,
+                        suggestion,
                       })}\n\n`)
                     );
                   }
@@ -469,9 +473,18 @@ export async function POST(req: Request) {
                 console.error(`[Chat] Error in stream:`, part.error);
               }
 
-              // Log usage data (v5: usage comes through different events)
+              // Log usage data and cache metrics
               if ((part as any).usage) {
-                console.log(`[Chat] ${part.type} event - usage:`, (part as any).usage);
+                const usage = (part as any).usage;
+                const cachedTokens = usage.promptTokensDetails?.cachedTokens ?? 0;
+                const promptTokens = usage.inputTokens ?? 0;
+                
+                if (cachedTokens > 0) {
+                  const cacheHitRate = ((cachedTokens / promptTokens) * 100).toFixed(1);
+                  console.log(`[PromptCache] ✅ Cache hit: ${cachedTokens}/${promptTokens} tokens cached (${cacheHitRate}% hit rate)`);
+                }
+                
+                console.log(`[Chat] ${part.type} event - usage:`, usage);
               }
               if ((part as any).providerMetadata) {
                 console.log(`[Chat] ${part.type} event - providerMetadata:`, (part as any).providerMetadata);

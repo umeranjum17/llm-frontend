@@ -170,7 +170,7 @@ export function CommandPalette() {
     if (!state.isLoaded) {
       await state.loadSettings();
     }
-    const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultMcpServerIds } =
+    const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultMcpServerIds, defaultReasoningLevel } =
       useSettingsStore.getState();
     const { providerId, modelId } = getDefaultChatConfig({
       defaultProviderId,
@@ -182,8 +182,15 @@ export function CommandPalette() {
       modelId,
       providerId: providerId || undefined,
       activeMcpServerIds: defaultMcpServerIds,
+      reasoningLevel: (defaultReasoningLevel as "low" | "medium" | "high" | "xhigh") || "medium",
     });
     setActiveChatId(newChat.id);
+    
+    // Dispatch event to focus input after chat is created
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("lumina:chat-created", { detail: { chatId: newChat.id } }));
+    }, 100);
+    
     setOpen(false);
   };
 
@@ -193,13 +200,20 @@ export function CommandPalette() {
     if (!state.isLoaded) {
       await state.loadSettings();
     }
-    const { defaultMcpServerIds } = useSettingsStore.getState();
+    const { defaultMcpServerIds, defaultReasoningLevel } = useSettingsStore.getState();
     const newChat = await createChat({
       title: "New Chat",
       modelId,
       activeMcpServerIds: defaultMcpServerIds,
+      reasoningLevel: (defaultReasoningLevel as "low" | "medium" | "high" | "xhigh") || "medium",
     });
     setActiveChatId(newChat.id);
+    
+    // Dispatch event to focus input after chat is created
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("lumina:chat-created", { detail: { chatId: newChat.id } }));
+    }, 100);
+    
     setOpen(false);
   };
 

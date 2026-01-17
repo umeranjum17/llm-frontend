@@ -2,11 +2,11 @@ import { updateChat } from "@/lib/db/queries";
 import { pickBestProviderId } from "@/lib/ai/provider-routing";
 import { db } from "@/lib/db/schema";
 import type { ApiKey } from "@/lib/db/schema";
-import type { Message } from "ai";
+import type { UIMessage } from "ai";
 
 export interface SummarizeOptions {
     chatId: string;
-    messages: Message[];
+    messages: UIMessage[];
     keys: ApiKey[];
 }
 

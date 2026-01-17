@@ -221,6 +221,35 @@ export function InputArea({ chatId }: InputAreaProps) {
     };
   }, []);
 
+  // Focus input when chat changes or new chat is created
+  useEffect(() => {
+    // Small delay to ensure the component is fully rendered
+    const timeoutId = setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+      }
+    }, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, [chatId]);
+
+  // Listen for chat created event to focus input
+  useEffect(() => {
+    const handleChatCreated = (e: any) => {
+      // Only focus if this is the current chat
+      if (e.detail?.chatId === chatId) {
+        setTimeout(() => {
+          if (textareaRef.current) {
+            textareaRef.current.focus();
+          }
+        }, 150);
+      }
+    };
+
+    window.addEventListener("lumina:chat-created", handleChatCreated as EventListener);
+    return () => window.removeEventListener("lumina:chat-created", handleChatCreated as EventListener);
+  }, [chatId]);
+
   // Construct mention items
   // @ = agents, connectors
   // # = chats, tags

@@ -32,17 +32,27 @@ export function getImagesFromMessageContent(content: MessageContent): string[] {
 }
 
 /**
- * Convert message content to AI SDK CoreMessage format.
+ * Convert message content to AI SDK ModelMessage format.
  * The AI SDK uses a different format than OpenAI:
  * - User images: { type: "image", image: "url" } instead of { type: "image_url", image_url: { url } }
  * - Assistant messages: Only text and tool-call allowed, NOT image_url
+ * 
+ * AI SDK v6 is stricter about message validation:
+ * - Content must be a non-empty string OR a valid content parts array
+ * - Empty arrays are NOT valid and cause validation errors
  */
 export function convertToAISDKContent(
   content: MessageContent,
   role: "system" | "user" | "assistant"
 ): string | Array<{ type: "text"; text: string } | { type: "image"; image: string }> {
-  // String content is fine as-is
+  // Null/undefined safety - return empty string
+  if (content == null) return "";
+
+  // String content is fine as-is (empty strings are valid)
   if (typeof content === "string") return content;
+
+  // Empty array - return empty string (AI SDK v6 doesn't accept empty arrays)
+  if (!Array.isArray(content) || content.length === 0) return "";
 
   // For system messages, just extract text
   if (role === "system") {
@@ -55,29 +65,44 @@ export function convertToAISDKContent(
     const parts: Array<{ type: "text"; text: string }> = [];
     for (const part of content) {
       if (part.type === "text") {
-        parts.push({ type: "text", text: part.text });
+        // Skip empty text parts
+        if (part.text) {
+          parts.push({ type: "text", text: part.text });
+        }
       } else if (part.type === "image_url") {
         // Convert image to a text reference (the image was shown to the user but can't be sent to LLM)
         parts.push({ type: "text", text: "[Generated image]" });
       }
     }
-    // If we only have one text part, return as string
-    if (parts.length === 1 && parts[0].type === "text") {
-      return parts[0].text;
-    }
-    return parts.length > 0 ? parts : "";
+    // AI SDK v6: Always return string for assistant to avoid array validation issues
+    // Concatenate all text parts into a single string
+    if (parts.length === 0) return "";
+    return parts.map(p => p.text).join("\n");
   }
 
   // For user messages, convert image_url to AI SDK image format
   const convertedParts: Array<{ type: "text"; text: string } | { type: "image"; image: string }> = [];
   for (const part of content) {
     if (part.type === "text") {
-      convertedParts.push({ type: "text", text: part.text });
+      // Skip empty text parts
+      if (part.text) {
+        convertedParts.push({ type: "text", text: part.text });
+      }
     } else if (part.type === "image_url") {
       // AI SDK uses { type: "image", image: url } format
       convertedParts.push({ type: "image", image: part.image_url.url });
     }
   }
+
+  // If no valid parts, return empty string
+  if (convertedParts.length === 0) return "";
+
+  // For user messages with only text (no images), return as string for simplicity
+  const hasImages = convertedParts.some(p => p.type === "image");
+  if (!hasImages && convertedParts.length === 1) {
+    return (convertedParts[0] as { type: "text"; text: string }).text;
+  }
+
   return convertedParts;
 }
 

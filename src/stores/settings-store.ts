@@ -8,6 +8,7 @@ interface SettingsState extends Partial<UserSettings> {
   // Actions
   loadSettings: () => Promise<void>;
   updateTheme: (theme: "light" | "dark" | "system") => Promise<void>;
+  updateDisplayName: (name: string | undefined) => Promise<void>;
   updateDefaultModel: (modelId: string) => Promise<void>;
   updateDefaultChatDefaults: (opts: {
     defaultProviderId?: string;
@@ -22,6 +23,7 @@ interface SettingsState extends Partial<UserSettings> {
   updateDefaultMcpServerIds: (serverIds: string[]) => Promise<void>;
   updateEmbeddingsConfig: (provider: "openrouter" | "openai", modelId: string) => Promise<void>;
   updateSkillMatchThreshold: (threshold: number) => Promise<void>;
+  updateDefaultReasoningLevel: (level: "low" | "medium" | "high" | "xhigh") => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -32,6 +34,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   enabledTools: [],
   shortcuts: {},
   autoTaggingEnabled: false,
+  defaultReasoningLevel: "medium",
 
   loadSettings: async () => {
     const settings = await getSettings();
@@ -50,6 +53,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateTheme: async (theme) => {
     await updateSettings({ theme });
     set({ theme });
+  },
+
+  updateDisplayName: async (name) => {
+    await updateSettings({ displayName: name });
+    set({ displayName: name });
   },
 
   updateDefaultModel: async (modelId) => {
@@ -114,5 +122,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     console.log("[Settings] Saving skill match threshold:", threshold);
     await updateSettings({ skillMatchThreshold: threshold });
     set({ skillMatchThreshold: threshold });
+  },
+
+  updateDefaultReasoningLevel: async (level: "low" | "medium" | "high" | "xhigh") => {
+    console.log("[Settings] Saving default reasoning level:", level);
+    await updateSettings({ defaultReasoningLevel: level });
+    set({ defaultReasoningLevel: level });
   },
 }));

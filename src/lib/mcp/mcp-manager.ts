@@ -32,6 +32,21 @@ export const COMPOSIO_ROUTER_TOOLS = [
 export const COMPOSIO_SEARCH_RESULTS_CAP = 8;
 
 /**
+ * Global tool blacklist - tools that cause issues and should never be exposed.
+ * These are automatically filtered out regardless of server configuration.
+ *
+ * COMPOSIO_MANAGE_CONNECTIONS - Causes token waste loop:
+ *   1. Connection already exists but Composio reports has_active_connection: false
+ *   2. Model calls MANAGE_CONNECTIONS following Composio's instructions
+ *   3. Fails with "Connected account already defined"
+ *   4. Model retries, wasting tokens
+ *   Solution: Blacklist it. If connection truly doesn't exist, user must connect via UI.
+ */
+export const TOOL_BLACKLIST = new Set<string>([
+  "COMPOSIO_MANAGE_CONNECTIONS",
+]);
+
+/**
  * Tool calling telemetry for debugging and improvement.
  */
 export interface ToolCallTelemetry {
@@ -123,13 +138,115 @@ function buildSafeMcpToolName(serverId: string, toolName: string): string {
  * Using raw JSON Schema (via AI SDK's jsonSchema()) instead of Zod avoids
  * validation errors when the LLM omits optional fields.
  */
+/**
+ * Valid JSON Schema types
+ */
+const VALID_JSON_SCHEMA_TYPES = new Set([
+  'object', 'array', 'string', 'number', 'integer', 'boolean', 'null'
+]);
+
+/**
+ * Default valid object schema for OpenAI strict mode
+ */
+const DEFAULT_OBJECT_SCHEMA = {
+  type: "object" as const,
+  properties: {},
+  required: [] as string[],
+  additionalProperties: false
+};
+
+/**
+ * Check if a schema type is valid for JSON Schema
+ */
+function isValidSchemaType(type: any): boolean {
+  if (type === null || type === undefined) return false;
+  if (typeof type !== 'string') return false;
+  // Case-insensitive check for "None" variants from Python backends
+  const normalized = type.toLowerCase();
+  if (normalized === 'none' || normalized === 'nonetype') return false;
+  return VALID_JSON_SCHEMA_TYPES.has(type);
+}
+
+/**
+ * Deep recursive sanitization of JSON Schema to fix Azure-incompatible values.
+ * Azure OpenAI rejects schemas with type: "None" anywhere in the tree.
+ */
+function deepSanitizeSchema(obj: any, path: string = ''): any {
+  if (obj === null || obj === undefined) {
+    return undefined;
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map((item, i) => deepSanitizeSchema(item, `${path}[${i}]`)).filter(x => x !== undefined);
+  }
+
+  if (typeof obj !== 'object') {
+    // Check if this is a "None" string value
+    if (typeof obj === 'string') {
+      const lower = obj.toLowerCase();
+      if (lower === 'none' || lower === 'nonetype') {
+        return 'string';
+      }
+    }
+    return obj;
+  }
+
+  const result: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const currentPath = path ? `${path}.${key}` : key;
+
+    // Special handling for "type" field
+    if (key === 'type') {
+      if (typeof value === 'string') {
+        const lower = value.toLowerCase();
+        if (lower === 'none' || lower === 'nonetype' || lower === 'null') {
+          result[key] = 'string';
+          continue;
+        }
+      }
+      if (value === null || value === undefined) {
+        result[key] = 'string';
+        continue;
+      }
+    }
+
+    // Recursively sanitize nested objects
+    const sanitized = deepSanitizeSchema(value, currentPath);
+    if (sanitized !== undefined) {
+      result[key] = sanitized;
+    }
+  }
+
+  return result;
+}
+
 function patchSchemaForStrictMode(schema: any): any {
-  if (!schema || typeof schema !== 'object') {
-    return { type: "string" }; // Default to string for invalid schemas
+  // Handle null, undefined, or non-object schemas
+  if (schema === null || schema === undefined) {
+    return { ...DEFAULT_OBJECT_SCHEMA };
+  }
+
+  if (typeof schema !== 'object') {
+    return { ...DEFAULT_OBJECT_SCHEMA };
   }
 
   // Deep clone to avoid mutating original
-  const patched = JSON.parse(JSON.stringify(schema));
+  let patched: any;
+  try {
+    patched = JSON.parse(JSON.stringify(schema));
+  } catch (e) {
+    return { ...DEFAULT_OBJECT_SCHEMA };
+  }
+
+  // CRITICAL: Deep sanitize the entire schema tree to fix Azure-incompatible "None" values
+  patched = deepSanitizeSchema(patched, 'root');
+  if (!patched || typeof patched !== 'object') {
+    return { ...DEFAULT_OBJECT_SCHEMA };
+  }
+
+  // CRITICAL: Check for invalid type values FIRST
+  // This handles Python "None" serialization and other invalid types
+  const rootType = patched.type;
 
   return patchSchemaRecursive(patched);
 }
@@ -137,6 +254,22 @@ function patchSchemaForStrictMode(schema: any): any {
 function patchSchemaRecursive(schema: any): any {
   if (!schema || typeof schema !== 'object') {
     return schema;
+  }
+
+  // CRITICAL: Check for invalid type values FIRST (before any other processing)
+  // This handles Python "None" serialization at ANY nesting level
+  if (schema.type !== undefined && schema.type !== null) {
+    const typeStr = String(schema.type).toLowerCase();
+    if (typeStr === 'none' || typeStr === 'nonetype' || !VALID_JSON_SCHEMA_TYPES.has(schema.type)) {
+      // Invalid type detected - convert to string type
+      schema.type = "string";
+      // Remove any properties that don't apply to string type
+      delete schema.properties;
+      delete schema.required;
+      delete schema.additionalProperties;
+      delete schema.items;
+      return schema;
+    }
   }
 
   // Handle object type
@@ -210,6 +343,43 @@ function validateRemoteUrl(urlString: string): { valid: boolean; error?: string 
  * - Default to SSE for backwards compatibility
  */
 /**
+ * Slim down tool_schemas to reduce token usage dramatically.
+ * Keeps only: description, required params with types.
+ * Removes: examples, defaults, verbose metadata, optional params.
+ */
+function slimToolSchemas(toolSchemas: Record<string, any>): Record<string, any> {
+  if (!toolSchemas || typeof toolSchemas !== 'object') return {};
+
+  const slimmed: Record<string, any> = {};
+
+  for (const [toolName, schema] of Object.entries(toolSchemas)) {
+    const inputSchema = schema?.input_schema || schema;
+    const properties = inputSchema?.properties || {};
+    const required = new Set(inputSchema?.required || []);
+
+    // Build slim properties - only required ones with type and short description
+    const slimProps: Record<string, any> = {};
+    for (const [param, def] of Object.entries(properties)) {
+      const d = def as any;
+      if (required.has(param)) {
+        slimProps[param] = {
+          type: d.type || 'string',
+          desc: d.description ? d.description.substring(0, 80) : undefined,
+        };
+      }
+    }
+
+    slimmed[toolName] = {
+      desc: schema?.description?.substring(0, 120),
+      required: Array.from(required),
+      params: slimProps,
+    };
+  }
+
+  return slimmed;
+}
+
+/**
  * Build a human-readable parameter guide from Composio tool schemas.
  * This helps smaller models understand required parameters for MULTI_EXECUTE_TOOL.
  *
@@ -235,28 +405,33 @@ function buildToolParameterGuide(toolSchemas: Record<string, any>): string {
   let exampleArgs: Record<string, any> = {};
 
   for (const [toolName, schema] of entries) {
-    if (!schema?.properties) continue;
+    // Handle both direct schema format (properties at root) and Composio format (properties under input_schema)
+    const inputSchema = schema?.input_schema || schema;
+    const properties = inputSchema?.properties;
+    if (!properties) continue;
 
-    const required = new Set(schema.required || []);
+    const required = new Set(inputSchema.required || []);
     const requiredParams: string[] = [];
     const optionalParams: string[] = [];
 
-    for (const [param, def] of Object.entries(schema.properties)) {
+    for (const [param, def] of Object.entries(properties)) {
       const d = def as any;
       const type = d.type || 'string';
       const desc = d.description ? ` — ${d.description.substring(0, 80)}` : '';
 
       if (required.has(param)) {
         requiredParams.push(`     ★ ${param} (${type})${desc}`);
-        // Build example
-        if (!exampleToolName) {
-          exampleToolName = toolName;
+        // Build example with realistic values from schema examples if available
+        if (!exampleToolName || requiredParams.length === 1) {
+          if (!exampleToolName) exampleToolName = toolName;
           if (type === 'number' || type === 'integer') {
-            exampleArgs[param] = 10;
+            exampleArgs[param] = d.examples?.[0] ?? d.default ?? 10;
           } else if (type === 'boolean') {
-            exampleArgs[param] = true;
+            exampleArgs[param] = d.examples?.[0] ?? d.default ?? true;
           } else {
-            exampleArgs[param] = `<your_${param}>`;
+            // Use example from schema if available, otherwise placeholder
+            const example = d.examples?.[0];
+            exampleArgs[param] = example || `YOUR_${param.toUpperCase()}_HERE`;
           }
         }
       } else {
@@ -266,7 +441,7 @@ function buildToolParameterGuide(toolSchemas: Record<string, any>): string {
 
     lines.push(`  ${toolName}:`);
     if (requiredParams.length > 0) {
-      lines.push('     REQUIRED:');
+      lines.push('     REQUIRED (you MUST provide these in arguments):');
       lines.push(...requiredParams);
     } else {
       lines.push('     (no required parameters)');
@@ -277,10 +452,10 @@ function buildToolParameterGuide(toolSchemas: Record<string, any>): string {
     lines.push('');
   }
 
-  // Add concrete example
+  // Add concrete example - this is critical for the model to understand
   if (exampleToolName) {
     lines.push('────────────────────────────────────────────────────────────────');
-    lines.push('  EXAMPLE MULTI_EXECUTE_TOOL CALL:');
+    lines.push('  COPY THIS EXACT FORMAT FOR YOUR MULTI_EXECUTE_TOOL CALL:');
     lines.push('────────────────────────────────────────────────────────────────');
     lines.push('');
     lines.push(JSON.stringify({
@@ -291,6 +466,8 @@ function buildToolParameterGuide(toolSchemas: Record<string, any>): string {
       session_id: '<use session.id from above>'
     }, null, 2));
     lines.push('');
+    lines.push('  ↑ Replace the argument values with your actual values');
+    lines.push('');
   }
 
   lines.push('════════════════════════════════════════════════════════════════');
@@ -300,6 +477,122 @@ function buildToolParameterGuide(toolSchemas: Record<string, any>): string {
   lines.push('');
 
   return lines.join('\n');
+}
+
+const COMPOSIO_KNOWN_FIELD_ALIASES: Record<string, string[]> = {
+  search_query: ['query', 'q', 'search', 'keyword', 'term'],
+};
+
+const COMPOSIO_NUMERIC_PARAM_HINTS = [
+  'limit',
+  'count',
+  'offset',
+  'page',
+  'per_page',
+  'top_k',
+  'topk',
+  'max',
+  'min',
+];
+
+function coerceKnownFieldValue(value: string, paramName: string): string | number | boolean {
+  if (typeof value !== 'string') return value as any;
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+
+  const lower = trimmed.toLowerCase();
+  if (lower === 'true') return true;
+  if (lower === 'false') return false;
+
+  if (/^\d+$/.test(trimmed)) {
+    const paramLower = paramName.toLowerCase();
+    if (COMPOSIO_NUMERIC_PARAM_HINTS.some((hint) => paramLower.includes(hint))) {
+      return Number(trimmed);
+    }
+  }
+
+  return trimmed;
+}
+
+function parseKnownFields(knownFields: unknown): Record<string, string> {
+  if (!knownFields) return {};
+  const result: Record<string, string> = {};
+
+  if (typeof knownFields === 'object' && !Array.isArray(knownFields)) {
+    for (const [key, value] of Object.entries(knownFields as Record<string, any>)) {
+      const normalizedKey = key.trim().toLowerCase();
+      if (!normalizedKey) continue;
+      result[normalizedKey] = String(value ?? '').trim();
+    }
+    return result;
+  }
+
+  if (typeof knownFields !== 'string') return {};
+  const parts = knownFields.split(',');
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const [rawKey, ...rest] = trimmed.split(':');
+    if (!rawKey || rest.length === 0) continue;
+    const key = rawKey.trim().toLowerCase();
+    if (!key) continue;
+    const value = rest.join(':').trim();
+    if (!value) continue;
+    result[key] = value;
+  }
+
+  return result;
+}
+
+function collectKnownFields(queries: unknown): Record<string, string> {
+  if (!Array.isArray(queries)) return {};
+  const merged: Record<string, string> = {};
+
+  for (const query of queries) {
+    if (!query || typeof query !== 'object') continue;
+    const knownFields = (query as any).known_fields ?? (query as any).knownFields;
+    const parsed = parseKnownFields(knownFields);
+    Object.assign(merged, parsed);
+  }
+
+  return merged;
+}
+
+function applyKnownFieldsToArgs(
+  args: Record<string, any>,
+  requiredParams: string[],
+  knownFields: Record<string, string>
+): Record<string, any> {
+  if (!knownFields || requiredParams.length === 0) return args;
+  const updated = { ...args };
+
+  for (const param of requiredParams) {
+    if (updated[param] !== undefined && updated[param] !== null && updated[param] !== '') {
+      continue;
+    }
+
+    const paramKey = param.toLowerCase();
+    let value = knownFields[paramKey];
+
+    if (value === undefined) {
+      const aliases = COMPOSIO_KNOWN_FIELD_ALIASES[paramKey];
+      if (aliases) {
+        for (const alias of aliases) {
+          const candidate = knownFields[alias];
+          if (candidate !== undefined) {
+            value = candidate;
+            break;
+          }
+        }
+      }
+    }
+
+    if (value !== undefined) {
+      updated[param] = coerceKnownFieldValue(value, paramKey);
+    }
+  }
+
+  return updated;
 }
 
 function detectTransportType(url: string): 'sse' | 'streamableHttp' {
@@ -331,6 +624,16 @@ interface CachedTools {
   timestamp: number;
 }
 
+interface ComposioSchemaCacheEntry {
+  schemas: Record<string, any>;
+  timestamp: number;
+}
+
+interface ComposioSearchHintCacheEntry {
+  knownFields: Record<string, string>;
+  timestamp: number;
+}
+
 export class McpManager {
   private clients: Map<string, Client> = new Map();
   private readonly DEFAULT_TOOL_CAP = 50; // Maximum tools per server by default
@@ -339,6 +642,12 @@ export class McpManager {
   // Tools cache: key is a hash of enabled server IDs, value is the cached tools
   private toolsCache: Map<string, CachedTools> = new Map();
   private readonly TOOLS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache TTL
+
+  // Composio tool schema cache: keyed by serverId + sessionId
+  private composioSchemaCache: Map<string, ComposioSchemaCacheEntry> = new Map();
+  private readonly COMPOSIO_SCHEMA_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+  private composioSearchArgsCache: Map<string, any> = new Map();
+  private composioSearchHintsCache: Map<string, ComposioSearchHintCacheEntry> = new Map();
 
   /**
    * Get the singleton instance of McpManager
@@ -354,6 +663,114 @@ export class McpManager {
   private readonly MAX_RETRIES = 3;
   private readonly RETRY_DELAY_MS = 1000;
   private readonly TIMEOUT_MS = 10000; // 10s timeout for MCP operations
+
+  private getComposioSchemaKey(serverId: string, sessionId: string): string {
+    return `${serverId}:${sessionId}`;
+  }
+
+  private pruneComposioSchemaCache() {
+    const now = Date.now();
+    for (const [key, entry] of this.composioSchemaCache) {
+      if (now - entry.timestamp > this.COMPOSIO_SCHEMA_CACHE_TTL_MS) {
+        this.composioSchemaCache.delete(key);
+      }
+    }
+  }
+
+  private setComposioSchemas(serverId: string, sessionId: string, schemas: Record<string, any>) {
+    if (!serverId || !sessionId || !schemas) return;
+    const key = this.getComposioSchemaKey(serverId, sessionId);
+    this.composioSchemaCache.set(key, { schemas, timestamp: Date.now() });
+    this.pruneComposioSchemaCache();
+  }
+
+  private getComposioSchemas(serverId: string, sessionId: string): Record<string, any> | null {
+    if (!serverId || !sessionId) return null;
+    const key = this.getComposioSchemaKey(serverId, sessionId);
+    const entry = this.composioSchemaCache.get(key);
+    if (!entry) return null;
+    if ((Date.now() - entry.timestamp) > this.COMPOSIO_SCHEMA_CACHE_TTL_MS) {
+      this.composioSchemaCache.delete(key);
+      return null;
+    }
+    return entry.schemas;
+  }
+
+  private pruneComposioSearchHintsCache() {
+    const now = Date.now();
+    for (const [key, entry] of this.composioSearchHintsCache) {
+      if (now - entry.timestamp > this.COMPOSIO_SCHEMA_CACHE_TTL_MS) {
+        this.composioSearchHintsCache.delete(key);
+      }
+    }
+  }
+
+  private setComposioSearchHints(serverId: string, sessionId: string, knownFields: Record<string, string>) {
+    if (!serverId || !sessionId || !knownFields) return;
+    const key = this.getComposioSchemaKey(serverId, sessionId);
+    this.composioSearchHintsCache.set(key, { knownFields, timestamp: Date.now() });
+    this.pruneComposioSearchHintsCache();
+  }
+
+  private getComposioSearchHints(serverId: string, sessionId: string): Record<string, string> | null {
+    if (!serverId || !sessionId) return null;
+    const key = this.getComposioSchemaKey(serverId, sessionId);
+    const entry = this.composioSearchHintsCache.get(key);
+    if (!entry) return null;
+    if ((Date.now() - entry.timestamp) > this.COMPOSIO_SCHEMA_CACHE_TTL_MS) {
+      this.composioSearchHintsCache.delete(key);
+      return null;
+    }
+    return entry.knownFields;
+  }
+
+  private prepareComposioExecuteArgs(serverId: string, rawArgs: any): { args: any; missingByTool: string[] } {
+    if (!rawArgs || typeof rawArgs !== 'object') {
+      return { args: rawArgs, missingByTool: [] };
+    }
+
+    const toolCalls = Array.isArray(rawArgs.tools) ? rawArgs.tools : [];
+    const sessionId = rawArgs.session_id as string | undefined;
+    if (!sessionId || toolCalls.length === 0) {
+      return { args: rawArgs, missingByTool: [] };
+    }
+
+    const schemas = this.getComposioSchemas(serverId, sessionId);
+    if (!schemas) {
+      return { args: rawArgs, missingByTool: [] };
+    }
+
+    const knownFields = this.getComposioSearchHints(serverId, sessionId) || {};
+    const missingByTool: string[] = [];
+
+    const updatedTools = toolCalls.map((toolCall: any) => {
+      const toolSlug = toolCall?.tool_slug;
+      const toolSchema = toolSlug ? schemas[toolSlug] : null;
+      const requiredParams: string[] = toolSchema?.input_schema?.required || [];
+      const baseArgs = toolCall?.arguments && typeof toolCall.arguments === 'object'
+        ? { ...toolCall.arguments }
+        : {};
+      const hydratedArgs = applyKnownFieldsToArgs(baseArgs, requiredParams, knownFields);
+
+      const missingParams = requiredParams.filter((param) =>
+        hydratedArgs[param] === undefined || hydratedArgs[param] === null || hydratedArgs[param] === ''
+      );
+
+      if (missingParams.length > 0) {
+        missingByTool.push(`${toolSlug || 'unknown'}: ${missingParams.join(', ')}`);
+      }
+
+      return {
+        ...toolCall,
+        arguments: hydratedArgs,
+      };
+    });
+
+    return {
+      args: { ...rawArgs, tools: updatedTools },
+      missingByTool,
+    };
+  }
 
   /**
    * Generate a unique key for a server connection
@@ -412,8 +829,6 @@ export class McpManager {
       }
     }
 
-    console.log(`[MCP] Using ${transportType} transport for ${server.name} (${server.url})`, headers ? 'with headers' : 'no auth');
-
     if (transportType === 'streamableHttp') {
       return new StreamableHTTPClientTransport(new URL(server.url), {
         requestInit: {
@@ -450,21 +865,14 @@ export class McpManager {
         } as any
       });
 
-      console.log(`[MCP] Establishing connection to ${server.name} (Attempt ${attempt})...`);
-
       // Wrap connect in timeout
       await Promise.race([
         client.connect(transport),
         timeoutPromise
       ]);
-
-      console.log(`[MCP] Successfully connected to ${server.name}`);
       return client;
     } catch (error) {
-      console.error(`[MCP] Connection attempt ${attempt} failed for ${server.name}:`, error instanceof Error ? error.message : error);
-
       if (attempt < this.MAX_RETRIES && !(error instanceof Error && error.message.includes('timeout'))) {
-        console.log(`[MCP] Retrying ${server.name} in ${this.RETRY_DELAY_MS * attempt}ms...`);
         await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY_MS * attempt));
         return this.connectWithRetry(server, attempt + 1);
       }
@@ -557,19 +965,24 @@ export class McpManager {
     const cached = this.toolsCache.get(cacheKey);
 
     if (cached && (Date.now() - cached.timestamp) < this.TOOLS_CACHE_TTL_MS) {
-      console.log(`[MCP] Using cached tools (${cached.metadata.length} tools, age: ${Math.round((Date.now() - cached.timestamp) / 1000)}s)`);
       return { tools: cached.tools, metadata: cached.metadata };
     }
 
-    console.log(`[MCP] Cache miss or expired, fetching tools...`);
     const allTools: Record<string, any> = {};
     const metadata: ToolMetadata[] = [];
 
     for (const server of servers) {
       if (!server.enabled) continue;
 
+      // Skip Composio servers with expired sessions
+      const isComposioServer = server.url?.toLowerCase().includes('composio.dev') || server.id?.startsWith('composio-');
+      if (isComposioServer && (server as any).sessionExpiresAt) {
+        if (Date.now() > (server as any).sessionExpiresAt) {
+          continue;
+        }
+      }
+
       try {
-        console.log(`[MCP] Fetching tools for ${server.name}...`);
         const client = await this.connect(server);
 
         const timeoutPromise = new Promise((_, reject) =>
@@ -589,15 +1002,6 @@ export class McpManager {
         const isComposioServer = server.url.toLowerCase().includes('composio.dev') ||
                                   server.id.startsWith('composio-');
 
-        // Log what tools Composio actually returned (detailed)
-        if (isComposioServer) {
-          console.log(`[MCP] ========== COMPOSIO TOOLS DEBUG ==========`);
-          console.log(`[MCP] Composio listTools() returned ${tools.length} tools:`);
-          tools.forEach((t, i) => {
-            console.log(`[MCP]   ${i + 1}. ${t.name} - ${t.description?.substring(0, 80)}...`);
-          });
-          console.log(`[MCP] ==========================================`);
-        }
 
         // Router-first: For Composio servers, we previously tried to filter to only
         // COMPOSIO_SEARCH_TOOLS + MULTI_EXECUTE_TOOL. However, Composio's tool router
@@ -615,29 +1019,24 @@ export class McpManager {
         // Check both possible names for the execute tool
         const hasExecuteTool = composioToolNames.has('COMPOSIO_MULTI_EXECUTE_TOOL') || composioToolNames.has('MULTI_EXECUTE_TOOL');
 
-        if (isComposioServer) {
-          if (hasSearchTool && hasExecuteTool) {
-            console.log(`[MCP] Composio router mode: search→execute (both tools present)`);
-          } else if (hasSearchTool && !hasExecuteTool) {
-            console.log(`[MCP] Composio router mode: search-only (execute tool not present)`);
-          } else {
-            console.log(`[MCP] Composio mode: direct tools (no search tool present)`);
-          }
-        }
 
         // Apply tool cap (max tools per server)
         const toolCap = server.toolCaps || this.DEFAULT_TOOL_CAP;
         let addedCount = 0;
 
         for (const tool of tools) {
-          // Skip if tool is disabled
+          // Skip globally blacklisted tools (cause provider schema errors)
+          if (TOOL_BLACKLIST.has(tool.name)) {
+            continue;
+          }
+
+          // Skip if tool is disabled by server policy
           if (disabledTools.has(tool.name)) {
             continue;
           }
 
           // Apply tool cap
           if (addedCount >= toolCap) {
-            console.warn(`[MCP] Tool cap (${toolCap}) reached for ${server.name}`);
             break;
           }
 
@@ -654,56 +1053,158 @@ export class McpManager {
           });
 
           // Patch JSON Schema for strict mode compatibility (OpenAI, etc.)
-          // Using jsonSchema() avoids Zod validation errors when LLM omits optional fields
-          console.log(`[MCP] Patching schema for ${tool.name}:`, JSON.stringify(tool.inputSchema).substring(0, 200));
-          const patchedSchema = patchSchemaForStrictMode(tool.inputSchema);
-          console.log(`[MCP] Patched schema for ${tool.name}`);
+          let patchedSchema = patchSchemaForStrictMode(tool.inputSchema);
 
+          // Validate schema
+          if (!patchedSchema || typeof patchedSchema !== 'object') {
+            patchedSchema = { type: "object", properties: {}, required: [], additionalProperties: false };
+          } else if (patchedSchema.type !== 'object') {
+            const typeVal = String(patchedSchema.type || '').toLowerCase();
+            if (typeVal === 'none' || typeVal === 'nonetype' || typeVal === 'null' || typeVal === 'undefined' || typeVal === '') {
+              patchedSchema = { type: "object", properties: {}, required: [], additionalProperties: false };
+            } else if (patchedSchema.type !== 'object') {
+              patchedSchema = { type: "object", properties: { value: patchedSchema }, required: ["value"], additionalProperties: false };
+            }
+          }
+
+          // CRITICAL FIX: Patch MULTI_EXECUTE_TOOL schema to make arguments REQUIRED
+          if (tool.name === 'COMPOSIO_MULTI_EXECUTE_TOOL' || tool.name === 'MULTI_EXECUTE_TOOL') {
+            const toolsItems = patchedSchema?.properties?.tools?.items;
+            if (toolsItems?.properties) {
+              if (!toolsItems.required) toolsItems.required = [];
+              if (!toolsItems.required.includes('arguments')) {
+                toolsItems.required.push('arguments');
+              }
+              if (toolsItems.properties.arguments) {
+                toolsItems.properties.arguments.description =
+                  'REQUIRED: Object with all required params from tool_schemas[TOOL].input_schema.required. Example: {"search_query": "your query"}. NEVER empty {}.';
+                toolsItems.properties.arguments.minProperties = 1;
+              }
+            }
+          }
+
+          // Enhance descriptions for Composio router tools
+          let enhancedDescription = tool.description || "MCP tool";
+          if (tool.name === 'COMPOSIO_SEARCH_TOOLS') {
+            enhancedDescription = `Search for Composio tools. MUST BE CALLED FIRST. Returns tool_schemas with input_schema.required (NEVER ignore), recommended_plan_steps, known_pitfalls, session.id (REQUIRED for execute).`;
+          } else if (tool.name === 'COMPOSIO_MULTI_EXECUTE_TOOL' || tool.name === 'MULTI_EXECUTE_TOOL') {
+            enhancedDescription = `Execute Composio tools. The "arguments" object MUST contain ALL required params from tool_schemas. Example: {"tools": [{"tool_slug": "REDDIT_SEARCH_ACROSS_SUBREDDITS", "arguments": {"search_query": "query"}}], "session_id": "from_search"}. Empty {} FAILS.`;
+          } else if (tool.name === 'COMPOSIO_MANAGE_CONNECTIONS') {
+            enhancedDescription = `FALLBACK ONLY: Only call if MULTI_EXECUTE_TOOL fails with "No active connection". "Connected account already defined" = working, don't retry.`;
+          }
+
+          const clonedSchema = JSON.parse(JSON.stringify(patchedSchema));
+
+          // Capture tool reference for execute closure
+          const toolRef = tool;
+          const clientRef = client;
+          const serverRef = server;
+
+          // Simple tool definition - wrap schema with jsonSchema() for AI SDK v5
+          // This avoids treating raw JSON schemas as Zod schemas.
           allTools[fullName] = {
-            description: tool.description || "MCP tool",
-            parameters: jsonSchema(patchedSchema),
+            description: enhancedDescription,
+            inputSchema: jsonSchema(clonedSchema),
+            parameters: clonedSchema,
             execute: async (args: any) => {
               const startTime = Date.now();
-              console.log(`[MCP] Executing ${tool.name} on ${server.name} with args:`, JSON.stringify(args));
-
-              // Check for empty/missing required args (common failure mode)
-              const requiredParams = tool.inputSchema?.required || [];
-              const missingParams = requiredParams.filter((p: string) =>
-                args[p] === undefined || args[p] === null || args[p] === ''
-              );
-
-              if (missingParams.length > 0) {
-                logToolTelemetry({
-                  timestamp: Date.now(),
-                  toolName: tool.name,
-                  success: false,
-                  error: 'Missing required parameters',
-                  paramsMissing: missingParams,
-                });
-                console.warn(`[MCP] Tool ${tool.name} called with missing params: ${missingParams.join(', ')}`);
-                // Don't fail - let the tool try anyway, but log for telemetry
-              }
+              const isComposioSearch = toolRef.name === 'COMPOSIO_SEARCH_TOOLS';
+              const isComposioExecute = toolRef.name === 'COMPOSIO_MULTI_EXECUTE_TOOL' || toolRef.name === 'MULTI_EXECUTE_TOOL';
 
               try {
+                if (isComposioSearch) {
+                  this.composioSearchArgsCache.set(serverRef.id, args);
+                }
+
+                let execArgs = args;
+                if (isComposioExecute) {
+                  // FAIL FAST: Check for empty arguments BEFORE any API calls
+                  const toolCalls = Array.isArray(args?.tools) ? args.tools : [];
+                  const emptyArgTools = toolCalls.filter((t: any) =>
+                    !t.arguments || Object.keys(t.arguments).length === 0
+                  );
+
+                  if (emptyArgTools.length > 0) {
+                    const emptyToolSlugs = emptyArgTools.map((t: any) => t.tool_slug || 'unknown').join(', ');
+                    console.error(`[MCP] ❌ EMPTY ARGUMENTS: ${emptyToolSlugs}`);
+
+                    // Build example with correct values
+                    const schemas = this.getComposioSchemas(serverRef.id, args?.session_id);
+                    const knownFields = this.getComposioSearchHints(serverRef.id, args?.session_id) || {};
+                    const exampleTools = emptyArgTools.map((t: any) => {
+                      const schema = schemas?.[t.tool_slug];
+                      const required = schema?.input_schema?.required || [];
+                      const properties = schema?.input_schema?.properties || {};
+                      const exampleArgs: Record<string, any> = {};
+                      for (const param of required) {
+                        const paramLower = param.toLowerCase();
+                        let value = knownFields[paramLower];
+                        if (!value) {
+                          const aliases = COMPOSIO_KNOWN_FIELD_ALIASES[paramLower];
+                          if (aliases) {
+                            for (const alias of aliases) {
+                              if (knownFields[alias]) { value = knownFields[alias]; break; }
+                            }
+                          }
+                        }
+                        if (!value) {
+                          value = properties[param]?.examples?.[0] || `YOUR_${param.toUpperCase()}_HERE`;
+                        }
+                        exampleArgs[param] = value;
+                      }
+                      return { tool_slug: t.tool_slug, arguments: exampleArgs };
+                    });
+
+                    const correctCall = JSON.stringify({ tools: exampleTools, session_id: args?.session_id }, null, 2);
+                    throw new Error(
+                      `Empty arguments for: ${emptyToolSlugs}. RETRY WITH:\n${correctCall}`
+                    );
+                  }
+
+                  const prepared = this.prepareComposioExecuteArgs(serverRef.id, args);
+                  execArgs = prepared.args;
+                  if (prepared.missingByTool.length > 0) {
+                    throw new Error(`Missing params: ${prepared.missingByTool.join('; ')}`);
+                  }
+                }
+
+                // Check for empty/missing required args (common failure mode)
+                const requiredParams = toolRef.inputSchema?.required || [];
+                const missingParams = requiredParams.filter((p: string) =>
+                  execArgs?.[p] === undefined || execArgs?.[p] === null || execArgs?.[p] === ''
+                );
+
+                if (missingParams.length > 0) {
+                  logToolTelemetry({
+                    timestamp: Date.now(),
+                    toolName: toolRef.name,
+                    success: false,
+                    error: 'Missing required parameters',
+                    paramsMissing: missingParams,
+                  });
+                  if (isComposioExecute) {
+                    throw new Error(`Missing required parameters for ${toolRef.name}: ${missingParams.join(', ')}. Include session_id from COMPOSIO_SEARCH_TOOLS and required fields from tool_schemas.`);
+                  }
+                }
+
                 const execTimeoutPromise = new Promise((_, reject) =>
                   setTimeout(() => reject(new Error(`Execution timeout after 30s`)), 30000)
                 );
 
                 const result = await Promise.race([
-                  client.callTool({
-                    name: tool.name,
-                    arguments: args,
+                  clientRef.callTool({
+                    name: toolRef.name,
+                    arguments: execArgs,
                   }),
                   execTimeoutPromise
                 ]) as any;
 
                 const executionTimeMs = Date.now() - startTime;
-                console.log(`[MCP] Tool ${tool.name} completed successfully in ${executionTimeMs}ms`);
 
                 // Log success telemetry
                 logToolTelemetry({
                   timestamp: Date.now(),
-                  toolName: tool.name,
+                  toolName: toolRef.name,
                   success: true,
                   executionTimeMs,
                 });
@@ -724,39 +1225,74 @@ export class McpManager {
 
                         // Enhance COMPOSIO_SEARCH_TOOLS results with parameter guide
                         // This helps smaller models understand required params for MULTI_EXECUTE
-                        if (tool.name === 'COMPOSIO_SEARCH_TOOLS' && parsed?.data?.tool_schemas) {
-                          // Log detailed search results for debugging
-                          const schemas = parsed.data.tool_schemas;
-                          const schemaKeys = Object.keys(schemas);
-                          console.log(`[MCP] ========== COMPOSIO SEARCH RESULTS DEBUG ==========`);
-                          console.log(`[MCP] Search returned ${schemaKeys.length} tool schemas:`);
-                          schemaKeys.forEach((key, i) => {
-                            console.log(`[MCP]   ${i + 1}. ${key}`);
-                          });
-                          if (parsed.data.session) {
-                            console.log(`[MCP] Session:`, JSON.stringify(parsed.data.session));
-                          }
-                          if (parsed.data.next_steps_guidance) {
-                            console.log(`[MCP] Next steps guidance:`, parsed.data.next_steps_guidance);
-                          }
-                          console.log(`[MCP] =====================================================`);
+                        if (toolRef.name === 'COMPOSIO_SEARCH_TOOLS') {
+                          const toolSchemas = parsed?.data?.tool_schemas || parsed?.tool_schemas;
+                          if (toolSchemas) {
+                            if (!parsed.data) {
+                              parsed.data = {};
+                            }
+                            if (!parsed.data.tool_schemas) {
+                              parsed.data.tool_schemas = toolSchemas;
+                            }
 
-                          // Cap search results to prevent tool overload
-                          if (schemaKeys.length > COMPOSIO_SEARCH_RESULTS_CAP) {
-                            console.log(`[MCP] Capping search results from ${schemaKeys.length} to ${COMPOSIO_SEARCH_RESULTS_CAP} tools`);
-                            const cappedSchemas: Record<string, any> = {};
-                            schemaKeys.slice(0, COMPOSIO_SEARCH_RESULTS_CAP).forEach(key => {
-                              cappedSchemas[key] = schemas[key];
-                            });
-                            parsed.data.tool_schemas = cappedSchemas;
-                            parsed._search_capped = true;
-                            parsed._original_count = schemaKeys.length;
-                          }
+                            const schemas = parsed.data.tool_schemas;
+                            const schemaKeys = Object.keys(schemas);
+                            const sessionId = parsed?.data?.session?.id || parsed?.session?.id;
 
-                          const guide = buildToolParameterGuide(parsed.data.tool_schemas);
-                          if (guide) {
-                            parsed._parameter_guide = guide;
-                            console.log(`[MCP] Injected parameter guide for ${Object.keys(parsed.data.tool_schemas).length} tool schemas`);
+                            // Cap search results to prevent tool overload
+                            if (schemaKeys.length > COMPOSIO_SEARCH_RESULTS_CAP) {
+                              const cappedSchemas: Record<string, any> = {};
+                              schemaKeys.slice(0, COMPOSIO_SEARCH_RESULTS_CAP).forEach(key => {
+                                cappedSchemas[key] = schemas[key];
+                              });
+                              parsed.data.tool_schemas = cappedSchemas;
+                              parsed._search_capped = true;
+                              parsed._original_count = schemaKeys.length;
+                            }
+
+                            // Build parameter guide from FULL schemas (before slimming)
+                            const guide = buildToolParameterGuide(parsed.data.tool_schemas);
+                            if (guide) {
+                              parsed._parameter_guide = guide;
+                            }
+
+                            // CRITICAL: Slim down tool_schemas to reduce token usage
+                            // Keep full schemas cached internally, but return slimmed version
+                            const fullSchemas = parsed.data.tool_schemas;
+                            parsed.data.tool_schemas = slimToolSchemas(fullSchemas);
+
+                            // SANITIZE: Remove misleading connection guidance
+                            // Composio often reports has_active_connection: false even when connections exist
+                            if (parsed.data.toolkit_connection_statuses) {
+                              parsed.data.toolkit_connection_statuses = parsed.data.toolkit_connection_statuses.map((status: any) => ({
+                                ...status,
+                                has_active_connection: true,
+                                status_message: "Connection status check skipped - execute tools directly",
+                              }));
+                            }
+                            // Remove next_steps_guidance that mentions MANAGE_CONNECTIONS
+                            if (parsed.data.next_steps_guidance) {
+                              parsed.data.next_steps_guidance = parsed.data.next_steps_guidance.filter(
+                                (step: string) => !step.toLowerCase().includes('manage_connection')
+                              );
+                            }
+
+                            // Cache FULL schemas internally for error message generation
+                            if (sessionId) {
+                              this.setComposioSchemas(serverRef.id, sessionId, fullSchemas);
+                              const lastSearchArgs = this.composioSearchArgsCache.get(serverRef.id);
+                              const knownFields = collectKnownFields(lastSearchArgs?.queries);
+                              if (Object.keys(knownFields).length > 0) {
+                                this.setComposioSearchHints(serverRef.id, sessionId, knownFields);
+                              }
+                            }
+
+                            // Single surgical log line with all key info
+                            const toolNames = Object.keys(parsed.data.tool_schemas).join(', ');
+                            console.log(`[MCP] SEARCH → ${schemaKeys.length} tools (${toolNames}) | session: ${sessionId || 'none'} | guide: ${guide ? 'yes' : 'NO'}`);
+                            if (!guide) {
+                              console.warn(`[MCP] ⚠️ No parameter guide generated - check tool_schemas structure`);
+                            }
                           }
                         }
 
@@ -774,30 +1310,70 @@ export class McpManager {
               } catch (error) {
                 const executionTimeMs = Date.now() - startTime;
                 const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+                
+                // Enhance Composio error messages with actionable guidance
+                let enhancedError = errorMsg;
+                if (toolRef.name === 'COMPOSIO_MULTI_EXECUTE_TOOL' || toolRef.name === 'MULTI_EXECUTE_TOOL') {
+                  const errorLower = errorMsg.toLowerCase();
+                  if (errorLower.includes('1 out of 1 tools failed') || errorLower.includes('tools failed')) {
+                    // Extract more details from the error if available
+                    try {
+                      const errorObj = typeof error === 'object' && error !== null ? error : {};
+                      const details = (errorObj as any).details || (errorObj as any).data || {};
+                      const toolErrors = details.tool_errors || details.errors || [];
+                      
+                      if (toolErrors.length > 0) {
+                        const firstError = toolErrors[0];
+                        const toolSlug = firstError.tool_slug || 'unknown';
+                        const reason = firstError.error || firstError.reason || errorMsg;
+                        enhancedError = `Tool "${toolSlug}" failed: ${reason}. Check the tool_schemas from COMPOSIO_SEARCH_TOOLS for required parameters.`;
+                      } else {
+                        enhancedError = `${errorMsg}. Make sure you're using the correct tool_slug and all required arguments from COMPOSIO_SEARCH_TOOLS results.`;
+                      }
+                    } catch {
+                      enhancedError = `${errorMsg}. Use COMPOSIO_SEARCH_TOOLS first to find the correct tool and parameters.`;
+                    }
+                  } else if (errorLower.includes('session') || errorLower.includes('session_id')) {
+                    enhancedError = `${errorMsg}. Make sure to include the session_id from COMPOSIO_SEARCH_TOOLS response.`;
+                  } else if (errorLower.includes('required') || errorLower.includes('missing')) {
+                    enhancedError = `${errorMsg}. Check the tool_schemas in COMPOSIO_SEARCH_TOOLS results for all required parameters.`;
+                  }
+                } else if (toolRef.name === 'COMPOSIO_SEARCH_TOOLS') {
+                  if (errorMsg.toLowerCase().includes('queries') || errorMsg.toLowerCase().includes('empty')) {
+                    enhancedError = `${errorMsg}. Always provide a "queries" array with natural language descriptions. Example: {"queries": ["search twitter", "send email"]}`;
+                  }
+                }
 
                 // Log failure telemetry
                 logToolTelemetry({
                   timestamp: Date.now(),
-                  toolName: tool.name,
+                  toolName: toolRef.name,
                   success: false,
-                  error: errorMsg,
+                  error: enhancedError,
                   executionTimeMs,
                 });
 
-                console.error(`[MCP] Tool ${tool.name} failed after ${executionTimeMs}ms:`, errorMsg);
-                throw error;
+                console.error(`[MCP] Tool ${toolRef.name} failed after ${executionTimeMs}ms:`, enhancedError);
+                
+                // Create enhanced error with better message
+                const enhancedErrorObj = new Error(enhancedError);
+                if (error instanceof Error && error.stack) {
+                  enhancedErrorObj.stack = error.stack;
+                }
+                throw enhancedErrorObj;
               }
             }
           };
 
           addedCount++;
         }
-
-        console.log(`[MCP] Loaded ${addedCount} tools from ${server.name}`);
       } catch (error) {
         console.warn(`[MCP] Skipping ${server.name}:`, error instanceof Error ? error.message : error);
       }
     }
+
+    // Note: No final pass over all tools since each schema is patched and
+    // wrapped with jsonSchema() above.
 
     // Cache the result
     this.toolsCache.set(cacheKey, {
@@ -805,7 +1381,6 @@ export class McpManager {
       metadata,
       timestamp: Date.now()
     });
-    console.log(`[MCP] Cached ${metadata.length} tools`);
 
     return { tools: allTools, metadata };
   }
@@ -815,11 +1390,11 @@ export class McpManager {
    */
   invalidateToolsCache() {
     this.toolsCache.clear();
-    console.log(`[MCP] Tools cache invalidated`);
   }
 
   /**
-   * Build structured system instructions for MCP tools
+   * Build structured system instructions for MCP tools.
+   * Optimized for token efficiency (~60% reduction from verbose version).
    */
   buildToolInstructions(metadata: ToolMetadata[], tier: ToolCallingTier = "basic"): string {
     if (metadata.length === 0) return "";
@@ -831,104 +1406,124 @@ export class McpManager {
     }, {} as Record<string, ToolMetadata[]>);
 
     // Check if Composio tools are present (router-first mode)
-    // Look up the ACTUAL provider-safe names the model must use
     const searchTool = metadata.find(t => t.toolName === 'COMPOSIO_SEARCH_TOOLS');
-    // Check both possible names for the execute tool
     const executeTool = metadata.find(t => t.toolName === 'COMPOSIO_MULTI_EXECUTE_TOOL' || t.toolName === 'MULTI_EXECUTE_TOOL');
     const hasComposioSearchOnly = searchTool && !executeTool;
     const hasComposioSearchAndExecute = searchTool && executeTool;
 
-    let instructions = "You have access to the following external tools via MCP plugins. Use the exact tool name shown (provider-safe).\n\n";
+    let instructions = "# MCP Tools\n\n";
 
-    // Add Composio-specific instructions based on what tools are actually available
+    // Detailed Composio instructions with examples
     if (hasComposioSearchAndExecute) {
-      // Full router-first flow: search → execute
-      instructions += `## ⚠️ CRITICAL: Composio Tool Usage Rules
+      instructions += `## Composio Tool Usage
 
-**MANDATORY WORKFLOW - You MUST follow this order:**
+### Step 1: Search for Tools
+Call \`${searchTool.fullName}\` with queries describing what you need:
+\`\`\`json
+{"queries": [{"use_case": "search reddit for latest posts"}]}
+\`\`\`
 
-1. **ALWAYS call \`${searchTool.fullName}\` first** before any execute call
-   - Search describes what action you need (e.g., "send email", "create github issue")
-   - The search returns tool schemas with required parameters
+### Step 2: Parse & Follow Search Response - CRITICAL
+The response contains fields you **MUST READ AND FOLLOW**:
 
-2. **Follow the returned plan from search results:**
-   - Execute \`recommended_plan_steps\` sequentially - these are optimized for the task
-   - Check \`known_pitfalls\` before each tool call to avoid common errors
-   - Use \`tool_schemas\` for exact parameter requirements
-   - Only execute steps marked "Required" - skip "Optional" steps unless needed
+**REQUIRED READING:**
+- \`tool_schemas[TOOL_NAME].input_schema.required\`: Lists MANDATORY parameters - **NEVER pass empty arguments {}**
+- \`tool_schemas[TOOL_NAME].input_schema.properties\`: Shows all parameters with descriptions and examples
+- \`recommended_plan_steps\`: **FOLLOW THESE EXECUTION STEPS**
+- \`known_pitfalls\`: **READ TO AVOID COMMON ERRORS**
+- \`session.id\`: **REQUIRED** in all subsequent calls
+- \`_parameter_guide\`: Shows exactly how to structure your MULTI_EXECUTE_TOOL call
 
-3. **THEN call \`${executeTool.fullName}\`** with the exact tool_slug from search results
-   - Use the parameter guide in search results to fill ALL required parameters
-   - NEVER call with empty arguments \`{}\` - this will fail
+**CONNECTION CHECK (IGNORE THIS - see Step 3):**
+- \`toolkit_connection_statuses\` is often stale - **do NOT preemptively call MANAGE_CONNECTIONS**
+- Just proceed to execute tools directly
 
-4. **ALWAYS follow \`next_steps\` guidance in tool responses:**
-   - Tool responses include \`next_steps\` telling you what to do (or NOT do) next
-   - If \`next_steps\` says "DO NOT call workbench tools" - do NOT call them
-   - This runtime guidance overrides optional steps in the original plan
+### Step 3: SKIP Connection Management - Execute Directly
+**IMPORTANT: IGNORE \`has_active_connection: false\` in toolkit_connection_statuses.**
 
-5. **If \`${executeTool.fullName}\` fails:**
-   - Check the error message for missing parameters
-   - Re-read the _parameter_guide from search results
-   - Retry with correct parameters, or ask the user for missing information
+The connection status is often stale/incorrect. Instead:
+1. **Proceed directly to Step 4** (execute tools) without calling COMPOSIO_MANAGE_CONNECTIONS
+2. If execution fails with "No active connection found", THEN call COMPOSIO_MANAGE_CONNECTIONS once
+3. **NEVER call COMPOSIO_MANAGE_CONNECTIONS preemptively** based on toolkit_connection_statuses
 
-**NEVER skip the search tool and guess tool names - this causes failures.**
+**If you see "Connected account already defined"** → Connection IS working. Do NOT retry. Execute tools directly.
+
+### Step 4: Execute Tools
+Use \`${executeTool.fullName}\`. **You MUST fill in the "arguments" object with ALL required parameters from tool_schemas.input_schema.required**:
+\`\`\`json
+{
+  "tools": [
+    {
+      "tool_slug": "REDDIT_SEARCH_ACROSS_SUBREDDITS",
+      "arguments": {
+        "search_query": "YOUR ACTUAL SEARCH QUERY HERE",
+        "limit": 10,
+        "sort": "new"
+      }
+    }
+  ],
+  "session_id": "<session.id from search response>"
+}
+\`\`\`
+
+**⚠️ ARGUMENTS ARE MANDATORY - NEVER EMPTY:**
+- The \`arguments\` object MUST contain all parameters from \`tool_schemas[TOOL].input_schema.required\`
+- Example: If \`required: ["search_query"]\`, you MUST include \`"arguments": {"search_query": "your query"}\`
+- Empty \`"arguments": {}\` will ALWAYS fail with an error
+
+**CRITICAL WORKFLOW:**
+1. **Search first** → get tool_schemas, recommended_plan_steps, known_pitfalls, session.id
+2. **READ tool_schemas[TOOL].input_schema.required** → identify ALL mandatory parameters
+3. **SKIP MANAGE_CONNECTIONS** → ignore toolkit_connection_statuses, execute directly
+4. **Execute with ALL required params filled in arguments** → copy required param names and provide values
+5. **Only if execute fails with "No active connection"** → call MANAGE_CONNECTIONS once, then retry
+
+**ABSOLUTE RULES:**
+- **"arguments" MUST contain ALL required parameters** - check tool_schemas[TOOL].input_schema.required
+- **NEVER pass empty arguments: {}** - this will ALWAYS fail with an error
+- **NEVER call COMPOSIO_MANAGE_CONNECTIONS preemptively** - only as fallback after execute fails
+- **"Connected account already defined"** = connection works, proceed to execute
+- Always include session_id from search response
 
 `;
     } else if (hasComposioSearchOnly) {
-      // Search-only mode: search returns tool schemas, call those tools directly
-      instructions += `## ⚠️ CRITICAL: Composio Tool Usage Rules
+      instructions += `## Composio Tool Usage
 
-**WORKFLOW:**
+### Search for Tools
+Call \`${searchTool.fullName}\` with a queries array:
+\`\`\`json
+{
+  "queries": ["describe what you want to do in natural language"]
+}
+\`\`\`
 
-1. **First call \`${searchTool.fullName}\`** to find available tools
-   - Search describes what action you need (e.g., "send email", "search reddit")
-   - The search returns tool_schemas with the tools you can call
+**IMPORTANT:** ALWAYS provide the "queries" parameter - never call with empty {}
 
-2. **Follow the returned plan from search results:**
-   - Execute \`recommended_plan_steps\` sequentially - these are optimized by Composio for the task
-   - Check \`known_pitfalls\` before each tool call to avoid common errors (e.g., pagination limits, rate limits, response shapes)
-   - Use \`tool_schemas\` for exact parameter requirements
-   - Focus on "Required" steps first - skip "Optional" steps unless specifically needed
-
-3. **Then call the specific tools** returned in the search results (e.g., REDDIT_SEARCH_ACROSS_SUBREDDITS)
-   - Use the exact tool names from the tool_schemas in search results
-   - Fill ALL required parameters as shown in the _parameter_guide
-
-4. **ALWAYS follow \`next_steps\` guidance in tool responses:**
-   - Tool responses include \`next_steps\` telling you what to do (or NOT do) next
-   - If \`next_steps\` says "DO NOT call workbench tools" - do NOT call them
-   - This runtime guidance overrides optional steps in the original plan
-
-**NEVER guess tool names - always search first to find available tools.**
+Then call the returned tools using parameters from tool_schemas.
 
 `;
     }
 
+    // Condensed tool catalog - shorter format
     for (const [serverName, tools] of Object.entries(groupedByServer)) {
       instructions += `## ${serverName}\n`;
       for (const tool of tools) {
-        const params = tool.inputSchema?.properties
-          ? Object.keys(tool.inputSchema.properties).join(", ")
-          : "none";
-        instructions += `- \`${tool.fullName}\`: ${tool.description} (Params: ${params})\n`;
+        // Truncate long descriptions to first sentence or 100 chars
+        let desc = tool.description || "";
+        const firstSentence = desc.split(/[.!?]/)[0];
+        if (firstSentence && firstSentence.length < desc.length) {
+          desc = firstSentence;
+        }
+        if (desc.length > 100) {
+          desc = desc.substring(0, 97) + "...";
+        }
+        instructions += `- \`${tool.fullName}\`: ${desc}\n`;
       }
       instructions += "\n";
     }
 
-    instructions += "Only use these tools when external service integration is explicitly needed (e.g., posting to Reddit, sending emails, fetching live data). For tasks you can do directly (writing code, answering questions, creating content), respond without tools.\n";
-
-    // Add tier-based efficiency guidance
-    const tierGuidance: Record<ToolCallingTier, string> = {
-      none: "",
-      basic: "Complete tool operations in 2-3 calls maximum. ",
-      advanced: "Complete tool operations in 4-5 calls. ",
-      elite: "Use as many tool calls as needed for complex tasks. ",
-    };
-
-    instructions += "\n## Response Requirements\n";
-    instructions += tierGuidance[tier] || tierGuidance.basic;
-    instructions += "After completing tool operations, ALWAYS provide a final text response summarizing what was accomplished. ";
-    instructions += "Never end your turn with only tool calls.\n";
+    // Condensed footer
+    instructions += "Use tools only for external services. Always provide a text summary after tool operations.\n";
 
     return instructions;
   }

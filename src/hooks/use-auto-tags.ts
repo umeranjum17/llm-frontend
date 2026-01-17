@@ -1,11 +1,11 @@
 import { useRef, useEffect } from "react";
 import { useApiKeysStore } from "@/stores/api-keys-store";
-import type { Message } from "ai";
+import type { UIMessage } from "ai";
 import { generateAndApplyTags } from "@/lib/ai/auto-tagging";
 
 export function useAutoTags(
     chatId: string,
-    messages: Message[],
+    messages: UIMessage[],
     tags: string[] = [],
     enabled: boolean = true
 ) {

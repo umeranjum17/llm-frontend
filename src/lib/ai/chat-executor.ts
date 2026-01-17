@@ -13,12 +13,66 @@
 import { streamText, generateText, generateObject, stepCountIs, type ModelMessage } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { normalizeModelIdForProviderId } from "@/lib/ai/provider-routing";
 import { isCustomOpenAIProvider, resolveProvider } from "@/lib/providers";
 import { McpManager, type ToolMetadata } from "@/lib/mcp/mcp-manager";
 import type { McpServer } from "@/lib/db/schema";
 import { getModelCapabilities, type ToolCallingTier } from "@/lib/constants/model-capabilities";
 import { z } from "zod";
+import { countTokens } from "@/lib/utils/token-counter";
+
+/**
+ * Deep sanitize tool schema to fix Azure-incompatible values.
+ * Azure OpenAI rejects schemas with type: "None" anywhere in the tree.
+ * This is called from the fetch interceptor BEFORE the request is sent.
+ */
+function deepSanitizeToolSchema(obj: any): any {
+  if (obj === null || obj === undefined) {
+    return { type: "object", properties: {}, required: [] };
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(item => deepSanitizeToolSchema(item));
+  }
+
+  if (typeof obj !== 'object') {
+    if (typeof obj === 'string') {
+      const lower = obj.toLowerCase();
+      if (lower === 'none' || lower === 'nonetype') {
+        return 'string';
+      }
+    }
+    return obj;
+  }
+
+  const result: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (key === 'type') {
+      if (typeof value === 'string') {
+        const lower = value.toLowerCase();
+        if (lower === 'none' || lower === 'nonetype' || lower === 'null') {
+          console.warn(`[OpenRouter Sanitize] Fixed invalid type "${value}" -> "string"`);
+          result[key] = 'string';
+          continue;
+        }
+      }
+      if (value === null || value === undefined) {
+        console.warn(`[OpenRouter Sanitize] Fixed null/undefined type -> "string"`);
+        result[key] = 'string';
+        continue;
+      }
+    }
+    result[key] = deepSanitizeToolSchema(value);
+  }
+
+  // Ensure root has type: "object" if it's meant to be an object schema
+  if (result.properties && !result.type) {
+    result.type = 'object';
+  }
+
+  return result;
+}
 
 /**
  * Retry configuration for transient API errors
@@ -28,6 +82,138 @@ export const RETRY_CONFIG = {
   baseDelayMs: 1000,
   maxDelayMs: 10000,
 };
+
+/**
+ * Generate a cache key from system prompt content for prompt caching.
+ * Uses a simple hash of the content to create a stable key.
+ */
+function generatePromptCacheKey(systemPrompts: ModelMessage[]): string {
+  const content = systemPrompts
+    .filter(m => m.role === 'system')
+    .map(m => typeof m.content === 'string' ? m.content : JSON.stringify(m.content))
+    .join('\n');
+  
+  // Simple hash function for cache key
+  let hash = 0;
+  for (let i = 0; i < content.length; i++) {
+    const char = content.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return `prompt-${Math.abs(hash).toString(36)}`;
+}
+
+/**
+ * Calculate total tokens in system messages for prompt caching eligibility.
+ * OpenAI requires 1024+ tokens for prompt caching to activate.
+ */
+function getSystemPromptTokens(messages: ModelMessage[]): number {
+  return messages
+    .filter(m => m.role === 'system')
+    .reduce((total, msg) => {
+      const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+      return total + countTokens(content);
+    }, 0);
+}
+
+/**
+ * Configure prompt caching for different providers.
+ * Returns updated messages and provider options with caching enabled.
+ */
+export function configurePromptCaching(
+  messages: ModelMessage[],
+  providerId: string,
+  modelId: string,
+  capabilities: ReturnType<typeof getModelCapabilities>
+): { messages: ModelMessage[]; providerOptions: Record<string, any> } {
+  const providerOptions: Record<string, any> = {};
+  const updatedMessages = [...messages];
+  
+  const systemPrompts = updatedMessages.filter(m => m.role === 'system');
+  const systemTokens = getSystemPromptTokens(systemPrompts);
+  
+  // OpenAI: Explicit prompt caching for 1024+ token prompts
+  if (providerId === 'openai' && systemTokens >= 1024) {
+    const cacheKey = generatePromptCacheKey(systemPrompts);
+    providerOptions.openai = {
+      promptCacheKey: cacheKey,
+      promptCacheRetention: 'in_memory', // Can be 'in_memory' or '24h' for supported models
+    };
+    console.log(`[PromptCache] OpenAI: Enabled prompt caching (${systemTokens} tokens, key: ${cacheKey})`);
+  }
+  
+  // Anthropic: Direct provider prompt caching
+  else if (providerId === 'anthropic' && capabilities.supportsPromptCaching && systemPrompts.length > 0) {
+    const lastSystemIdx = updatedMessages
+      .map((m, i) => m.role === 'system' ? i : -1)
+      .filter(i => i !== -1)
+      .pop();
+    
+    if (lastSystemIdx !== undefined && lastSystemIdx >= 0) {
+      (updatedMessages[lastSystemIdx] as any).providerOptions = {
+        anthropic: { cacheControl: { type: 'ephemeral' } }
+      };
+      console.log(`[PromptCache] Anthropic: Enabled prompt caching (${systemTokens} tokens)`);
+    }
+  }
+  
+  // OpenRouter: Explicit caching for Gemini/Claude models
+  else if (providerId === 'openrouter') {
+    const isGeminiModel = modelId.toLowerCase().includes('gemini');
+    const isClaudeModel = modelId.toLowerCase().includes('claude');
+    
+    if ((isGeminiModel || isClaudeModel) && systemPrompts.length > 0) {
+      const lastSystemIdx = updatedMessages
+        .map((m, i) => m.role === 'system' ? i : -1)
+        .filter(i => i !== -1)
+        .pop();
+      
+      if (lastSystemIdx !== undefined && lastSystemIdx >= 0) {
+        const msg = updatedMessages[lastSystemIdx] as any;
+        
+        // Change role to 'user' to allow array content with providerOptions
+        // AI SDK requires system messages to have string content
+        msg.role = 'user';
+        
+        // Convert string content to array format with providerOptions
+        if (typeof msg.content === 'string') {
+          msg.content = [
+            {
+              type: 'text',
+              text: msg.content,
+              providerOptions: {
+                openrouter: {
+                  cacheControl: { type: 'ephemeral' }
+                }
+              }
+            }
+          ];
+        } else if (Array.isArray(msg.content)) {
+          // Add cacheControl to the last text part
+          const lastTextPartIdx = msg.content
+            .map((p: any, i: number) => p.type === 'text' ? i : -1)
+            .filter((i: number) => i !== -1)
+            .pop();
+          
+          if (lastTextPartIdx !== undefined && lastTextPartIdx >= 0) {
+            msg.content[lastTextPartIdx].providerOptions = {
+              openrouter: {
+                cacheControl: { type: 'ephemeral' }
+              }
+            };
+          }
+        }
+        
+        console.log(`[PromptCache] OpenRouter: Enabled prompt caching for ${isGeminiModel ? 'Gemini' : 'Claude'} (${systemTokens} tokens)`);
+      }
+    } else {
+      // OpenRouter automatic caching for other models (OpenAI, Groq, etc.)
+      console.log(`[PromptCache] OpenRouter: Using automatic prompt caching (${modelId})`);
+    }
+  }
+  
+  return { messages: updatedMessages, providerOptions };
+}
 
 /**
  * Check if an error is retryable (transient).
@@ -186,11 +372,49 @@ export function createModel(config: {
     return anthropic(normalizedModelId);
   }
 
-  // Use official OpenRouter provider for OpenRouter
-  // This ensures proper compatibility with OpenRouter's features including tool calling
+  // Use stable OpenRouter provider (v1.5.4) which uses Chat Completions API
+  // The v6 alpha provider uses Responses API which has Azure tool schema bugs
+  // We add a custom fetch to intercept and sanitize tool schemas before they reach Azure
   if (providerId === "openrouter") {
-    const { createOpenRouter } = require("@openrouter/ai-sdk-provider");
-    const openrouter = createOpenRouter({ apiKey });
+    const openrouter = createOpenRouter({
+      apiKey,
+      // Custom fetch to sanitize tool schemas - Azure rejects type: "None"
+      fetch: async (url, options) => {
+        if (options?.body && typeof options.body === 'string') {
+          try {
+            const body = JSON.parse(options.body);
+
+            // Sanitize tools array if present
+            if (body.tools && Array.isArray(body.tools)) {
+              body.tools = body.tools.map((tool: any) => {
+                if (tool.function?.parameters) {
+                  // Deep sanitize the parameters schema
+                  const sanitized = deepSanitizeToolSchema(tool.function.parameters);
+                  return {
+                    ...tool,
+                    function: {
+                      ...tool.function,
+                      parameters: sanitized
+                    }
+                  };
+                }
+                return tool;
+              });
+
+              console.log('[OpenRouter] Sanitized tool schemas before sending to provider');
+            }
+
+            options = {
+              ...options,
+              body: JSON.stringify(body)
+            };
+          } catch (e) {
+            console.error('[OpenRouter] Failed to sanitize request body:', e);
+          }
+        }
+        return globalThis.fetch(url, options);
+      }
+    });
     return openrouter(normalizedModelId);
   }
 
@@ -371,55 +595,16 @@ export async function executeChat(
   // Add user messages
   coreMessages.push(...(messages as ModelMessage[]));
 
-  // Prompt caching configuration by provider (for non-streaming chat)
-  // Uses providerOptions.openrouter.cacheControl format (AI SDK compatible)
-  if (providerId === 'openrouter') {
-    const isGeminiModel = modelId.toLowerCase().includes('gemini');
-    const isClaudeModel = modelId.toLowerCase().includes('claude');
-
-    if (isGeminiModel || isClaudeModel) {
-      const lastSystemIdx = coreMessages
-        .map((m, i) => m.role === 'system' ? i : -1)
-        .filter(i => i !== -1)
-        .pop();
-
-      if (lastSystemIdx !== undefined && lastSystemIdx >= 0) {
-        const msg = coreMessages[lastSystemIdx] as any;
-
-        // IMPORTANT: Change role to 'user' to allow array content
-        // AI SDK requires system messages to have string content
-        msg.role = 'user';
-
-        // Convert string content to array format with providerOptions
-        if (typeof msg.content === 'string') {
-          msg.content = [
-            {
-              type: 'text',
-              text: msg.content,
-              providerOptions: {
-                openrouter: {
-                  cacheControl: { type: 'ephemeral' }
-                }
-              }
-            }
-          ];
-        } else if (Array.isArray(msg.content)) {
-          const lastTextPartIdx = msg.content
-            .map((p: any, i: number) => p.type === 'text' ? i : -1)
-            .filter((i: number) => i !== -1)
-            .pop();
-
-          if (lastTextPartIdx !== undefined && lastTextPartIdx >= 0) {
-            msg.content[lastTextPartIdx].providerOptions = {
-              openrouter: {
-                cacheControl: { type: 'ephemeral' }
-              }
-            };
-          }
-        }
-      }
-    }
-  }
+  // Configure prompt caching for all supported providers
+  const { messages: cachedMessages, providerOptions: cacheProviderOptions } = configurePromptCaching(
+    coreMessages,
+    providerId,
+    modelId,
+    capabilities
+  );
+  
+  // Merge cache provider options with any existing provider options
+  const finalProviderOptions = { ...cacheProviderOptions };
 
   // Calculate maxSteps
   const maxSteps = options?.maxSteps ?? (hasTools ? getMaxStepsByTier(capabilities.toolCallingTier) : 1);
@@ -429,11 +614,12 @@ export async function executeChat(
   // Execute with retry for transient errors
   const result = await withRetry(
     () => generateText({
-      model,
-      messages: coreMessages,
+      model: model as any,
+      messages: cachedMessages,
       tools: hasTools ? tools : undefined,
       maxOutputTokens: options?.maxTokens ?? 2000,
       stopWhen: hasTools ? stepCountIs(maxSteps) : undefined,
+      providerOptions: Object.keys(finalProviderOptions).length > 0 ? finalProviderOptions : undefined,
     }),
     `generateText (${modelId})`
   );
@@ -456,6 +642,18 @@ export async function executeChat(
 
   console.log(`[ChatExecutor] Completed with ${allToolCalls.length} tool calls`);
   console.log(`[ChatExecutor] Result text length: ${result.text?.length || 0}, preview: ${result.text?.slice(0, 100) || 'EMPTY'}`);
+  
+  // Log prompt cache metrics if available
+  if (result.usage) {
+    const cachedTokens = (result.usage as any).promptTokensDetails?.cachedTokens ?? 0;
+    const promptTokens = result.usage.inputTokens ?? 0;
+    if (cachedTokens > 0) {
+      const cacheHitRate = ((cachedTokens / promptTokens) * 100).toFixed(1);
+      console.log(`[PromptCache] ✅ Cache hit: ${cachedTokens}/${promptTokens} tokens cached (${cacheHitRate}% hit rate)`);
+    } else if (promptTokens >= 1024) {
+      console.log(`[PromptCache] ℹ️  Prompt eligible for caching (${promptTokens} tokens) but no cache hit`);
+    }
+  }
 
   return {
     text: result.text,
@@ -527,75 +725,16 @@ export async function executeChatStreaming(
     providerOptions.openrouter = { usage: { include: true } };
   }
 
-  // Prompt caching configuration by provider
-  // See: https://openrouter.ai/docs/guides/best-practices/prompt-caching
-  //
-  // For OpenRouter + Gemini/Claude: use providerOptions.openrouter.cacheControl on content parts
-  // For direct Anthropic SDK: use providerOptions.anthropic.cacheControl on messages
-
-  if (providerId === 'openrouter') {
-    // OpenRouter uses providerOptions.openrouter.cacheControl for explicit caching
-    const isGeminiModel = modelId.toLowerCase().includes('gemini');
-    const isClaudeModel = modelId.toLowerCase().includes('claude');
-
-    if (isGeminiModel || isClaudeModel) {
-      // Find the last system message to add cache control breakpoint
-      const lastSystemIdx = coreMessages
-        .map((m, i) => m.role === 'system' ? i : -1)
-        .filter(i => i !== -1)
-        .pop();
-
-      if (lastSystemIdx !== undefined && lastSystemIdx >= 0) {
-        const msg = coreMessages[lastSystemIdx] as any;
-
-        // IMPORTANT: Change role to 'user' to allow array content
-        // AI SDK requires system messages to have string content
-        msg.role = 'user';
-
-        // Convert string content to array format with providerOptions
-        if (typeof msg.content === 'string') {
-          msg.content = [
-            {
-              type: 'text',
-              text: msg.content,
-              providerOptions: {
-                openrouter: {
-                  cacheControl: { type: 'ephemeral' }
-                }
-              }
-            }
-          ];
-        } else if (Array.isArray(msg.content)) {
-          // Add cacheControl to the last text part
-          const lastTextPartIdx = msg.content
-            .map((p: any, i: number) => p.type === 'text' ? i : -1)
-            .filter((i: number) => i !== -1)
-            .pop();
-
-          if (lastTextPartIdx !== undefined && lastTextPartIdx >= 0) {
-            msg.content[lastTextPartIdx].providerOptions = {
-              openrouter: {
-                cacheControl: { type: 'ephemeral' }
-              }
-            };
-          }
-        }
-      }
-    }
-  } else if (isAnthropicProvider && capabilities.supportsPromptCaching) {
-    // Direct Anthropic SDK: use AI SDK's providerOptions format for cache control
-    const lastSystemIdx = coreMessages
-      .map((m, i) => m.role === 'system' ? i : -1)
-      .filter(i => i !== -1)
-      .pop();
-
-    if (lastSystemIdx !== undefined && lastSystemIdx >= 0) {
-      (coreMessages[lastSystemIdx] as any).providerOptions = {
-        anthropic: { cacheControl: { type: 'ephemeral' } }
-      };
-    }
-  }
-  // OpenAI, Grok, DeepSeek, Groq: automatic caching, no config needed
+  // Configure prompt caching for all supported providers
+  const { messages: cachedMessages, providerOptions: cacheProviderOptions } = configurePromptCaching(
+    coreMessages,
+    providerId,
+    modelId,
+    capabilities
+  );
+  
+  // Merge cache provider options with existing provider options
+  Object.assign(providerOptions, cacheProviderOptions);
 
   // Extended thinking
   if (capabilities.supportsThinking && isAnthropicProvider) {
@@ -608,11 +747,11 @@ export async function executeChatStreaming(
   const maxSteps = options?.maxSteps ?? (hasTools ? getMaxStepsByTier(capabilities.toolCallingTier) : 1);
 
   return streamText({
-    model,
-    messages: coreMessages,
+    model: model as any,
+    messages: cachedMessages,
     tools: hasTools ? tools : undefined,
     stopWhen: hasTools ? stepCountIs(maxSteps) : undefined,
-    providerOptions,
+    providerOptions: Object.keys(providerOptions).length > 0 ? providerOptions : undefined,
   });
 }
 
@@ -711,7 +850,7 @@ export async function generateSimpleText(config: {
 
   const result = await withRetry(
     () => generateText({
-      model,
+      model: model as any,
       messages,
       maxOutputTokens: maxTokens,
       temperature,
@@ -756,7 +895,7 @@ export async function generateStructuredOutput<T extends z.ZodType>(config: {
 
   const result = await withRetry(
     () => generateObject({
-      model,
+      model: model as any,
       schema,
       prompt,
     }),

@@ -1,5 +1,6 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { embedMany } from "ai";
+import { withRetry } from "@/lib/ai/chat-executor";
 
 /**
  * Available embedding models by provider
@@ -72,11 +73,14 @@ export async function POST(req: Request) {
       embeddingModel = openrouter.embedding(modelId);
     }
 
-    // Generate embeddings for all texts
-    const { embeddings } = await embedMany({
-      model: embeddingModel,
-      values: texts,
-    });
+    // Generate embeddings for all texts (with retry for transient errors like OpenRouter "User not found")
+    const { embeddings } = await withRetry(
+      () => embedMany({
+        model: embeddingModel as any,
+        values: texts,
+      }),
+      `embedMany (${modelId})`
+    );
 
     console.log(`[Embeddings] Generated ${embeddings.length} embeddings using ${modelId}`);
 

@@ -920,10 +920,10 @@ export const MessageItem = memo(function MessageItem({
           </Avatar>
 
           {/* Content */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 overflow-hidden">
             <div
               className={cn(
-                "rounded-xl sm:rounded-2xl border p-2.5 sm:p-4",
+                "rounded-xl sm:rounded-2xl border p-2.5 sm:p-4 overflow-hidden",
                 isUser
                   ? "bg-primary/10 border-primary/20"
                   : "bg-card/40 backdrop-blur-sm border-border/50"
@@ -992,7 +992,7 @@ export const MessageItem = memo(function MessageItem({
                 </div>
               ) : (
                 /* Message content */
-                <div className="prose prose-sm dark:prose-invert max-w-none">
+                <div className="prose prose-sm dark:prose-invert max-w-none break-words" style={{ overflowWrap: 'anywhere' }}>
                   {isAssistant ? (
                     <>
                       <MarkdownRenderer content={textContent} isStreaming={isStreaming} />

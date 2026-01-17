@@ -149,14 +149,43 @@ async function callMem0Api(action: string, payload: any) {
  * Mem0 expects an array of message objects with role and content
  */
 export async function addMemory(content: string | { role: string, content: string }[]) {
-    // Mem0's "add" expects a list of messages - wrap string content
-    const messages = typeof content === 'string'
-        ? [{ role: "user", content }]
-        : content;
-    const result = await callMem0Api("add", { content: messages });
-    // Invalidate cache since memories changed
-    invalidateCache();
-    return result;
+    // Validate content first
+    if (!content) {
+        console.warn("[Memory] addMemory called with no content, skipping");
+        return null;
+    }
+
+    // Handle string content
+    if (typeof content === 'string') {
+        const trimmed = content.trim();
+        if (!trimmed) {
+            console.warn("[Memory] addMemory called with empty string, skipping");
+            return null;
+        }
+        // Mem0 expects a list of messages
+        const messages = [{ role: "user", content: trimmed }];
+        const result = await callMem0Api("add", { content: messages });
+        invalidateCache();
+        return result;
+    }
+
+    // Handle array content
+    if (Array.isArray(content)) {
+        // Filter out messages with empty content
+        const validMessages = content.filter(msg =>
+            msg && typeof msg.content === 'string' && msg.content.trim().length > 0
+        );
+        if (validMessages.length === 0) {
+            console.warn("[Memory] addMemory called with no valid messages, skipping");
+            return null;
+        }
+        const result = await callMem0Api("add", { content: validMessages });
+        invalidateCache();
+        return result;
+    }
+
+    console.warn("[Memory] addMemory called with invalid content type:", typeof content);
+    return null;
 }
 
 /**

@@ -26,12 +26,14 @@ export async function POST(req: NextRequest) {
     if (authConfigs) {
       sessionOptions.authConfigs = authConfigs;
     }
-    if (connectedAccounts && Object.keys(connectedAccounts).length > 0) {
-      // Format: { toolkit_slug: connected_account_id }
-      sessionOptions.connectedAccounts = connectedAccounts;
-      // Disable auto connection management since we're providing connected accounts
-      sessionOptions.manageConnections = false;
-    }
+    // NOTE: Don't pass connectedAccounts - let Composio manage connections dynamically
+    // Passing both connectedAccounts and manageConnections=true causes conflicts
+    // (e.g., "Connected account already defined" errors followed by "No active connection")
+    // if (connectedAccounts && Object.keys(connectedAccounts).length > 0) {
+    //   sessionOptions.connectedAccounts = connectedAccounts;
+    // }
+    // Let Composio manage connections - it will use existing connections automatically
+    sessionOptions.manageConnections = true;
 
     if (process.env.NODE_ENV === "development") {
       console.log("[Composio] Creating session for user:", userId);

@@ -17,6 +17,7 @@ import { getAgentById, getAllTags, getSettings, updateSettings, updateChat, getC
 import { getChatForExport, downloadChat, copyChatToClipboard, type ExportFormat } from "@/lib/db/export-chat";
 import { toast } from "sonner";
 import { useChatSummary } from "@/hooks/use-chat-summary";
+import { useSettingsStore } from "@/stores/settings-store";
 
 type ReasoningLevel = "low" | "medium" | "high" | "xhigh";
 
@@ -56,6 +57,9 @@ export function ChatSettingsPopover({
   const reasoningLevel = chat?.reasoningLevel || "medium";
   const selectedTags = chat?.tags || [];
   const calculatedCost = messages?.reduce((sum, msg) => sum + (msg.cost || 0), 0) || 0;
+
+  const defaultReasoningLevel = (settings?.defaultReasoningLevel as ReasoningLevel) || "medium";
+  const updateDefaultReasoningLevel = useSettingsStore((state) => state.updateDefaultReasoningLevel);
 
   const { generateSummary, isGenerating } = useChatSummary();
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -100,6 +104,11 @@ export function ChatSettingsPopover({
     await updateChat(chatId, { reasoningLevel: level });
   };
 
+  const handleSetAsDefault = async () => {
+    await updateDefaultReasoningLevel(reasoningLevel);
+    toast.success(`${REASONING_LEVELS.find(l => l.value === reasoningLevel)?.label} set as default`);
+  };
+
   const toggleTag = async (tagId: string) => {
     const newTags = selectedTags.includes(tagId)
       ? selectedTags.filter((id) => id !== tagId)
@@ -139,9 +148,19 @@ export function ChatSettingsPopover({
 
         {/* Reasoning Level */}
         <div className="px-2 py-1.5">
-          <div className="flex items-center gap-2 mb-1.5">
-            <Brain className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm">Reasoning</span>
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center gap-2">
+              <Brain className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm">Reasoning</span>
+            </div>
+            {reasoningLevel !== defaultReasoningLevel && (
+              <button
+                onClick={handleSetAsDefault}
+                className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Set as default
+              </button>
+            )}
           </div>
           <div className="flex gap-1 ml-6">
             {REASONING_LEVELS.map((level) => (
@@ -149,13 +168,16 @@ export function ChatSettingsPopover({
                 key={level.value}
                 onClick={() => setReasoningLevel(level.value)}
                 className={cn(
-                  "px-2 py-0.5 text-xs rounded transition-colors",
+                  "px-2 py-0.5 text-xs rounded transition-colors relative",
                   reasoningLevel === level.value
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted hover:bg-muted/80 text-muted-foreground"
                 )}
               >
                 {level.label}
+                {level.value === defaultReasoningLevel && (
+                  <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary" />
+                )}
               </button>
             ))}
           </div>

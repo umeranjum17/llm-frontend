@@ -137,7 +137,7 @@ export default function Home() {
           await state.loadSettings();
         }
 
-        const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, currentProjectId } =
+        const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, currentProjectId, defaultReasoningLevel } =
           useSettingsStore.getState();
         const { providerId, modelId } = getDefaultChatConfig({
           defaultProviderId,
@@ -152,9 +152,15 @@ export default function Home() {
           providerId: providerId || undefined,
           projectId: currentProjectId,
           activeMcpServerIds: defaultMcpServerIds,
+          reasoningLevel: (defaultReasoningLevel as "low" | "medium" | "high" | "xhigh") || "medium",
         });
 
         useUIStore.getState().setActiveChatId(newChat.id);
+        
+        // Dispatch event to focus input after chat is created
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("lumina:chat-created", { detail: { chatId: newChat.id } }));
+        }, 100);
       } catch (error) {
         console.error("Failed to create new chat:", error);
         toast.error("Failed to create new chat. Please try again.");

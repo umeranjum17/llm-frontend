@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, memo, useMemo, useDeferredValue, useCallback } from "react";
+import { useState, memo, useMemo, useDeferredValue, useCallback, useEffect, useRef } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Plug, PlugZap, Check, AlertCircle, Loader2, Box, Search, X, ChevronDown, ChevronRight, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { getAllMcpServers, getChatById, updateChat } from "@/lib/db/queries";
+import { getAllMcpServers, getChatById, updateChat, getAgentById } from "@/lib/db/queries";
 import { useSettingsStore } from "@/stores/settings-store";
 import { toast } from "sonner";
 import { McpServer } from "@/lib/db/schema";
@@ -311,11 +311,33 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
     const [open, setOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set());
+    const searchInputRef = useRef<HTMLInputElement>(null);
 
     const deferredSearch = useDeferredValue(searchQuery);
 
+    // Listen for keyboard shortcut event to open dialog
+    useEffect(() => {
+        const handleOpenTools = () => setOpen(true);
+        window.addEventListener("lumina:open-tools", handleOpenTools);
+        return () => window.removeEventListener("lumina:open-tools", handleOpenTools);
+    }, []);
+
+    // Auto-focus search input when dialog opens
+    useEffect(() => {
+        if (open) {
+            // Small delay to ensure dialog is rendered
+            setTimeout(() => searchInputRef.current?.focus(), 50);
+        }
+    }, [open]);
+
     const mcpServers = useLiveQuery(() => getAllMcpServers(), []);
     const chat = useLiveQuery(() => chatId ? getChatById(chatId) : undefined, [chatId]);
+
+    // Get agent if chat has one
+    const agent = useLiveQuery(
+        () => chat?.agentId ? getAgentById(chat.agentId) : undefined,
+        [chat?.agentId]
+    );
 
     // Composio hook for toggling individual toolkits
     const { toggleToolkit, hasApiKey: hasComposioKey } = useComposioApps();
@@ -440,6 +462,12 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
         toast.success("All MCP servers disabled");
     };
 
+    // Hide for pipeline agents - tools are configured per-step
+    const isPipelineAgent = agent?.pipeline?.steps && agent.pipeline.steps.length > 0;
+    if (isPipelineAgent) {
+        return null;
+    }
+
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
@@ -487,6 +515,7 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
+                            ref={searchInputRef}
                             placeholder="Search servers or tools..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}

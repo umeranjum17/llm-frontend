@@ -1,15 +1,32 @@
 
-import React, { useRef, useEffect, useImperativeHandle, forwardRef } from "react";
+import React, { useRef, useEffect, useImperativeHandle, forwardRef, useMemo } from "react";
 import { MentionList } from "./mention-list";
 import { useMentions } from "@/lib/mentions/use-mentions";
 import { MentionItem } from "@/lib/mentions/types";
 import { cn } from "@/lib/utils";
+import { segmentTextWithMentions } from "@/lib/mentions/mention-parser";
+import { Bot, FileText, MessageSquare, Tag } from "lucide-react";
 
 interface MentionTextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
     mentionItems: MentionItem[];
     onEnter?: (e: React.KeyboardEvent) => void;
     onMentionSelect?: (item: MentionItem, insertText: (text: string) => void) => void;
 }
+
+// Icons for mention types
+const MENTION_ICONS: Record<string, React.ElementType> = {
+    agent: Bot,
+    file: FileText,
+    chat: MessageSquare,
+    tag: Tag,
+};
+
+const MENTION_COLORS: Record<string, string> = {
+    agent: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+    file: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+    chat: "bg-green-500/20 text-green-400 border-green-500/30",
+    tag: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+};
 
 export const MentionTextarea = forwardRef<HTMLTextAreaElement, MentionTextareaProps>(
     ({ className, mentionItems, value, onChange, onKeyDown, onEnter, onMentionSelect, ...props }, ref) => {
@@ -125,10 +142,45 @@ export const MentionTextarea = forwardRef<HTMLTextAreaElement, MentionTextareaPr
             onKeyDown?.(e);
         };
 
+        // Parse text value to find mentions and render overlay
+        const textValue = typeof value === "string" ? value : "";
+        const segments = useMemo(() => segmentTextWithMentions(textValue), [textValue]);
+        const hasMentions = segments.some(s => s.type === "mention");
+
+        // Render the overlay content with styled mentions
+        const renderOverlay = () => {
+            return segments.map((segment, index) => {
+                if (segment.type === "text") {
+                    // Preserve whitespace and newlines
+                    return <span key={index}>{segment.content}</span>;
+                }
+
+                if (segment.type === "mention" && segment.mention) {
+                    const Icon = MENTION_ICONS[segment.mention.type] || Bot;
+                    const colorClass = MENTION_COLORS[segment.mention.type] || MENTION_COLORS.agent;
+
+                    return (
+                        <span
+                            key={index}
+                            className={cn(
+                                "inline-flex items-center gap-0.5 px-1 py-0 rounded text-xs border",
+                                colorClass
+                            )}
+                        >
+                            <Icon className="h-3 w-3" />
+                            <span>{segment.mention.label}</span>
+                        </span>
+                    );
+                }
+
+                return null;
+            });
+        };
+
         return (
             <div className="relative w-full">
                 {isOpen && (
-                    <div className="absolute bottom-full left-0 mb-2 w-full max-w-[300px]">
+                    <div className="absolute bottom-full left-0 mb-2 w-full max-w-[300px] z-50">
                         <MentionList
                             items={filteredItems}
                             activeIndex={activeIndex}
@@ -136,12 +188,42 @@ export const MentionTextarea = forwardRef<HTMLTextAreaElement, MentionTextareaPr
                         />
                     </div>
                 )}
+
+                {/* Styled overlay - shows mentions as badges */}
+                {hasMentions && (
+                    <div
+                        className={cn(
+                            "absolute inset-0 pointer-events-none whitespace-pre-wrap break-words overflow-hidden",
+                            className
+                        )}
+                        style={{
+                            // Match textarea padding and font
+                            fontFamily: "inherit",
+                            fontSize: "inherit",
+                            lineHeight: "inherit",
+                        }}
+                        aria-hidden="true"
+                    >
+                        {renderOverlay()}
+                    </div>
+                )}
+
                 <textarea
                     ref={textareaRef}
-                    className={cn(className)}
+                    className={cn(
+                        className,
+                        // Make text transparent when we have mentions so overlay shows
+                        hasMentions && "text-transparent caret-current"
+                    )}
                     onChange={handleChange}
                     onKeyDown={handleKeyDownInternal}
                     value={value}
+                    style={{
+                        // Ensure caret is visible
+                        caretColor: hasMentions ? "currentColor" : undefined,
+                    }}
+                    // Disable spell-check to prevent red squiggles showing through transparent text
+                    spellCheck={hasMentions ? false : undefined}
                     {...props}
                 />
             </div>

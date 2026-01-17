@@ -15,7 +15,7 @@ export function useKeyboardShortcuts() {
   useHotkeys("mod+n", async (e) => {
     e.preventDefault();
     try {
-      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider } =
+      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultMcpServerIds, defaultReasoningLevel } =
         useSettingsStore.getState();
       const { providerId, modelId } = getDefaultChatConfig({
         defaultProviderId,
@@ -26,6 +26,8 @@ export function useKeyboardShortcuts() {
         title: "New Chat",
         modelId,
         providerId: providerId || undefined,
+        activeMcpServerIds: defaultMcpServerIds,
+        reasoningLevel: (defaultReasoningLevel as "low" | "medium" | "high" | "xhigh") || "medium",
       });
       setActiveChatId(newChat.id);
       toast.success("New chat created");
@@ -59,6 +61,14 @@ export function useKeyboardShortcuts() {
     window.dispatchEvent(new CustomEvent("lumina:open-model-picker"));
   }, {
     enableOnFormTags: false, // Don't trigger while typing
+  });
+
+  // Cmd/Ctrl + T - Open MCP Tools toggle
+  useHotkeys("mod+t", (e) => {
+    e.preventDefault();
+    window.dispatchEvent(new CustomEvent("lumina:open-tools"));
+  }, {
+    enableOnFormTags: false,
   });
 
   // Cmd/Ctrl + / - Keyboard Shortcuts Help
