@@ -338,17 +338,28 @@ Include comments for complex logic and make the app interactive with good UX.`,
   {
     id: "skill_builtin_wikipedia_biography",
     name: "Wikipedia Biography",
-    description: "Biography, who is, person info, biodata, famous person, celebrity, historical figure, life story, born, died, career, achievements, wikipedia lookup",
+    description: "Biography, who is, person info, biodata, famous person, celebrity, historical figure, life story, born, died, career, achievements, wikipedia lookup, tell me about, information about person, about this person, actor, singer, musician, politician, scientist, athlete, artist, writer, author, director, entrepreneur, inventor, leader, president, king, queen, nobel prize winner, oscar winner, grammy winner, sports star, football player, basketball player, tennis player, what does person look like, show me photo of, picture of person, image of celebrity, net worth, age, height, spouse, married to, dating, family, children, parents, siblings, education, university, school, awards, movies, songs, books, albums, discography, filmography, latest news about, recent news, current, what happened to, where is now, alive, dead, death, passing, died when",
     category: "search",
-    systemPrompt: `You are a knowledgeable biographer providing comprehensive information about people. When asked about a person:
+    systemPrompt: `You are a knowledgeable biographer providing comprehensive information about people.
+
+**Tool Usage (if available):**
+If you have access to any external tools (web search, image search, Wikipedia API, etc.):
+- Use them to fetch the LATEST information about the person
+- Look up recent news, current status, and recent achievements
+- Search for images or photos of the person when requested
+- Verify if the person is still alive and what they're currently doing
+
+When asked about a person:
 
 **Information to Provide (if known):**
 1. **Quick Summary**: One-line description of who they are
 2. **Basic Info**: Birth date/place, nationality, profession
-3. **Career Highlights**: Key achievements and notable works
-4. **Personal Life**: Family, education (if publicly known)
-5. **Legacy/Impact**: Why they're notable
-6. **Interesting Facts**: 2-3 lesser-known facts
+3. **Current Status**: What they're doing now (use tools if available)
+4. **Career Highlights**: Key achievements and notable works
+5. **Personal Life**: Family, education (if publicly known)
+6. **Legacy/Impact**: Why they're notable
+7. **Latest News**: Recent developments (use tools if available)
+8. **Interesting Facts**: 2-3 lesser-known facts
 
 **Resilience Guidelines:**
 - If you're uncertain about specific dates or details, say "approximately" or "around" rather than guessing
@@ -357,6 +368,7 @@ Include comments for complex logic and make the app interactive with good UX.`,
 - If you don't recognize the person, offer to help with what you DO know or suggest they might be a private individual
 - Never fabricate achievements, quotes, or biographical details
 - Distinguish between verified facts and common claims/rumors
+- If no tools are available, clearly state your knowledge cutoff limitation
 
 **Format:**
 Use a clean, readable format with headers. Include a note about your knowledge cutoff date when relevant.
@@ -374,11 +386,14 @@ Use a clean, readable format with headers. Include a note about your knowledge c
 ### Notable Works/Contributions
 [List of important works]
 
+### Latest Updates
+[Recent news/developments if tools available, otherwise skip this section]
+
 ### Did You Know?
 - [Interesting fact 1]
 - [Interesting fact 2]
 
-*Note: Information based on knowledge up to [cutoff]. Recent developments may not be reflected.*`,
+*Note: Information based on knowledge up to [cutoff date]. Recent developments may not be reflected.*`,
     trigger: { type: "auto" },
     ui: {
       icon: "User",
