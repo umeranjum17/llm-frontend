@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Key, Palette, Keyboard, Download, Settings as SettingsIcon, Bot, FileText, Search, Brain, Shield, BarChart3, Loader2 } from "lucide-react";
+import { ArrowLeft, Key, Palette, Keyboard, Download, Settings as SettingsIcon, Bot, Search, Brain, Shield, BarChart3, Loader2, Wand2 } from "lucide-react";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useSettingsStore } from "@/stores/settings-store";
 
@@ -26,7 +26,7 @@ import { ThemeSettings } from "@/components/settings/theme-settings";
 const KeyboardShortcutsSettings = dynamic(() => import("@/components/settings/keyboard-shortcuts-settings").then(m => ({ default: m.KeyboardShortcutsSettings })), { loading: LoadingSpinner });
 const ExportImportSettings = dynamic(() => import("@/components/settings/export-import-settings").then(m => ({ default: m.ExportImportSettings })), { loading: LoadingSpinner });
 const AgentsSettings = dynamic(() => import("@/components/settings/agents-settings").then(m => ({ default: m.AgentsSettings })), { loading: LoadingSpinner });
-const PromptsSettings = dynamic(() => import("@/components/settings/prompts-settings").then(m => ({ default: m.PromptsSettings })), { loading: LoadingSpinner });
+const SkillsSettings = dynamic(() => import("@/components/settings/skills-settings").then(m => ({ default: m.SkillsSettings })), { loading: LoadingSpinner });
 const MemorySettings = dynamic(() => import("@/components/settings/memory-settings").then(m => ({ default: m.MemorySettings })), { loading: LoadingSpinner });
 const TrustDashboard = dynamic(() => import("@/components/settings/trust-dashboard").then(m => ({ default: m.TrustDashboard })), { loading: LoadingSpinner });
 const UsageAnalytics = dynamic(() => import("@/components/settings/usage-analytics").then(m => ({ default: m.UsageAnalytics })), { loading: LoadingSpinner });
@@ -47,12 +47,12 @@ export default function SettingsPage() {
   useEffect(() => {
     const tabParam = new URLSearchParams(window.location.search).get("tab");
     if (!tabParam) return;
-    const allowedTabs = ["general", "mcp", "api-keys", "memory", "theme", "shortcuts", "data", "agents", "prompts", "trust", "analytics", "aliases"];
+    const allowedTabs = ["general", "mcp", "api-keys", "memory", "theme", "shortcuts", "data", "agents", "skills", "trust", "analytics", "aliases"];
     if (allowedTabs.includes(tabParam)) setActiveTab(tabParam);
   }, []);
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-[100dvh] flex flex-col">
       {/* Header */}
       <div className="border-b">
         <div className="container max-w-5xl mx-auto px-3 sm:px-6 py-3 sm:py-4">
@@ -123,9 +123,9 @@ export default function SettingsPage() {
                 <Bot className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Agents</span>
               </TabsTrigger>
-              <TabsTrigger value="prompts" className="gap-1.5 text-xs shrink-0 px-2 sm:px-3">
-                <FileText className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Prompts</span>
+              <TabsTrigger value="skills" className="gap-1.5 text-xs shrink-0 px-2 sm:px-3">
+                <Wand2 className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Skills</span>
               </TabsTrigger>
               <TabsTrigger value="data" className="gap-1.5 text-xs shrink-0 px-2 sm:px-3">
                 <Download className="h-3.5 w-3.5" />
@@ -173,8 +173,8 @@ export default function SettingsPage() {
               <AgentsSettings />
             </TabsContent>
 
-            <TabsContent value="prompts" className="space-y-6">
-              <PromptsSettings />
+            <TabsContent value="skills" className="space-y-6">
+              <SkillsSettings />
             </TabsContent>
 
             <TabsContent value="data" className="space-y-6">

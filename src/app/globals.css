@@ -105,7 +105,13 @@
   input,
   textarea,
   select {
-    transition: all 150ms ease-out;
+    /* Avoid animating layout-affecting properties (e.g., height) to reduce mobile typing jank */
+    transition:
+      color 150ms ease-out,
+      background-color 150ms ease-out,
+      border-color 150ms ease-out,
+      box-shadow 150ms ease-out,
+      opacity 150ms ease-out;
   }
 
   /* Premium button interactions */

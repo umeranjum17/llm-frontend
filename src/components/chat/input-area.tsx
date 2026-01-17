@@ -7,19 +7,15 @@ import { Send, Loader2, Paperclip, X, FileText, Image as ImageIcon, Mic, Square,
 import { useChat } from "@/hooks/use-chat";
 import { useChatKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { TokenDisplay } from "./token-display";
-import { getAllPrompts, getChatById, incrementPromptUsage, getProjectFiles, getChatsByProject, getAllAgents, getAllTags, getMessages } from "@/lib/db/queries";
+import { getChatById, getProjectFiles, getChatsByProject, getAllAgents, getAllTags, getMessages } from "@/lib/db/queries";
 import { countMessagesTokens, countTokens } from "@/lib/utils/token-counter";
 import { getModelById } from "@/lib/constants/models";
 import { toast } from "sonner";
-import type { MessageContentPart } from "@/lib/db/schema";
-import { PromptLibraryDialog } from "@/components/prompts/prompt-library-dialog";
+import type { MessageContentPart, Skill } from "@/lib/db/schema";
 import { MentionTextarea } from "@/components/chat/mention-textarea";
 import { MentionItem } from "@/lib/mentions/types";
-import { VariableInputModal } from "@/components/prompts/variable-input-modal";
-import type { Prompt } from "@/lib/db/schema";
-import { extractVariableNames } from "@/lib/utils/prompt-variables";
 import { useVoiceInput } from "@/hooks/use-voice-input";
-import { PromptQuickSelect } from "@/components/chat/prompt-quick-select";
+import { SkillQuickSelect } from "@/components/chat/skill-quick-select";
 import { MobileNavInline } from "@/components/mobile-nav";
 
 interface InputAreaProps {
@@ -192,9 +188,7 @@ export function InputArea({ chatId }: InputAreaProps) {
   const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>([]);
   const [codeSnippets, setCodeSnippets] = useState<CodeSnippet[]>([]);
   const [expandedSnippets, setExpandedSnippets] = useState<Set<string>>(new Set());
-  const [promptLibraryOpen, setPromptLibraryOpen] = useState(false);
-  const [variableModalOpen, setVariableModalOpen] = useState(false);
-  const [selectedPrompt, setSelectedPrompt] = useState<Prompt | null>(null);
+  const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { sendMessage, isLoading, cancelRequest } = useChat(chatId);
@@ -203,7 +197,6 @@ export function InputArea({ chatId }: InputAreaProps) {
   const wasListeningRef = useRef(false);
 
   const chat = useLiveQuery(() => getChatById(chatId), [chatId]);
-  const prompts = useLiveQuery(() => getAllPrompts(), []);
   const agents = useLiveQuery(() => getAllAgents(), []);
   const tags = useLiveQuery(() => getAllTags(), []);
 
@@ -240,7 +233,7 @@ export function InputArea({ chatId }: InputAreaProps) {
   }, []);
 
   // Construct mention items
-  // @ = agents, prompts, connectors
+  // @ = agents, connectors
   // # = chats, tags
   const mentionItems = useMemo<MentionItem[]>(() => {
     const items: MentionItem[] = [];
@@ -258,21 +251,6 @@ export function InputArea({ chatId }: InputAreaProps) {
           value: `@agent:${a.id}[${a.name}]`,
           description: a.description || "AI Assistant",
           metadata: { agent: a },
-          trigger: "@",
-        });
-      });
-    }
-
-    // Prompts (@ trigger)
-    if (prompts) {
-      prompts.forEach(p => {
-        items.push({
-          id: p.id,
-          type: "prompt",
-          label: p.title,
-          value: `@prompt:${p.id}[${p.title}]`,
-          description: p.description || undefined,
-          metadata: { prompt: p },
           trigger: "@",
         });
       });
@@ -324,26 +302,13 @@ export function InputArea({ chatId }: InputAreaProps) {
     }
 
     return items;
-  }, [prompts, files, otherChats, chatId, agents, tags, activeConnectors]);
+  }, [files, otherChats, chatId, agents, tags, activeConnectors]);
 
   // Handle submit function for keyboard shortcut
   const handleSubmitMessage = () => {
     if ((input.trim() || attachments.length > 0 || imageAttachments.length > 0 || codeSnippets.length > 0) && !isLoading) {
-      // Resolve prompt references
-      let resolvedMessage = input.trim();
-      const promptMatches = resolvedMessage.matchAll(/@prompt:([^\[]+)\[([^\]]+)\]/g);
-      for (const match of promptMatches) {
-        const promptId = match[1];
-        const prompt = prompts?.find(p => p.id === promptId);
-        if (prompt) {
-          // Replace the tag with the prompt content
-          resolvedMessage = resolvedMessage.replace(match[0], prompt.content);
-          incrementPromptUsage(promptId).catch(() => { });
-        }
-      }
-
       // Append code snippets as markdown code blocks
-      let message = resolvedMessage;
+      let message = input.trim();
       if (codeSnippets.length > 0) {
         const snippetText = codeSnippets
           .map((s) => `\`\`\`${s.language || ''}\n${s.content}\n\`\`\``)
@@ -354,11 +319,14 @@ export function InputArea({ chatId }: InputAreaProps) {
       const currentAttachments = [...attachments]; // Capture current state
       const currentImages = [...imageAttachments];
 
+      const currentSkill = selectedSkill;
+
       setInput("");
       setAttachments([]); // Clear state immediately
       setImageAttachments([]);
       setCodeSnippets([]);
       setExpandedSnippets(new Set());
+      setSelectedSkill(null); // Clear skill after sending
 
       const contentParts: MessageContentPart[] = [
         ...(message ? [{ type: "text" as const, text: message }] : []),
@@ -368,7 +336,7 @@ export function InputArea({ chatId }: InputAreaProps) {
         })),
       ];
 
-      sendMessage(currentImages.length > 0 ? contentParts : message, currentAttachments);
+      sendMessage(currentImages.length > 0 ? contentParts : message, currentAttachments, currentSkill);
     }
   };
 
@@ -393,12 +361,6 @@ export function InputArea({ chatId }: InputAreaProps) {
     const rafId = requestAnimationFrame(resize);
     return () => cancelAnimationFrame(rafId);
   }, [input]);
-
-  useEffect(() => {
-    const handler = () => setPromptLibraryOpen(true);
-    window.addEventListener("lumina:open-prompt-library", handler as EventListener);
-    return () => window.removeEventListener("lumina:open-prompt-library", handler as EventListener);
-  }, []);
 
   useEffect(() => {
     if (voice.isListening) {
@@ -521,21 +483,8 @@ export function InputArea({ chatId }: InputAreaProps) {
     if ((!finalInput.trim() && attachments.length === 0 && imageAttachments.length === 0 && codeSnippets.length === 0) || isLoading)
       return;
 
-    // Resolve prompt references
-    let resolvedMessage = finalInput.trim();
-    const promptMatches = resolvedMessage.matchAll(/@prompt:([^\[]+)\[([^\]]+)\]/g);
-    for (const match of promptMatches) {
-      const promptId = match[1];
-      const prompt = prompts?.find(p => p.id === promptId);
-      if (prompt) {
-        // Replace the tag with the prompt content
-        resolvedMessage = resolvedMessage.replace(match[0], prompt.content);
-        incrementPromptUsage(promptId).catch(() => { });
-      }
-    }
-
     // Append code snippets as markdown code blocks
-    let message = resolvedMessage;
+    let message = finalInput.trim();
     if (codeSnippets.length > 0) {
       const snippetText = codeSnippets
         .map((s) => `\`\`\`${s.language || ''}\n${s.content}\n\`\`\``)
@@ -545,12 +494,14 @@ export function InputArea({ chatId }: InputAreaProps) {
 
     const currentAttachments = [...attachments];
     const currentImages = [...imageAttachments];
+    const currentSkill = selectedSkill;
 
     setInput("");
     setAttachments([]);
     setImageAttachments([]);
     setCodeSnippets([]);
     setExpandedSnippets(new Set());
+    setSelectedSkill(null); // Clear skill after sending
 
     const contentParts: MessageContentPart[] = [
       ...(message ? [{ type: "text" as const, text: message }] : []),
@@ -560,7 +511,7 @@ export function InputArea({ chatId }: InputAreaProps) {
       })),
     ];
 
-    await sendMessage(currentImages.length > 0 ? contentParts : message, currentAttachments);
+    await sendMessage(currentImages.length > 0 ? contentParts : message, currentAttachments, currentSkill);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -789,15 +740,14 @@ export function InputArea({ chatId }: InputAreaProps) {
           )}
         </Button>
 
-        {/* Prompt quick select - hidden on mobile */}
+        {/* Skill quick select - hidden on mobile */}
         <div className="hidden sm:block">
-          <PromptQuickSelect
-            onSelect={(prompt) => {
-              incrementPromptUsage(prompt.id).catch(() => { });
-              const reference = `@prompt:${prompt.id}[${prompt.title}]`;
-              setInput((prev) => (prev ? `${prev} ${reference}` : reference));
+          <SkillQuickSelect
+            onSelect={(skill) => {
+              setSelectedSkill(skill);
               setTimeout(() => textareaRef.current?.focus(), 0);
             }}
+            selectedSkill={selectedSkill}
           />
         </div>
 
@@ -809,7 +759,7 @@ export function InputArea({ chatId }: InputAreaProps) {
             onChange={handleInputChange}
             onEnter={handleMentionTextareaEnter}
             onPaste={handlePaste}
-            placeholder="Message Lumina… (@ for agents/prompts, # for chats)"
+            placeholder="Message Lumina… (@ for agents, # for chats)"
             className="w-full resize-none bg-transparent px-2 py-2 pr-10 text-sm leading-6 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 min-h-10 max-h-[200px] disabled:opacity-60"
             rows={1}
             disabled={isLoading}
@@ -887,35 +837,6 @@ export function InputArea({ chatId }: InputAreaProps) {
       <div className="mt-2">
         <MobileNavInline />
       </div>
-
-      <PromptLibraryDialog
-        open={promptLibraryOpen}
-        onOpenChange={setPromptLibraryOpen}
-        onSelect={(prompt) => {
-          // Unified behavior: Insert as reference chip, skip modal
-          incrementPromptUsage(prompt.id).catch(() => { });
-          const reference = `@prompt:${prompt.id}[${prompt.title}]`;
-          setInput((prev) => (prev ? `${prev} ${reference}` : reference));
-          setTimeout(() => textareaRef.current?.focus(), 0);
-        }}
-      />
-
-      {selectedPrompt ? (
-        <VariableInputModal
-          open={variableModalOpen}
-          onOpenChange={(open) => {
-            setVariableModalOpen(open);
-            if (!open) setSelectedPrompt(null);
-          }}
-          template={selectedPrompt.content}
-          variables={selectedPrompt.variables || []}
-          onApply={(result) => {
-            setInput((prev) => (prev ? `${prev}\n\n${result}` : result));
-            setSelectedPrompt(null);
-            setTimeout(() => textareaRef.current?.focus(), 0);
-          }}
-        />
-      ) : null}
     </form>
   );
 }

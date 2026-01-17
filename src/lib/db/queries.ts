@@ -1,4 +1,4 @@
-import { db, type Chat, type Message, type Project, type ProjectFile, type ModelFavorite, type ApiKey, type UserSettings, type Agent, type Prompt, type ModelAlias, type McpServer } from "./schema";
+import { db, type Chat, type Message, type Project, type ProjectFile, type ModelFavorite, type ApiKey, type UserSettings, type Agent, type Prompt, type Skill, type ModelAlias, type McpServer } from "./schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 
 // ============= DEFAULT PROJECT =============
@@ -646,6 +646,86 @@ export async function incrementPromptUsage(promptId: string) {
   if (!prompt) return;
   await db.prompts.update(promptId, {
     usageCount: (prompt.usageCount || 0) + 1,
+    updatedAt: Date.now(),
+  });
+}
+
+// ============= SKILL QUERIES =============
+
+export async function getAllSkills() {
+  return await db.skills.orderBy("updatedAt").reverse().toArray();
+}
+
+export async function getSkillById(id: string) {
+  return await db.skills.get(id);
+}
+
+export async function getEnabledSkills() {
+  return await db.skills.filter((s) => s.isEnabled).toArray();
+}
+
+export async function getAutoTriggerSkills() {
+  return await db.skills.filter((s) => s.isEnabled && s.trigger.type === "auto").toArray();
+}
+
+export async function getFavoriteSkills() {
+  return await db.skills.filter((s) => s.isFavorite === true).toArray();
+}
+
+export async function getSkillsByCategory(category: string) {
+  return await db.skills.where("category").equals(category).toArray();
+}
+
+export async function addSkill(skill: Omit<Skill, "id" | "createdAt" | "updatedAt" | "usageCount">) {
+  const now = Date.now();
+  const newSkill: Skill = {
+    ...skill,
+    id: crypto.randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+    usageCount: 0,
+  };
+  await db.skills.add(newSkill);
+  return newSkill;
+}
+
+export async function upsertSkill(skill: Skill) {
+  await db.skills.put({ ...skill, updatedAt: Date.now() });
+}
+
+export async function updateSkill(id: string, updates: Partial<Skill>) {
+  await db.skills.update(id, { ...updates, updatedAt: Date.now() });
+}
+
+export async function deleteSkill(id: string) {
+  // Also delete the embedding
+  await db.skillEmbeddings.delete(id);
+  await db.skills.delete(id);
+}
+
+export async function incrementSkillUsage(skillId: string) {
+  const skill = await db.skills.get(skillId);
+  if (!skill) return;
+  await db.skills.update(skillId, {
+    usageCount: (skill.usageCount || 0) + 1,
+    updatedAt: Date.now(),
+  });
+}
+
+export async function toggleSkillFavorite(skillId: string) {
+  const skill = await db.skills.get(skillId);
+  if (!skill) return;
+  await db.skills.update(skillId, {
+    isFavorite: !skill.isFavorite,
+    updatedAt: Date.now(),
+  });
+}
+
+export async function toggleSkillEnabled(skillId: string) {
+  const skill = await db.skills.get(skillId);
+  if (!skill) return;
+  await db.skills.update(skillId, {
+    isEnabled: !skill.isEnabled,
     updatedAt: Date.now(),
   });
 }

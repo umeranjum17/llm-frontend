@@ -810,17 +810,34 @@ export function ChatShell() {
 
             {/* Tool Calling Warning Banner */}
             {toolCallingWarning && (
-              <div className="px-4 py-2 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800 flex items-center gap-2 text-sm text-amber-800 dark:text-amber-200">
-                <AlertTriangle className="h-4 w-4 shrink-0" />
-                <span className="flex-1">{toolCallingWarning.message}</span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/50"
-                  onClick={() => setModelPickerOpen(true)}
-                >
-                  Switch Model
-                </Button>
+              <div className="px-2 sm:px-4 py-2 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800 flex flex-col sm:flex-row items-start sm:items-center gap-2 text-xs sm:text-sm text-amber-800 dark:text-amber-200">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span className="line-clamp-2 sm:line-clamp-1">{toolCallingWarning.message}</span>
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs flex-1 sm:flex-none border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/50"
+                    onClick={async () => {
+                      if (activeChatId) {
+                        await updateChat(activeChatId, { activeMcpServerIds: [] });
+                        toast.success("Tools disabled for this chat");
+                      }
+                    }}
+                  >
+                    Disable Tools
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs flex-1 sm:flex-none border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/50"
+                    onClick={() => setModelPickerOpen(true)}
+                  >
+                    Switch Model
+                  </Button>
+                </div>
               </div>
             )}
 

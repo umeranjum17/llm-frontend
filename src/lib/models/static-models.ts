@@ -225,8 +225,18 @@ export const USE_CASE_RECOMMENDATIONS: Record<string, { models: string[]; descri
     description: "Research, analysis, and information synthesis",
   },
   vision: {
-    models: ["openai/gpt-5.2", "google/gemini-3-pro", "anthropic/claude-opus-4.5", "meta-llama/llama-4-maverick"],
-    description: "Image understanding and analysis",
+    models: [
+      "x-ai/grok-4",                           // Best visual reasoning
+      "openai/gpt-5.2",                        // Excellent multimodal
+      "google/gemini-3-pro",                   // 1M context, strong vision
+      "meta-llama/llama-3.2-90b-vision-instruct", // Top-tier vision model
+      "qwen/qwen2.5-vl-72b-instruct",          // Document/chart specialist
+      "anthropic/claude-opus-4.5",             // Great all-around
+      "meta-llama/llama-4-maverick",           // Budget multimodal
+      "google/gemma-3-27b-it",                 // Open source vision
+      "z-ai/glm-4.6v-9b",                      // Fast & lightweight
+    ],
+    description: "Image understanding, visual reasoning, and document analysis",
   },
   agents: {
     models: ["z-ai/glm-4.7", "moonshotai/kimi-k2", "anthropic/claude-sonnet-4.5", "cohere/command-a-03-2025", "anthropic/claude-opus-4.5"],
@@ -237,7 +247,16 @@ export const USE_CASE_RECOMMENDATIONS: Record<string, { models: string[]; descri
     description: "Processing very long documents or codebases",
   },
   "image-generation": {
-    models: ["openai/gpt-5-image", "openai/dall-e-3"],
+    models: [
+      "black-forest-labs/flux.2-max",          // Best quality
+      "google/gemini-2.5-flash-image-preview", // Nano Banana - great text rendering
+      "openai/gpt-5-image",                    // Native multimodal
+      "black-forest-labs/flux.2-pro",          // Professional quality
+      "black-forest-labs/flux.2-flex",         // Text & multi-reference
+      "openai/gpt-5-image-mini",               // Budget option
+      "openai/dall-e-3",                       // Reliable classic
+      "black-forest-labs/flux.2-klein-4b",     // Fast & cheap
+    ],
     description: "Generate images from text prompts",
   },
 };

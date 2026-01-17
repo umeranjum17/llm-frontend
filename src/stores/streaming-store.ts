@@ -35,6 +35,14 @@ export interface OptimisticMessage {
   agentName?: string;
 }
 
+export interface ActiveSkill {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  activeLabel: string;
+}
+
 interface StreamingState {
   // The ID of the message currently being streamed
   streamingMessageId: string | null;
@@ -52,6 +60,8 @@ interface StreamingState {
   pipelineExecution: PipelineExecution | null;
   // Optimistic user message (shown immediately before DB save)
   optimisticMessage: OptimisticMessage | null;
+  // Active skill during generation
+  activeSkill: ActiveSkill | null;
 
   // Actions
   setStreamingMessage: (messageId: string | null) => void;
@@ -65,6 +75,10 @@ interface StreamingState {
   // Optimistic message actions
   setOptimisticMessage: (message: OptimisticMessage | null) => void;
   clearOptimisticMessage: () => void;
+
+  // Active skill actions
+  setActiveSkill: (skill: ActiveSkill | null) => void;
+  clearActiveSkill: () => void;
 
   // Pipeline actions
   startPipeline: (steps: Array<{ id: string; name: string; type: "llm" | "image" | "tool" | "subagent" }>) => void;
@@ -85,6 +99,7 @@ export const useStreamingStore = create<StreamingState>((set, get) => ({
   streamingVersion: 0,
   pipelineExecution: null,
   optimisticMessage: null,
+  activeSkill: null,
 
   setStreamingMessage: (messageId) => set({
     streamingMessageId: messageId,
@@ -134,6 +149,7 @@ export const useStreamingStore = create<StreamingState>((set, get) => ({
     streamingVersion: 0,
     pipelineExecution: null,
     optimisticMessage: null,
+    activeSkill: null,
   }),
 
   setOptimisticMessage: (message) => set((state) => ({
@@ -143,6 +159,17 @@ export const useStreamingStore = create<StreamingState>((set, get) => ({
 
   clearOptimisticMessage: () => set((state) => ({
     optimisticMessage: null,
+    streamingVersion: state.streamingVersion + 1,
+  })),
+
+  // Active skill actions
+  setActiveSkill: (skill) => set((state) => ({
+    activeSkill: skill,
+    streamingVersion: state.streamingVersion + 1,
+  })),
+
+  clearActiveSkill: () => set((state) => ({
+    activeSkill: null,
     streamingVersion: state.streamingVersion + 1,
   })),
 

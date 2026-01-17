@@ -174,22 +174,23 @@ line 3`;
     expect(toggleButton).toBeInTheDocument();
     fireEvent.click(toggleButton!);
 
-    // After collapsing, the code container uses CSS to hide content (max-h-0, opacity-0)
-    // The element is still in DOM but visually hidden via CSS transitions
+    // After collapsing, the code container uses grid-template-rows to hide content (0fr)
     await waitFor(() => {
-      const codeContainer = document.querySelector('.bg-\\[\\#24292e\\]');
-      expect(codeContainer?.className).toContain('max-h-0');
-      expect(codeContainer?.className).toContain('opacity-0');
+      const header = toggleButton!.closest('div');
+      const grid = header?.nextElementSibling as HTMLElement | null;
+      expect(grid).toBeTruthy();
+      expect(grid?.style.gridTemplateRows).toBe('0fr');
     });
 
     // Click again to expand
     fireEvent.click(toggleButton!);
 
-    // Code should be visible again (max-h removed, opacity restored)
+    // Code should be visible again (grid-template-rows back to 1fr)
     await waitFor(() => {
-      const codeContainer = document.querySelector('.bg-\\[\\#24292e\\]');
-      // When expanded, max-h-0 should not be present
-      expect(codeContainer?.className).not.toContain('max-h-0');
+      const header = toggleButton!.closest('div');
+      const grid = header?.nextElementSibling as HTMLElement | null;
+      expect(grid).toBeTruthy();
+      expect(grid?.style.gridTemplateRows).toBe('1fr');
     });
   });
 

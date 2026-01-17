@@ -1,6 +1,6 @@
 import { db } from "@/lib/db/schema";
 import { BUILTIN_AGENTS } from "@/lib/constants/agents";
-import { BUILTIN_PROMPTS } from "@/lib/constants/prompts";
+import { BUILTIN_SKILLS } from "@/lib/constants/skills";
 
 export async function ensureBuiltInAgents() {
   // Get existing agent IDs
@@ -37,19 +37,43 @@ export async function ensureBuiltInAgents() {
   }
 }
 
-export async function ensureBuiltInPrompts() {
-  // Get existing prompt IDs
-  const existingPrompts = await db.prompts.toArray();
-  const existingIds = new Set(existingPrompts.map((p) => p.id));
+export async function ensureBuiltInSkills() {
+  // Get existing skill IDs
+  const existingSkills = await db.skills.toArray();
+  const existingIds = new Set(existingSkills.map((s) => s.id));
 
-  // Add any missing built-in prompts
-  const missingPrompts = BUILTIN_PROMPTS.filter((p) => !existingIds.has(p.id));
-  if (missingPrompts.length > 0) {
-    await db.prompts.bulkAdd(missingPrompts);
+  // Add any missing built-in skills
+  const missingSkills = BUILTIN_SKILLS.filter((s) => !existingIds.has(s.id));
+  if (missingSkills.length > 0) {
+    await db.skills.bulkAdd(missingSkills);
+  }
+
+  // Update existing built-in skills with latest definition (but preserve user customizations)
+  // User customizations (isEnabled, isFavorite, usageCount) are NOT overwritten
+  for (const skill of BUILTIN_SKILLS) {
+    if (existingIds.has(skill.id)) {
+      const existing = existingSkills.find((s) => s.id === skill.id);
+      if (existing) {
+        await db.skills.update(skill.id, {
+          // Update core behavior
+          systemPrompt: skill.systemPrompt,
+          userTemplate: skill.userTemplate,
+          variables: skill.variables,
+          // Update UI config
+          ui: skill.ui,
+          // Update description (important for embedding matching)
+          description: skill.description,
+          name: skill.name,
+          category: skill.category,
+          trigger: skill.trigger,
+          updatedAt: Date.now(),
+        });
+      }
+    }
   }
 }
 
 export async function ensureBuiltIns() {
-  await Promise.all([ensureBuiltInAgents(), ensureBuiltInPrompts()]);
+  await Promise.all([ensureBuiltInAgents(), ensureBuiltInSkills()]);
 }
 

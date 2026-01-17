@@ -4,6 +4,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DndContext,
   closestCenter,
+  pointerWithin,
   KeyboardSensor,
   PointerSensor,
   TouchSensor,
@@ -67,11 +68,12 @@ import {
 interface ChatListProps {
   searchQuery: string;
   onChatSelect?: () => void;
+  currentProjectId?: string;
 }
 
 type ListItem = { type: "folder"; folder: FolderType } | { type: "chat"; chat: Chat };
 
-export function ChatList({ searchQuery, onChatSelect }: ChatListProps) {
+export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatListProps) {
   const activeChatId = useUIStore((state) => state.activeChatId);
   const setActiveChatId = useUIStore((state) => state.setActiveChatId);
   const secondaryChatId = useUIStore((state) => state.secondaryChatId);
@@ -92,8 +94,15 @@ export function ChatList({ searchQuery, onChatSelect }: ChatListProps) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // Use Dexie live query for reactive updates
-  const chats = useLiveQuery(() => getAllChats(), []);
+  // Use Dexie live query for reactive updates - filter by project
+  const allChats = useLiveQuery(() => getAllChats(), []);
+
+  // Filter chats by current project
+  const chats = useMemo(() => {
+    if (!allChats) return undefined;
+    if (!currentProjectId) return allChats;
+    return allChats.filter(chat => chat.projectId === currentProjectId);
+  }, [allChats, currentProjectId]);
   const folders = useLiveQuery(() => getAllFolders(), []);
   const tags = useLiveQuery(() => getAllTags(), []);
 
@@ -289,11 +298,12 @@ export function ChatList({ searchQuery, onChatSelect }: ChatListProps) {
       if (activeId.startsWith("chat-") && overId.startsWith("chat-")) {
         const activeChatId = activeId.replace("chat-", "");
         const overChatId = overId.replace("chat-", "");
-        const activeChat = chats?.find(c => c.id === activeChatId);
-        const overChat = chats?.find(c => c.id === overChatId);
+        const activeChat = filteredChats.find(c => c.id === activeChatId);
+        const overChat = filteredChats.find(c => c.id === overChatId);
 
         if (activeChat && overChat && activeChat.folderId === overChat.folderId) {
-          const folderChats = chats?.filter(c => c.folderId === activeChat.folderId) || [];
+          // Use filteredChats to match visual order, filter by folder
+          const folderChats = filteredChats.filter(c => c.folderId === activeChat.folderId);
           const chatIds = folderChats.map(c => c.id);
           const activeIndex = chatIds.indexOf(activeChatId);
           const overIndex = chatIds.indexOf(overChatId);
@@ -407,15 +417,24 @@ export function ChatList({ searchQuery, onChatSelect }: ChatListProps) {
     );
   }
 
-  // Get sortable IDs for folders and chats
-  const folderIds = folders.map(f => `folder-${f.id}`);
-  const sortableChatIds = items.filter(i => i.type === "chat").map(i => `chat-${i.chat.id}`);
-  const sortableIds = [...folderIds, ...sortableChatIds, "no-folder"];
+  // Get sortable IDs in the exact same order as rendered items
+  // This is critical for dnd-kit to work correctly
+  const sortableIds = (() => {
+    const ids: string[] = ["no-folder"]; // Drop zone at top
+    items.forEach(item => {
+      if (item.type === "folder") {
+        ids.push(`folder-${item.folder.id}`);
+      } else {
+        ids.push(`chat-${item.chat.id}`);
+      }
+    });
+    return ids;
+  })();
 
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={pointerWithin}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       modifiers={[restrictToVerticalAxis]}

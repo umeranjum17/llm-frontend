@@ -182,7 +182,10 @@ export async function searchMemories(query: string): Promise<MemoryItem[]> {
     inFlightSearch = (async () => {
         try {
             const results = await callMem0Api("search", { query });
-            const memoryItems = results || [];
+            // Mem0 may return either an array or an object like { results: [...] }
+            const memoryItems: MemoryItem[] = Array.isArray(results)
+                ? results
+                : (results?.results ?? []);
 
             // Update global cache
             memoryCache = {

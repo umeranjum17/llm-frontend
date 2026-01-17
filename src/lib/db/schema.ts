@@ -92,6 +92,7 @@ export interface Message {
     steps: PipelineExecutionStep[];
     agentName?: string;
   };
+  skillId?: string; // Skill that was active when this message was generated
 }
 
 export interface ApiKey {
@@ -127,6 +128,8 @@ export interface UserSettings {
   titleModelId?: string;             // Which model to use for title generation (deprecated, use titleModelIdsByProvider)
   titleModelIdsByProvider?: Record<string, string>; // Per-provider title generation models
   embeddingsProvider?: "openrouter" | "openai"; // Which provider to use for embeddings (default: openrouter)
+  embeddingsModelId?: string; // Which embedding model to use (must match what was used for skill embeddings)
+  skillMatchThreshold?: number; // Similarity threshold for skill auto-detection (0-1, default: 0.5)
   onboardingCompleted?: boolean; // Whether user has completed onboarding
   onboardingCompletedAt?: number; // Timestamp when onboarding was completed
   // Auto-tagging settings
@@ -288,6 +291,51 @@ export interface Prompt {
   usageCount: number;
 }
 
+// Skill system - replaces prompt library with semantic matching
+export interface SkillTrigger {
+  type: "manual" | "auto"; // Auto = embedding-based detection
+}
+
+export interface SkillUI {
+  icon: string;       // Lucide icon name
+  color: string;      // Tailwind color (blue, green, purple, etc.)
+  activeLabel: string; // "Creating chart...", "Summarizing..."
+}
+
+export interface Skill {
+  id: string;
+  name: string;
+  description: string;           // Used for embedding-based matching (be descriptive!)
+  category: "creation" | "visualization" | "coding" | "analysis" | "writing";
+
+  // Core behavior (progressive disclosure: only loaded when skill activates)
+  systemPrompt: string;           // Full instructions injected into context
+  userTemplate?: string;          // Optional template with {{variables}}
+  variables?: PromptVariable[];   // Reuse existing variable system
+
+  // Trigger config
+  trigger: SkillTrigger;
+
+  // UI display
+  ui: SkillUI;
+
+  // Metadata
+  isBuiltIn: boolean;
+  isEnabled: boolean;
+  isFavorite?: boolean;
+  usageCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface SkillEmbedding {
+  skillId: string;           // Foreign key to skills table
+  embedding: number[];       // Float32 array
+  modelId: string;           // Which embedding model was used
+  descriptionHash: string;   // Hash of description (detect changes)
+  createdAt: number;
+}
+
 export interface VectorDocument {
   id: string;
   text: string;
@@ -388,6 +436,8 @@ export class LuminaDB extends Dexie {
   parameterPresets!: EntityTable<ParameterPreset, "id">;
   agents!: EntityTable<Agent, "id">;
   prompts!: EntityTable<Prompt, "id">;
+  skills!: EntityTable<Skill, "id">;
+  skillEmbeddings!: EntityTable<SkillEmbedding, "skillId">;
   vectorDocuments!: EntityTable<VectorDocument, "id">;
   workflows!: EntityTable<Workflow, "id">;
   modelAliases!: EntityTable<ModelAlias, "id">;
@@ -638,6 +688,31 @@ export class LuminaDB extends Dexie {
       parameterPresets: "id, name, createdAt, isDefault",
       agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
       prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
+      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
+      workflows: "id, name, createdAt, updatedAt",
+      modelAliases: "id, alias, updatedAt",
+      mcpServers: "id, enabled, createdAt",
+    });
+
+    // Version 14: Add Skills system (replaces Prompts with semantic matching)
+    this.version(14).stores({
+      projects: "id, name, createdAt, updatedAt",
+      projectFiles: "id, projectId, name, createdAt",
+      chats:
+        "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order",
+      messages: "id, chatId, role, createdAt, parentId, rating, skillId",
+      apiKeys: "id, provider, createdAt, baseUrl",
+      settings: "id",
+      modelFavorites: "id, category, pinnedOrder, lastUsed",
+      userMemories: "id, category, source, createdAt, isActive",
+      folders: "id, name, createdAt, order",
+      tags: "id, name, createdAt, usageCount",
+      tagRules: "id, tagId, enabled, createdAt",
+      parameterPresets: "id, name, createdAt, isDefault",
+      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
+      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
+      skills: "id, name, category, isBuiltIn, isEnabled, isFavorite, usageCount, updatedAt",
+      skillEmbeddings: "skillId, modelId",
       vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
       workflows: "id, name, createdAt, updatedAt",
       modelAliases: "id, alias, updatedAt",

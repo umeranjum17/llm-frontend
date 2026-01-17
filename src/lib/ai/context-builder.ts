@@ -1,36 +1,54 @@
 import { getProjectFileById, getMessages, getChatById, getAgentById, getModelAlias, getSettings } from "@/lib/db/queries";
-import type { Message } from "@/lib/db/schema";
+import type { Message, Skill } from "@/lib/db/schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { retrieveContext } from "@/lib/rag/retrieval";
-import { searchMemories, type MemoryItem } from "@/lib/memory";
+import { searchMemories, getAllMemories, type MemoryItem } from "@/lib/memory";
 
 /**
  * Memory injection budget constants.
  *
  * Research shows memory helps, but only when bounded and relevance-scored.
- * These defaults are conservative to avoid context pollution.
+ * Balanced limits to include relevant memories without polluting context.
  */
 export const MEMORY_BUDGET = {
   /** Maximum tokens for memory context (~4 chars per token) */
-  MAX_TOKENS: 800,
+  MAX_TOKENS: 1000,
   /** Maximum characters for memory context */
-  MAX_CHARS: 3200, // 800 * 4
+  MAX_CHARS: 4000, // 1000 * 4
   /** Maximum number of memory items to include */
-  MAX_ITEMS: 6,
-  /** Minimum relevance score (0-1) for inclusion */
-  MIN_RELEVANCE: 0.75,
+  MAX_ITEMS: 8,
+  /** Minimum relevance score (0-1) for inclusion - balanced threshold */
+  MIN_RELEVANCE: 0.5,
 } as const;
 
 /**
  * Filter and budget memories based on relevance and token limits.
  */
 function budgetMemories(memories: MemoryItem[]): MemoryItem[] {
+  console.log(`[Memory Budget] Input: ${memories.length} memories`);
+
+  // Log scores for debugging
+  if (memories.length > 0) {
+    const scores = memories.map(m => m.score).filter(s => s !== undefined && s !== null);
+    if (scores.length > 0) {
+      console.log(`[Memory Budget] Scores: min=${Math.min(...scores).toFixed(2)}, max=${Math.max(...scores).toFixed(2)}, threshold=${MEMORY_BUDGET.MIN_RELEVANCE}`);
+    } else {
+      console.log(`[Memory Budget] No scores returned - including all memories`);
+    }
+  }
+
   // Filter by relevance score (if available)
   const relevantMemories = memories.filter(m => {
     // If no score available, include it (backend didn't return scores)
     if (m.score === undefined || m.score === null) return true;
-    return m.score >= MEMORY_BUDGET.MIN_RELEVANCE;
+    const passes = m.score >= MEMORY_BUDGET.MIN_RELEVANCE;
+    if (!passes) {
+      console.log(`[Memory Budget] Filtered out (score ${m.score?.toFixed(2)}): "${m.memory.slice(0, 50)}..."`);
+    }
+    return passes;
   });
+
+  console.log(`[Memory Budget] After relevance filter: ${relevantMemories.length} memories`);
 
   // Sort by relevance (highest first)
   const sortedMemories = relevantMemories.sort((a, b) => {
@@ -55,7 +73,18 @@ function budgetMemories(memories: MemoryItem[]): MemoryItem[] {
     totalChars += memoryChars;
   }
 
+  console.log(`[Memory Budget] Final: ${budgetedMemories.length} memories, ${totalChars} chars`);
   return budgetedMemories;
+}
+
+function isIdentityQuestion(text: string): boolean {
+  const t = text.toLowerCase();
+  return (
+    /\bwho\s+am\s+i\b/.test(t) ||
+    /\bwhat\s+do\s+you\s+know\s+about\s+me\b/.test(t) ||
+    /\bdo\s+you\s+know\s+me\b/.test(t) ||
+    /\bwhat\s+is\s+my\s+name\b/.test(t)
+  );
 }
 
 export async function parseReferences(content: string): Promise<{
@@ -121,6 +150,8 @@ export async function buildContextMessages(
     ragLimit?: number;
     /** Per-chat memory disable flag (overrides global setting) */
     memoryDisabled?: boolean;
+    /** Active skill to inject systemPrompt from */
+    skill?: Skill | null;
   }
 ): Promise<Message[]> {
   const messages: Message[] = [];
@@ -141,34 +172,42 @@ export async function buildContextMessages(
 
       console.log(`[Context] 🧠 Memory search returned ${rawMemories?.length ?? 0} items for query: "${memoryQuery.slice(0, 50)}..."`);
 
-      if (rawMemories && rawMemories.length > 0) {
-        // Apply budgeting: relevance filter, item limit, token/char limit
-        const budgetedMemories = budgetMemories(rawMemories);
+      // Apply budgeting: relevance filter, item limit, token/char limit
+      let budgetedMemories = rawMemories && rawMemories.length > 0 ? budgetMemories(rawMemories) : [];
 
-        if (budgetedMemories.length > 0) {
-          // Format memories with clear instructions for the model
-          const memoryContext = `## User Memory (Personal Context)
+      // Identity questions should never come back empty if any memories exist.
+      // If search returns nothing (or everything filtered out), fall back to "all memories".
+      if (budgetedMemories.length === 0 && isIdentityQuestion(userMessage)) {
+        const all = await getAllMemories();
+        budgetedMemories = all && all.length > 0 ? budgetMemories(all) : [];
+        console.log(`[Context] 🧠 Identity fallback used: ${budgetedMemories.length}/${all?.length ?? 0} items`);
+      }
+
+      if (budgetedMemories.length > 0) {
+        const rawLen = rawMemories?.length ?? 0;
+        const filtered = rawLen > 0 ? rawLen - budgetedMemories.length : 0;
+
+        // Format memories with clear instructions for the model
+        const memoryContext = `## User Memory (Personal Context)
 The following are stored memories about this user. Use this information to personalize responses and answer questions about the user WITHOUT using external tools or web search:
 
 ${budgetedMemories.map((m) => `- ${m.memory}`).join("\n")}
 
 When the user asks "what do you know about me" or similar personal questions, refer to these memories first.`;
-          const memoryTokens = Math.ceil(memoryContext.length / 4); // ~4 chars per token
+        const memoryTokens = Math.ceil(memoryContext.length / 4); // ~4 chars per token
 
-          messages.push({
-            id: "memory-context",
-            chatId,
-            role: "system",
-            content: memoryContext,
-            createdAt: Date.now(),
-          });
+        messages.push({
+          id: "memory-context",
+          chatId,
+          role: "system",
+          content: memoryContext,
+          createdAt: Date.now(),
+        });
 
-          // Log with budget info
-          const filtered = rawMemories.length - budgetedMemories.length;
-          console.log(`[Context] 🧠 Memories: ${budgetedMemories.length}/${rawMemories.length} items (${filtered} filtered), ~${memoryTokens} tokens`);
-        } else {
-          console.log(`[Context] 🧠 Memories: 0 items passed relevance filter (${rawMemories.length} raw)`);
-        }
+        // Log with budget info
+        console.log(`[Context] 🧠 Memories: ${budgetedMemories.length}/${rawLen} items (${filtered} filtered), ~${memoryTokens} tokens`);
+      } else if (rawMemories && rawMemories.length > 0) {
+        console.log(`[Context] 🧠 Memories: 0 items passed relevance filter (${rawMemories.length} raw)`);
       }
     } catch (error) {
       console.error("[Context] Failed to load memory context:", error);
@@ -320,6 +359,19 @@ When the user asks "what do you know about me" or similar personal questions, re
         createdAt: Date.now(),
       });
     }
+  }
+
+  // Add skill system prompt if skill is active (injected based on semantic match or manual selection)
+  if (options?.skill?.systemPrompt) {
+    const skillTokens = Math.ceil(options.skill.systemPrompt.length / 4);
+    messages.push({
+      id: `system-skill-${options.skill.id}`,
+      chatId,
+      role: "system",
+      content: `## Skill: ${options.skill.name}\n\n${options.skill.systemPrompt}`,
+      createdAt: Date.now(),
+    });
+    console.log(`[Context] ⚡ Skill "${options.skill.name}" prompt: ~${skillTokens} tokens`);
   }
 
   // Add file contents as context

@@ -131,6 +131,12 @@ export default function Home() {
   useEffect(() => {
     const handleNewChat = async () => {
       try {
+        // Ensure settings are loaded before creating chat (needed for defaultMcpServerIds on mobile)
+        const state = useSettingsStore.getState();
+        if (!state.isLoaded) {
+          await state.loadSettings();
+        }
+
         const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, currentProjectId } =
           useSettingsStore.getState();
         const { providerId, modelId } = getDefaultChatConfig({
@@ -139,11 +145,13 @@ export default function Home() {
           defaultModelIdsByProvider,
         });
 
+        const { defaultMcpServerIds } = useSettingsStore.getState();
         const newChat = await createChat({
           title: "New Chat",
           modelId,
           providerId: providerId || undefined,
           projectId: currentProjectId,
+          activeMcpServerIds: defaultMcpServerIds,
         });
 
         useUIStore.getState().setActiveChatId(newChat.id);
@@ -159,14 +167,14 @@ export default function Home() {
 
   if (!settingsLoaded || !keysLoaded) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="flex h-[100dvh] items-center justify-center">
         <div className="text-muted-foreground">Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen p-0 sm:p-2">
+    <div className="h-[100dvh] p-0 sm:p-2">
       <div className={cn(
         "h-full overflow-hidden rounded-none border-0 bg-background/70 shadow-[0_18px_70px_-40px_rgba(15,23,42,0.6)] backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:rounded-2xl sm:border",
         isWideScreen && "max-w-[2560px] mx-auto"

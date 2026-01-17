@@ -830,6 +830,123 @@
       ]
     },
     {
+      "id": "black-forest-labs/flux.2-max",
+      "name": "FLUX.2 [max]",
+      "provider": "Black Forest Labs",
+      "description": "Top-tier image generation. Frontier-level visual quality, strong prompt adherence, consistent character reproduction.",
+      "contextLength": 0,
+      "inputCost": 70.0,
+      "outputCost": 0,
+      "category": [
+        "image-generation"
+      ],
+      "tier": "flagship",
+      "releaseDate": "2025-11",
+      "recommendedFor": [
+        "High-quality images",
+        "Character consistency",
+        "Professional creative work"
+      ]
+    },
+    {
+      "id": "black-forest-labs/flux.2-pro",
+      "name": "FLUX.2 [pro]",
+      "provider": "Black Forest Labs",
+      "description": "High-end image generation and editing. Frontier-level visual quality, strong prompt adherence, reliable styling.",
+      "contextLength": 0,
+      "inputCost": 50.0,
+      "outputCost": 0,
+      "category": [
+        "image-generation"
+      ],
+      "tier": "balanced",
+      "releaseDate": "2025-11",
+      "recommendedFor": [
+        "Professional images",
+        "Image editing",
+        "Consistent styling"
+      ]
+    },
+    {
+      "id": "black-forest-labs/flux.2-flex",
+      "name": "FLUX.2 [flex]",
+      "provider": "Black Forest Labs",
+      "description": "Excels at rendering text, typography, and fine details. Supports multi-reference editing.",
+      "contextLength": 0,
+      "inputCost": 40.0,
+      "outputCost": 0,
+      "category": [
+        "image-generation"
+      ],
+      "tier": "balanced",
+      "releaseDate": "2025-11",
+      "recommendedFor": [
+        "Text in images",
+        "Typography",
+        "Multi-reference editing"
+      ]
+    },
+    {
+      "id": "black-forest-labs/flux.2-klein-4b",
+      "name": "FLUX.2 [klein]",
+      "provider": "Black Forest Labs",
+      "description": "Fastest and most cost-effective FLUX model. 4B parameters optimized for high-throughput.",
+      "contextLength": 0,
+      "inputCost": 14.0,
+      "outputCost": 0,
+      "category": [
+        "image-generation",
+        "fast"
+      ],
+      "tier": "fast",
+      "releaseDate": "2025-11",
+      "recommendedFor": [
+        "Fast image generation",
+        "High volume",
+        "Budget creative work"
+      ]
+    },
+    {
+      "id": "google/gemini-2.5-flash-image-preview",
+      "name": "Gemini 2.5 Flash Image (Nano Banana)",
+      "provider": "Google",
+      "description": "State-of-the-art image generation with contextual understanding. Image generation, edits, and multi-turn conversations.",
+      "contextLength": 32768,
+      "inputCost": 67.0,
+      "outputCost": 0,
+      "category": [
+        "image-generation"
+      ],
+      "tier": "flagship",
+      "releaseDate": "2025-12",
+      "recommendedFor": [
+        "Text in images",
+        "Image editing",
+        "Multi-turn image conversations"
+      ]
+    },
+    {
+      "id": "openai/gpt-5-image-mini",
+      "name": "GPT-5 Image Mini",
+      "provider": "OpenAI",
+      "description": "Cost-effective image generation. GPT-5 with image capabilities at lower cost for high-volume use.",
+      "contextLength": 400000,
+      "inputCost": 2.5,
+      "outputCost": 2.0,
+      "category": [
+        "image-generation",
+        "fast"
+      ],
+      "tier": "fast",
+      "supportsVision": true,
+      "releaseDate": "2025-12",
+      "recommendedFor": [
+        "Budget image generation",
+        "High volume",
+        "Quick visuals"
+      ]
+    },
+    {
       "id": "openai/gpt-4o",
       "name": "GPT-4o",
       "provider": "OpenAI",
@@ -959,6 +1076,138 @@
         "Code generation",
         "Code completion",
         "Budget coding"
+      ]
+    },
+    {
+      "id": "meta-llama/llama-3.2-90b-vision-instruct",
+      "name": "Llama 3.2 90B Vision",
+      "provider": "Meta",
+      "description": "Top-tier 90B multimodal model. Unparalleled accuracy in image captioning, visual QA, and advanced analysis.",
+      "contextLength": 131072,
+      "inputCost": 0.9,
+      "outputCost": 0.9,
+      "category": [
+        "vision",
+        "balanced"
+      ],
+      "tier": "balanced",
+      "supportsVision": true,
+      "releaseDate": "2024-09",
+      "recommendedFor": [
+        "Image analysis",
+        "Visual reasoning",
+        "Image captioning",
+        "Document OCR"
+      ]
+    },
+    {
+      "id": "x-ai/grok-4",
+      "name": "Grok 4",
+      "provider": "xAI",
+      "description": "xAI's multimodal flagship. Superior visual problem-solving and scientific reasoning with image support.",
+      "contextLength": 131072,
+      "inputCost": 5.0,
+      "outputCost": 15.0,
+      "category": [
+        "flagship",
+        "vision",
+        "reasoning"
+      ],
+      "tier": "flagship",
+      "supportsReasoning": true,
+      "supportsVision": true,
+      "releaseDate": "2025-12",
+      "recommendedFor": [
+        "Visual reasoning",
+        "Scientific analysis",
+        "Complex image tasks"
+      ]
+    },
+    {
+      "id": "z-ai/glm-4.6v-9b",
+      "name": "GLM-4.6V Flash",
+      "provider": "Z.AI",
+      "description": "9B lightweight vision-language model. 128K context. Perfect for local deployment and fast vision tasks.",
+      "contextLength": 128000,
+      "inputCost": 0.15,
+      "outputCost": 0.6,
+      "category": [
+        "vision",
+        "fast",
+        "open-source"
+      ],
+      "tier": "fast",
+      "supportsVision": true,
+      "releaseDate": "2025-11",
+      "recommendedFor": [
+        "Fast vision tasks",
+        "Image analysis",
+        "Local deployment"
+      ]
+    },
+    {
+      "id": "google/gemma-3-27b-it",
+      "name": "Gemma 3 27B",
+      "provider": "Google",
+      "description": "Google's compact multimodal model. Vision-language input, 128K context, 140+ languages. Strong image understanding.",
+      "contextLength": 128000,
+      "inputCost": 0.1,
+      "outputCost": 0.3,
+      "category": [
+        "vision",
+        "balanced",
+        "open-source"
+      ],
+      "tier": "balanced",
+      "supportsVision": true,
+      "releaseDate": "2025-03",
+      "recommendedFor": [
+        "Image understanding",
+        "Multilingual vision",
+        "Budget multimodal"
+      ]
+    },
+    {
+      "id": "openai/gpt-5-image-mini",
+      "name": "GPT-5 Image Mini",
+      "provider": "OpenAI",
+      "description": "Efficient multimodal model. Superior instruction following, text rendering, and detailed image editing at lower cost.",
+      "contextLength": 128000,
+      "inputCost": 2.75,
+      "outputCost": 11.0,
+      "category": [
+        "vision",
+        "image-generation",
+        "balanced"
+      ],
+      "tier": "balanced",
+      "supportsVision": true,
+      "releaseDate": "2025-12",
+      "recommendedFor": [
+        "Image editing",
+        "Visual QA",
+        "Budget image generation"
+      ]
+    },
+    {
+      "id": "qwen/qwen2.5-vl-72b-instruct",
+      "name": "Qwen2.5 VL 72B",
+      "provider": "Alibaba",
+      "description": "Alibaba's vision-language model. Excellent document understanding, chart analysis, and multilingual vision.",
+      "contextLength": 131072,
+      "inputCost": 0.4,
+      "outputCost": 1.2,
+      "category": [
+        "vision",
+        "balanced"
+      ],
+      "tier": "balanced",
+      "supportsVision": true,
+      "releaseDate": "2024-12",
+      "recommendedFor": [
+        "Document analysis",
+        "Chart understanding",
+        "Multilingual vision"
       ]
     }
   ]

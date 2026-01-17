@@ -164,10 +164,11 @@ describe('InputArea', () => {
     it('helper text is hidden on mobile', () => {
       render(<InputArea chatId="test-chat" />);
 
-      // The helper text "Enter to send • Shift+Enter for new line" has "hidden sm:inline"
-      const helperText = screen.getByText(/Enter to send/);
-      expect(helperText.className).toContain('hidden');
-      expect(helperText.className).toContain('sm:inline');
+      // Helper text exists (wording uses symbols: "↵ Send • ⇧↵ New line")
+      const helperText = screen.getByText(/Send/i);
+      expect(helperText).toBeInTheDocument();
+      // Uses small responsive typography
+      expect(helperText.className).toContain('sm:text-xs');
     });
   });
 

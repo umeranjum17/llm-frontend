@@ -21,6 +21,9 @@ import { useUIStore } from "@/stores/ui-store";
 import { useStreamingStore, type PipelineExecution } from "@/stores/streaming-store";
 import { nanoid } from "nanoid";
 import { Code2 } from "lucide-react";
+import { ActiveSkillIndicator, SkillBadge } from "@/components/chat/active-skill-indicator";
+import { useLiveQuery } from "dexie-react-hooks";
+import { getSkillById } from "@/lib/db/queries";
 
 type ToolCallLike = {
   id?: string;
@@ -797,12 +800,18 @@ export const MessageItem = memo(function MessageItem({
 
   // Get streaming state for real-time updates
   // Include streamingVersion to ensure re-renders on each content update
-  const { streamingMessageId, streamingContent, streamingReasoning, streamingToolCalls, streamingToolResults, streamingVersion, pipelineExecution } = useStreamingStore();
+  const { streamingMessageId, streamingContent, streamingReasoning, streamingToolCalls, streamingToolResults, streamingVersion, pipelineExecution, activeSkill } = useStreamingStore();
   const isStreaming = message.id === streamingMessageId;
 
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
   const images = getImagesFromMessageContent(message.content);
+
+  // Load skill info if message has a skillId (for completed messages)
+  const persistedSkill = useLiveQuery(
+    () => (message.skillId ? getSkillById(message.skillId) : Promise.resolve(undefined)),
+    [message.skillId]
+  );
 
   // Use streaming content if this message is currently being streamed
   // Prefer prop over store to ensure memo sees the change
@@ -986,7 +995,7 @@ export const MessageItem = memo(function MessageItem({
                   : "bg-card/40 backdrop-blur-sm border-border/50"
               )}
             >
-              <div className="mb-1.5 sm:mb-2 flex items-center gap-1.5 sm:gap-2">
+              <div className="mb-1.5 sm:mb-2 flex items-center gap-1.5 sm:gap-2 flex-wrap">
                 <span className={cn(
                   "text-xs sm:text-sm font-semibold",
                   isUser ? "text-primary" : "text-foreground"
@@ -998,6 +1007,23 @@ export const MessageItem = memo(function MessageItem({
                     addSuffix: true,
                   })}
                 </span>
+                {/* Active skill indicator during streaming */}
+                {isAssistant && isStreaming && activeSkill && (
+                  <ActiveSkillIndicator
+                    icon={activeSkill.icon}
+                    color={activeSkill.color}
+                    activeLabel={activeSkill.activeLabel}
+                    isAnimated={true}
+                  />
+                )}
+                {/* Static skill badge for completed messages */}
+                {isAssistant && !isStreaming && persistedSkill && (
+                  <SkillBadge
+                    name={persistedSkill.name}
+                    icon={persistedSkill.ui.icon}
+                    color={persistedSkill.ui.color}
+                  />
+                )}
               </div>
 
               {/* Pipeline Progress Section (for pipeline agents) */}

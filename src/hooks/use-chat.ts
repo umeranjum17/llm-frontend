@@ -1,11 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useUIStore } from "@/stores/ui-store";
-import { useStreamingStore } from "@/stores/streaming-store";
-import { addMessage, updateChat, getChatById, updateMessage, getMessagesForBranch, getLastMessage, getMessageById, chatHasBranches, incrementAgentUsage, getMessages, getActiveMcpServersForChat, getAgentById } from "@/lib/db/queries";
+import { useStreamingStore, type ActiveSkill } from "@/stores/streaming-store";
+import { addMessage, updateChat, getChatById, updateMessage, getMessagesForBranch, getLastMessage, getMessageById, chatHasBranches, incrementAgentUsage, getMessages, getActiveMcpServersForChat, getAgentById, getSkillById, incrementSkillUsage } from "@/lib/db/queries";
 import { buildContextMessages } from "@/lib/ai/context-builder";
 import { countMessagesTokens, countTokens, estimateCost } from "@/lib/utils/token-counter";
-import type { MessageContent, Agent } from "@/lib/db/schema";
+import type { MessageContent, Agent, Skill } from "@/lib/db/schema";
 import { getImagesFromMessageContent, getTextFromMessageContent, mapTextInMessageContent, convertToAISDKContent } from "@/lib/utils/message-content";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { toast } from "sonner";
@@ -13,6 +13,7 @@ import { isModelIdCompatibleWithProviderId, pickBestProviderId, providerLabel } 
 import { addMemory, refreshCacheInBackground } from "@/lib/memory";
 import { generateAndApplySummary } from "@/lib/ai/summarization";
 import { getSettings } from "@/lib/db/queries";
+import { matchSkill } from "@/lib/skills/skill-matcher";
 import type { Message } from "ai";
 
 function cleanReferencesForLLM(content: string) {
@@ -427,6 +428,8 @@ export function useChat(chatId: string) {
     clearPipeline,
     setOptimisticMessage,
     clearOptimisticMessage,
+    setActiveSkill,
+    clearActiveSkill,
   } = useStreamingStore();
   const extractionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const dbUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -522,7 +525,8 @@ export function useChat(chatId: string) {
     messageContent: MessageContent,
     attachments?: Array<{ name: string; content: string }>,
     overrideModelId?: string,
-    parentUserMessageId?: string
+    parentUserMessageId?: string,
+    activeSkill?: Skill | null
   ) => {
     // Extract user message text for later use (e.g., background memory refresh)
     const userMessageText = getTextFromMessageContent(messageContent);
@@ -648,10 +652,23 @@ export function useChat(chatId: string) {
       }
     }
 
+    // Set active skill in streaming store if provided (for UI indicator)
+    if (activeSkill) {
+      setActiveSkill({
+        id: activeSkill.id,
+        name: activeSkill.name,
+        icon: activeSkill.ui.icon,
+        color: activeSkill.ui.color,
+        activeLabel: activeSkill.ui.activeLabel,
+      });
+      // Increment skill usage
+      incrementSkillUsage(activeSkill.id).catch(() => {});
+    }
+
     const contextMessages = await buildContextMessages(
       getTextFromMessageContent(messageContent),
       chatId,
-      { memoryDisabled: chat.memoryDisabled }
+      { memoryDisabled: chat.memoryDisabled, skill: activeSkill }
     );
 
     // Memories are already loaded by buildContextMessages() - no duplicate call needed
@@ -692,6 +709,7 @@ export function useChat(chatId: string) {
       modelId,
       isArena: !!overrideModelId,
       parentId: parentUserMessageId,
+      skillId: activeSkill?.id, // Store which skill was active
     });
 
     // Update activeBranchLeafId immediately so the UI shows the new message
@@ -1100,9 +1118,9 @@ export function useChat(chatId: string) {
       // This keeps memories fresh without blocking the current response
       refreshCacheInBackground(userMessageText);
     }
-  }, [chatId, getKeyForProvider, keys, scheduleMemoryExtraction, setStreamingMessage, appendStreamingContent, appendStreamingReasoning, setStreamingToolCalls, setStreamingToolResults, clearStreaming, startPipeline, setStepRunning, setStepComplete, setStepError, completePipeline, failPipeline, clearPipeline]);
+  }, [chatId, getKeyForProvider, keys, scheduleMemoryExtraction, setStreamingMessage, appendStreamingContent, appendStreamingReasoning, setStreamingToolCalls, setStreamingToolResults, clearStreaming, startPipeline, setStepRunning, setStepComplete, setStepError, completePipeline, failPipeline, clearPipeline, setActiveSkill]);
 
-  const sendMessage = async (content: MessageContent, attachments?: Array<{ name: string; content: string }>) => {
+  const sendMessage = async (content: MessageContent, attachments?: Array<{ name: string; content: string }>, selectedSkill?: Skill | null) => {
     setIsLoading(true);
     setError(null);
 
@@ -1178,10 +1196,62 @@ export function useChat(chatId: string) {
       // Update chat's updatedAt timestamp
       await updateChat(chatId, { activeBranchLeafId: userMessage.id });
 
+      // Auto-detect skill if none selected
+      let activeSkill: Skill | null = selectedSkill || null;
+      if (!activeSkill) {
+        try {
+          const settings = await getSettings();
+          const embeddingsProvider = settings?.embeddingsProvider;
+          const embeddingsModelId = settings?.embeddingsModelId;
+
+          const threshold = settings?.skillMatchThreshold ?? 0.5;
+
+          console.log("[Chat] Skill auto-detection check:", {
+            hasSelectedSkill: !!selectedSkill,
+            embeddingsProvider,
+            embeddingsModelId,
+            threshold,
+          });
+
+          if (embeddingsProvider && embeddingsModelId) {
+            const embeddingsApiKey = getKeyForProvider(embeddingsProvider);
+            console.log("[Chat] Embeddings API key found:", !!embeddingsApiKey?.key);
+
+            if (embeddingsApiKey?.key) {
+              console.log("[Chat] Attempting auto skill detection for message:", messageText.slice(0, 100));
+              const matchResult = await matchSkill(
+                messageText,
+                embeddingsApiKey.key,
+                {
+                  providerId: embeddingsProvider,
+                  modelId: embeddingsModelId,
+                  threshold,
+                  excludeManualOnly: true // Only match auto-trigger skills
+                }
+              );
+              console.log("[Chat] matchSkill result:", matchResult ? { name: matchResult.skill.name, similarity: matchResult.similarity } : null);
+              if (matchResult) {
+                activeSkill = matchResult.skill;
+                console.log(`[Chat] Auto-detected skill: ${matchResult.skill.name} (${(matchResult.similarity * 100).toFixed(1)}%)`);
+              } else {
+                console.log("[Chat] No skill matched above threshold");
+              }
+            } else {
+              console.log("[Chat] No API key for embeddings provider:", embeddingsProvider);
+            }
+          } else {
+            console.log("[Chat] Embeddings not configured - skipping skill auto-detection");
+          }
+        } catch (err) {
+          // Don't fail the message send if skill detection fails
+          console.warn("[Chat] Skill auto-detection failed:", err);
+        }
+      }
+
       if (isArenaMode && arenaModelIds.length > 0) {
         // Use allSettled so one model failure doesn't abort the others
         const results = await Promise.allSettled(
-          arenaModelIds.map(modelId => generateResponse(content, attachments, modelId, userMessage.id))
+          arenaModelIds.map(modelId => generateResponse(content, attachments, modelId, userMessage.id, activeSkill))
         );
         // Report individual failures without throwing (so the hook doesn't go into error state)
         for (let i = 0; i < results.length; i++) {
@@ -1193,7 +1263,7 @@ export function useChat(chatId: string) {
           }
         }
       } else {
-        await generateResponse(content, attachments, undefined, userMessage.id);
+        await generateResponse(content, attachments, undefined, userMessage.id, activeSkill);
       }
 
     } catch (err) {
