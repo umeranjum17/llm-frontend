@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plug, ArrowRight, ArrowLeft, Loader2, CheckCircle2, ExternalLink, Globe, Code, FileText } from "lucide-react";
+import { Plug, ArrowRight, ArrowLeft, Loader2, CheckCircle2, ExternalLink, Globe, Code, FileText, Server } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface McpStepProps {
@@ -16,9 +16,10 @@ interface McpStepProps {
 }
 
 const MCP_FEATURES = [
-    { icon: Globe, label: "150+ App Integrations", description: "Gmail, Slack, GitHub, and more" },
-    { icon: Code, label: "Code Execution", description: "Run code in sandboxed environments" },
-    { icon: FileText, label: "File & Web Tools", description: "Read files, browse web, manage data" },
+    { icon: FileText, label: "Project Files", description: "Upload and reference files with @file syntax", builtin: true },
+    { icon: Globe, label: "150+ App Integrations", description: "Gmail, Slack, GitHub, Notion via Composio", builtin: false },
+    { icon: Code, label: "Code Execution", description: "Run Python, JavaScript in sandboxed environments", builtin: false },
+    { icon: Server, label: "MCP Servers", description: "Add custom tools and integrations", builtin: true },
 ];
 
 // Composio config stored in localStorage (same as settings page)
@@ -75,14 +76,14 @@ export function McpStep({ onComplete, onBack, onSkip }: McpStepProps) {
                     <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-blue-500/10">
                         <Plug className="h-7 w-7 text-blue-500" />
                     </div>
-                    <CardTitle className="text-2xl">MCP Plugins</CardTitle>
+                    <CardTitle className="text-2xl">Tools & Integrations</CardTitle>
                     <CardDescription className="text-base">
-                        Connect to Composio for powerful tool capabilities
+                        Extend Lumina with powerful tools and app integrations
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-5">
                     {/* Features Preview */}
-                    <div className="grid gap-3">
+                    <div className="grid gap-2">
                         {MCP_FEATURES.map((feature) => {
                             const Icon = feature.icon;
                             return (
@@ -93,8 +94,15 @@ export function McpStep({ onComplete, onBack, onSkip }: McpStepProps) {
                                     <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
                                         <Icon className="h-4 w-4 text-primary" />
                                     </div>
-                                    <div>
-                                        <p className="text-sm font-medium">{feature.label}</p>
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                            <p className="text-sm font-medium">{feature.label}</p>
+                                            {feature.builtin && (
+                                                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-600 border border-green-500/20 font-medium">
+                                                    Built-in
+                                                </span>
+                                            )}
+                                        </div>
                                         <p className="text-xs text-muted-foreground">{feature.description}</p>
                                     </div>
                                 </div>

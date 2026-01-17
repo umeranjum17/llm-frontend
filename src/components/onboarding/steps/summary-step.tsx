@@ -10,11 +10,10 @@ import {
     CheckCircle2,
     Keyboard,
     Bot,
-    MessageSquare,
     Zap,
-    Command,
     ArrowRight,
     Rocket,
+    Wand2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -37,14 +36,24 @@ const SHORTCUTS = [
 ];
 
 const AGENTS = [
-    { name: "Code Expert", emoji: "💻", description: "Specialized in programming tasks" },
-    { name: "Researcher", emoji: "🔬", description: "Deep analysis and research" },
-    { name: "Writer", emoji: "✍️", description: "Content creation and editing" },
-    { name: "Analyst", emoji: "📊", description: "Data analysis and insights" },
+    { name: "Code Assistant", emoji: "💻", description: "Write, debug, and review code" },
+    { name: "Research Analyst", emoji: "🔎", description: "Find and synthesize information" },
+    { name: "Logo Generator", emoji: "🎨", description: "Create professional brand logos" },
+];
+
+const SKILLS = [
+    { name: "Summarize", emoji: "📝", description: "Extract key points from content" },
+    { name: "Create Chart", emoji: "📊", description: "Visualize data with charts" },
+    { name: "Create Diagram", emoji: "🔀", description: "Flowcharts and architecture" },
+    { name: "Code Review", emoji: "🔍", description: "Review and improve code" },
+    { name: "Debug", emoji: "🐛", description: "Find and fix bugs" },
+    { name: "Pros & Cons", emoji: "⚖️", description: "Compare options" },
+    { name: "Generate Image", emoji: "🖼️", description: "AI-powered image creation" },
+    { name: "Create React App", emoji: "⚛️", description: "Build React applications" },
 ];
 
 export function SummaryStep({ onComplete, configuredFeatures }: SummaryStepProps) {
-    const [activeTab, setActiveTab] = useState<"overview" | "shortcuts" | "agents">("overview");
+    const [activeTab, setActiveTab] = useState<"overview" | "shortcuts" | "skills" | "agents">("overview");
 
     return (
         <motion.div
@@ -71,10 +80,11 @@ export function SummaryStep({ onComplete, configuredFeatures }: SummaryStepProps
 
                 <CardContent className="space-y-6">
                     {/* Tab Navigation */}
-                    <div className="flex gap-2 p-1 bg-muted/50 rounded-lg">
+                    <div className="flex gap-1 p-1 bg-muted/50 rounded-lg">
                         {[
                             { id: "overview", label: "Overview", icon: Sparkles },
                             { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
+                            { id: "skills", label: "Skills", icon: Wand2 },
                             { id: "agents", label: "Agents", icon: Bot },
                         ].map((tab) => {
                             const Icon = tab.icon;
@@ -161,7 +171,7 @@ export function SummaryStep({ onComplete, configuredFeatures }: SummaryStepProps
                                             {configuredFeatures.mcp ? <CheckCircle2 className="h-5 w-5" /> : "○"}
                                         </div>
                                         <div className="flex-1">
-                                            <p className="text-sm font-medium">MCP Plugins</p>
+                                            <p className="text-sm font-medium">Tools & Integrations</p>
                                             <p className="text-xs text-muted-foreground">
                                                 {configuredFeatures.mcp ? "Composio tools enabled" : "Not configured"}
                                             </p>
@@ -172,6 +182,20 @@ export function SummaryStep({ onComplete, configuredFeatures }: SummaryStepProps
                                                 : "text-muted-foreground"
                                         )}>
                                             {configuredFeatures.mcp ? "Active" : "Skipped"}
+                                        </Badge>
+                                    </div>
+
+                                    {/* Skills Status */}
+                                    <div className="flex items-center gap-3 rounded-lg border p-3 bg-amber-500/5 border-amber-500/20">
+                                        <CheckCircle2 className="h-5 w-5 text-amber-500" />
+                                        <div className="flex-1">
+                                            <p className="text-sm font-medium">Skills</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                8 built-in skills ready to use
+                                            </p>
+                                        </div>
+                                        <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20">
+                                            Built-in
                                         </Badge>
                                     </div>
                                 </div>
@@ -211,26 +235,59 @@ export function SummaryStep({ onComplete, configuredFeatures }: SummaryStepProps
                             </motion.div>
                         )}
 
+                        {activeTab === "skills" && (
+                            <motion.div
+                                key="skills"
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                                className="space-y-3"
+                            >
+                                <p className="text-xs text-muted-foreground">
+                                    Skills are auto-detected based on your message and provide specialized responses.
+                                </p>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {SKILLS.map((skill) => (
+                                        <div
+                                            key={skill.name}
+                                            className="flex items-center gap-2 rounded-lg border p-2 bg-muted/20"
+                                        >
+                                            <span className="text-lg">{skill.emoji}</span>
+                                            <div className="min-w-0">
+                                                <p className="text-xs font-medium truncate">{skill.name}</p>
+                                                <p className="text-[10px] text-muted-foreground truncate">{skill.description}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </motion.div>
+                        )}
+
                         {activeTab === "agents" && (
                             <motion.div
                                 key="agents"
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: -10 }}
-                                className="grid grid-cols-2 gap-3"
+                                className="space-y-3"
                             >
-                                {AGENTS.map((agent) => (
-                                    <div
-                                        key={agent.name}
-                                        className="flex items-center gap-3 rounded-lg border p-3 bg-muted/20 hover:bg-muted/40 transition-colors cursor-pointer"
-                                    >
-                                        <span className="text-2xl">{agent.emoji}</span>
-                                        <div>
-                                            <p className="text-sm font-medium">{agent.name}</p>
-                                            <p className="text-xs text-muted-foreground">{agent.description}</p>
+                                <p className="text-xs text-muted-foreground">
+                                    Agents are specialized AI personas you can assign to chats for specific tasks.
+                                </p>
+                                <div className="grid gap-2">
+                                    {AGENTS.map((agent) => (
+                                        <div
+                                            key={agent.name}
+                                            className="flex items-center gap-3 rounded-lg border p-3 bg-muted/20"
+                                        >
+                                            <span className="text-2xl">{agent.emoji}</span>
+                                            <div>
+                                                <p className="text-sm font-medium">{agent.name}</p>
+                                                <p className="text-xs text-muted-foreground">{agent.description}</p>
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    ))}
+                                </div>
                             </motion.div>
                         )}
                     </AnimatePresence>

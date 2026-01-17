@@ -19,8 +19,6 @@ const DIRECT_MODEL_PREFIX_TO_PROVIDER_ID = new Set([
   "together",
   "perplexity",
   "anyscale",
-  "ollama",
-  "lmstudio",
   "meta-llama", // Llama models via Together/Groq
 ]);
 
@@ -38,8 +36,6 @@ const MODEL_PREFIX_TO_PROVIDER: Record<string, string> = {
   "together": "together",
   "perplexity": "perplexity",
   "anyscale": "anyscale",
-  "ollama": "ollama",
-  "lmstudio": "lmstudio",
   // Open source models - prefer Together as default host
   "meta-llama": "together",
 };

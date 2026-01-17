@@ -41,10 +41,6 @@ vi.mock('@/lib/db/queries', () => ({
   getMessages: vi.fn(() => Promise.resolve([])),
 }));
 
-vi.mock('@/lib/connectors/registry', () => ({
-  availableConnectors: [],
-}));
-
 vi.mock('@/components/chat/mention-textarea', () => {
   const React = require('react');
   const MockMentionTextarea = React.forwardRef(({ value, onChange, placeholder, disabled, className }: any, ref: any) => (

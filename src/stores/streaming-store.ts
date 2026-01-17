@@ -10,11 +10,13 @@ export interface PipelineStepProgress {
   id: string;
   name: string;
   type: "llm" | "image" | "tool" | "subagent";
-  status: "pending" | "running" | "complete" | "error";
+  status: "pending" | "running" | "complete" | "error" | "retrying";
   input?: string;
   output?: any;
   error?: string;
   toolCalls?: PipelineToolCall[];
+  retryCount?: number;
+  maxRetries?: number;
 }
 
 export interface PipelineExecution {
@@ -85,6 +87,7 @@ interface StreamingState {
   setStepRunning: (stepIndex: number, input?: string) => void;
   setStepComplete: (stepIndex: number, output: any, toolCalls?: PipelineToolCall[]) => void;
   setStepError: (stepIndex: number, error: string) => void;
+  setStepRetrying: (stepIndex: number, retryCount: number, maxRetries: number, error: string) => void;
   completePipeline: (finalResult: any) => void;
   failPipeline: (error: string) => void;
   clearPipeline: () => void;
@@ -230,6 +233,27 @@ export const useStreamingStore = create<StreamingState>((set, get) => ({
     const steps = [...state.pipelineExecution.steps];
     if (steps[stepIndex]) {
       steps[stepIndex] = { ...steps[stepIndex], status: "error", error };
+    }
+    return {
+      pipelineExecution: {
+        ...state.pipelineExecution,
+        steps,
+      },
+      streamingVersion: state.streamingVersion + 1,
+    };
+  }),
+
+  setStepRetrying: (stepIndex, retryCount, maxRetries, error) => set((state) => {
+    if (!state.pipelineExecution) return state;
+    const steps = [...state.pipelineExecution.steps];
+    if (steps[stepIndex]) {
+      steps[stepIndex] = {
+        ...steps[stepIndex],
+        status: "retrying",
+        retryCount,
+        maxRetries,
+        error,
+      };
     }
     return {
       pipelineExecution: {

@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { PipelineStep, McpServer, Agent } from "@/lib/db/schema";
 import type { Model } from "@/lib/constants/models";
 import { PROVIDERS } from "@/lib/providers/registry";
@@ -32,7 +33,7 @@ interface NodeConfigPanelProps {
 const stepTypeConfig = {
   llm: { icon: MessageSquare, color: "text-blue-500", label: "LLM Step" },
   image: { icon: ImageIcon, color: "text-pink-500", label: "Image Step" },
-  tool: { icon: Wrench, color: "text-amber-500", label: "Tool Step" },
+  tool: { icon: Wrench, color: "text-amber-500", label: "Tool (deprecated)" },
   subagent: { icon: Bot, color: "text-purple-500", label: "Agent Step" },
 };
 
@@ -56,14 +57,58 @@ export function NodeConfigPanel({
 
   // Get enabled MCP servers for this step
   const enabledMcpServerIds = step.mcpServerIds || [];
+  const enabledTools = step.enabledTools || [];
+  const isToolAllowlistActive = enabledTools.length > 0;
+
+  const enabledServers = useMemo(
+    () => mcpServers.filter((server) => enabledMcpServerIds.includes(server.id)),
+    [mcpServers, enabledMcpServerIds]
+  );
+
+  const enabledServerTools = useMemo(() => {
+    const tools: Array<{ id: string; name: string; description?: string; serverId: string }> = [];
+    enabledServers.forEach((server) => {
+      const serverTools = (server.tools || []) as Array<{ name: string; description?: string }>;
+      serverTools.forEach((tool) => {
+        tools.push({
+          id: `${server.id}/${tool.name}`,
+          name: tool.name,
+          description: tool.description,
+          serverId: server.id,
+        });
+      });
+    });
+    return tools;
+  }, [enabledServers]);
 
   // Toggle MCP server for this step
   const toggleMcpServer = (serverId: string) => {
     const current = step.mcpServerIds || [];
-    const updated = current.includes(serverId)
-      ? current.filter((id) => id !== serverId)
-      : [...current, serverId];
-    onUpdate({ mcpServerIds: updated });
+    const isEnabled = current.includes(serverId);
+    const updated = isEnabled ? current.filter((id) => id !== serverId) : [...current, serverId];
+
+    let updatedEnabledTools = step.enabledTools;
+    if (isEnabled && updatedEnabledTools && updatedEnabledTools.length > 0) {
+      // Remove allowlisted tools for the disabled server
+      updatedEnabledTools = updatedEnabledTools.filter((toolId) => !toolId.startsWith(`${serverId}/`));
+      if (updatedEnabledTools.length === 0) updatedEnabledTools = undefined;
+    }
+
+    onUpdate({ mcpServerIds: updated, enabledTools: updatedEnabledTools });
+  };
+
+  const toggleMcpTool = (toolId: string) => {
+    if (!isToolAllowlistActive) {
+      // Initialize allowlist with all tools except the toggled one
+      const allToolIds = enabledServerTools.map((tool) => tool.id);
+      const next = allToolIds.filter((id) => id !== toolId);
+      onUpdate({ enabledTools: next.length > 0 ? next : undefined });
+      return;
+    }
+
+    const hasTool = enabledTools.includes(toolId);
+    const next = hasTool ? enabledTools.filter((id) => id !== toolId) : [...enabledTools, toolId];
+    onUpdate({ enabledTools: next.length > 0 ? next : undefined });
   };
 
   const config = stepTypeConfig[step.type];
@@ -276,35 +321,16 @@ export function NodeConfigPanel({
             </>
           )}
 
-          {/* Tool step configuration */}
+          {/* Tool step configuration (deprecated) */}
           {step.type === "tool" && (
-            <>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Tool Name</Label>
-                <Input
-                  value={step.toolName || ""}
-                  onChange={(e) => onUpdate({ toolName: e.target.value || undefined })}
-                  placeholder="mcp_xyz_search"
-                  className="h-8 text-xs"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Tool Arguments (JSON)</Label>
-                <Textarea
-                  value={step.toolArgs ? JSON.stringify(step.toolArgs, null, 2) : ""}
-                  onChange={(e) => {
-                    try {
-                      const args = e.target.value ? JSON.parse(e.target.value) : undefined;
-                      onUpdate({ toolArgs: args });
-                    } catch {
-                      // Keep current value if invalid JSON
-                    }
-                  }}
-                  placeholder={'{"query": "{{userInput}}"}'}
-                  className="min-h-[60px] text-xs font-mono"
-                />
-              </div>
-            </>
+            <div className="space-y-2 rounded-md border border-dashed p-3">
+              <p className="text-xs text-muted-foreground">
+                Tool steps are deprecated. Use an LLM step with MCP tools enabled instead.
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                Delete this step and add an LLM step to continue.
+              </p>
+            </div>
           )}
 
           {/* Subagent step configuration */}
@@ -390,49 +416,103 @@ export function NodeConfigPanel({
                 <Plug className="h-3 w-3" />
                 MCP Tools
               </Label>
-              <div className="space-y-1.5 max-h-[150px] overflow-y-auto">
+              <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
                 {mcpServers.map((server) => {
                   const isEnabled = enabledMcpServerIds.includes(server.id);
                   const toolCount = server.tools?.length || 0;
+                  const serverTools = (server.tools || []) as Array<{ name: string; description?: string }>;
+                  const composioToolkits = server.id === "composio-consolidated"
+                    ? (server.composioToolkits || [])
+                    : [];
                   return (
                     <div
                       key={server.id}
                       className={cn(
-                        "flex items-center justify-between p-2 rounded-md border transition-colors",
+                        "rounded-md border transition-colors",
                         isEnabled ? "bg-primary/5 border-primary/20" : "bg-muted/30"
                       )}
                     >
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <div className={cn(
-                          "h-5 w-5 rounded flex items-center justify-center shrink-0",
-                          isEnabled ? "bg-primary/10" : "bg-muted"
-                        )}>
-                          <Plug className={cn(
-                            "h-3 w-3",
-                            isEnabled ? "text-primary" : "text-muted-foreground"
-                          )} />
+                      <div className="flex items-center justify-between p-2">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <div className={cn(
+                            "h-5 w-5 rounded flex items-center justify-center shrink-0",
+                            isEnabled ? "bg-primary/10" : "bg-muted"
+                          )}>
+                            <Plug className={cn(
+                              "h-3 w-3",
+                              isEnabled ? "text-primary" : "text-muted-foreground"
+                            )} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-medium truncate">{server.name}</div>
+                            {toolCount > 0 && (
+                              <div className="text-[10px] text-muted-foreground">
+                                {toolCount} tool{toolCount !== 1 ? "s" : ""}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="text-xs font-medium truncate">{server.name}</div>
-                          {toolCount > 0 && (
+                        <Switch
+                          checked={isEnabled}
+                          onCheckedChange={() => toggleMcpServer(server.id)}
+                          className="shrink-0 ml-2 scale-75"
+                        />
+                      </div>
+
+                      {isEnabled && (
+                        <div className="border-t px-2 py-2 space-y-1.5">
+                          {toolCount === 0 && composioToolkits.length === 0 ? (
                             <div className="text-[10px] text-muted-foreground">
-                              {toolCount} tool{toolCount !== 1 ? "s" : ""}
+                              No tools loaded for this server yet.
                             </div>
+                          ) : composioToolkits.length > 0 ? (
+                            composioToolkits.map((toolkit) => (
+                              <div key={toolkit.key} className="flex items-center justify-between gap-2">
+                                <div className="min-w-0">
+                                  <div className="text-xs font-medium truncate">{toolkit.name}</div>
+                                  <div className="text-[10px] text-muted-foreground">{toolkit.key}</div>
+                                </div>
+                                <Badge variant={toolkit.isEnabled ? "secondary" : "outline"} className="text-[10px] h-4">
+                                  {toolkit.isEnabled ? "Enabled" : "Disabled"}
+                                </Badge>
+                              </div>
+                            ))
+                          ) : (
+                            serverTools.map((tool) => {
+                              const toolId = `${server.id}/${tool.name}`;
+                              const isChecked = isToolAllowlistActive
+                                ? enabledTools.includes(toolId) || enabledTools.includes(tool.name)
+                                : true;
+                              return (
+                                <div key={toolId} className="flex items-start gap-2">
+                                  <Checkbox
+                                    checked={isChecked}
+                                    onCheckedChange={() => toggleMcpTool(toolId)}
+                                    className="mt-0.5"
+                                  />
+                                  <div className="min-w-0">
+                                    <div className="text-xs font-medium truncate">{tool.name}</div>
+                                    {tool.description && (
+                                      <div className="text-[10px] text-muted-foreground line-clamp-2">
+                                        {tool.description}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })
                           )}
                         </div>
-                      </div>
-                      <Switch
-                        checked={isEnabled}
-                        onCheckedChange={() => toggleMcpServer(server.id)}
-                              className="shrink-0 ml-2 scale-75"
-                      />
+                      )}
                     </div>
                   );
                 })}
               </div>
               {enabledMcpServerIds.length > 0 && (
                 <p className="text-[10px] text-muted-foreground">
-                  {enabledMcpServerIds.length} server{enabledMcpServerIds.length !== 1 ? "s" : ""} enabled
+                  {isToolAllowlistActive
+                    ? `${enabledTools.length} tool${enabledTools.length !== 1 ? "s" : ""} enabled`
+                    : "All tools enabled"}
                 </p>
               )}
             </div>

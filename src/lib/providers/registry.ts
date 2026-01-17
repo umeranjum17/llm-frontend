@@ -99,24 +99,6 @@ export const PROVIDERS: ProviderConfig[] = [
     priority: 25,
     features: { streaming: true, vision: false, tools: true, reasoning: true },
   },
-  {
-    id: "ollama",
-    name: "Ollama (Local)",
-    kind: "openai-compatible",
-    baseUrl: "http://localhost:11434/v1",
-    apiKeyRequired: false,
-    priority: 1,
-    features: { streaming: true, vision: true, tools: false, reasoning: false },
-  },
-  {
-    id: "lmstudio",
-    name: "LM Studio (Local)",
-    kind: "openai-compatible",
-    baseUrl: "http://localhost:1234/v1",
-    apiKeyRequired: false,
-    priority: 1,
-    features: { streaming: true, vision: true, tools: false, reasoning: false },
-  },
 ];
 
 export function getProviderConfig(providerId: string): ProviderConfig | null {

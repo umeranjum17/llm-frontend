@@ -19,7 +19,7 @@ import type { Message } from "ai";
 function cleanReferencesForLLM(content: string) {
   return content
     .replace(/@file:[^\[]+\[([^\]]+)\]/g, "[$1]")
-    .replace(/@chat:[^\[]+\[([^\]]+)\]/g, "[$1]");
+    .replace(/#chat:[^\[]+\[([^\]]+)\]/g, "[$1]");
 }
 
 /**
@@ -191,6 +191,7 @@ async function handlePipelineExecution(
     setStepRunning: (stepIndex: number, input?: string) => void;
     setStepComplete: (stepIndex: number, output: any, toolCalls?: Array<{ toolName: string; args: any; result?: any }>) => void;
     setStepError: (stepIndex: number, error: string) => void;
+    setStepRetrying: (stepIndex: number, retryCount: number, maxRetries: number, error: string) => void;
     completePipeline: (finalResult: any) => void;
     failPipeline: (error: string) => void;
     clearPipeline: () => void;
@@ -322,9 +323,14 @@ async function handlePipelineExecution(
 
             case "step-retry":
               // Update UI to show retry attempt
-              await updateMessage(assistantMessage.id, {
-                content: [{ type: "text", text: `🔄 Retrying step (attempt ${event.retryCount})...` }],
-              });
+              if (pipelineActions) {
+                pipelineActions.setStepRetrying(
+                  event.stepIndex,
+                  event.retryCount,
+                  event.maxRetries || 3,
+                  event.error || "Unknown error"
+                );
+              }
               break;
 
             case "pipeline-complete":
@@ -423,6 +429,7 @@ export function useChat(chatId: string) {
     setStepRunning,
     setStepComplete,
     setStepError,
+    setStepRetrying,
     completePipeline,
     failPipeline,
     clearPipeline,
@@ -548,7 +555,7 @@ export function useChat(chatId: string) {
         keys
           .map((k) => k.provider)
           .filter((p) =>
-            ["openrouter", "openai", "anthropic", "groq", "together", "perplexity", "anyscale", "ollama", "lmstudio"].includes(p) ||
+            ["openrouter", "openai", "anthropic", "google", "groq", "together", "deepseek", "mistral", "xai", "perplexity", "anyscale"].includes(p) ||
             p.startsWith("custom-openai:")
           )
       )
@@ -572,8 +579,7 @@ export function useChat(chatId: string) {
     }
 
     const apiKey = getKeyForProvider(providerId);
-    const providerKeyRequired = !["ollama", "lmstudio"].includes(providerId);
-    if (providerKeyRequired && !apiKey) {
+    if (!apiKey) {
       throw new Error(`Missing API key for ${providerLabel(providerId)}.`);
     }
 
@@ -608,6 +614,7 @@ export function useChat(chatId: string) {
             setStepRunning,
             setStepComplete,
             setStepError,
+            setStepRetrying,
             completePipeline,
             failPipeline,
             clearPipeline,
@@ -902,14 +909,17 @@ export function useChat(chatId: string) {
           if (typeof u.outTok === "number") outputTokens = u.outTok;
           if (typeof u.cost === "number") actualCost = u.cost;
 
-          // Debug: Log any usage data we find
+          // Debug: Log usage data summary (no sensitive content)
           if (u.inTok || u.outTok || u.cost) {
-            console.log("[Chat] Stream usage data:", { inputTokens: u.inTok, outputTokens: u.outTok, cost: u.cost, raw: parsed });
+            console.log("[Chat] Stream usage data:", { inputTokens: u.inTok, outputTokens: u.outTok, cost: u.cost });
           }
 
-          // Log step-finish and finish events for debugging (these contain usage/cost)
+          // Log step-finish and finish events for debugging (only type and usage, no content)
           if (parsed.type === "step-finish" || parsed.type === "finish") {
-            console.log(`[Chat] ${parsed.type} event:`, JSON.stringify(parsed, null, 2));
+            console.log(`[Chat] ${parsed.type} event:`, {
+              type: parsed.type,
+              usage: extractUsage(parsed),
+            });
           }
 
           // Handle error events that can appear in the stream (from ai SDK v4)

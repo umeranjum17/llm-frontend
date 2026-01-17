@@ -2,19 +2,20 @@
 
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "reactflow";
-import { Bot } from "lucide-react";
+import { Bot, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import type { PipelineStep } from "@/lib/db/schema";
 
 function SubagentNodeComponent({ data, selected }: NodeProps<PipelineStep>) {
-  const hasAgent = !!data.agentId;
+  const hasAgent = !!data.agentId && data.agentId.trim() !== "";
 
   return (
     <div
       className={cn(
         "border rounded-lg p-3 min-w-[180px] shadow-md transition-all",
-        selected && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+        selected && "ring-2 ring-primary ring-offset-2 ring-offset-background",
+        !hasAgent && "border-destructive/50"
       )}
       style={{ background: "hsl(var(--card))", color: "hsl(var(--card-foreground))" }}
     >
@@ -30,10 +31,13 @@ function SubagentNodeComponent({ data, selected }: NodeProps<PipelineStep>) {
         <div className="flex-1 min-w-0">
           <div className="font-medium text-sm truncate">{data.name || "Agent Step"}</div>
         </div>
+        {!hasAgent && (
+          <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+        )}
       </div>
       {!hasAgent && (
         <div className="flex flex-wrap gap-1">
-          <Badge variant="outline" className="text-[10px] h-5 font-normal text-muted-foreground">
+          <Badge variant="outline" className="text-[10px] h-5 font-normal text-destructive border-destructive/50">
             No agent selected
           </Badge>
         </div>

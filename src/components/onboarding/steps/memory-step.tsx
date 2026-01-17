@@ -78,13 +78,17 @@ export function MemoryStep({ onComplete, onBack, onSkip }: MemoryStepProps) {
                         >
                             <div className="grid gap-2">
                                 {[
-                                    { icon: "👤", label: "Remembers your name and preferences" },
-                                    { icon: "📁", label: "Tracks project context across chats" },
-                                    { icon: "⚡", label: "Auto-extracts facts from conversations" },
+                                    { icon: "👤", title: "Personal Context", label: "Remembers your name, role, and preferences" },
+                                    { icon: "📁", title: "Project Memory", label: "Tracks codebase context across conversations" },
+                                    { icon: "⚡", title: "Auto-Learning", label: "Extracts important facts from every chat" },
+                                    { icon: "💬", title: "Conversation Recall", label: "References relevant past discussions" },
                                 ].map((feature) => (
-                                    <div key={feature.label} className="flex items-center gap-3 text-sm">
-                                        <span className="text-lg">{feature.icon}</span>
-                                        <span className="text-muted-foreground">{feature.label}</span>
+                                    <div key={feature.label} className="flex items-start gap-3 text-sm p-2 rounded-lg bg-muted/30">
+                                        <span className="text-lg mt-0.5">{feature.icon}</span>
+                                        <div>
+                                            <span className="font-medium text-foreground">{feature.title}</span>
+                                            <p className="text-xs text-muted-foreground">{feature.label}</p>
+                                        </div>
                                     </div>
                                 ))}
                             </div>

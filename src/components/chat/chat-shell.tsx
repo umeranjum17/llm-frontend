@@ -124,7 +124,7 @@ export function ChatShell() {
           keys
             .map((k) => k.provider)
             .filter((p) =>
-              ["openrouter", "openai", "anthropic", "google", "deepseek", "mistral", "xai", "groq", "together", "perplexity", "anyscale", "ollama", "lmstudio"].includes(p) ||
+              ["openrouter", "openai", "anthropic", "google", "deepseek", "mistral", "xai", "groq", "together", "perplexity", "anyscale"].includes(p) ||
               p.startsWith("custom-openai:")
             )
         )

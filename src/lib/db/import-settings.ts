@@ -134,30 +134,37 @@ export async function importSettings(
     if (opts.importApiKeys && exportData.data.apiKeys.length > 0) {
       for (const apiKey of exportData.data.apiKeys) {
         try {
-          const existing = await db.apiKeys.get(apiKey.id);
-          if (existing) {
-            if (opts.mode === "overwrite") {
-              await db.apiKeys.put(apiKey);
+          const existingById = await db.apiKeys.get(apiKey.id);
+          const existingByProvider = await db.apiKeys
+            .where("provider")
+            .equals(apiKey.provider)
+            .first();
+
+          if (opts.mode === "overwrite") {
+            // In overwrite mode, always replace existing (by ID or provider)
+            if (existingByProvider && existingByProvider.id !== apiKey.id) {
+              // Different ID but same provider - delete the old one first
+              await db.apiKeys.delete(existingByProvider.id);
+            }
+            await db.apiKeys.put(apiKey);
+            result.imported.apiKeys++;
+          } else if (opts.mode === "merge") {
+            // In merge mode, overwrite if same provider exists (regardless of ID)
+            if (existingByProvider) {
+              await db.apiKeys.put({ ...apiKey, id: existingByProvider.id });
               result.imported.apiKeys++;
-            } else if (opts.mode === "merge") {
-              // For API keys, merge means update if provider matches
-              const existingByProvider = await db.apiKeys
-                .where("provider")
-                .equals(apiKey.provider)
-                .first();
-              if (existingByProvider) {
-                await db.apiKeys.put({ ...apiKey, id: existingByProvider.id });
-                result.imported.apiKeys++;
-              } else {
-                await db.apiKeys.add(apiKey);
-                result.imported.apiKeys++;
-              }
+            } else {
+              await db.apiKeys.add(apiKey);
+              result.imported.apiKeys++;
+            }
+          } else {
+            // Skip mode - only add if no key for this provider exists
+            if (!existingById && !existingByProvider) {
+              await db.apiKeys.add(apiKey);
+              result.imported.apiKeys++;
             } else {
               result.skipped.apiKeys++;
             }
-          } else {
-            await db.apiKeys.add(apiKey);
-            result.imported.apiKeys++;
           }
         } catch (e) {
           result.errors.push(`Failed to import API key: ${apiKey.provider}`);

@@ -4,6 +4,8 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import { BUILTIN_AGENTS } from "@/lib/constants/agents";
 import { PROVIDERS } from "@/lib/providers/registry";
+import { getAgentById } from "@/lib/db/queries";
+import type { Agent } from "@/lib/db/schema";
 
 export const runtime = "nodejs";
 
@@ -110,7 +112,7 @@ async function runSimpleAgent(
  * Run a pipeline agent by calling the pipeline API
  */
 async function runPipelineAgent(
-    agent: typeof BUILTIN_AGENTS[0],
+    agent: Agent,
     userMessage: string,
     chatId: string,
     apiKey: string,
@@ -195,9 +197,17 @@ export async function POST(req: Request) {
             );
         }
 
-        // Find agent from built-in agents
-        // TODO: Also check database for user-created agents
-        const agent = BUILTIN_AGENTS.find((a) => a.id === agentId);
+        // Find agent from built-in agents or database
+        let agent: Agent | undefined = BUILTIN_AGENTS.find((a) => a.id === agentId);
+
+        // If not found in built-in agents, check database for user-created agents
+        if (!agent) {
+            const dbAgent = await getAgentById(agentId);
+            if (dbAgent && dbAgent.isActive) {
+                agent = dbAgent;
+            }
+        }
+
         if (!agent) {
             return new Response(
                 JSON.stringify({ error: `Agent not found: ${agentId}` }),

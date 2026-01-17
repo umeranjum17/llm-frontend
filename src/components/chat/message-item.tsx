@@ -11,7 +11,6 @@ import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
 import type { Message } from "@/lib/db/schema";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
-import type { SearchResult, WebSearchResponse } from "@/lib/tools/web-search";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { getImagesFromMessageContent, getTextFromMessageContent, isMessageContentParts } from "@/lib/utils/message-content";
 import { updateMessage } from "@/lib/db/queries";
@@ -22,6 +21,7 @@ import { useStreamingStore, type PipelineExecution } from "@/stores/streaming-st
 import { nanoid } from "nanoid";
 import { Code2 } from "lucide-react";
 import { ActiveSkillIndicator, SkillBadge } from "@/components/chat/active-skill-indicator";
+import { MentionRenderer } from "@/components/chat/mention-renderer";
 import { useLiveQuery } from "dexie-react-hooks";
 import { getSkillById } from "@/lib/db/queries";
 
@@ -42,15 +42,6 @@ type ToolResultLike = {
   result?: unknown;
 };
 
-function isWebSearchResponse(value: unknown): value is WebSearchResponse {
-  if (!value || typeof value !== "object") return false;
-  const v = value as { provider?: unknown; query?: unknown; results?: unknown };
-  return (
-    typeof v.provider === "string" &&
-    typeof v.query === "string" &&
-    Array.isArray(v.results)
-  );
-}
 
 /** Human-friendly tool name mappings */
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
@@ -176,7 +167,6 @@ function extractNestedTools(toolName: string, args: unknown): string[] {
 /** Collapsible section for tool calls */
 function ToolCallsSection({
   toolEvents,
-  onCopySources,
 }: {
   toolEvents: Array<{
     key: string;
@@ -187,7 +177,6 @@ function ToolCallsSection({
     startTime?: number;
     endTime?: number;
   }>;
-  onCopySources: (results: SearchResult[]) => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -233,9 +222,6 @@ function ToolCallsSection({
       {isExpanded && (
         <div className="px-3 pb-3 space-y-2 border-t border-border/50">
           {toolEvents.map((toolEvent) => {
-            const isWebSearch =
-              toolEvent.name === "webSearch" && isWebSearchResponse(toolEvent.result);
-            const webSearch = isWebSearch ? (toolEvent.result as WebSearchResponse) : null;
             const displayName = getToolDisplayName(toolEvent.name);
 
             // Extract nested tools from MULTI_EXECUTE_TOOL args
@@ -270,82 +256,30 @@ function ToolCallsSection({
                     {/* Show nested tools directly if available, otherwise show generic name */}
                     {nestedTools.length > 0 ? nestedTools.join(", ") : displayName}
 
-                    {webSearch?.query ? (
-                      <span className="text-xs text-muted-foreground font-normal">
-                        &quot;{webSearch.query}&quot;
-                      </span>
-                    ) : null}
-
                     {duration && (
                       <Badge variant="outline" className="text-[10px] h-4 px-1.5 font-normal ml-2">
                         {duration}
                       </Badge>
                     )}
                   </div>
-                  {webSearch && webSearch.results.length > 0 ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-xs gap-2"
-                      onClick={() => onCopySources(webSearch.results)}
-                      title="Copy sources"
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                      Copy
-                    </Button>
-                  ) : null}
                 </div>
 
                 <div className="px-3 py-2 text-sm">
-                  {webSearch ? (
-                    <div className="space-y-2">
-                      <div className="text-xs text-muted-foreground">
-                        Provider: {webSearch.provider}
-                        {webSearch.error ? ` • ${webSearch.error}` : ""}
-                      </div>
-                      <ol className="space-y-2">
-                        {webSearch.results.map((r, idx) => (
-                          <li key={`${r.url}-${idx}`} className="space-y-1">
-                            <a
-                              href={r.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-medium hover:underline break-words"
-                            >
-                              {idx + 1}. {r.title}
-                            </a>
-                            {r.publishedDate ? (
-                              <div className="text-xs text-muted-foreground">
-                                {r.publishedDate}
-                              </div>
-                            ) : null}
-                            {r.snippet ? (
-                              <div className="text-xs text-muted-foreground">
-                                {r.snippet}
-                              </div>
-                            ) : null}
-                          </li>
-                        ))}
-                      </ol>
-                    </div>
-                  ) : (
-                    <details className="group">
-                      <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
-                        View details
-                      </summary>
-                      <pre className="mt-2 text-xs text-muted-foreground overflow-x-auto max-h-60 overflow-y-auto">
-                        {JSON.stringify(
-                          {
-                            args: toolEvent.args,
-                            result: toolEvent.result,
-                          },
-                          null,
-                          2
-                        )}
-                      </pre>
-                    </details>
-                  )}
+                  <details className="group">
+                    <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+                      View details
+                    </summary>
+                    <pre className="mt-2 text-xs text-muted-foreground overflow-x-auto max-h-60 overflow-y-auto">
+                      {JSON.stringify(
+                        {
+                          args: toolEvent.args,
+                          result: toolEvent.result,
+                        },
+                        null,
+                        2
+                      )}
+                    </pre>
+                  </details>
                 </div>
               </div>
             );
@@ -432,6 +366,8 @@ function PipelineProgressSection({
     switch (status) {
       case "running":
         return <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500" />;
+      case "retrying":
+        return <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />;
       case "complete":
         return <Check className="h-3.5 w-3.5 text-green-500" />;
       case "error":
@@ -479,6 +415,7 @@ function PipelineProgressSection({
                   className={cn(
                     "flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors",
                     step.status === "running" && "bg-blue-500/10",
+                    step.status === "retrying" && "bg-amber-500/10",
                     step.status === "complete" && "bg-green-500/5",
                     step.status === "error" && "bg-red-500/10",
                     canExpand && "cursor-pointer hover:bg-blue-500/15"
@@ -499,13 +436,18 @@ function PipelineProgressSection({
                   <span className="text-sm">{getStepTypeIcon(step.type)}</span>
                   <span className={cn(
                     "text-sm flex-1",
-                    step.status === "running" && "font-medium"
+                    (step.status === "running" || step.status === "retrying") && "font-medium"
                   )}>
                     {step.name}
                   </span>
                   {step.status === "running" && (
                     <span className="text-xs text-muted-foreground animate-pulse">
                       in progress...
+                    </span>
+                  )}
+                  {step.status === "retrying" && (
+                    <span className="text-xs text-amber-600 dark:text-amber-400 animate-pulse">
+                      retrying {step.retryCount}/{step.maxRetries}...
                     </span>
                   )}
                   {step.status === "error" && step.error && (
@@ -902,14 +844,6 @@ export const MessageItem = memo(function MessageItem({
     });
   }
 
-  const handleCopySources = async (results: SearchResult[]) => {
-    const markdown = results
-      .map((r, idx) => `${idx + 1}. [${r.title}](${r.url})`)
-      .join("\n");
-    await navigator.clipboard.writeText(markdown);
-    toast.success("Sources copied");
-  };
-
   const handleCopy = async () => {
     const payload = images.length > 0 ? `${textContent}\n\n${images.join("\n")}` : textContent;
     await navigator.clipboard.writeText(payload);
@@ -1067,7 +1001,7 @@ export const MessageItem = memo(function MessageItem({
                       )}
                     </>
                   ) : (
-                    <p className="whitespace-pre-wrap">{textContent}</p>
+                    <MentionRenderer text={textContent} />
                   )}
                 </div>
               )}
@@ -1204,7 +1138,7 @@ export const MessageItem = memo(function MessageItem({
 
               {/* Tool calls/results - collapsible */}
               {!isEditing && isAssistant && toolEvents.length > 0 && (
-                <ToolCallsSection toolEvents={toolEvents} onCopySources={handleCopySources} />
+                <ToolCallsSection toolEvents={toolEvents} />
               )}
 
               {/* Pipeline execution details (persisted, after completion) */}

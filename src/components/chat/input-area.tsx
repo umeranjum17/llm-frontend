@@ -10,6 +10,7 @@ import { TokenDisplay } from "./token-display";
 import { getChatById, getProjectFiles, getChatsByProject, getAllAgents, getAllTags, getMessages } from "@/lib/db/queries";
 import { countMessagesTokens, countTokens } from "@/lib/utils/token-counter";
 import { getModelById } from "@/lib/constants/models";
+import { BUILTIN_AGENTS } from "@/lib/constants/agents";
 import { toast } from "sonner";
 import type { MessageContentPart, Skill } from "@/lib/db/schema";
 import { MentionTextarea } from "@/components/chat/mention-textarea";
@@ -45,6 +46,8 @@ interface CodeSnippet {
 const MAX_TEXT_ATTACHMENT_BYTES = 1024 * 1024 * 2; // 2MB
 const MAX_IMAGE_ATTACHMENT_BYTES = 1024 * 1024 * 5; // 5MB
 const MAX_IMAGE_ATTACHMENTS = 4;
+const MAX_TEXT_ATTACHMENTS = 10;
+const MAX_TOTAL_ATTACHMENTS = 12; // Total limit for all attachments combined
 const CODE_SNIPPET_LINE_THRESHOLD = 3; // Minimum lines to treat as code snippet
 
 // Detect if text looks like code
@@ -204,19 +207,8 @@ export function InputArea({ chatId }: InputAreaProps) {
   const files = useLiveQuery(() => (chat?.projectId ? getProjectFiles(chat.projectId) : []), [chat?.projectId]);
   const otherChats = useLiveQuery(() => getChatsByProject(chat?.projectId || ""), [chat?.projectId]);
 
-  // Check connector statuses (client-side only for now)
-  const [activeConnectors, setActiveConnectors] = useState<string[]>([]);
+  // Listen for external send messages (e.g., from command palette)
   useEffect(() => {
-    const checkConnectors = async () => {
-      const { availableConnectors } = await import("@/lib/connectors/registry");
-      const active = [];
-      for (const c of availableConnectors) {
-        if (await c.isConnected()) active.push(c);
-      }
-      setActiveConnectors(active.map(c => c.id));
-    };
-    checkConnectors();
-
     const handleExternalSend = (e: any) => {
       if (e.detail?.content) {
         handleSubmit(undefined, e.detail.content);
@@ -224,10 +216,7 @@ export function InputArea({ chatId }: InputAreaProps) {
     };
     window.addEventListener("lumina:send-message", handleExternalSend as EventListener);
 
-    // Poll every 5s to catch settings changes
-    const interval = setInterval(checkConnectors, 5000);
     return () => {
-      clearInterval(interval);
       window.removeEventListener("lumina:send-message", handleExternalSend as EventListener);
     };
   }, []);
@@ -242,8 +231,10 @@ export function InputArea({ chatId }: InputAreaProps) {
 
     // Agents (@ trigger)
     if (agents) {
+      const builtInIds = new Set(BUILTIN_AGENTS.map((agent) => agent.id));
       agents.forEach(a => {
         if (!a.isActive) return;
+        if (a.isBuiltIn && !builtInIds.has(a.id)) return;
         items.push({
           id: a.id,
           type: "agent",
@@ -302,7 +293,7 @@ export function InputArea({ chatId }: InputAreaProps) {
     }
 
     return items;
-  }, [files, otherChats, chatId, agents, tags, activeConnectors]);
+  }, [files, otherChats, chatId, agents, tags]);
 
   // Handle submit function for keyboard shortcut
   const handleSubmitMessage = () => {
@@ -386,6 +377,13 @@ export function InputArea({ chatId }: InputAreaProps) {
   const addImageFile = async (file: File) => {
     if (!file.type.startsWith("image/")) return;
 
+    // Check total attachment limit
+    const totalAttachments = imageAttachments.length + attachments.length;
+    if (totalAttachments >= MAX_TOTAL_ATTACHMENTS) {
+      toast.error(`Maximum ${MAX_TOTAL_ATTACHMENTS} total attachments per message`);
+      return;
+    }
+
     if (imageAttachments.length >= MAX_IMAGE_ATTACHMENTS) {
       toast.error(`Maximum ${MAX_IMAGE_ATTACHMENTS} images per message`);
       return;
@@ -408,6 +406,18 @@ export function InputArea({ chatId }: InputAreaProps) {
   };
 
   const addTextFile = async (file: File) => {
+    // Check total attachment limit
+    const totalAttachments = imageAttachments.length + attachments.length;
+    if (totalAttachments >= MAX_TOTAL_ATTACHMENTS) {
+      toast.error(`Maximum ${MAX_TOTAL_ATTACHMENTS} total attachments per message`);
+      return;
+    }
+
+    if (attachments.length >= MAX_TEXT_ATTACHMENTS) {
+      toast.error(`Maximum ${MAX_TEXT_ATTACHMENTS} file attachments per message`);
+      return;
+    }
+
     if (file.size > MAX_TEXT_ATTACHMENT_BYTES) {
       toast.error(`File ${file.name} is too large (max 2MB)`);
       return;
@@ -517,6 +527,34 @@ export function InputArea({ chatId }: InputAreaProps) {
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value;
     setInput(newValue);
+  };
+
+  const MAX_FILE_MENTIONS = 5;
+
+  const handleMentionSelect = (item: MentionItem, insertText: (text: string) => void) => {
+    // Check file mention limit
+    if (item.type === "file") {
+      const currentFileMentions = (input.match(/@file:[^\[]+\[[^\]]+\]/g) || []).length;
+      if (currentFileMentions >= MAX_FILE_MENTIONS) {
+        toast.error(`Maximum of ${MAX_FILE_MENTIONS} file mentions allowed per message`);
+        return;
+      }
+    }
+
+    // Default insertion behavior
+    let insertion = "";
+    if (item.type === "file") {
+      insertion = `@file:${item.id}[${item.label}]`;
+    } else if (item.type === "agent") {
+      insertion = `@agent:${item.id}[${item.label}]`;
+    } else if (item.type === "chat") {
+      insertion = `#chat:${item.id}[${item.label}]`;
+    } else if (item.type === "tag") {
+      insertion = `#tag:${item.id}[${item.label}]`;
+    } else {
+      insertion = item.value;
+    }
+    insertText(insertion);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -758,6 +796,7 @@ export function InputArea({ chatId }: InputAreaProps) {
             value={input}
             onChange={handleInputChange}
             onEnter={handleMentionTextareaEnter}
+            onMentionSelect={handleMentionSelect}
             onPaste={handlePaste}
             placeholder="Message Lumina… (@ for agents, # for chats)"
             className="w-full resize-none bg-transparent px-2 py-2 pr-10 text-sm leading-6 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 min-h-10 max-h-[200px] disabled:opacity-60"

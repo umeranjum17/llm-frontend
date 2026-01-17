@@ -853,11 +853,12 @@ export async function getAllFolders() {
   });
 }
 
-export async function createFolder(name: string, color?: string) {
+export async function createFolder(name: string, color?: string, projectId?: string) {
   const newFolder = {
     id: crypto.randomUUID(),
     name,
     color,
+    projectId,
     createdAt: Date.now(),
   };
   await db.folders.add(newFolder);

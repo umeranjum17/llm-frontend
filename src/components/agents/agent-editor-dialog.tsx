@@ -27,6 +27,7 @@ import { McpManager } from "@/lib/mcp/mcp-manager";
 import { PipelineCanvas } from "./pipeline";
 import { useComposioApps } from "@/hooks/use-composio-apps";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 
 interface AgentEditorDialogProps {
   open: boolean;
@@ -34,6 +35,63 @@ interface AgentEditorDialogProps {
   agent?: Agent | null;
   onSaved?: (agentId: string) => void;
   onReset?: (agentId: string, newModelId: string | undefined) => void;
+}
+
+interface PipelineValidationError {
+  stepIndex: number;
+  stepName: string;
+  message: string;
+}
+
+/**
+ * Validate pipeline steps - mirrors backend validation
+ */
+function validatePipelineSteps(steps: PipelineStep[]): PipelineValidationError[] {
+  const errors: PipelineValidationError[] = [];
+  const definedVariables = new Set(["userInput", "userImages", "chatId"]);
+  const outputVariables = new Set<string>();
+
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+
+    // Check for duplicate output variables
+    if (outputVariables.has(step.outputVariable)) {
+      errors.push({
+        stepIndex: i,
+        stepName: step.name || `Step ${i + 1}`,
+        message: `Duplicate output variable "${step.outputVariable}"`,
+      });
+    }
+    outputVariables.add(step.outputVariable);
+
+    if (step.type === "subagent") {
+      if (!step.agentId || step.agentId.trim() === "") {
+        errors.push({
+          stepIndex: i,
+          stepName: step.name || `Step ${i + 1}`,
+          message: "Agent step requires an agent to be selected",
+        });
+      }
+    }
+
+    // Check for unresolved variable references in inputTemplate
+    const varRefs = step.inputTemplate.match(/\{\{(\w+)\}\}/g) || [];
+    for (const ref of varRefs) {
+      const varName = ref.slice(2, -2);
+      if (!definedVariables.has(varName)) {
+        errors.push({
+          stepIndex: i,
+          stepName: step.name || `Step ${i + 1}`,
+          message: `References undefined variable "{{${varName}}}"`,
+        });
+      }
+    }
+
+    // Add this step's output variable for subsequent steps
+    definedVariables.add(step.outputVariable);
+  }
+
+  return errors;
 }
 
 interface McpTool {
@@ -172,6 +230,16 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
   const modelOptions = useMemo(() => (models.length > 0 ? models : MODELS), [models]);
   const selectedModel = modelOptions.find((m) => m.id === modelId);
 
+  // Validate pipeline steps
+  const pipelineValidationErrors = useMemo(() => {
+    if (executionType !== "pipeline" || pipelineSteps.length === 0) {
+      return [];
+    }
+    return validatePipelineSteps(pipelineSteps);
+  }, [executionType, pipelineSteps]);
+
+  const hasPipelineErrors = pipelineValidationErrors.length > 0;
+
   // Filter models by category and search
   const filteredModels = useMemo(() => {
     let filtered = modelOptions;
@@ -266,6 +334,12 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
         toast.error("Pipeline requires at least one step");
         return;
       }
+    }
+
+    // Check for pipeline validation errors
+    if (executionType === "pipeline" && hasPipelineErrors) {
+      toast.error(`Pipeline has ${pipelineValidationErrors.length} configuration error(s)`);
+      return;
     }
 
     setSaving(true);
@@ -715,6 +789,24 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
                     />
                   )}
 
+                  {/* Validation Errors */}
+                  {hasPipelineErrors && (
+                    <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-3 space-y-2">
+                      <div className="flex items-center gap-2 text-destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <span className="text-sm font-medium">Pipeline Configuration Errors</span>
+                      </div>
+                      <ul className="space-y-1">
+                        {pipelineValidationErrors.map((error, i) => (
+                          <li key={i} className="text-xs text-destructive/80 flex items-start gap-1.5">
+                            <span className="font-medium shrink-0">Step {error.stepIndex + 1}:</span>
+                            <span>{error.message}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   {/* Form-based Pipeline Editor */}
                   {pipelineViewMode === "form" && (
                   <>
@@ -824,7 +916,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
                               <SelectTrigger className="w-28 h-8">
                                 <SelectValue />
                               </SelectTrigger>
-                              <SelectContent>
+                            <SelectContent>
                                 <SelectItem value="llm">
                                   <div className="flex items-center gap-1">
                                     <MessageSquare className="h-3 w-3" />
@@ -837,12 +929,12 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
                                     Image
                                   </div>
                                 </SelectItem>
-                                <SelectItem value="tool">
-                                  <div className="flex items-center gap-1">
-                                    <Wrench className="h-3 w-3" />
-                                    Tool
-                                  </div>
-                                </SelectItem>
+                              <SelectItem value="tool" disabled>
+                                <div className="flex items-center gap-1">
+                                  <Wrench className="h-3 w-3" />
+                                  Tool (deprecated)
+                                </div>
+                              </SelectItem>
                                 <SelectItem value="subagent">
                                   <div className="flex items-center gap-1">
                                     <Bot className="h-3 w-3" />
@@ -957,48 +1049,16 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
                           </div>
                           )}
 
-                          {/* Tool step configuration */}
+                          {/* Tool step configuration (deprecated) */}
                           {step.type === "tool" && (
-                          <div className="space-y-3">
-                            <div className="space-y-1">
-                              <Label className="text-xs">Tool Name</Label>
-                              <Input
-                                value={step.toolName || ""}
-                                onChange={(e) => {
-                                  const updated = [...pipelineSteps];
-                                  updated[index] = { ...step, toolName: e.target.value || undefined };
-                                  setPipelineSteps(updated);
-                                }}
-                                placeholder="e.g., mcp_xyz123_search"
-                                className="h-8 text-xs"
-                                          />
+                            <div className="space-y-2 rounded-md border border-dashed p-3">
                               <p className="text-xs text-muted-foreground">
-                                The MCP tool name (check your connected MCP servers for available tools)
+                                Tool steps are deprecated. Use an LLM step with MCP tools enabled instead.
+                              </p>
+                              <p className="text-[10px] text-muted-foreground">
+                                Delete this step and add an LLM step to continue.
                               </p>
                             </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Tool Arguments (JSON)</Label>
-                              <Textarea
-                                value={step.toolArgs ? JSON.stringify(step.toolArgs, null, 2) : ""}
-                                onChange={(e) => {
-                                  const updated = [...pipelineSteps];
-                                  try {
-                                    const args = e.target.value ? JSON.parse(e.target.value) : undefined;
-                                    updated[index] = { ...step, toolArgs: args };
-                                  } catch {
-                                    // Keep as-is if not valid JSON
-                                    updated[index] = { ...step, toolArgs: undefined };
-                                  }
-                                  setPipelineSteps(updated);
-                                }}
-                                placeholder={'{"query": "{{userInput}}"}'}
-                                className="min-h-[60px] text-xs font-mono"
-                                          />
-                              <p className="text-xs text-muted-foreground">
-                                Use {"{{variable}}"} to reference pipeline variables
-                              </p>
-                            </div>
-                          </div>
                           )}
 
                           {/* Subagent step configuration */}
@@ -1053,19 +1113,163 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
                           </div>
 
                           {step.type === "llm" && (
-                            <div className="space-y-1">
-                              <Label className="text-xs">System Prompt</Label>
-                              <Textarea
-                                value={step.systemPrompt || ""}
-                                onChange={(e) => {
-                                  const updated = [...pipelineSteps];
-                                  updated[index] = { ...step, systemPrompt: e.target.value || undefined };
-                                  setPipelineSteps(updated);
-                                }}
-                                placeholder="Instructions for this step..."
-                                className="min-h-[80px] text-sm"
-                                          />
-                            </div>
+                            <>
+                              <div className="space-y-1">
+                                <Label className="text-xs">System Prompt</Label>
+                                <Textarea
+                                  value={step.systemPrompt || ""}
+                                  onChange={(e) => {
+                                    const updated = [...pipelineSteps];
+                                    updated[index] = { ...step, systemPrompt: e.target.value || undefined };
+                                    setPipelineSteps(updated);
+                                  }}
+                                  placeholder="Instructions for this step..."
+                                  className="min-h-[80px] text-sm"
+                                />
+                              </div>
+                              {allMcpServers.length > 0 && (
+                                <div className="space-y-2">
+                                  <Label className="text-xs flex items-center gap-1.5">
+                                    <Server className="h-3 w-3" />
+                                    MCP Tools
+                                  </Label>
+                                  <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+                                    {allMcpServers.map((server) => {
+                                      const isEnabled = step.mcpServerIds?.includes(server.id);
+                                      const toolCount = server.tools?.length || 0;
+                                      const serverTools = (server.tools || []) as Array<{ name: string; description?: string }>;
+                                      const composioToolkits = server.id === "composio-consolidated"
+                                        ? (server.composioToolkits || [])
+                                        : [];
+                                      const enabledTools = step.enabledTools || [];
+                                      const isAllowlistActive = enabledTools.length > 0;
+                                      return (
+                                        <div
+                                          key={server.id}
+                                          className={cn(
+                                            "rounded-md border transition-colors",
+                                            isEnabled ? "bg-primary/5 border-primary/20" : "bg-muted/30"
+                                          )}
+                                        >
+                                          <div className="flex items-center justify-between p-2">
+                                            <div className="min-w-0 flex-1">
+                                              <div className="text-xs font-medium truncate">{server.name}</div>
+                                              {toolCount > 0 && (
+                                                <div className="text-[10px] text-muted-foreground">
+                                                  {toolCount} tool{toolCount !== 1 ? "s" : ""}
+                                                </div>
+                                              )}
+                                            </div>
+                                            <Switch
+                                              checked={!!isEnabled}
+                                              onCheckedChange={() => {
+                                                const updated = [...pipelineSteps];
+                                                const currentIds = step.mcpServerIds || [];
+                                                const nextIds = currentIds.includes(server.id)
+                                                  ? currentIds.filter((id) => id !== server.id)
+                                                  : [...currentIds, server.id];
+
+                                                let nextEnabledTools = step.enabledTools;
+                                                if (currentIds.includes(server.id) && nextEnabledTools?.length) {
+                                                  nextEnabledTools = nextEnabledTools.filter((toolId) => !toolId.startsWith(`${server.id}/`));
+                                                  if (nextEnabledTools.length === 0) nextEnabledTools = undefined;
+                                                }
+
+                                                updated[index] = { ...step, mcpServerIds: nextIds, enabledTools: nextEnabledTools };
+                                                setPipelineSteps(updated);
+                                              }}
+                                              className="scale-75"
+                                            />
+                                          </div>
+
+                                          {isEnabled && (
+                                            <div className="border-t px-2 py-2 space-y-1.5">
+                                              {toolCount === 0 && composioToolkits.length === 0 ? (
+                                                <div className="text-[10px] text-muted-foreground">
+                                                  No tools loaded for this server yet.
+                                                </div>
+                                              ) : composioToolkits.length > 0 ? (
+                                                composioToolkits.map((toolkit) => (
+                                                  <div key={toolkit.key} className="flex items-center justify-between gap-2">
+                                                    <div className="min-w-0">
+                                                      <div className="text-xs font-medium truncate">{toolkit.name}</div>
+                                                      <div className="text-[10px] text-muted-foreground">{toolkit.key}</div>
+                                                    </div>
+                                                    <Badge
+                                                      variant={toolkit.isEnabled ? "secondary" : "outline"}
+                                                      className="text-[10px] h-4"
+                                                    >
+                                                      {toolkit.isEnabled ? "Enabled" : "Disabled"}
+                                                    </Badge>
+                                                  </div>
+                                                ))
+                                              ) : (
+                                                serverTools.map((tool) => {
+                                                  const toolId = `${server.id}/${tool.name}`;
+                                                  const isChecked = isAllowlistActive
+                                                    ? enabledTools.includes(toolId) || enabledTools.includes(tool.name)
+                                                    : true;
+                                                  return (
+                                                    <div key={toolId} className="flex items-start gap-2">
+                                                      <Checkbox
+                                                        checked={isChecked}
+                                                        onCheckedChange={() => {
+                                                          const updated = [...pipelineSteps];
+                                                          const currentTools = updated[index].enabledTools || [];
+                                                          if (currentTools.length === 0) {
+                                                            const enabledToolIds = (step.mcpServerIds || [])
+                                                              .flatMap((serverId) => {
+                                                                const serverEntry = allMcpServers.find((s) => s.id === serverId);
+                                                                const tools = (serverEntry?.tools || []) as Array<{ name: string }>;
+                                                                return tools.map((t) => `${serverId}/${t.name}`);
+                                                              })
+                                                              .filter((id) => id !== toolId);
+                                                            updated[index] = {
+                                                              ...step,
+                                                              enabledTools: enabledToolIds.length > 0 ? enabledToolIds : undefined,
+                                                            };
+                                                          } else {
+                                                            const hasTool = currentTools.includes(toolId);
+                                                            const nextTools = hasTool
+                                                              ? currentTools.filter((id) => id !== toolId)
+                                                              : [...currentTools, toolId];
+                                                            updated[index] = {
+                                                              ...step,
+                                                              enabledTools: nextTools.length > 0 ? nextTools : undefined,
+                                                            };
+                                                          }
+                                                          setPipelineSteps(updated);
+                                                        }}
+                                                        className="mt-0.5"
+                                                      />
+                                                      <div className="min-w-0">
+                                                        <div className="text-xs font-medium truncate">{tool.name}</div>
+                                                        {tool.description && (
+                                                          <div className="text-[10px] text-muted-foreground line-clamp-2">
+                                                            {tool.description}
+                                                          </div>
+                                                        )}
+                                                      </div>
+                                                    </div>
+                                                  );
+                                                })
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  {step.mcpServerIds?.length ? (
+                                    <p className="text-[10px] text-muted-foreground">
+                                      {step.enabledTools?.length
+                                        ? `${step.enabledTools.length} tool${step.enabledTools.length !== 1 ? "s" : ""} enabled`
+                                        : "All tools enabled"}
+                                    </p>
+                                  ) : null}
+                                </div>
+                              )}
+                            </>
                           )}
                           </div>
                           )}
@@ -1290,11 +1494,17 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
               </Button>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            {hasPipelineErrors && (
+              <span className="text-xs text-destructive flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" />
+                {pipelineValidationErrors.length} error{pipelineValidationErrors.length !== 1 ? "s" : ""}
+              </span>
+            )}
             <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving || resetting}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={saving || resetting}>
+            <Button onClick={handleSave} disabled={saving || resetting || hasPipelineErrors}>
               {saving ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

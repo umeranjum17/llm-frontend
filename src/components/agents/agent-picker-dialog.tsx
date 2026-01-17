@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { getModelById } from "@/lib/constants/models";
 import { AgentEditorDialog } from "./agent-editor-dialog";
 import { ensureBuiltInAgents } from "@/lib/db/seed";
+import { BUILTIN_AGENTS } from "@/lib/constants/agents";
 import { formatModelCost } from "@/components/model-picker/model-item";
 import { toast } from "sonner";
 
@@ -58,8 +59,10 @@ export function AgentPickerDialog({
   const filtered = useMemo(() => {
     const list = agents || [];
     const q = query.trim();
-    if (!q) return list.filter((a) => a.isActive);
-    return list.filter((a) => a.isActive && matches(a, q));
+    const builtInIds = new Set(BUILTIN_AGENTS.map((agent) => agent.id));
+    const visibleAgents = list.filter((agent) => !agent.isBuiltIn || builtInIds.has(agent.id));
+    if (!q) return visibleAgents.filter((a) => a.isActive);
+    return visibleAgents.filter((a) => a.isActive && matches(a, q));
   }, [agents, query]);
 
   const selectAgent = async (agent: Agent | null) => {

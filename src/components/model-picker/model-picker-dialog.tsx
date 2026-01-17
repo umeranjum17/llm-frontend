@@ -41,7 +41,6 @@ import { getRankingService } from "@/lib/models/ranking/ranking-service";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { toast } from "sonner";
 import Fuse from "fuse.js";
-import { localDetector } from "@/lib/providers/local-detector";
 
 
 interface ModelPickerDialogProps {
@@ -158,47 +157,6 @@ export function ModelPickerDialog({
   const { models, isLoading: modelsLoading, fetchedAt, loadModels } = useModelsStore();
   const keys = useApiKeysStore((s) => s.keys);
   const rankingService = getRankingService();
-  const [localModels, setLocalModels] = useState<Array<{ id: string; name: string; provider: string; baseUrl: string }>>([]);
-
-  // Fetch local models
-  useEffect(() => {
-    if (!open) return;
-
-    const fetchLocalModels = async () => {
-      const ollamaStatus = localDetector.getStatus("ollama");
-      const lmstudioStatus = localDetector.getStatus("lmstudio");
-
-      const local: Array<{ id: string; name: string; provider: string; baseUrl: string }> = [];
-
-      if (ollamaStatus?.connected && ollamaStatus.availableModels) {
-        ollamaStatus.availableModels.forEach(modelName => {
-          local.push({
-            id: `ollama/${modelName}`,
-            name: modelName,
-            provider: "ollama",
-            baseUrl: ollamaStatus.baseUrl,
-          });
-        });
-      }
-
-      if (lmstudioStatus?.connected && lmstudioStatus.availableModels) {
-        lmstudioStatus.availableModels.forEach(modelId => {
-          local.push({
-            id: `lmstudio/${modelId}`,
-            name: modelId,
-            provider: "lmstudio",
-            baseUrl: lmstudioStatus.baseUrl,
-          });
-        });
-      }
-
-      setLocalModels(local);
-    };
-
-    fetchLocalModels();
-    const interval = setInterval(fetchLocalModels, 5000);
-    return () => clearInterval(interval);
-  }, [open]);
 
   useEffect(() => setManualModelId(currentModelId), [currentModelId, open]);
 
@@ -219,7 +177,7 @@ export function ModelPickerDialog({
           keys
             .map((k) => k.provider)
             .filter((p) =>
-              ["openrouter", "openai", "anthropic", "google", "deepseek", "mistral", "xai", "groq", "together", "perplexity", "anyscale", "ollama", "lmstudio"].includes(p) ||
+              ["openrouter", "openai", "anthropic", "google", "deepseek", "mistral", "xai", "groq", "together", "perplexity", "anyscale"].includes(p) ||
               p.startsWith("custom-openai:")
             )
         )
@@ -232,7 +190,7 @@ export function ModelPickerDialog({
       new Map(
         keys
           .filter((k) =>
-            ["openrouter", "openai", "anthropic", "google", "deepseek", "mistral", "xai", "groq", "together", "perplexity", "anyscale", "ollama", "lmstudio"].includes(k.provider) ||
+            ["openrouter", "openai", "anthropic", "google", "deepseek", "mistral", "xai", "groq", "together", "perplexity", "anyscale"].includes(k.provider) ||
             k.provider.startsWith("custom-openai:")
           )
           .map((k) => [k.provider, { id: k.provider, name: k.label || providerLabel(k.provider) }] as const)

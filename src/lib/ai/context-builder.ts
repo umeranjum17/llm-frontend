@@ -5,6 +5,12 @@ import { retrieveContext } from "@/lib/rag/retrieval";
 import { searchMemories, getAllMemories, type MemoryItem } from "@/lib/memory";
 
 /**
+ * Maximum number of file mentions allowed per message.
+ * Prevents context pollution and excessive token usage.
+ */
+export const MAX_FILE_MENTIONS = 5;
+
+/**
  * Memory injection budget constants.
  *
  * Research shows memory helps, but only when bounded and relevance-scored.
@@ -92,21 +98,23 @@ export async function parseReferences(content: string): Promise<{
   fileReferences: Array<{ id: string; name: string }>;
   chatReferences: Array<{ id: string; name: string }>;
   agentReferences: Array<{ id: string; name: string }>;
-  webReferences?: string[];
-  notionReferences?: string[];
 }> {
   const fileReferences: Array<{ id: string; name: string }> = [];
   const chatReferences: Array<{ id: string; name: string }> = [];
   const agentReferences: Array<{ id: string; name: string }> = [];
 
-  // Extract file references: @file:id[name]
+  // Extract file references: @file:id[name] (limited to MAX_FILE_MENTIONS)
   const fileMatches = content.matchAll(/@file:([^\[]+)\[([^\]]+)\]/g);
   for (const match of fileMatches) {
+    if (fileReferences.length >= MAX_FILE_MENTIONS) {
+      console.warn(`[Context] File mention limit (${MAX_FILE_MENTIONS}) reached, ignoring: ${match[2]}`);
+      break;
+    }
     fileReferences.push({ id: match[1], name: match[2] });
   }
 
-  // Extract chat references: @chat:id[name]
-  const chatMatches = content.matchAll(/@chat:([^\[]+)\[([^\]]+)\]/g);
+  // Extract chat references: #chat:id[name]
+  const chatMatches = content.matchAll(/#chat:([^\[]+)\[([^\]]+)\]/g);
   for (const match of chatMatches) {
     chatReferences.push({ id: match[1], name: match[2] });
   }
@@ -117,29 +125,13 @@ export async function parseReferences(content: string): Promise<{
     agentReferences.push({ id: match[1], name: match[2] });
   }
 
-  // Extract web references: @web:query
-  const webMatches = content.matchAll(/@web:([^\n]+)/g);
-  const webReferences: string[] = [];
-  for (const match of webMatches) {
-    webReferences.push(match[1]);
-  }
-
-  // Extract notion references: @notion:query
-  const notionMatches = content.matchAll(/@notion:([^\n]+)/g);
-  const notionReferences: string[] = [];
-  for (const match of notionMatches) {
-    notionReferences.push(match[1]);
-  }
-
   // Clean content (remove reference markup but keep names)
   let cleanContent = content;
   cleanContent = cleanContent.replace(/@file:[^\[]+\[([^\]]+)\]/g, "[$1]");
-  cleanContent = cleanContent.replace(/@chat:[^\[]+\[([^\]]+)\]/g, "[$1]");
+  cleanContent = cleanContent.replace(/#chat:[^\[]+\[([^\]]+)\]/g, "[$1]");
   cleanContent = cleanContent.replace(/@agent:[^\[]+\[([^\]]+)\]/g, "@$1");
-  cleanContent = cleanContent.replace(/@web:([^\n]+)/g, "Search: $1");
-  cleanContent = cleanContent.replace(/@notion:([^\n]+)/g, "Notion Search: $1");
 
-  return { cleanContent, fileReferences, chatReferences, agentReferences, webReferences, notionReferences };
+  return { cleanContent, fileReferences, chatReferences, agentReferences };
 }
 
 export async function buildContextMessages(
@@ -218,42 +210,7 @@ When the user asks "what do you know about me" or similar personal questions, re
   }
 
   // Parse references from user message
-  const { cleanContent, fileReferences, chatReferences, agentReferences, webReferences, notionReferences } = await parseReferences(userMessage);
-
-  // Web Search
-  for (const query of (webReferences || [])) {
-    messages.push({
-      id: `web-search-${Date.now()}`,
-      chatId,
-      role: "system",
-      content: `PERFORMING WEB SEARCH FOR: "${query}"\n\n[System Note: Web search integration pending. In a real scenario, search results would be injected here.]\n\nSimulated Result:\n- Found 3 sources regarding "${query}"\n- Source A: ...\n- Source B: ...`,
-      createdAt: Date.now()
-    });
-  }
-
-  // Connector Search (Notion)
-  if (notionReferences && notionReferences.length > 0) {
-    try {
-      const { getConnector } = await import("@/lib/connectors/registry");
-      const notion = getConnector("notion");
-      if (notion && await notion.isConnected()) {
-        for (const query of notionReferences) {
-          const docs = await notion.search(query);
-          const docsText = docs.map(d => `- [${d.title}](${d.url}): ${d.snippet}`).join("\n");
-
-          messages.push({
-            id: `notion-search-${Date.now()}`,
-            chatId,
-            role: "system",
-            content: `SEARCHING CONNECTED NOTION WORKSPACE FOR: "${query}"\n\nFound Documents:\n${docsText}`,
-            createdAt: Date.now()
-          });
-        }
-      }
-    } catch (error) {
-      console.error("Failed to perform notion search", error);
-    }
-  }
+  const { cleanContent, fileReferences, chatReferences, agentReferences } = await parseReferences(userMessage);
 
   // RAG retrieval if enabled
   if (options?.enableRAG) {

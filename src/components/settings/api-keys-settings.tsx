@@ -17,18 +17,19 @@ import { Plus, Trash2, Eye, EyeOff, Check, CheckCircle2, XCircle, Shield, Lock, 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { CUSTOM_OPENAI_PREFIX, getProviderConfig, isCustomOpenAIProvider } from "@/lib/providers";
-import { localDetector } from "@/lib/providers/local-detector";
 
 const PROVIDERS = [
   { id: "openrouter", name: "OpenRouter", url: "https://openrouter.ai/keys" },
   { id: "openai", name: "OpenAI", url: "https://platform.openai.com/api-keys" },
   { id: "anthropic", name: "Anthropic", url: "https://console.anthropic.com/settings/keys" },
+  { id: "google", name: "Google AI", url: "https://aistudio.google.com/app/apikey" },
   { id: "groq", name: "Groq (OpenAI-compatible)", url: "https://console.groq.com/keys", baseUrl: "https://api.groq.com/openai/v1" },
   { id: "together", name: "Together AI (OpenAI-compatible)", url: "https://api.together.xyz/settings/api-keys", baseUrl: "https://api.together.xyz/v1" },
+  { id: "deepseek", name: "DeepSeek", url: "https://platform.deepseek.com/api_keys", baseUrl: "https://api.deepseek.com" },
+  { id: "mistral", name: "Mistral AI", url: "https://console.mistral.ai/api-keys/", baseUrl: "https://api.mistral.ai/v1" },
+  { id: "xai", name: "xAI (Grok)", url: "https://console.x.ai/", baseUrl: "https://api.x.ai/v1" },
   { id: "perplexity", name: "Perplexity (OpenAI-compatible)", url: "https://www.perplexity.ai/settings/api", baseUrl: "https://api.perplexity.ai" },
   { id: "anyscale", name: "Anyscale (OpenAI-compatible)", url: "https://app.endpoints.anyscale.com/credentials", baseUrl: "https://api.endpoints.anyscale.com/v1" },
-  { id: "ollama", name: "Ollama (Local)", url: "https://ollama.com", baseUrl: "http://localhost:11434/v1", apiKeyOptional: true },
-  { id: "lmstudio", name: "LM Studio (Local)", url: "https://lmstudio.ai", baseUrl: "http://localhost:1234/v1", apiKeyOptional: true },
   { id: "custom-openai", name: "Custom (OpenAI-compatible)", url: "https://platform.openai.com/docs/api-reference", needsBaseUrl: true },
   { id: "tavily", name: "Tavily (Web Search)", url: "https://tavily.com" },
   { id: "serper", name: "Serper (Google Search API)", url: "https://serper.dev" },
@@ -58,7 +59,6 @@ export function ApiKeysSettings() {
   const [newBaseUrl, setNewBaseUrl] = useState("");
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [testingKey, setTestingKey] = useState<string | null>(null);
-  const [localStatuses, setLocalStatuses] = useState<Record<string, { connected: boolean; checking: boolean }>>({});
   const [composioKey, setComposioKey] = useState<string | null>(null);
 
   // Load Composio key from localStorage
@@ -75,37 +75,6 @@ export function ApiKeysSettings() {
     };
   }, []);
 
-  // Check local providers status
-  useEffect(() => {
-    const checkLocalProviders = async () => {
-      const ollamaStatus = localDetector.getStatus("ollama");
-      const lmstudioStatus = localDetector.getStatus("lmstudio");
-      
-      setLocalStatuses({
-        ollama: {
-          connected: ollamaStatus?.connected ?? false,
-          checking: ollamaStatus?.checking ?? false,
-        },
-        lmstudio: {
-          connected: lmstudioStatus?.connected ?? false,
-          checking: lmstudioStatus?.checking ?? false,
-        },
-      });
-    };
-
-    checkLocalProviders();
-    const interval = setInterval(checkLocalProviders, 2000);
-    
-    // Start auto-checking
-    localDetector.startAutoCheck("ollama", 10000);
-    localDetector.startAutoCheck("lmstudio", 10000);
-
-    return () => {
-      clearInterval(interval);
-      localDetector.stopAllAutoChecks();
-    };
-  }, []);
-
   const handleAddKey = async () => {
     if (!newProvider) {
       toast.error("Please select a provider");
@@ -113,11 +82,10 @@ export function ApiKeysSettings() {
     }
 
     const selected = PROVIDERS.find((p) => p.id === newProvider);
-    const isLocal = newProvider === "ollama" || newProvider === "lmstudio";
     const isCustomOpenAI = newProvider === "custom-openai";
     const needsBaseUrl = isCustomOpenAI;
 
-    if (!isLocal && !newKey) {
+    if (!newKey) {
       toast.error("Please enter an API key");
       return;
     }
@@ -224,31 +192,6 @@ export function ApiKeysSettings() {
                     {apiKey.label && (
                       <Badge variant="secondary" className="text-xs">
                         {apiKey.label}
-                      </Badge>
-                    )}
-                    {(apiKey.provider === "ollama" || apiKey.provider === "lmstudio") && (
-                      <Badge 
-                        variant={localStatuses[apiKey.provider]?.connected ? "default" : "secondary"}
-                        className={localStatuses[apiKey.provider]?.connected ? "bg-green-500" : ""}
-                      >
-                        {localStatuses[apiKey.provider]?.checking ? (
-                          "Checking..."
-                        ) : localStatuses[apiKey.provider]?.connected ? (
-                          <>
-                            <CheckCircle2 className="h-3 w-3 mr-1" />
-                            Connected
-                          </>
-                        ) : (
-                          <>
-                            <XCircle className="h-3 w-3 mr-1" />
-                            Disconnected
-                          </>
-                        )}
-                      </Badge>
-                    )}
-                    {(apiKey.provider === "ollama" || apiKey.provider === "lmstudio") && (
-                      <Badge variant="outline" className="text-xs">
-                        No API key needed
                       </Badge>
                     )}
                   </div>

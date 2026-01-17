@@ -159,6 +159,7 @@ export interface UserMemory {
 
 export interface Folder {
   id: string;
+  projectId?: string;
   name: string;
   color?: string;
   order?: number; // For manual ordering
@@ -706,6 +707,31 @@ export class LuminaDB extends Dexie {
       modelFavorites: "id, category, pinnedOrder, lastUsed",
       userMemories: "id, category, source, createdAt, isActive",
       folders: "id, name, createdAt, order",
+      tags: "id, name, createdAt, usageCount",
+      tagRules: "id, tagId, enabled, createdAt",
+      parameterPresets: "id, name, createdAt, isDefault",
+      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
+      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
+      skills: "id, name, category, isBuiltIn, isEnabled, isFavorite, usageCount, updatedAt",
+      skillEmbeddings: "skillId, modelId",
+      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
+      workflows: "id, name, createdAt, updatedAt",
+      modelAliases: "id, alias, updatedAt",
+      mcpServers: "id, enabled, createdAt",
+    });
+
+    // Version 15: Add projectId to folders
+    this.version(15).stores({
+      projects: "id, name, createdAt, updatedAt",
+      projectFiles: "id, projectId, name, createdAt",
+      chats:
+        "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order",
+      messages: "id, chatId, role, createdAt, parentId, rating, skillId",
+      apiKeys: "id, provider, createdAt, baseUrl",
+      settings: "id",
+      modelFavorites: "id, category, pinnedOrder, lastUsed",
+      userMemories: "id, category, source, createdAt, isActive",
+      folders: "id, projectId, name, createdAt, order",
       tags: "id, name, createdAt, usageCount",
       tagRules: "id, tagId, enabled, createdAt",
       parameterPresets: "id, name, createdAt, isDefault",

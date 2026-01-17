@@ -80,7 +80,7 @@ export function CommandPalette() {
           keys
             .map((k) => k.provider)
             .filter((p) =>
-              ["openrouter", "openai", "anthropic", "groq", "together", "perplexity", "anyscale", "ollama", "lmstudio"].includes(p) ||
+              ["openrouter", "openai", "anthropic", "google", "groq", "together", "deepseek", "mistral", "xai", "perplexity", "anyscale"].includes(p) ||
               p.startsWith("custom-openai:")
             )
         )

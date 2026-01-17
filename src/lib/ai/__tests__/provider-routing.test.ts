@@ -17,7 +17,12 @@ vi.mock('@/lib/providers', () => ({
       openrouter: { name: 'OpenRouter' },
       groq: { name: 'Groq' },
       together: { name: 'Together AI' },
-      ollama: { name: 'Ollama' },
+      google: { name: 'Google' },
+      deepseek: { name: 'DeepSeek' },
+      mistral: { name: 'Mistral' },
+      xai: { name: 'xAI' },
+      perplexity: { name: 'Perplexity' },
+      anyscale: { name: 'Anyscale' },
     };
     return configs[id] || null;
   }),
@@ -28,8 +33,9 @@ vi.mock('@/lib/providers', () => ({
       openrouter: { id: 'openrouter', priority: 10 },
       groq: { id: 'groq', priority: 3 },
       together: { id: 'together', priority: 4 },
-      ollama: { id: 'ollama', priority: 5 },
-      'custom-openai:my-server': { id: 'custom-openai:my-server', priority: 6 },
+      google: { id: 'google', priority: 5 },
+      deepseek: { id: 'deepseek', priority: 6 },
+      'custom-openai:my-server': { id: 'custom-openai:my-server', priority: 7 },
     };
     return providers[id] || null;
   }),
@@ -66,6 +72,12 @@ describe('provider-routing', () => {
 
     it('returns null for unknown prefixes', () => {
       expect(inferDirectProviderFromModelId('unknown/model')).toBeNull();
+    });
+
+    it('does not recognize ollama or lmstudio as valid providers', () => {
+      // Local providers have been removed - these should return null
+      expect(inferDirectProviderFromModelId('ollama/llama2')).toBeNull();
+      expect(inferDirectProviderFromModelId('lmstudio/mistral')).toBeNull();
     });
   });
 

@@ -14,8 +14,7 @@ import { providerLabel } from "@/lib/ai/provider-routing";
 // Provider IDs that are LLM providers (not MCP or other services)
 const LLM_PROVIDER_IDS = [
   "openrouter", "openai", "anthropic", "google", "deepseek",
-  "mistral", "xai", "groq", "together", "perplexity",
-  "anyscale", "ollama", "lmstudio"
+  "mistral", "xai", "groq", "together", "perplexity", "anyscale"
 ];
 
 export interface ProviderOption {

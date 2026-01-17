@@ -10,7 +10,6 @@ export function TrustDashboard() {
   const { keys } = useApiKeysStore();
 
   const hasApiKeys = keys.length > 0;
-  const hasLocalProviders = keys.some(k => k.provider === "ollama" || k.provider === "lmstudio");
 
   return (
     <div className="space-y-6">
@@ -68,11 +67,6 @@ export function TrustDashboard() {
               <div className="flex items-center gap-2 mb-1">
                 <Server className="h-4 w-4 text-purple-600" />
                 <span className="font-medium">AI Providers</span>
-                {hasLocalProviders && (
-                  <Badge variant="outline" className="bg-purple-500/10 text-purple-600 border-purple-200">
-                    Local Available
-                  </Badge>
-                )}
               </div>
               <p className="text-sm text-muted-foreground">
                 Your messages are sent directly to the AI provider you select. We don&apos;t log or store your conversations.

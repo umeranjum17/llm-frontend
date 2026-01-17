@@ -46,12 +46,126 @@ const RequestSchema = z.object({
 });
 
 /**
- * Substitute {{variable}} placeholders in a template string with values from context
+ * Substitute {{variable}} placeholders in a template string with values from context.
+ * Safely handles non-string values by JSON stringifying objects/arrays.
  */
 function substituteVariables(template: string, context: Record<string, any>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
-    return context[varName] !== undefined ? String(context[varName]) : match;
+    const value = context[varName];
+    if (value === undefined) return match;
+    if (value === null) return "null";
+    if (typeof value === "string") return value;
+    if (typeof value === "number" || typeof value === "boolean") return String(value);
+    // For objects/arrays, JSON stringify
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
   });
+}
+
+/**
+ * Extract all {{variable}} references from a template string
+ */
+function extractVariableReferences(template: string): string[] {
+  const matches = template.match(/\{\{(\w+)\}\}/g) || [];
+  return matches.map(m => m.slice(2, -2));
+}
+
+interface ValidationError {
+  stepIndex: number;
+  stepId: string;
+  stepName: string;
+  message: string;
+}
+
+/**
+ * Validate pipeline configuration before execution.
+ * Returns array of validation errors (empty if valid).
+ */
+function validatePipeline(pipeline: { steps: PipelineStep[] }): ValidationError[] {
+  const errors: ValidationError[] = [];
+  const definedVariables = new Set(["userInput", "userImages", "chatId"]);
+  const outputVariables = new Set<string>();
+
+  for (let i = 0; i < pipeline.steps.length; i++) {
+    const step = pipeline.steps[i];
+
+    // Check for duplicate output variables
+    if (outputVariables.has(step.outputVariable)) {
+      errors.push({
+        stepIndex: i,
+        stepId: step.id,
+        stepName: step.name,
+        message: `Duplicate outputVariable "${step.outputVariable}" - already used by a previous step`,
+      });
+    }
+    outputVariables.add(step.outputVariable);
+
+    // Check step-type-specific requirements
+    switch (step.type) {
+      case "tool":
+        if (!step.toolName || step.toolName.trim() === "") {
+          errors.push({
+            stepIndex: i,
+            stepId: step.id,
+            stepName: step.name,
+            message: `Tool step requires toolName to be specified`,
+          });
+        }
+        break;
+
+      case "subagent":
+        if (!step.agentId || step.agentId.trim() === "") {
+          errors.push({
+            stepIndex: i,
+            stepId: step.id,
+            stepName: step.name,
+            message: `Subagent step requires agentId to be specified`,
+          });
+        }
+        break;
+    }
+
+    // Check for unresolved variable references in inputTemplate
+    const referencedVars = extractVariableReferences(step.inputTemplate);
+    for (const varName of referencedVars) {
+      if (!definedVariables.has(varName)) {
+        errors.push({
+          stepIndex: i,
+          stepId: step.id,
+          stepName: step.name,
+          message: `Variable "{{${varName}}}" is not defined. Available: ${Array.from(definedVariables).join(", ")}`,
+        });
+      }
+    }
+
+    // Check toolArgs for unresolved variables (if tool step)
+    if (step.type === "tool" && step.toolArgs) {
+      for (const [argName, argValue] of Object.entries(step.toolArgs)) {
+        if (typeof argValue === "string") {
+          const argVars = extractVariableReferences(argValue);
+          for (const varName of argVars) {
+            // Also allow "input" as it's added during execution
+            if (!definedVariables.has(varName) && varName !== "input") {
+              errors.push({
+                stepIndex: i,
+                stepId: step.id,
+                stepName: step.name,
+                message: `Tool argument "${argName}" references undefined variable "{{${varName}}}"`,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Add this step's output variable to defined variables for subsequent steps
+    definedVariables.add(step.outputVariable);
+  }
+
+  return errors;
 }
 
 /**
@@ -353,10 +467,17 @@ async function executeToolStep(
   }
 
   // Substitute variables in tool arguments
-  const toolArgs: Record<string, string> = {};
+  // Handle both string and non-string values safely
+  const toolArgs: Record<string, any> = {};
   if (step.toolArgs) {
     for (const [key, value] of Object.entries(step.toolArgs)) {
-      toolArgs[key] = substituteVariables(value, { ...context, input });
+      if (typeof value === "string") {
+        // String values get variable substitution
+        toolArgs[key] = substituteVariables(value, { ...context, input });
+      } else if (value !== undefined && value !== null) {
+        // Non-string values pass through (numbers, booleans, etc.)
+        toolArgs[key] = value;
+      }
     }
   }
 
@@ -416,6 +537,22 @@ export async function POST(req: Request) {
       return new Response(
         JSON.stringify({ error: "API key required" }),
         { status: 401, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate pipeline configuration before execution
+    const validationErrors = validatePipeline(pipeline);
+    if (validationErrors.length > 0) {
+      return new Response(
+        JSON.stringify({
+          error: "Pipeline validation failed",
+          validationErrors: validationErrors.map(e => ({
+            step: `${e.stepIndex + 1}. ${e.stepName}`,
+            stepId: e.stepId,
+            message: e.message,
+          })),
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
 
@@ -484,7 +621,9 @@ export async function POST(req: Request) {
                     type: "step-retry",
                     stepIndex: i,
                     totalSteps,
+                    step: { id: step.id, name: step.name, type: step.type },
                     retryCount: retries,
+                    maxRetries,
                     error: errorMessage,
                   });
                   continue; // Retry
@@ -496,14 +635,21 @@ export async function POST(req: Request) {
                     type: "step-error",
                     stepIndex: i,
                     totalSteps,
+                    step: { id: step.id, name: step.name, type: step.type },
                     error: errorMessage,
                     continuing: true,
                   });
                   break; // Continue to next step
                 }
 
-                // Abort
-                throw error;
+                // Abort - wrap with step context for better debugging
+                const abortError = new Error(
+                  `Step ${i + 1} "${step.name}" (${step.type}) failed: ${errorMessage}`
+                );
+                (abortError as any).stepIndex = i;
+                (abortError as any).stepId = step.id;
+                (abortError as any).stepName = step.name;
+                throw abortError;
               }
             }
 
@@ -540,10 +686,18 @@ export async function POST(req: Request) {
           });
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : "Pipeline failed";
-          sendEvent(controller, {
+          const errorPayload: any = {
             type: "pipeline-error",
             error: errorMessage,
-          });
+          };
+          // Include step context if available (from abort errors)
+          if (error && typeof error === "object") {
+            const e = error as any;
+            if (e.stepIndex !== undefined) errorPayload.stepIndex = e.stepIndex;
+            if (e.stepId) errorPayload.stepId = e.stepId;
+            if (e.stepName) errorPayload.stepName = e.stepName;
+          }
+          sendEvent(controller, errorPayload);
         } finally {
           sendEvent(controller, { type: "done" });
           controller.close();

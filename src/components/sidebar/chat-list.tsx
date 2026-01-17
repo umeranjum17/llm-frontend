@@ -1,38 +1,14 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  DndContext,
-  closestCenter,
-  pointerWithin,
-  KeyboardSensor,
-  PointerSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-  DragOverlay,
-  DragStartEvent,
-  useDroppable,
-  MeasuringStrategy,
-} from "@dnd-kit/core";
-import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { MessageSquare, Pin, Star, Trash2, Folder, ChevronDown, ChevronRight, FolderPlus, GripVertical, MoreVertical, Edit2 } from "lucide-react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { MessageSquare, Pin, Star, Trash2, Folder, ChevronDown, ChevronRight, FolderPlus, MoreVertical, Edit2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getAllChats, deleteChat, updateChat, getAllFolders, createFolder, reorderChats, reorderFolders, moveChatToFolder, updateFolder, deleteFolder, getLastMessagesForChats, getChatById, getAllTags } from "@/lib/db/queries";
+import { getAllChats, deleteChat, updateChat, getAllFolders, createFolder, moveChatToFolder, updateFolder, deleteFolder, getLastMessagesForChats, getChatById, getAllTags } from "@/lib/db/queries";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { useUIStore } from "@/stores/ui-store";
 import { useChatSearch } from "@/hooks/use-search";
 import { Button } from "@/components/ui/button";
-import type { Chat, Folder as FolderType } from "@/lib/db/schema";
+import type { Chat, Folder as FolderType, Message } from "@/lib/db/schema";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { FolderDialog } from "./folder-dialog";
@@ -79,20 +55,15 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
   const secondaryChatId = useUIStore((state) => state.secondaryChatId);
   const isSplitView = useUIStore((state) => state.isSplitView);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [draggedItem, setDraggedItem] = useState<ListItem | null>(null);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [editingFolder, setEditingFolder] = useState<FolderType | null>(null);
   const [deleteFolderId, setDeleteFolderId] = useState<string | null>(null);
   const [deleteChatId, setDeleteChatId] = useState<string | null>(null);
   const [selectedChats, setSelectedChats] = useState<Set<string>>(new Set());
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
+  const [lastMessagesMap, setLastMessagesMap] = useState<Map<string, Message | undefined>>(new Map());
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
+  const scrollParentRef = useRef<HTMLDivElement>(null);
 
   // Use Dexie live query for reactive updates - filter by project
   const allChats = useLiveQuery(() => getAllChats(), []);
@@ -106,16 +77,27 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
   const folders = useLiveQuery(() => getAllFolders(), []);
   const tags = useLiveQuery(() => getAllTags(), []);
 
-  // Batch fetch last messages for all chats (avoids N+1 queries)
-  // Memoize the chat IDs string to prevent unnecessary re-subscriptions
-  const chatIdsKey = useMemo(() => chats?.map(c => c.id).join(',') ?? '', [chats]);
-  const lastMessagesMap = useLiveQuery(
-    () => {
-      const ids = chatIdsKey.split(',').filter(Boolean);
-      return ids.length > 0 ? getLastMessagesForChats(ids) : Promise.resolve(new Map());
-    },
-    [chatIdsKey]
-  );
+  const filteredFolders = useMemo(() => {
+    if (!folders) return undefined;
+    if (!currentProjectId) return folders;
+    const folderIdsInProject = new Set(
+      (chats || [])
+        .map((chat) => chat.folderId)
+        .filter((folderId): folderId is string => Boolean(folderId))
+    );
+    return folders.filter(
+      (folder) =>
+        folder.projectId === currentProjectId ||
+        (!folder.projectId && folderIdsInProject.has(folder.id))
+    );
+  }, [folders, currentProjectId, chats]);
+
+  // Memoize the chat IDs string to avoid stale message previews
+  const chatIdsKey = useMemo(() => chats?.map(c => c.id).join(",") ?? "", [chats]);
+
+  useEffect(() => {
+    setLastMessagesMap(new Map());
+  }, [chatIdsKey, searchQuery]);
 
   // Use fuzzy search with Fuse.js
   const { chats: filteredChats, matches: messageMatches } = useChatSearch(chats || [], searchQuery);
@@ -145,8 +127,7 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
       // Shift+Click: Range selection
       const start = Math.min(lastSelectedIndex, index);
       const end = Math.max(lastSelectedIndex, index);
-      const items = buildItemsList();
-      const chatItems = items.filter(i => i.type === "chat").slice(start, end + 1);
+      const chatItems = chatItemsList.slice(start, end + 1);
       setSelectedChats(prev => {
         const next = new Set(prev);
         chatItems.forEach(item => {
@@ -227,7 +208,7 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
       await updateFolder(editingFolder.id, { name, color });
       toast.success("Folder updated");
     } else {
-      await createFolder(name, color);
+      await createFolder(name, color, currentProjectId);
       toast.success("Folder created");
     }
   };
@@ -256,90 +237,8 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
     }
   };
 
-  const handleDragStart = (event: DragStartEvent) => {
-    const { active } = event;
-    const activeIdStr = active.id as string;
-    setActiveId(activeIdStr);
-
-    // Find the dragged item - IDs are prefixed with "folder-" or "chat-"
-    const allItems = buildItemsList();
-    const item = allItems.find(i =>
-      (i.type === "folder" && `folder-${i.folder.id}` === activeIdStr) ||
-      (i.type === "chat" && `chat-${i.chat.id}` === activeIdStr)
-    );
-    setDraggedItem(item || null);
-  };
-
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveId(null);
-    setDraggedItem(null);
-
-    if (!over || active.id === over.id) return;
-
-    const activeId = active.id as string;
-    const overId = over.id as string;
-
-    try {
-      // Handle folder reordering
-      if (activeId.startsWith("folder-") && overId.startsWith("folder-")) {
-        const folderIds = folders?.map(f => f.id) || [];
-        const activeIndex = folderIds.indexOf(activeId.replace("folder-", ""));
-        const overIndex = folderIds.indexOf(overId.replace("folder-", ""));
-
-        if (activeIndex !== -1 && overIndex !== -1) {
-          const newOrder = arrayMove(folderIds, activeIndex, overIndex);
-          await reorderFolders(newOrder);
-        }
-        return;
-      }
-
-      // Handle chat reordering within same folder
-      if (activeId.startsWith("chat-") && overId.startsWith("chat-")) {
-        const activeChatId = activeId.replace("chat-", "");
-        const overChatId = overId.replace("chat-", "");
-        const activeChat = filteredChats.find(c => c.id === activeChatId);
-        const overChat = filteredChats.find(c => c.id === overChatId);
-
-        if (activeChat && overChat && activeChat.folderId === overChat.folderId) {
-          // Use filteredChats to match visual order, filter by folder
-          const folderChats = filteredChats.filter(c => c.folderId === activeChat.folderId);
-          const chatIds = folderChats.map(c => c.id);
-          const activeIndex = chatIds.indexOf(activeChatId);
-          const overIndex = chatIds.indexOf(overChatId);
-
-          if (activeIndex !== -1 && overIndex !== -1) {
-            const newOrder = arrayMove(chatIds, activeIndex, overIndex);
-            await reorderChats(newOrder);
-          }
-        }
-        return;
-      }
-
-      // Handle moving chat to folder (drag chat onto folder)
-      if (activeId.startsWith("chat-") && overId.startsWith("folder-")) {
-        const chatId = activeId.replace("chat-", "");
-        const folderId = overId.replace("folder-", "");
-        await moveChatToFolder(chatId, folderId);
-        toast.success("Chat moved to folder");
-        return;
-      }
-
-      // Handle moving chat out of folder (drag to "no-folder" zone)
-      if (activeId.startsWith("chat-") && overId === "no-folder") {
-        const chatId = activeId.replace("chat-", "");
-        await moveChatToFolder(chatId, null);
-        toast.success("Chat moved out of folder");
-        return;
-      }
-    } catch (error) {
-      console.error("Failed to reorder:", error);
-      toast.error("Failed to reorder. Please try again.");
-    }
-  };
-
   const buildItemsList = (): ListItem[] => {
-    if (!chats || !folders) return [];
+    if (!chats || !filteredFolders) return [];
 
     // Group chats by folder
     const chatsByFolder: Record<string, Chat[]> = {};
@@ -357,7 +256,7 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
     const items: ListItem[] = [];
 
     // Add folders
-    folders.forEach(folder => {
+    filteredFolders.forEach(folder => {
       items.push({ type: "folder", folder });
       if (expandedFolders[folder.id]) {
         const folderChats = chatsByFolder[folder.id] || [];
@@ -373,15 +272,71 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
     return items;
   };
 
-  if (!chats || !folders) {
+  const items = useMemo(() => {
+    if (!chats || !filteredFolders) return [];
+    return buildItemsList();
+  }, [filteredChats, filteredFolders, expandedFolders, chats]);
+  const chatItemsList = useMemo(() => items.filter(i => i.type === "chat"), [items]);
+  const chatIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    chatItemsList.forEach((item, index) => {
+      if (item.type === "chat") {
+        map.set(item.chat.id, index);
+      }
+    });
+    return map;
+  }, [chatItemsList]);
+
+  const rowVirtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => scrollParentRef.current,
+    estimateSize: (index) => (items[index]?.type === "folder" ? 40 : 64),
+    overscan: 6,
+  });
+
+  const visibleChatIds = useMemo(() => {
+    const ids: string[] = [];
+    rowVirtualizer.getVirtualItems().forEach((virtualItem) => {
+      const item = items[virtualItem.index];
+      if (item?.type === "chat") {
+        ids.push(item.chat.id);
+      }
+    });
+    return ids;
+  }, [items, rowVirtualizer]);
+
+  useEffect(() => {
+    const idsToLoad = visibleChatIds.filter((id) => !lastMessagesMap.has(id));
+    if (idsToLoad.length === 0) return;
+
+    let cancelled = false;
+    getLastMessagesForChats(idsToLoad)
+      .then((map) => {
+        if (cancelled) return;
+        setLastMessagesMap((prev) => {
+          const next = new Map(prev);
+          map.forEach((value, key) => {
+            next.set(key, value);
+          });
+          return next;
+        });
+      })
+      .catch((error) => {
+        console.error("Failed to load last messages:", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleChatIds, lastMessagesMap]);
+
+  if (!chats || !filteredFolders) {
     return (
       <div className="flex items-center justify-center p-8 text-muted-foreground">
         Loading...
       </div>
     );
   }
-
-  const items = buildItemsList();
 
   if (items.length === 0) {
     return (
@@ -417,33 +372,8 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
     );
   }
 
-  // Get sortable IDs in the exact same order as rendered items
-  // This is critical for dnd-kit to work correctly
-  const sortableIds = (() => {
-    const ids: string[] = ["no-folder"]; // Drop zone at top
-    items.forEach(item => {
-      if (item.type === "folder") {
-        ids.push(`folder-${item.folder.id}`);
-      } else {
-        ids.push(`chat-${item.chat.id}`);
-      }
-    });
-    return ids;
-  })();
-
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={pointerWithin}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-      modifiers={[restrictToVerticalAxis]}
-      measuring={{
-        droppable: {
-          strategy: MeasuringStrategy.Always,
-        },
-      }}
-    >
+    <>
       <div className="flex h-full min-w-0 flex-col overflow-x-hidden">
         <div className="px-4 py-1.5 flex justify-between items-center">
           <span className="text-[10px] font-medium text-muted-foreground/70">Chats</span>
@@ -465,17 +395,33 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
             tags={tags || []}
           />
         )}
-        <ScrollArea className="flex-1 min-h-0 min-w-0">
-          <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-            <div className="pb-4 min-w-0">
-              {/* No-folder drop zone for moving chats out of folders */}
-              <NoFolderDropZone isDragging={!!draggedItem} />
-              {items.map((item, index) => {
-                if (item.type === "folder") {
-                  const folderChatCount = chats?.filter(c => c.folderId === item.folder.id).length || 0;
-                  return (
-                    <SortableFolderItem
-                      key={item.folder.id}
+        <div ref={scrollParentRef} className="flex-1 min-h-0 min-w-0 overflow-y-auto">
+          <div
+            className="pb-4 min-w-0"
+            style={{
+              height: `${rowVirtualizer.getTotalSize()}px`,
+              width: "100%",
+              position: "relative",
+            }}
+          >
+            {rowVirtualizer.getVirtualItems().map((virtualItem) => {
+              const item = items[virtualItem.index];
+              if (!item) return null;
+              if (item.type === "folder") {
+                const folderChatCount = chats?.filter(c => c.folderId === item.folder.id).length || 0;
+                return (
+                  <div
+                    key={virtualItem.key}
+                    ref={rowVirtualizer.measureElement}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      transform: `translateY(${virtualItem.start}px)`,
+                    }}
+                  >
+                    <FolderItem
                       folder={item.folder}
                       isExpanded={expandedFolders[item.folder.id]}
                       onToggle={() => toggleFolder(item.folder.id)}
@@ -483,16 +429,27 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
                       onEdit={() => handleEditFolder(item.folder)}
                       onDelete={() => setDeleteFolderId(item.folder.id)}
                     />
-                  );
-                }
+                  </div>
+                );
+              }
 
-                const chatIndex = items.filter(i => i.type === "chat").findIndex(i => i.type === "chat" && i.chat.id === item.chat.id);
-                const matches = messageMatches.get(item.chat.id);
-                return (
-                  <SortableChatItem
-                    key={item.chat.id}
+              const chatIndex = chatIndexById.get(item.chat.id) ?? 0;
+              const matches = messageMatches.get(item.chat.id);
+              return (
+                <div
+                  key={virtualItem.key}
+                  ref={rowVirtualizer.measureElement}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${virtualItem.start}px)`,
+                  }}
+                >
+                  <ChatItem
                     chat={item.chat}
-                    lastMessage={lastMessagesMap?.get(item.chat.id)}
+                    lastMessage={lastMessagesMap.get(item.chat.id)}
                     searchMatches={matches}
                     isActive={item.chat.id === activeChatId}
                     isSecondary={isSplitView && item.chat.id === secondaryChatId}
@@ -505,27 +462,11 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
                     folders={folders || []}
                     onMoveToFolder={(folderId) => moveChatToFolder(item.chat.id, folderId)}
                   />
-                );
-              })}
-            </div>
-          </SortableContext>
-        </ScrollArea>
-        <DragOverlay>
-          {draggedItem && (
-            <div className="opacity-50">
-              {draggedItem.type === "folder" ? (
-                <div className="flex items-center gap-2 px-4 py-2 bg-background border rounded-lg shadow-sm w-[200px]">
-                  <Folder className="h-3.5 w-3.5 text-primary shrink-0" />
-                  <span className="text-xs font-semibold truncate">{draggedItem.folder.name}</span>
                 </div>
-              ) : (
-                <div className="px-4 py-3 border rounded-lg bg-background shadow-sm w-[240px]">
-                  <div className="text-sm font-medium truncate">{draggedItem.chat.title}</div>
-                </div>
-              )}
-            </div>
-          )}
-        </DragOverlay>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* Folder Dialog */}
@@ -567,12 +508,12 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </DndContext>
+    </>
   );
 }
 
 
-interface SortableFolderItemProps {
+interface FolderItemProps {
   folder: FolderType;
   isExpanded: boolean;
   onToggle: () => void;
@@ -581,50 +522,18 @@ interface SortableFolderItemProps {
   onDelete: () => void;
 }
 
-function SortableFolderItem({ folder, isExpanded, onToggle, chatCount = 0, onEdit, onDelete }: SortableFolderItemProps) {
+function FolderItem({ folder, isExpanded, onToggle, chatCount = 0, onEdit, onDelete }: FolderItemProps) {
   const [isHovered, setIsHovered] = useState(false);
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: `folder-${folder.id}` });
-  const { setNodeRef: setDroppableRef, isOver } = useDroppable({
-    id: `folder-${folder.id}`,
-  });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
 
   return (
     <div
-      ref={(node) => {
-        setNodeRef(node);
-        setDroppableRef(node);
-      }}
-      style={style}
       className={cn(
         "flex max-w-full min-w-0 items-center gap-2 overflow-hidden px-3 py-1.5 mx-2 my-0.5 cursor-pointer hover:bg-accent/50 group rounded-lg transition-colors select-none",
-        isDragging && "opacity-50",
-        isOver && "bg-accent ring-1 ring-primary/50"
       )}
       onClick={onToggle}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <button
-        {...attributes}
-        {...listeners}
-        className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors opacity-30 group-hover:opacity-100 touch-none select-none p-1 -m-1"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <GripVertical className="h-4 w-4 sm:h-3 sm:w-3" />
-      </button>
       {isExpanded ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
       <Folder className="h-3.5 w-3.5" style={folder.color ? { color: folder.color } : undefined} />
       <span className="text-xs font-medium truncate flex-1 min-w-0">{folder.name}</span>
@@ -656,27 +565,6 @@ function SortableFolderItem({ folder, isExpanded, onToggle, chatCount = 0, onEdi
   );
 }
 
-function NoFolderDropZone({ isDragging }: { isDragging: boolean }) {
-  const { setNodeRef, isOver } = useDroppable({
-    id: "no-folder",
-  });
-
-  if (!isDragging && !isOver) return null;
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={cn(
-        "mx-2 px-3 py-2 text-xs text-muted-foreground bg-accent/60 rounded-lg transition-colors mb-2 border border-dashed border-transparent",
-        isOver && "border-primary/50 bg-accent",
-        !isOver && isDragging && "opacity-50"
-      )}
-    >
-      Drop here to remove from folder
-    </div>
-  );
-}
-
 interface SortableChatItemProps {
   chat: Chat;
   lastMessage?: import("@/lib/db/schema").Message;
@@ -693,7 +581,7 @@ interface SortableChatItemProps {
   onMoveToFolder: (folderId: string | null) => void;
 }
 
-function SortableChatItem({
+function ChatItem({
   chat,
   lastMessage,
   searchMatches,
@@ -709,14 +597,6 @@ function SortableChatItem({
   onMoveToFolder,
 }: SortableChatItemProps) {
   const [isHovered, setIsHovered] = useState(false);
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: `chat-${chat.id}` });
 
   // Use search match snippet if available, otherwise last message
   const rawPreview = searchMatches && searchMatches.length > 0
@@ -728,39 +608,21 @@ function SortableChatItem({
   const previewText =
     rawPreview.length > 120 ? `${rawPreview.slice(0, 120).trimEnd()}…` : rawPreview;
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
-
   return (
     <TooltipProvider>
       <div
-        ref={setNodeRef}
-        style={style}
         className={cn(
           "group relative cursor-pointer px-2.5 py-2 mx-2 my-0.5 rounded-lg transition-colors hover:bg-accent/60 select-none max-w-full min-w-0 overflow-hidden",
           isActive && "bg-accent",
           isSecondary && "bg-accent/40 ring-1 ring-primary/30",
           isSelected && "bg-accent/60 ring-1 ring-primary/40",
           isNested && "ml-6",
-          isDragging && "opacity-50"
         )}
         onClick={onClick}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
         <div className="flex items-center gap-1 min-w-0 w-full max-w-full overflow-hidden">
-          <button
-            {...attributes}
-            {...listeners}
-            className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors shrink-0 opacity-30 group-hover:opacity-100 touch-none select-none p-1 -m-1"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <GripVertical className="h-4 w-4 sm:h-3 sm:w-3" />
-          </button>
-
           <Tooltip delayDuration={500}>
             <TooltipTrigger asChild>
               <div className="flex-1 min-w-0 w-0 overflow-hidden">
