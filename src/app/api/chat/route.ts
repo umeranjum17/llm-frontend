@@ -1,12 +1,14 @@
-import { streamText, tool, type CoreMessage } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
-import { createAnthropic } from "@ai-sdk/anthropic";
+import { streamText, stepCountIs, type ModelMessage } from "ai";
 import { z } from "zod";
-import { normalizeModelIdForProviderId } from "@/lib/ai/provider-routing";
 import { isCustomOpenAIProvider, resolveProvider } from "@/lib/providers";
-import { McpManager, type ToolMetadata } from "@/lib/mcp/mcp-manager";
 import type { McpServer } from "@/lib/db/schema";
 import { getModelCapabilities, type ToolCallingTier } from "@/lib/constants/model-capabilities";
+import {
+  createModel,
+  loadMcpTools,
+  buildToolInstructions,
+} from "@/lib/ai/chat-executor";
+import { countTokens } from "@/lib/utils/token-counter";
 
 /**
  * Tier-based maxSteps for tool calling.
@@ -163,126 +165,106 @@ export async function POST(req: Request) {
     }
 
     const effectiveApiKey = apiKey || "local";
-    const normalizedModelId = normalizeModelIdForProviderId(resolved.id, modelId);
 
     // Get model capabilities for advanced features
     const capabilities = getModelCapabilities(modelId);
     const isAnthropicProvider = resolved.kind === "anthropic";
-    const isOpenAIProvider = resolved.id === "openai";
 
-    const model = (() => {
-      if (isAnthropicProvider) {
-        const anthropic = createAnthropic({ apiKey: effectiveApiKey });
-        return anthropic(normalizedModelId);
-      }
+    // Create model using shared executor
+    const model = createModel({
+      providerId,
+      providerBaseUrl,
+      modelId,
+      apiKey: effectiveApiKey,
+    });
 
-      if (resolved.baseUrl) {
-        const openrouter = createOpenAI({
-          apiKey: effectiveApiKey,
-          baseURL: resolved.baseUrl,
-        });
-        return openrouter(normalizedModelId);
-      }
+    // Load MCP tools using shared executor
+    console.log(`[Chat] Loading MCP tools for ${mcpServers.length} servers`);
+    const { tools: allTools, metadata: mcpMetadata } = await loadMcpTools(
+      mcpServers as McpServer[],
+      enabledTools
+    );
 
-      const openai = createOpenAI({ apiKey: effectiveApiKey });
-      return openai(normalizedModelId);
-    })();
-
-
-
-    // Build tools object imperatively to avoid TypeScript spreading issues
-    const allTools: Record<string, any> = {};
-
-    // Load MCP Tools (use singleton for connection pooling)
-    const mcpManager = McpManager.getInstance();
-    let mcpMetadata: ToolMetadata[] = [];
-
-    if (mcpServers && mcpServers.length > 0) {
-      try {
-        // Filter for enabled servers if not already done on client
-        const enabledMcpServers = (mcpServers as McpServer[]).filter(s => s.enabled);
-        console.log(`[MCP] Fetching tools for ${enabledMcpServers.length} enabled servers:`, enabledMcpServers.map(s => s.name).join(', '));
-        const { tools: loadedTools, metadata } = await mcpManager.getTools(enabledMcpServers);
-
-        // Apply enabledTools allowlist if provided
-        // This allows per-chat or per-model tool restrictions
-        // IMPORTANT: Only apply filter if at least one MCP tool matches, to avoid
-        // accidentally zeroing out all tools when enabledTools contains non-MCP IDs
-        const enabledToolsSet = enabledTools.length > 0 ? new Set(enabledTools) : null;
-
-        if (enabledToolsSet) {
-          // First, check if ANY MCP tool matches the allowlist
-          const hasMatchingMcpTool = metadata.some(m =>
-            enabledToolsSet.has(m.fullName) || enabledToolsSet.has(m.toolName)
-          );
-
-          if (hasMatchingMcpTool) {
-            // Filter tools by allowlist
-            for (const [toolName, toolDef] of Object.entries(loadedTools)) {
-              // Check if tool name matches any pattern in enabledTools
-              // Match by full name (provider-safe) or original tool name from metadata
-              const toolMeta = metadata.find(m => m.fullName === toolName);
-              const originalName = toolMeta?.toolName || toolName;
-
-              if (enabledToolsSet.has(toolName) || enabledToolsSet.has(originalName)) {
-                allTools[toolName] = toolDef;
-              }
-            }
-            // Filter metadata too
-            mcpMetadata = metadata.filter(m =>
-              enabledToolsSet.has(m.fullName) || enabledToolsSet.has(m.toolName)
-            );
-            console.log(`[MCP] Applied enabledTools filter: ${Object.keys(allTools).length} of ${Object.keys(loadedTools).length} tools allowed`);
-          } else {
-            // enabledTools doesn't contain any MCP tool names - don't filter MCP tools
-            // This prevents accidentally zeroing out all tools when enabledTools
-            // contains only non-MCP identifiers (e.g., built-in tool names)
-            Object.assign(allTools, loadedTools);
-            mcpMetadata = metadata;
-            console.log(`[MCP] enabledTools provided but no MCP tools matched - using all ${Object.keys(loadedTools).length} tools`);
-          }
-        } else {
-          // No filter - use all tools
-          Object.assign(allTools, loadedTools);
-          mcpMetadata = metadata;
-        }
-
-        console.log(`[MCP] Loaded ${Object.keys(allTools).length} external tools:`, Object.keys(allTools).join(', '));
-      } catch (e) {
-        console.error("[MCP] Failed to load tools:", e);
-      }
-    }
-
-    // Check if we have any tools
     const hasTools = Object.keys(allTools).length > 0;
+    console.log(`[Chat] Loaded ${Object.keys(allTools).length} tools`);
 
-    // Build instruction messages for tools
-    const toolInstructions: CoreMessage[] = [];
+    // Build tool instructions using shared executor
+    const toolInstructions = buildToolInstructions(
+      mcpMetadata,
+      capabilities.toolCallingTier,
+      hasTools
+    );
 
-    // Add MCP tool instructions if any MCP tools are loaded
     if (mcpMetadata.length > 0) {
-      const dynamicInstructions = mcpManager.buildToolInstructions(
-        mcpMetadata,
-        capabilities.toolCallingTier
-      );
-
-      toolInstructions.push({
-        role: "system",
-        content: dynamicInstructions,
-      });
-
-      console.log(`[MCP] Added dynamic tool instructions for ${mcpMetadata.length} tools`);
+      console.log(`[Chat] Added tool instructions for ${mcpMetadata.length} tools`);
     } else if (!hasTools) {
-      // No tools available - tell the model to respond without external capabilities
-      toolInstructions.push({
-        role: "system",
-        content: "You do not have access to external tools, web search, or real-time data. Answer questions based on your training knowledge. If asked to search online, check news, or access external services, politely explain that you cannot do that in this mode and offer to help with what you know.",
-      });
       console.log('[Chat] No tools available - added no-tools instruction');
     }
 
     // Stream the response
-    const coreMessages = [...toolInstructions, ...messages] as unknown as CoreMessage[];
+    const coreMessages = [...toolInstructions, ...messages] as unknown as ModelMessage[];
+
+    // === TOKEN BREAKDOWN LOGGING ===
+    const tokenBreakdown = {
+      systemMessages: 0,
+      toolInstructions: 0,
+      userMessages: 0,
+      assistantMessages: 0,
+      toolSchemas: 0,
+      total: 0,
+    };
+
+    // Count system messages (from context builder)
+    for (const msg of messages) {
+      const content = typeof msg.content === 'string'
+        ? msg.content
+        : JSON.stringify(msg.content);
+      const tokens = countTokens(content);
+
+      if (msg.role === 'system') {
+        tokenBreakdown.systemMessages += tokens;
+      } else if (msg.role === 'user') {
+        tokenBreakdown.userMessages += tokens;
+      } else if (msg.role === 'assistant') {
+        tokenBreakdown.assistantMessages += tokens;
+      }
+    }
+
+    // Count tool instructions (separate from context builder messages)
+    for (const instruction of toolInstructions) {
+      if (instruction.role === 'system') {
+        const content = typeof instruction.content === 'string'
+          ? instruction.content
+          : JSON.stringify(instruction.content);
+        tokenBreakdown.toolInstructions += countTokens(content);
+      }
+    }
+
+    // Estimate tool schema tokens (schemas sent to API)
+    if (hasTools) {
+      for (const [toolName, toolDef] of Object.entries(allTools)) {
+        const schemaStr = JSON.stringify(toolDef.parameters || {});
+        const descTokens = countTokens(toolDef.description || '');
+        const schemaTokens = countTokens(schemaStr);
+        tokenBreakdown.toolSchemas += descTokens + schemaTokens;
+      }
+    }
+
+    tokenBreakdown.total =
+      tokenBreakdown.systemMessages +
+      tokenBreakdown.toolInstructions +
+      tokenBreakdown.userMessages +
+      tokenBreakdown.assistantMessages +
+      tokenBreakdown.toolSchemas;
+
+    console.log(`[Chat] 📊 TOKEN BREAKDOWN:`);
+    console.log(`  System messages: ${tokenBreakdown.systemMessages}`);
+    console.log(`  Tool instructions: ${tokenBreakdown.toolInstructions}`);
+    console.log(`  User messages: ${tokenBreakdown.userMessages}`);
+    console.log(`  Assistant messages: ${tokenBreakdown.assistantMessages}`);
+    console.log(`  Tool schemas: ${tokenBreakdown.toolSchemas} (${Object.keys(allTools).length} tools)`);
+    console.log(`  ESTIMATED TOTAL: ${tokenBreakdown.total}`);
+    // === END TOKEN BREAKDOWN ===
 
     // Request usage/cost data from providers that support it (OpenRouter, OpenAI)
     const providerOptions: Record<string, any> = {};
@@ -293,20 +275,94 @@ export async function POST(req: Request) {
       };
     }
 
-    // For Anthropic, add cache breakpoints to system messages for prompt caching
-    // This marks the end of cacheable content so subsequent requests can reuse it
-    if (isAnthropicProvider && capabilities.supportsPromptCaching) {
-      // Mark the last system message for caching
-      const lastSystemIdx = coreMessages.map((m, i) => m.role === 'system' ? i : -1).filter(i => i !== -1).pop();
+    // Prompt caching configuration by provider
+    // See: https://openrouter.ai/docs/guides/best-practices/prompt-caching
+    //
+    // Provider support:
+    // - OpenRouter + Claude/Gemini: requires cache_control on content parts (not supported by AI SDK message format)
+    //   → For now, we rely on Gemini's implicit caching and Claude's automatic caching via OpenRouter
+    // - OpenRouter + OpenAI/Grok/DeepSeek/Groq: automatic caching (no config needed)
+    // - Anthropic (direct): uses AI SDK's providerOptions.anthropic.cacheControl on messages
+    // - OpenAI (direct): automatic for 1024+ tokens
+    // - Google Gemini: implicit caching is automatic for 2.5+ models
+
+    // Note: OpenRouter's AI SDK provider uses providerOptions for cache control:
+    //   { type: "text", text: "...", providerOptions: { openrouter: { cacheControl: { type: "ephemeral" } } } }
+    //
+    // This format is compatible with the AI SDK and properly passes through to OpenRouter.
+
+    if (providerId === 'openrouter') {
+      const isGeminiModel = modelId.toLowerCase().includes('gemini');
+      const isClaudeModel = modelId.toLowerCase().includes('claude');
+
+      // Enable explicit caching for Gemini and Claude via OpenRouter
+      // Uses providerOptions.openrouter.cacheControl format (AI SDK compatible)
+      if (isGeminiModel || isClaudeModel) {
+        // Find the last system message to add cache control breakpoint
+        const lastSystemIdx = coreMessages
+          .map((m, i) => m.role === 'system' ? i : -1)
+          .filter(i => i !== -1)
+          .pop();
+
+        if (lastSystemIdx !== undefined && lastSystemIdx >= 0) {
+          const msg = coreMessages[lastSystemIdx] as any;
+
+          // IMPORTANT: Change role to 'user' to allow array content
+          // AI SDK requires system messages to have string content
+          msg.role = 'user';
+
+          // Convert string content to array format with providerOptions
+          if (typeof msg.content === 'string') {
+            msg.content = [
+              {
+                type: 'text',
+                text: msg.content,
+                providerOptions: {
+                  openrouter: {
+                    cacheControl: { type: 'ephemeral' }
+                  }
+                }
+              }
+            ];
+          } else if (Array.isArray(msg.content)) {
+            // Add cacheControl to the last text part
+            const lastTextPartIdx = msg.content
+              .map((p: any, i: number) => p.type === 'text' ? i : -1)
+              .filter((i: number) => i !== -1)
+              .pop();
+
+            if (lastTextPartIdx !== undefined && lastTextPartIdx >= 0) {
+              msg.content[lastTextPartIdx].providerOptions = {
+                openrouter: {
+                  cacheControl: { type: 'ephemeral' }
+                }
+              };
+            }
+          }
+
+          console.log(`[Chat] Enabled prompt caching for ${isGeminiModel ? 'Gemini' : 'Claude'} via OpenRouter (as user message)`);
+        }
+      } else {
+        console.log(`[Chat] Using automatic prompt caching via OpenRouter (${modelId})`);
+      }
+    } else if (isAnthropicProvider && capabilities.supportsPromptCaching) {
+      // Direct Anthropic SDK: use AI SDK's providerOptions format for cache control
+      const lastSystemIdx = coreMessages
+        .map((m, i) => m.role === 'system' ? i : -1)
+        .filter(i => i !== -1)
+        .pop();
+
       if (lastSystemIdx !== undefined && lastSystemIdx >= 0) {
-        const msg = coreMessages[lastSystemIdx] as any;
-        // Add cache control to mark this as cacheable
-        msg.experimental_providerMetadata = {
+        (coreMessages[lastSystemIdx] as any).providerOptions = {
           anthropic: { cacheControl: { type: 'ephemeral' } }
         };
+        console.log(`[Chat] Enabled prompt caching (direct Anthropic)`);
       }
-      console.log('[Chat] Enabled Anthropic prompt caching');
+    } else if (providerId === 'openai') {
+      // OpenAI: automatic caching for 1024+ tokens, no config needed
+      console.log(`[Chat] OpenAI automatic prompt caching enabled (1024+ tokens)`);
     }
+    // Google Gemini (direct): implicit caching is automatic for 2.5+ models, no config needed
 
     // For models with extended thinking, configure thinking options
     if (capabilities.supportsThinking) {
@@ -335,8 +391,8 @@ export async function POST(req: Request) {
       messages: coreMessages,
       // Pass undefined instead of empty object to avoid provider compatibility issues
       tools: hasTools ? allTools : undefined,
-      // Tier-based maxSteps to prevent weaker models from spiraling
-      maxSteps,
+      // Tier-based step limit to prevent weaker models from spiraling
+      stopWhen: hasTools ? stepCountIs(maxSteps) : undefined,
       // Request usage data from providers
       providerOptions,
     });
@@ -353,29 +409,38 @@ export async function POST(req: Request) {
 
           try {
             for await (const part of result.fullStream) {
+              // DEBUG: Log stream events (OpenRouter uses 'text' property for text-delta)
+              console.log(`[Chat] Stream event: ${part.type}`,
+                part.type === 'text-delta'
+                  ? { text: (part as any).text?.slice(0, 50) }
+                  : part.type === 'finish' || part.type === 'finish-step'
+                    ? '(usage data)'
+                    : part
+              );
+
               // Log tool calls and results for debugging
               if (part.type === 'tool-call') {
-                console.log(`[Chat] Tool call: ${part.toolName}`, part.args);
+                console.log(`[Chat] Tool call: ${part.toolName}`, part.input);
 
-                // Check for MULTI_EXECUTE_TOOL with empty/missing args (common failure)
+                // Check for MULTI_EXECUTE_TOOL with empty/missing input (common failure)
                 if (part.toolName.includes('MULTI_EXECUTE_TOOL')) {
-                  const args = part.args as any;
-                  if (!args?.tools || (Array.isArray(args.tools) && args.tools.length === 0)) {
+                  const input = part.input as any;
+                  if (!input?.tools || (Array.isArray(input.tools) && input.tools.length === 0)) {
                     console.warn(`[Chat] MULTI_EXECUTE_TOOL called with empty tools array`);
-                  } else if (args.tools?.some((t: any) => !t.arguments || Object.keys(t.arguments).length === 0)) {
+                  } else if (input.tools?.some((t: any) => !t.arguments || Object.keys(t.arguments).length === 0)) {
                     console.warn(`[Chat] MULTI_EXECUTE_TOOL called with empty arguments for some tools`);
                   }
                 }
               }
 
               if (part.type === 'tool-result') {
-                console.log(`[Chat] Tool result: ${part.toolName}`, part.result);
+                console.log(`[Chat] Tool result: ${part.toolName}`, part.output);
 
                 // Track failures for retry detection
-                const resultData = part.result as any;
+                const resultData = part.output as any;
                 const isError = resultData?.error ||
-                                resultData?.isError ||
-                                (typeof resultData === 'string' && resultData.toLowerCase().includes('error'));
+                  resultData?.isError ||
+                  (typeof resultData === 'string' && resultData.toLowerCase().includes('error'));
 
                 if (isError) {
                   const failCount = (toolFailures.get(part.toolName) || 0) + 1;
@@ -404,10 +469,12 @@ export async function POST(req: Request) {
                 console.error(`[Chat] Error in stream:`, part.error);
               }
 
-              // Log usage data from step-finish and finish events
-              if (part.type === 'step-finish' || part.type === 'finish') {
+              // Log usage data (v5: usage comes through different events)
+              if ((part as any).usage) {
                 console.log(`[Chat] ${part.type} event - usage:`, (part as any).usage);
-                console.log(`[Chat] ${part.type} event - experimental_providerMetadata:`, (part as any).experimental_providerMetadata);
+              }
+              if ((part as any).providerMetadata) {
+                console.log(`[Chat] ${part.type} event - providerMetadata:`, (part as any).providerMetadata);
               }
 
               controller.enqueue(

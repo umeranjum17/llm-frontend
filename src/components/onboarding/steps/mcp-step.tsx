@@ -31,6 +31,19 @@ interface ComposioConfig {
     enabledToolkits: string[];
 }
 
+/**
+ * Derive a unique, deterministic userId from the Composio API key.
+ * SECURITY: This ensures each user's Composio sessions are isolated.
+ */
+function deriveUserIdFromApiKey(apiKey: string): string {
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < apiKey.length; i++) {
+        hash ^= apiKey.charCodeAt(i);
+        hash = (hash * 0x01000193) >>> 0;
+    }
+    return `user_${hash.toString(36)}`;
+}
+
 function saveComposioConfig(config: ComposioConfig) {
     if (typeof window === "undefined") return;
     localStorage.setItem(COMPOSIO_STORAGE_KEY, JSON.stringify(config));
@@ -50,9 +63,11 @@ export function McpStep({ onComplete, onBack, onSkip }: McpStepProps) {
         setIsLoading(true);
         try {
             // Save Composio config to localStorage (same format as settings page)
+            // SECURITY: Derive unique userId from API key to isolate user sessions
+            const apiKey = composioKey.trim();
             const config: ComposioConfig = {
-                apiKey: composioKey.trim(),
-                userId: "default",
+                apiKey,
+                userId: deriveUserIdFromApiKey(apiKey),
                 enabledToolkits: [],
             };
             saveComposioConfig(config);

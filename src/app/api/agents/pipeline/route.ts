@@ -1,10 +1,7 @@
 import { z } from "zod";
-import { generateText } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
-import { createAnthropic } from "@ai-sdk/anthropic";
 import type { PipelineStep, PipelineConfig, Agent, McpServer } from "@/lib/db/schema";
+import { executeChat, type ChatMessage } from "@/lib/ai/chat-executor";
 import { PROVIDERS } from "@/lib/providers/registry";
-import { McpManager, type ToolMetadata } from "@/lib/mcp/mcp-manager";
 
 export const runtime = "nodejs";
 
@@ -17,6 +14,9 @@ const PipelineStepSchema = z.object({
   providerId: z.string().optional(),
   enabledTools: z.array(z.string()).optional(), // Tool names available to this LLM step
   mcpServerIds: z.array(z.string()).optional(), // MCP servers available to this LLM step
+  toolkitOverrides: z.record(z.boolean()).optional(), // Per-step Composio toolkit enable/disable overrides
+  memoryEnabled: z.boolean().optional(), // Whether to include memory context
+  includeHistory: z.boolean().optional(), // Whether to include chat history
   imageModelId: z.string().optional(),
   imageProviderId: z.string().optional(),
   imageSize: z.enum(["256x256", "512x512", "1024x1024", "1024x1792", "1792x1024", "auto"]).optional(),
@@ -43,6 +43,17 @@ const RequestSchema = z.object({
   chatId: z.string(),
   providerBaseUrl: z.string().optional(),
   mcpServers: z.array(z.any()).optional(), // McpServer type from schema
+  agentSystemPrompt: z.string().optional(), // Agent-level system prompt to inject into steps
+  memoryContext: z.string().optional(), // Pre-fetched memory context for steps that need it
+  chatHistory: z.array(z.object({
+    role: z.enum(["system", "user", "assistant"]),
+    content: z.string(),
+  })).optional(), // Chat history for steps that need context
+  agentToolPolicy: z.object({
+    disabledTools: z.array(z.string()).optional(),
+  }).optional(), // Agent-level tool restrictions
+  agentEnabledTools: z.array(z.string()).optional(), // Agent-level enabled tools
+  composioGlobalToolkits: z.array(z.string()).optional(), // Global Composio toolkit config for step session creation
 });
 
 /**
@@ -177,72 +188,89 @@ function getProviderBaseUrl(providerId: string): string {
 }
 
 /**
- * Create a model instance based on provider and model ID
+ * Derive a unique, deterministic userId from the Composio API key.
+ * SECURITY: This ensures each user's Composio sessions are isolated.
  */
-function createModel(modelId: string, apiKey: string, providerId?: string) {
-  const effectiveProviderId = providerId || "openrouter";
-
-  console.log("[Pipeline createModel] Creating model:", {
-    modelId,
-    providerId,
-    effectiveProviderId,
-  });
-
-  // Handle Anthropic provider (direct API)
-  if (effectiveProviderId === "anthropic") {
-    console.log("[Pipeline createModel] Using Anthropic provider");
-    const anthropic = createAnthropic({ apiKey });
-    return anthropic(modelId.replace("anthropic/", ""));
+function deriveUserIdFromApiKey(apiKey: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < apiKey.length; i++) {
+    hash ^= apiKey.charCodeAt(i);
+    hash = (hash * 0x01000193) >>> 0;
   }
-
-  // Handle OpenAI direct (not via OpenRouter)
-  if (effectiveProviderId === "openai") {
-    console.log("[Pipeline createModel] Using OpenAI direct provider");
-    const openai = createOpenAI({ apiKey });
-    return openai(modelId.replace("openai/", ""));
-  }
-
-  // Default to OpenRouter or other OpenAI-compatible providers
-  // This includes Google models via OpenRouter
-  const baseUrl = getProviderBaseUrl(effectiveProviderId);
-  console.log("[Pipeline createModel] Using OpenRouter/compatible provider with baseURL:", baseUrl);
-  const openai = createOpenAI({
-    apiKey,
-    baseURL: baseUrl,
-  });
-  return openai(modelId);
+  return `user_${hash.toString(36)}`;
 }
 
 /**
- * Build AI SDK tools from MCP servers using McpManager (new proxy system)
+ * Calculate effective toolkits for a step based on global config and step overrides.
+ * Returns the list of toolkit keys that should be enabled for this step.
  */
-async function buildToolsFromMcpServers(
-  mcpServers: McpServer[],
-  stepMcpServerIds?: string[]
-): Promise<{ tools: Record<string, any>; metadata: ToolMetadata[] }> {
-  // Filter servers based on step configuration
-  const enabledServers = stepMcpServerIds && stepMcpServerIds.length > 0
-    ? mcpServers.filter((s) => stepMcpServerIds.includes(s.id) && s.enabled)
-    : [];
-
-  if (enabledServers.length === 0) {
-    return { tools: {}, metadata: [] };
+function getEffectiveToolkits(
+  globalToolkits: string[] | undefined,
+  stepOverrides: Record<string, boolean> | undefined
+): string[] | undefined {
+  if (!globalToolkits || globalToolkits.length === 0) {
+    return undefined;
   }
 
-  // Use McpManager to fetch tools dynamically (same as chat route)
-  const mcpManager = McpManager.getInstance();
+  if (!stepOverrides || Object.keys(stepOverrides).length === 0) {
+    return globalToolkits; // No overrides, use global
+  }
+
+  // Apply overrides: start with global, then apply step-level changes
+  const effectiveSet = new Set(globalToolkits);
+  for (const [toolkit, enabled] of Object.entries(stepOverrides)) {
+    if (enabled) {
+      effectiveSet.add(toolkit);
+    } else {
+      effectiveSet.delete(toolkit);
+    }
+  }
+
+  return Array.from(effectiveSet);
+}
+
+/**
+ * Create a step-specific Composio session if toolkit overrides differ from global.
+ * Returns the new MCP URL or null if no change needed.
+ */
+async function createStepComposioSession(
+  composioApiKey: string,
+  stepToolkits: string[],
+  baseUrl: string
+): Promise<{ url: string; headers?: Record<string, string> } | null> {
   try {
-    const { tools, metadata } = await mcpManager.getTools(enabledServers);
-    console.log(`[Pipeline] Loaded ${Object.keys(tools).length} tools from ${enabledServers.length} MCP servers`);
-    return { tools, metadata };
+    // SECURITY: Derive unique userId from API key to isolate user sessions
+    const userId = deriveUserIdFromApiKey(composioApiKey);
+    console.log("[Pipeline] Creating step-specific Composio session with toolkits:", stepToolkits);
+
+    const response = await fetch(`${baseUrl}/api/composio/session`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-composio-key": composioApiKey,
+      },
+      body: JSON.stringify({
+        userId,
+        toolkits: stepToolkits,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error("[Pipeline] Failed to create step Composio session:", response.statusText);
+      return null;
+    }
+
+    const { mcp } = await response.json();
+    console.log("[Pipeline] Step-specific Composio session created:", mcp.url);
+    return { url: mcp.url, headers: mcp.headers };
   } catch (error) {
-    console.error("[Pipeline] Failed to load MCP tools:", error);
-    return { tools: {}, metadata: [] };
+    console.error("[Pipeline] Error creating step Composio session:", error);
+    return null;
   }
 }
 
 /**
- * Execute a single LLM step
+ * Execute a single LLM step using the shared chat executor
  */
 interface LLMStepResult {
   text: string;
@@ -253,59 +281,78 @@ interface LLMStepResult {
   }>;
 }
 
-async function executeLLMStep(
-  step: PipelineStep,
-  input: string,
-  apiKey: string,
-  images?: string[],  // Optional images for vision models
-  mcpServers?: McpServer[],
-  baseUrl?: string,
-  stepIndex?: number  // Position in pipeline (0 = first step)
-): Promise<LLMStepResult> {
+interface LLMStepOptions {
+  step: PipelineStep;
+  input: string;
+  apiKey: string;
+  images?: string[];
+  mcpServers?: McpServer[];
+  baseUrl?: string;
+  stepIndex?: number;
+  agentSystemPrompt?: string;
+  memoryContext?: string;
+  chatHistory?: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+  agentEnabledTools?: string[];
+  agentDisabledTools?: string[];
+  // Composio step-specific session support
+  composioApiKey?: string;
+  composioGlobalToolkits?: string[];
+  pipelineBaseUrl?: string; // For creating step-specific sessions
+}
+
+async function executeLLMStep(options: LLMStepOptions): Promise<LLMStepResult> {
+  const {
+    step,
+    input,
+    apiKey,
+    images,
+    mcpServers,
+    baseUrl,
+    stepIndex,
+    agentSystemPrompt,
+    memoryContext,
+    chatHistory,
+    agentEnabledTools,
+    agentDisabledTools,
+    composioApiKey,
+    composioGlobalToolkits,
+    pipelineBaseUrl,
+  } = options;
+
   const modelId = step.modelId || "openai/gpt-4o-mini";
   const providerId = step.providerId || "openrouter";
 
   console.log("[Pipeline LLM Step] Step config:", {
     stepId: step.id,
-    stepProviderId: step.providerId,
-    effectiveProviderId: providerId,
+    stepName: step.name,
     modelId,
+    providerId,
     hasImages: images && images.length > 0,
     mcpServerIds: step.mcpServerIds,
+    stepEnabledTools: step.enabledTools,
+    agentEnabledTools,
+    agentDisabledTools,
     stepIndex,
+    memoryEnabled: step.memoryEnabled,
+    includeHistory: step.includeHistory,
   });
 
-  const model = createModel(modelId, apiKey, providerId);
+  // Build system prompt - combine agent-level and step-level prompts
+  let systemPrompt = "";
 
-  // Build message content - include images if available (for vision models)
-  let messageContent: any;
-  if (images && images.length > 0) {
-    // Multi-part content with text and images
-    messageContent = [
-      { type: "text", text: input },
-      ...images.map(img => ({
-        type: "image",
-        image: img,  // AI SDK accepts base64 or URL
-      })),
-    ];
-    console.log("[Pipeline LLM Step] Including", images.length, "images in request");
-  } else {
-    messageContent = input;
+  // Start with agent-level system prompt if provided
+  if (agentSystemPrompt) {
+    systemPrompt = agentSystemPrompt;
   }
 
-  // Build tools if MCP servers are enabled for this step
-  let tools: Record<string, any> | undefined;
-  if (mcpServers && step.mcpServerIds && step.mcpServerIds.length > 0) {
-    const result = await buildToolsFromMcpServers(mcpServers as McpServer[], step.mcpServerIds);
-    tools = Object.keys(result.tools).length > 0 ? result.tools : undefined;
+  // Add step-specific prompt
+  if (step.systemPrompt) {
+    systemPrompt = systemPrompt
+      ? `${systemPrompt}\n\n${step.systemPrompt}`
+      : step.systemPrompt;
   }
 
-  const hasTools = tools && Object.keys(tools).length > 0;
-
-  console.log("[Pipeline LLM Step] Tools available:", hasTools ? Object.keys(tools!).length : 0);
-
-  // Build system prompt - add context for steps receiving input from previous steps
-  let systemPrompt = step.systemPrompt || "";
+  // Add context for steps receiving input from previous steps
   if (stepIndex !== undefined && stepIndex > 0) {
     const pipelineContext = `You are receiving input that has been processed by a previous AI step in a pipeline. The input below is the output from that previous step, not directly from the user. Process this input according to your instructions and produce the appropriate output for the next step or final result.`;
     systemPrompt = systemPrompt
@@ -313,35 +360,110 @@ async function executeLLMStep(
       : pipelineContext;
   }
 
-  const result = await generateText({
-    model,
-    system: systemPrompt,
-    messages: [{ role: "user", content: messageContent }],
-    maxTokens: 1000,
-    ...(hasTools ? { tools, maxSteps: 5 } : {}),
-  });
+  // Filter MCP servers for this step
+  let stepMcpServers = mcpServers && step.mcpServerIds && step.mcpServerIds.length > 0
+    ? mcpServers.filter((s) => step.mcpServerIds!.includes(s.id))
+    : undefined;
 
-  // Collect all tool calls from all steps
-  const allToolCalls: LLMStepResult["toolCalls"] = [];
-  if (result.steps) {
-    for (const stepResult of result.steps) {
-      if (stepResult.toolCalls && stepResult.toolCalls.length > 0) {
-        for (const tc of stepResult.toolCalls) {
-          allToolCalls.push({
-            toolName: tc.toolName,
-            args: tc.args,
-            result: stepResult.toolResults?.find((tr: any) => tr.toolCallId === tc.toolCallId)?.result,
-          });
+  // Handle step-specific Composio toolkit overrides
+  // Strategy: Always create a step-specific session when there are toolkit overrides
+  // This ensures the Composio search tool only returns tools from allowed toolkits
+  if (
+    stepMcpServers &&
+    step.toolkitOverrides &&
+    Object.keys(step.toolkitOverrides).length > 0 &&
+    composioApiKey &&
+    pipelineBaseUrl
+  ) {
+    const composioServer = stepMcpServers.find(s => s.id === "composio-consolidated");
+    if (composioServer && composioGlobalToolkits) {
+      // Calculate effective toolkits for this step
+      const effectiveToolkits = getEffectiveToolkits(composioGlobalToolkits, step.toolkitOverrides);
+
+      // Check if effective toolkits differ from global
+      const globalSet = new Set(composioGlobalToolkits);
+      const effectiveSet = new Set(effectiveToolkits || []);
+      const toolkitsDiffer =
+        globalSet.size !== effectiveSet.size ||
+        ![...globalSet].every(t => effectiveSet.has(t));
+
+      if (toolkitsDiffer && effectiveToolkits && effectiveToolkits.length > 0) {
+        console.log("[Pipeline LLM Step] Step has toolkit overrides, creating step-specific session");
+        console.log("[Pipeline LLM Step] Global toolkits:", composioGlobalToolkits);
+        console.log("[Pipeline LLM Step] Effective toolkits for step:", effectiveToolkits);
+
+        // Create step-specific Composio session with only the allowed toolkits
+        // This ensures the search tool only returns tools from these toolkits
+        const stepSession = await createStepComposioSession(
+          composioApiKey,
+          effectiveToolkits,
+          pipelineBaseUrl
+        );
+
+        if (stepSession) {
+          stepMcpServers = stepMcpServers.map(s =>
+            s.id === "composio-consolidated"
+              ? { ...s, url: stepSession.url, headers: stepSession.headers }
+              : s
+          );
+          console.log("[Pipeline LLM Step] Using step-specific Composio session URL:", stepSession.url);
         }
       }
     }
   }
 
-  console.log("[Pipeline LLM Step] Tool calls made:", allToolCalls.length);
+  // Build messages array
+  const messages: ChatMessage[] = [];
+
+  // Include chat history if enabled for this step
+  if (step.includeHistory && chatHistory && chatHistory.length > 0) {
+    messages.push(...chatHistory);
+  }
+
+  // Build user message content (with optional images)
+  let userContent: ChatMessage["content"];
+  if (images && images.length > 0) {
+    userContent = [
+      { type: "text", text: input },
+      ...images.map(img => ({ type: "image", image: img })),
+    ];
+    console.log("[Pipeline LLM Step] Including", images.length, "images in request");
+  } else {
+    userContent = input;
+  }
+  messages.push({ role: "user", content: userContent });
+
+  // Determine if memory should be included
+  // Default: enabled for first step, disabled for subsequent steps
+  const shouldIncludeMemory = step.memoryEnabled ?? (stepIndex === 0);
+
+  // Merge agent-level and step-level tool settings
+  // Step-level settings override agent-level if specified
+  const effectiveEnabledTools = step.enabledTools || agentEnabledTools;
+  const effectiveDisabledTools = agentDisabledTools;
+
+  // Execute using shared chat executor
+  const result = await executeChat(
+    {
+      providerId,
+      providerBaseUrl: baseUrl,
+      modelId,
+      apiKey,
+      systemPrompt: systemPrompt || undefined,
+      mcpServers: stepMcpServers,
+      enabledTools: effectiveEnabledTools,
+      disabledTools: effectiveDisabledTools,
+      memoryContext: shouldIncludeMemory ? memoryContext : undefined,
+    },
+    messages,
+    { maxTokens: 2000 }
+  );
+
+  console.log("[Pipeline LLM Step] Completed with", result.toolCalls?.length || 0, "tool calls");
 
   return {
     text: result.text,
-    toolCalls: allToolCalls.length > 0 ? allToolCalls : undefined,
+    toolCalls: result.toolCalls,
   };
 }
 
@@ -530,8 +652,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const { pipeline, userInput, userImages, chatId, providerBaseUrl, mcpServers } = parsed.data;
+    const { pipeline, userInput, userImages, chatId, providerBaseUrl, mcpServers, agentSystemPrompt, memoryContext, chatHistory, agentToolPolicy, agentEnabledTools, composioGlobalToolkits } = parsed.data;
     const apiKey = req.headers.get("X-API-Key");
+    const composioApiKey = req.headers.get("X-Composio-Key") || undefined;
+
+    console.log("[Pipeline] API Key present:", !!apiKey, "length:", apiKey?.length, "prefix:", apiKey?.slice(0, 10));
+    console.log("[Pipeline] Provider base URL:", providerBaseUrl);
 
     if (!apiKey) {
       return new Response(
@@ -591,7 +717,24 @@ export async function POST(req: Request) {
                     // Pass images to the first LLM step (for vision models like GPT-4o)
                     // Only include images if this is the first step or step explicitly requests them
                     const stepImages = i === 0 ? context.userImages : undefined;
-                    const llmResult = await executeLLMStep(step, input, apiKey, stepImages, mcpServers, baseUrl, i);
+                    const llmResult = await executeLLMStep({
+                      step,
+                      input,
+                      apiKey,
+                      images: stepImages,
+                      mcpServers: mcpServers as McpServer[] | undefined,
+                      baseUrl: providerBaseUrl,
+                      stepIndex: i,
+                      agentSystemPrompt,
+                      memoryContext,
+                      chatHistory,
+                      agentEnabledTools,
+                      agentDisabledTools: agentToolPolicy?.disabledTools,
+                      // Composio step-specific session support
+                      composioApiKey,
+                      composioGlobalToolkits,
+                      pipelineBaseUrl: baseUrl,
+                    });
                     output = llmResult.text;
                     toolCalls = llmResult.toolCalls;
                     break;

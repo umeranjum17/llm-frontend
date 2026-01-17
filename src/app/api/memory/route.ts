@@ -15,8 +15,8 @@ export async function POST(req: NextRequest) {
             apiKey: apiKey,
         });
 
-        // Use a consistent user_id for this app instance
-        // In a real multi-user app, this would be the logged-in user's ID
+        // Each user has their own Mem0 API key, so isolation happens at the account level
+        // The userId here is for organizing memories within that user's Mem0 account
         const finalUserId = userId || "default-user";
 
         let result;

@@ -80,6 +80,29 @@ const STORAGE_KEY = "composio_config";
 const TOOLKITS_CACHE_KEY = "composio_toolkits_cache";
 const TOOLKITS_CACHE_TTL = 1000 * 60 * 60; // 1 hour
 
+/**
+ * Derive a unique, deterministic userId from the Composio API key.
+ *
+ * SECURITY: This ensures each user's Composio sessions are isolated.
+ * Users with different API keys will have different userIds, preventing
+ * cross-user data access.
+ *
+ * The hash is one-way and consistent, so:
+ * 1. Same API key always produces the same userId (maintains connections)
+ * 2. Different API keys produce different userIds (isolation)
+ * 3. API key cannot be derived from userId (security)
+ */
+function deriveUserIdFromApiKey(apiKey: string): string {
+  // Use FNV-1a hash for fast, deterministic hashing
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < apiKey.length; i++) {
+    hash ^= apiKey.charCodeAt(i);
+    hash = (hash * 0x01000193) >>> 0;
+  }
+  // Prefix with 'user_' and use base36 for compact representation
+  return `user_${hash.toString(36)}`;
+}
+
 function getConfig(): ComposioConfig | null {
   if (typeof window === "undefined") return null;
   const stored = localStorage.getItem(STORAGE_KEY);
@@ -175,11 +198,15 @@ export function useComposioApps() {
   useEffect(() => {
     let loaded = getConfig();
 
-    // Migrate old configs to use "default" entityId for better compatibility
-    if (loaded && loaded.userId !== "default") {
-      console.log("[Composio] Migrating userId to 'default' for better compatibility");
-      loaded = { ...loaded, userId: "default" };
-      saveConfig(loaded);
+    // SECURITY: Migrate old "default" userId to API key derived userId
+    // This ensures each user's Composio sessions are isolated by their API key
+    if (loaded && loaded.apiKey) {
+      const derivedUserId = deriveUserIdFromApiKey(loaded.apiKey);
+      if (loaded.userId !== derivedUserId) {
+        console.log("[Composio] Migrating userId to API-key-derived value for security isolation");
+        loaded = { ...loaded, userId: derivedUserId };
+        saveConfig(loaded);
+      }
     }
 
     if (loaded) {
@@ -281,8 +308,8 @@ export function useComposioApps() {
 
   // Set API key and create initial config
   const setApiKey = useCallback(async (apiKey: string) => {
-    // Use "default" as the entityId to match connections made on Composio platform directly
-    const userId = "default";
+    // SECURITY: Derive unique userId from API key to isolate user sessions
+    const userId = deriveUserIdFromApiKey(apiKey);
     const newConfig: ComposioConfig = {
       apiKey,
       userId,

@@ -243,12 +243,13 @@ export function ChatShell() {
   }, [allModels, favoriteModelEntries, llmProviderIds, recentModelEntries, chat?.providerId]);
 
   // Build a quick-switch list: favorites first, then recent, up to 9 models for number hotkeys
+  // Sort alphabetically within each group to keep positions stable when switching models
   const quickSwitchModels = useMemo(() => {
-    const combined = [
-      ...favoriteModelObjects,
-      ...recentModelObjects.filter((m) => !favoriteModelObjects.some((f) => f.id === m.id)),
-    ];
-    return combined.slice(0, 9);
+    const sortedFavorites = [...favoriteModelObjects].sort((a, b) => a.name.localeCompare(b.name));
+    const sortedRecent = [...recentModelObjects]
+      .filter((m) => !favoriteModelObjects.some((f) => f.id === m.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return [...sortedFavorites, ...sortedRecent].slice(0, 9);
   }, [favoriteModelObjects, recentModelObjects]);
 
   // Check if OpenRouter is available - it can route to any model
@@ -517,13 +518,8 @@ export function ChatShell() {
                     </Button>
                   )}
 
-                  {/* Model Selector - hidden for pipeline agents */}
-                  {!isArenaMode && chat && currentAgent?.executionType === "pipeline" && currentAgent.pipeline?.steps?.length ? (
-                    <div className="h-8 px-3 flex items-center text-xs text-muted-foreground border rounded-md border-border/50 bg-muted/30">
-                      <span className="hidden sm:inline">Uses pipeline models</span>
-                      <span className="sm:hidden">Pipeline</span>
-                    </div>
-                  ) : !isArenaMode && chat && (
+                  {/* Model Selector - hidden for pipeline agents (models are per-step) */}
+                  {!isArenaMode && chat && !(currentAgent?.executionType === "pipeline" && currentAgent.pipeline?.steps?.length) && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button

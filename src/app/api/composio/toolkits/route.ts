@@ -15,11 +15,14 @@ export async function POST(req: NextRequest) {
 
     const composio = new Composio({ apiKey });
 
-    // Get ALL connected accounts
+    // SECURITY: Filter connected accounts by entityId (userId) to ensure isolation
+    // This prevents cross-user data access even if API keys are accidentally shared
     let rawResponse: any;
     try {
-      rawResponse = await composio.connectedAccounts.list({});
+      // Filter by entityId to get only this user's connected accounts
+      rawResponse = await composio.connectedAccounts.list({ entityId: userId });
       if (process.env.NODE_ENV === "development") {
+        console.log(`[Composio] Fetching connected accounts for userId: ${userId}`);
         console.log("[Composio] RAW connectedAccounts.list() response:");
         console.log(JSON.stringify(rawResponse, null, 2));
       }
