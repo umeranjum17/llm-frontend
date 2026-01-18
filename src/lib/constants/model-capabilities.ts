@@ -62,16 +62,17 @@ const ELITE_TOOL_CALLING_PATTERNS = [
  * Based on multiple benchmarks and real-world community feedback.
  *
  * Benchmark Sources (2025-2026):
- * - BFCL: GLM-4.5 (70.85%), Claude Opus 4.1 (70.36%), Claude Sonnet 4 (70.29%)
- * - Enterprise Tool Use (Scale.com): o1 (70.14%), o1-Pro (67.01%), Gemini 2.5 Pro (68.75%)
- * - τ2-Bench: GLM-4.7 (96% telecom), Grok 4.1 Fast (100% telecom)
- * - SWE-bench: Gemini 3 Flash (78%), Claude Sonnet 4.5 (77.2%)
+ * - BFCL: Llama 3.1 405B (81.1%), Llama 3.3 70B (77.3%), GLM-4.5 (70.85%)
+ * - Enterprise Tool Use (Scale.com): o1 (70.14%), o1-Pro (67.01%)
+ * - τ²-Bench: MiMo-V2-Flash (95.3 Telecom, 79.5 Retail), GLM-4.7 (96% telecom)
+ * - SWE-Bench Verified: MiMo-V2-Flash (73.4%), Gemini 3 Flash (78%)
+ * - Cost-efficient: GPT-4o-mini ($0.15/$0.60 per 1M, user validated)
  *
  * Sources:
- * - https://gorilla.cs.berkeley.edu/leaderboard.html
+ * - https://gorilla.cs.berkeley.edu/leaderboard.html (BFCL)
  * - https://scale.com/leaderboard/tool_use_enterprise
- * - https://whatllm.org/blog/best-agentic-models-january-2026
- * - https://www.klavis.ai/blog/function-calling-and-agentic-ai-in-2025
+ * - https://github.com/XiaomiMiMo/MiMo-V2-Flash (MiMo-V2-Flash benchmarks)
+ * - User validation and production testing
  */
 const ADVANCED_TOOL_CALLING_PATTERNS = [
   // Anthropic Claude - TOP TIER on BFCL (~70%)
@@ -98,6 +99,19 @@ const ADVANCED_TOOL_CALLING_PATTERNS = [
   // Cohere Command A - "most performant for tool use", strong real-world feedback
   // Note: Command R+ demoted to basic (Enterprise Tool Use only 30.21%)
   "command-a-03-2025", "command-a",
+
+  // OpenAI cost-efficient models with reliable tool calling
+  "gpt-4o-mini",  // User validated: cost-efficient ($0.15/$0.60), production-ready
+
+  // DeepSeek V3.2 - Now supports tool calls in thinking mode (Jan 2026 update)
+  "deepseek-v3.2",
+
+  // Xiaomi MiMo-V2-Flash - 73.4% SWE-Bench Verified, 95.3 τ²-Bench Telecom
+  // Trained explicitly for agentic workflows (309B MoE, 15B active)
+  "mimo-v2-flash",
+
+  // Google Gemini 2.0 Flash - Enhanced function calling, $0.13/$0.5 (budget)
+  "gemini-2.0-flash",
 ];
 
 /**
@@ -114,15 +128,16 @@ const ADVANCED_TOOL_CALLING_PATTERNS = [
 const BASIC_TOOL_CALLING_PATTERNS = [
   // OpenAI models - WORSE than Claude on BFCL (~59%)
   // GPT-4o and GPT-5 have documented function calling issues
+  // Note: gpt-4o-mini promoted to ADVANCED (user validated)
   "gpt-4o", "gpt-4-turbo", "gpt-4.1", "gpt-4.5", "gpt-5",
-  "gpt-4o-mini", "gpt-3.5",
+  "gpt-3.5",
 
   // OpenAI o-series reasoning models (o3, o4 only - o1/o1-pro promoted to ADVANCED)
   "o3", "o4",
 
   // DeepSeek - Community reports: "significant weakness", auto mode broken, random Chinese text
-  // V3.2 demoted from advanced due to reliability issues
-  "deepseek-v3", "deepseek-v3.2", "deepseek-r1", "deepseek-reasoner",
+  // Note: V3.2 promoted to ADVANCED (now supports tool calls in thinking mode)
+  "deepseek-v3", "deepseek-r1", "deepseek-reasoner",
 
   // Google Gemini - Mixed results, older versions
   "gemini-flash", "gemini-1.0", "gemini-1.5", "gemini-2.0", "gemini-3",
@@ -158,7 +173,12 @@ const BASIC_TOOL_CALLING_PATTERNS = [
 /**
  * Flash models that have exceptional tool calling (not downgraded to basic)
  */
-const ADVANCED_FLASH_MODELS = ["gemini-3-flash", "gemini-2.5-flash"];
+const ADVANCED_FLASH_MODELS = ["gemini-3-flash", "gemini-2.5-flash", "gemini-2.0-flash", "mimo-v2-flash"];
+
+/**
+ * Mini/small models that have exceptional tool calling (not downgraded to basic)
+ */
+const ADVANCED_MINI_MODELS = ["gpt-4o-mini"];
 
 /**
  * Determine tool calling tier based on model ID
@@ -175,8 +195,11 @@ function getToolCallingTier(modelId: string, supportsTools: boolean): ToolCallin
 
   // Check for advanced tier (order matters - check specific patterns)
   if (ADVANCED_TOOL_CALLING_PATTERNS.some(pattern => lowerModelId.includes(pattern.toLowerCase()))) {
-    // Exclude mini/small variants from advanced tier, but not special flash models
-    if (lowerModelId.includes("mini") || lowerModelId.includes("small")) {
+    // Exclude mini/small variants from advanced tier, unless they're in the exception list
+    // Use more specific patterns to avoid false matches (e.g., "gemini" contains "mini")
+    const isMiniVariant = (lowerModelId.includes("-mini") || lowerModelId.includes("_mini") ||
+                           lowerModelId.includes("-small") || lowerModelId.includes("_small"));
+    if (isMiniVariant && !ADVANCED_MINI_MODELS.some(m => lowerModelId.includes(m))) {
       return "basic";
     }
     // Only downgrade flash models that aren't in the advanced flash list

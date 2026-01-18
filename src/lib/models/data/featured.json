@@ -334,14 +334,15 @@
       "id": "deepseek/deepseek-v3.2",
       "name": "DeepSeek V3.2",
       "provider": "DeepSeek",
-      "description": "Cheapest high-quality model. 95% cheaper than GPT-5. Great for high-volume applications.",
+      "description": "Cheapest high-quality model with tool calling in thinking mode. 95% cheaper than GPT-5. Great for budget agentic workflows.",
       "contextLength": 128000,
       "inputCost": 0.28,
       "outputCost": 0.42,
       "category": [
         "balanced",
         "cheap",
-        "coding"
+        "coding",
+        "agents"
       ],
       "tier": "budget",
       "supportsReasoning": false,
@@ -349,7 +350,8 @@
       "releaseDate": "2025-12",
       "recommendedFor": [
         "Maximum cost savings",
-        "High volume",
+        "Budget tool calling",
+        "High volume agents",
         "Budget coding"
       ]
     },
@@ -439,6 +441,31 @@
         "Open source",
         "Multimodal",
         "Coding"
+      ]
+    },
+    {
+      "id": "meta-llama/llama-3.3-70b-instruct",
+      "name": "Llama 3.3 70B Instruct",
+      "provider": "Meta",
+      "description": "Strong tool calling with 77.3% BFCL. Best open-source alternative for cost-efficient agentic workflows.",
+      "contextLength": 128000,
+      "inputCost": 0.35,
+      "outputCost": 0.4,
+      "category": [
+        "balanced",
+        "agents",
+        "coding",
+        "open-source"
+      ],
+      "tier": "balanced",
+      "supportsReasoning": false,
+      "supportsVision": false,
+      "releaseDate": "2024-12",
+      "recommendedFor": [
+        "Tool calling",
+        "Agentic workflows",
+        "Open-source agents",
+        "Cost-efficient coding"
       ]
     },
     {
@@ -553,7 +580,7 @@
       "id": "cohere/command-a-03-2025",
       "name": "Command A",
       "provider": "Cohere",
-      "description": "111B open-weights optimized for tool use. Excels at RAG, agents, and multilingual. 256K context. Apache 2.0.",
+      "description": "Enterprise-grade tool calling matching GPT-4o. 150% throughput vs Command R+, 256K context. Trained for RAG + agentic workflows. Apache 2.0.",
       "contextLength": 262144,
       "inputCost": 2.5,
       "outputCost": 10.0,
@@ -567,10 +594,10 @@
       "supportsReasoning": true,
       "releaseDate": "2025-03",
       "recommendedFor": [
-        "Tool calling",
-        "Enterprise RAG",
-        "Agentic workflows",
-        "Multilingual"
+        "Enterprise tool calling",
+        "RAG with tools",
+        "Multi-step workflows",
+        "Multilingual agents"
       ]
     },
     {
@@ -624,20 +651,23 @@
       "id": "xiaomi/mimo-v2-flash",
       "name": "MiMo-V2-Flash",
       "provider": "Xiaomi",
-      "description": "Ultra-fast coding model. #3 on OpenRouter coding benchmarks Jan 2026. Excellent value.",
+      "description": "Agentic coding specialist. 73.4% SWE-Bench Verified, 95.3 τ²-Bench Telecom. 309B MoE (15B active) trained for tool calling at ~150 tok/s.",
       "contextLength": 32000,
       "inputCost": 0.1,
       "outputCost": 0.3,
       "category": [
         "coding",
-        "fast"
+        "fast",
+        "agents",
+        "open-source"
       ],
       "tier": "fast",
       "releaseDate": "2026-01",
       "recommendedFor": [
-        "Fast coding",
-        "Code completion",
-        "Budget coding"
+        "High-speed tool calling",
+        "Agentic coding",
+        "Multi-step workflows",
+        "Fast agents"
       ]
     },
     {
@@ -973,24 +1003,25 @@
       "id": "openai/gpt-4o-mini",
       "name": "GPT-4o Mini",
       "provider": "OpenAI",
-      "description": "Ultra-cheap and fast. Perfect for background tasks, simple queries, and high-volume use.",
+      "description": "Best value for production tool calling. Reliable function calling at $0.15/$0.60 per 1M tokens. User validated for high-volume agentic workflows.",
       "contextLength": 128000,
       "inputCost": 0.15,
       "outputCost": 0.6,
       "category": [
         "fast",
         "cheap",
-        "vision"
+        "vision",
+        "agents"
       ],
       "tier": "budget",
       "supportsVision": true,
       "supportsPromptCaching": true,
       "releaseDate": "2024-07",
       "recommendedFor": [
-        "Background tasks",
-        "Title generation",
-        "Tagging",
-        "High volume"
+        "Cost-efficient tool calling",
+        "High-volume agents",
+        "Production workflows",
+        "Background tasks"
       ]
     },
     {
@@ -1014,6 +1045,30 @@
         "Free usage",
         "Testing",
         "Background tasks"
+      ]
+    },
+    {
+      "id": "google/gemini-2.0-flash-001",
+      "name": "Gemini 2.0 Flash",
+      "provider": "Google",
+      "description": "Fast Flash model with enhanced function calling. $0.13/$0.5 per 1M tokens with 1M context. Production-ready alternative to free version.",
+      "contextLength": 1000000,
+      "inputCost": 0.13,
+      "outputCost": 0.5,
+      "category": [
+        "fast",
+        "cheap",
+        "vision"
+      ],
+      "tier": "budget",
+      "supportsVision": true,
+      "supportsPromptCaching": true,
+      "releaseDate": "2024-12",
+      "recommendedFor": [
+        "Budget tool calling",
+        "Fast workflows",
+        "High volume",
+        "Production agents"
       ]
     },
     {

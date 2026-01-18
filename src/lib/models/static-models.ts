@@ -180,11 +180,21 @@ export function searchStaticModels(query: string, includeLegacy = false): Model[
 export const USE_CASE_RECOMMENDATIONS: Record<string, { models: string[]; description: string }> = {
   "tool-calling": {
     models: [
-      "z-ai/glm-4.7",                  // #1 BFCL (90.6% tool use, 96% τ2-Bench)
-      "z-ai/glm-4.5",                  // #1 BFCL (70.85%)
-      "anthropic/claude-opus-4.5",      // Top tier tool calling
-      "anthropic/claude-sonnet-4.5",    // Excellent agentic
-      "moonshotai/kimi-k2",             // 200-300 sequential tool calls
+      // Elite tier (best performance)
+      "z-ai/glm-4.7",                     // #1 BFCL (90.6%)
+      "anthropic/claude-opus-4.5",        // Elite tier, best overall
+      "anthropic/claude-sonnet-4.5",      // Elite tier, balanced
+      "moonshotai/kimi-k2",               // Elite tier (200-300 sequential calls)
+
+      // Cost-efficient tier (user priority)
+      "openai/gpt-4o-mini",               // PROMOTED: $0.15/$0.60, user validated
+      "deepseek/deepseek-v3.2",           // PROMOTED: $0.28/$0.42, thinking mode tools
+      "meta-llama/llama-3.3-70b-instruct", // ADDED: 77.3% BFCL, $0.35/$0.40
+      "xiaomi/mimo-v2-flash",             // PROMOTED: 73.4% SWE-Bench, $0.1/$0.3
+
+      // Enterprise tier
+      "cohere/command-a-03-2025",         // Enterprise-grade, $2.5/$10
+      "z-ai/glm-4.5",                     // #2 BFCL (70.85%)
     ],
     description: "Best for function calling and agentic workflows",
   },
@@ -239,8 +249,33 @@ export const USE_CASE_RECOMMENDATIONS: Record<string, { models: string[]; descri
     description: "Image understanding, visual reasoning, and document analysis",
   },
   agents: {
-    models: ["z-ai/glm-4.7", "moonshotai/kimi-k2", "anthropic/claude-sonnet-4.5", "cohere/command-a-03-2025", "anthropic/claude-opus-4.5"],
+    models: [
+      // Elite agentic models
+      "z-ai/glm-4.7",                     // Best-in-class agentic
+      "moonshotai/kimi-k2",               // 200-300 sequential calls
+      "anthropic/claude-sonnet-4.5",      // Excellent agentic workflows
+
+      // Cost-efficient agentic models (NEW PRIORITY)
+      "openai/gpt-4o-mini",               // ADDED: Budget agents, $0.15/$0.60
+      "xiaomi/mimo-v2-flash",             // PROMOTED: Fast agentic, $0.1/$0.3
+      "deepseek/deepseek-v3.2",           // ADDED: Budget thinking + tools, $0.28/$0.42
+      "meta-llama/llama-3.3-70b-instruct", // ADDED: Open-source, $0.35/$0.40
+
+      // Enterprise agentic
+      "cohere/command-a-03-2025",         // Enterprise RAG + tools
+      "anthropic/claude-opus-4.5",        // Flagship agentic
+    ],
     description: "Best for autonomous agent workflows",
+  },
+  "budget-agents": {
+    models: [
+      "openai/gpt-4o-mini",               // $0.15/$0.60 - best value
+      "xiaomi/mimo-v2-flash",             // $0.1/$0.3 - fast agentic
+      "deepseek/deepseek-v3.2",           // $0.28/$0.42 - thinking mode tools
+      "meta-llama/llama-3.3-70b-instruct", // $0.35/$0.40 - open-source
+      "z-ai/glm-4.5",                     // $0.5/$2.0 - #1 BFCL budget option
+    ],
+    description: "Cost-efficient models with excellent tool calling for high-volume agentic workflows",
   },
   "long-context": {
     models: ["meta-llama/llama-4-scout", "google/gemini-3-pro", "google/gemini-3-flash-preview", "openai/gpt-5.2"],
