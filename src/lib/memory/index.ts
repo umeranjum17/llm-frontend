@@ -51,7 +51,6 @@ function isCacheValid(timestamp: number, ttlMs: number): boolean {
 // Clear cache when memories are modified
 function invalidateCache() {
     memoryCache = null;
-    console.log("[Memory] Cache invalidated");
 }
 
 /**
@@ -65,13 +64,11 @@ export function refreshCacheInBackground(query?: string) {
 
     // Need a query for Mem0 search - skip if none provided
     if (!query || query.trim().length === 0) {
-        console.log("[Memory] Background refresh skipped - no query provided");
         return;
     }
 
     // Fire-and-forget refresh - don't await
     searchMemories(query).catch(() => {});
-    console.log("[Memory] Background cache refresh triggered");
 }
 
 async function getApiKey() {
@@ -197,13 +194,11 @@ export async function searchMemories(query: string): Promise<MemoryItem[]> {
 
     // Check global cache first
     if (memoryCache && isCacheValid(memoryCache.timestamp, ttl)) {
-        console.log("[Memory] Cache hit (search)");
         return memoryCache.searchResults;
     }
 
     // Deduplicate in-flight requests
     if (inFlightSearch) {
-        console.log("[Memory] Deduplicating search request");
         return inFlightSearch;
     }
 
@@ -241,13 +236,11 @@ export async function getAllMemories(): Promise<MemoryItem[]> {
 
     // Check global cache first
     if (memoryCache && memoryCache.allMemories.length > 0 && isCacheValid(memoryCache.timestamp, ttl)) {
-        console.log("[Memory] Cache hit (getAll)");
         return memoryCache.allMemories;
     }
 
     // Deduplicate in-flight requests
     if (inFlightGetAll) {
-        console.log("[Memory] Deduplicating getAll request");
         return inFlightGetAll;
     }
 

@@ -14,7 +14,6 @@ export async function generateAndApplyTags({ chatId, messages, keys }: TaggingOp
     try {
         const chat = await db.chats.get(chatId);
         if (!chat) {
-            console.log("[AutoTags] Chat not found in DB");
             return [];
         }
 
@@ -30,11 +29,9 @@ export async function generateAndApplyTags({ chatId, messages, keys }: TaggingOp
         const apiKey = apiKeyEntry?.key;
 
         if (!apiKey) {
-            console.log(`[AutoTags] No API key found for provider ${providerId} (model: ${chat.modelId}). Skipping.`);
             return [];
         }
 
-        console.log("[AutoTags] Fetching tags from API...");
         const response = await fetch("/api/tags/generate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -53,7 +50,6 @@ export async function generateAndApplyTags({ chatId, messages, keys }: TaggingOp
         }
 
         const { tags: newTagNames } = await response.json();
-        console.log("[AutoTags] Received tags:", newTagNames);
 
         if (!newTagNames || !Array.isArray(newTagNames) || newTagNames.length === 0) return [];
 
@@ -82,7 +78,6 @@ export async function generateAndApplyTags({ chatId, messages, keys }: TaggingOp
 
         // Update chat with new tags
         if (tagIds.length > 0) {
-            console.log("[AutoTags] Updating chat with tags:", tagIds);
             await updateChat(chatId, { tags: tagIds });
         }
 
@@ -97,7 +92,6 @@ export async function triggerBatchAutoTagging(keys: ApiKey[]) {
     const chats = await db.chats.toArray();
     const untaggedChats = chats.filter(chat => !chat.tags || chat.tags.length === 0);
 
-    console.log(`[BatchAutoTags] Found ${untaggedChats.length} untagged chats.`);
 
     let successCount = 0;
     for (const chat of untaggedChats) {

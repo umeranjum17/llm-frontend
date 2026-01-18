@@ -36,6 +36,8 @@ import {
   CheckCircle2,
   RefreshCw,
   AlertCircle,
+  Shield,
+  RotateCcw,
 } from "lucide-react";
 import type { Skill } from "@/lib/db/schema";
 import {
@@ -44,6 +46,7 @@ import {
   toggleSkillFavorite,
   toggleSkillEnabled,
 } from "@/lib/db/queries";
+import { resetSkillsToDefaults } from "@/lib/db/seed";
 import { SkillEditorDialog } from "@/components/settings/skill-editor-dialog";
 import { SKILL_COLORS, SKILL_CATEGORY_CONFIG } from "@/lib/constants/skills";
 import { cn } from "@/lib/utils";
@@ -94,11 +97,33 @@ export function SkillsSettings() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
 
   const { getKeyForProvider, keys } = useApiKeysStore();
-  const { embeddingsProvider, embeddingsModelId, skillMatchThreshold, updateEmbeddingsConfig, updateSkillMatchThreshold } = useSettingsStore();
+  const {
+    embeddingsProvider,
+    embeddingsModelId,
+    skillMatchThreshold,
+    updateEmbeddingsConfig,
+    updateSkillMatchThreshold,
+  } = useSettingsStore();
   const skills = useLiveQuery(() => getAllSkills(), []);
   const embeddingCount = useLiveQuery(() => db.skillEmbeddings.count(), []);
+  // Get set of skill IDs that have embeddings and their model
+  const embeddingInfo = useLiveQuery(async () => {
+    const embeddings = await db.skillEmbeddings.toArray();
+    const skillIds = new Set(embeddings.map(e => e.skillId));
+    const modelIds = new Set(embeddings.map(e => e.modelId));
+    return { skillIds, embeddingsByModel: modelIds };
+  }, []);
+  const skillIdsWithEmbeddings = embeddingInfo?.skillIds ?? new Set<string>();
+
+  // Count skills needing embedding (enabled skills without embedding or with wrong model)
+  const skillsNeedingEmbedding = useMemo(() => {
+    if (!skills || !embeddingInfo) return 0;
+    const enabledSkills = skills.filter(s => s.isEnabled && s.trigger.type === "auto");
+    return enabledSkills.filter(s => !skillIdsWithEmbeddings.has(s.id)).length;
+  }, [skills, embeddingInfo, skillIdsWithEmbeddings]);
 
   // Get available providers based on configured API keys
   const availableProviders = useMemo(() => {
@@ -180,11 +205,10 @@ export function SkillsSettings() {
       const result = await regenerateAllEmbeddings(
         apiKeyObj.key,
         selectedProvider,
-        selectedModel,
-        true // Force regeneration
+        selectedModel
       );
 
-      // Save the config
+      // Save the config if we generated any
       if (result.generated > 0) {
         await updateEmbeddingsConfig(
           selectedProvider as "openrouter" | "openai",
@@ -192,12 +216,21 @@ export function SkillsSettings() {
         );
       }
 
-      if (result.failed > 0) {
+      // Build informative message
+      if (result.generated === 0 && result.skipped > 0) {
+        toast.success(`All ${result.skipped} skills already up to date`);
+      } else if (result.failed > 0) {
         toast.warning(
-          `Generated ${result.generated} embeddings, ${result.failed} failed`
+          `Generated ${result.generated}, skipped ${result.skipped}, failed ${result.failed}`
         );
-      } else {
-        toast.success(`Generated embeddings for ${result.generated} skills`);
+      } else if (result.generated > 0) {
+        const reasonParts: string[] = [];
+        if (result.reasons.missing > 0) reasonParts.push(`${result.reasons.missing} new`);
+        if (result.reasons.model_changed > 0) reasonParts.push(`${result.reasons.model_changed} model changed`);
+        if (result.reasons.description_changed > 0) reasonParts.push(`${result.reasons.description_changed} updated`);
+
+        const reasonText = reasonParts.length > 0 ? ` (${reasonParts.join(", ")})` : "";
+        toast.success(`Generated ${result.generated} embeddings${reasonText}, ${result.skipped} unchanged`);
       }
     } catch (error) {
       console.error("Failed to generate embeddings:", error);
@@ -237,6 +270,26 @@ export function SkillsSettings() {
     await toggleSkillEnabled(skill.id);
   };
 
+  const handleResetToDefaults = async () => {
+    const customSkillsCount = skills?.filter(s => !s.isBuiltIn).length || 0;
+    const message = customSkillsCount > 0
+      ? `This will delete ${customSkillsCount} custom skill${customSkillsCount !== 1 ? 's' : ''} and reset all skills to defaults. This cannot be undone.\n\nAre you sure?`
+      : "This will reset all skills to their default settings and clear embeddings. Continue?";
+
+    if (!confirm(message)) return;
+
+    setIsResetting(true);
+    try {
+      const count = await resetSkillsToDefaults();
+      toast.success(`Reset complete. ${count} built-in skills restored.`);
+    } catch (error) {
+      console.error("Failed to reset skills:", error);
+      toast.error("Failed to reset skills");
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   // Format model name for display
   const formatModelName = (modelId: string) => {
     return modelId.replace("openai/", "");
@@ -251,16 +304,32 @@ export function SkillsSettings() {
             Skills enhance responses with specialized prompts.
           </p>
         </div>
-        <Button
-          onClick={() => {
-            setEditingSkill(null);
-            setEditorOpen(true);
-          }}
-          className="gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          New Skill
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={handleResetToDefaults}
+            disabled={isResetting}
+            className="gap-2"
+            title="Reset to default skills"
+          >
+            {isResetting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RotateCcw className="h-4 w-4" />
+            )}
+            Reset
+          </Button>
+          <Button
+            onClick={() => {
+              setEditingSkill(null);
+              setEditorOpen(true);
+            }}
+            className="gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            New Skill
+          </Button>
+        </div>
       </div>
 
       {/* Embedding Model Selection */}
@@ -321,22 +390,27 @@ export function SkillsSettings() {
                 onClick={handleGenerateEmbeddings}
                 disabled={isGenerating || !skills?.length || !selectedProvider || !selectedModel}
                 className="gap-2"
-                variant={modelChanged ? "default" : "outline"}
+                variant={modelChanged || skillsNeedingEmbedding > 0 ? "default" : "outline"}
               >
                 {isGenerating ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Generating...
                   </>
+                ) : skillsNeedingEmbedding > 0 ? (
+                  <>
+                    <Zap className="h-4 w-4" />
+                    Generate ({skillsNeedingEmbedding} missing)
+                  </>
                 ) : modelChanged ? (
                   <>
                     <RefreshCw className="h-4 w-4" />
-                    Regenerate
+                    Update Model
                   </>
                 ) : hasEmbeddings ? (
                   <>
                     <CheckCircle2 className="h-4 w-4" />
-                    Regenerate
+                    Sync
                   </>
                 ) : (
                   <>
@@ -350,11 +424,18 @@ export function SkillsSettings() {
             {/* Status */}
             <div className="flex items-center gap-2 text-sm">
               {hasEmbeddings ? (
-                modelChanged ? (
+                skillsNeedingEmbedding > 0 ? (
                   <>
                     <AlertCircle className="h-4 w-4 text-amber-500" />
                     <span className="text-amber-600">
-                      Model changed — click Regenerate to update {embeddingCount} skill{embeddingCount !== 1 ? "s" : ""}
+                      {skillsNeedingEmbedding} skill{skillsNeedingEmbedding !== 1 ? "s" : ""} missing embeddings
+                    </span>
+                  </>
+                ) : modelChanged ? (
+                  <>
+                    <AlertCircle className="h-4 w-4 text-amber-500" />
+                    <span className="text-amber-600">
+                      Model changed — click to update {embeddingCount} skill{embeddingCount !== 1 ? "s" : ""}
                     </span>
                   </>
                 ) : (
@@ -375,24 +456,24 @@ export function SkillsSettings() {
               )}
             </div>
 
-            {/* Threshold Slider */}
+            {/* Minimum Floor */}
             <div className="pt-2 border-t space-y-2">
               <div className="flex items-center justify-between">
-                <Label className="text-xs">Match Threshold</Label>
+                <Label className="text-xs">Minimum Floor</Label>
                 <span className="text-xs text-muted-foreground font-mono">
-                  {Math.round((skillMatchThreshold ?? 0.5) * 100)}%
+                  {Math.round((skillMatchThreshold ?? 0.25) * 100)}%
                 </span>
               </div>
               <input
                 type="range"
-                min="30"
-                max="80"
-                value={Math.round((skillMatchThreshold ?? 0.5) * 100)}
+                min="10"
+                max="60"
+                value={Math.round((skillMatchThreshold ?? 0.25) * 100)}
                 onChange={(e) => updateSkillMatchThreshold(parseInt(e.target.value) / 100)}
                 className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
               />
               <p className="text-xs text-muted-foreground">
-                Lower = more skills trigger, Higher = stricter matching
+                Top skill wins if above floor. Lower = more matches, Higher = stricter.
               </p>
             </div>
           </>
@@ -406,19 +487,26 @@ export function SkillsSettings() {
       />
 
       <div className="space-y-2">
-        {filtered?.map((skill) => (
-          <SkillSettingsItem
-            key={skill.id}
-            skill={skill}
-            onEdit={() => {
-              setEditingSkill(skill);
-              setEditorOpen(true);
-            }}
-            onDelete={() => handleDelete(skill)}
-            onToggleFavorite={() => handleToggleFavorite(skill)}
-            onToggleEnabled={() => handleToggleEnabled(skill)}
-          />
-        ))}
+        {filtered?.map((skill) => {
+          const embeddingApiKey = selectedProvider ? getKeyForProvider(selectedProvider) : undefined;
+          return (
+            <SkillSettingsItem
+              key={skill.id}
+              skill={skill}
+              hasEmbedding={skillIdsWithEmbeddings?.has(skill.id) ?? false}
+              onEdit={() => {
+                setEditingSkill(skill);
+                setEditorOpen(true);
+              }}
+              onDelete={() => handleDelete(skill)}
+              onToggleFavorite={() => handleToggleFavorite(skill)}
+              onToggleEnabled={() => handleToggleEnabled(skill)}
+              apiKey={embeddingApiKey?.key}
+              embeddingsProvider={selectedProvider}
+              embeddingsModelId={selectedModel}
+            />
+          );
+        })}
         {filtered && filtered.length === 0 ? (
           <div className="text-sm text-muted-foreground text-center py-8">
             No skills found.
@@ -437,18 +525,26 @@ export function SkillsSettings() {
 
 interface SkillSettingsItemProps {
   skill: Skill;
+  hasEmbedding: boolean;
   onEdit: () => void;
   onDelete: () => void;
   onToggleFavorite: () => void;
   onToggleEnabled: () => void;
+  apiKey?: string;
+  embeddingsProvider?: string;
+  embeddingsModelId?: string;
 }
 
 function SkillSettingsItem({
   skill,
+  hasEmbedding,
   onEdit,
   onDelete,
   onToggleFavorite,
   onToggleEnabled,
+  apiKey,
+  embeddingsProvider,
+  embeddingsModelId,
 }: SkillSettingsItemProps) {
   const colorClasses = SKILL_COLORS[skill.ui.color] || SKILL_COLORS.blue;
   const categoryConfig = SKILL_CATEGORY_CONFIG[skill.category];
@@ -456,77 +552,92 @@ function SkillSettingsItem({
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-4 rounded-lg border p-3",
+        "rounded-lg border",
         !skill.isEnabled && "opacity-50"
       )}
     >
-      <div className="flex items-center gap-3 min-w-0">
-        <div className={cn("rounded p-2 shrink-0", colorClasses)}>
-          {getSkillIcon(skill.ui.icon)}
-        </div>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="font-medium truncate">{skill.name}</div>
-            {skill.isBuiltIn && <Badge variant="secondary">Built-in</Badge>}
-            {skill.trigger.type === "auto" && (
-              <Badge variant="outline" className="text-xs">
-                Auto
-              </Badge>
-            )}
-            {categoryConfig && (
-              <Badge variant="outline" className="text-xs">
-                {categoryConfig.label}
-              </Badge>
-            )}
+      <div className="flex items-center justify-between gap-4 p-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={cn("rounded p-2 shrink-0", colorClasses)}>
+            {getSkillIcon(skill.ui.icon)}
           </div>
-          <div className="mt-1 text-xs text-muted-foreground line-clamp-1">
-            {skill.description.split(",").slice(0, 3).join(", ")}
-          </div>
-          {skill.usageCount > 0 && (
-            <div className="mt-1 text-xs text-muted-foreground">
-              Used {skill.usageCount} time{skill.usageCount !== 1 ? "s" : ""}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="font-medium truncate">{skill.name}</div>
+              {skill.isBuiltIn && <Badge variant="secondary">Built-in</Badge>}
+              {skill.trigger.type === "auto" && (
+                <Badge variant="outline" className="text-xs">
+                  Auto
+                </Badge>
+              )}
+              {skill.requireApproval && (
+                <Badge variant="outline" className="text-xs gap-1">
+                  <Shield className="h-3 w-3" />
+                  Approval
+                </Badge>
+              )}
+              {categoryConfig && (
+                <Badge variant="outline" className="text-xs">
+                  {categoryConfig.label}
+                </Badge>
+              )}
+              {/* Warning for auto skills without embedding */}
+              {skill.trigger.type === "auto" && skill.isEnabled && !hasEmbedding && (
+                <Badge variant="outline" className="text-xs gap-1 text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700">
+                  <AlertCircle className="h-3 w-3" />
+                  No embedding
+                </Badge>
+              )}
             </div>
-          )}
+            <div className="mt-1 text-xs text-muted-foreground line-clamp-1">
+              {skill.description?.split(",").slice(0, 3).join(", ") || "No description"}
+            </div>
+            {skill.usageCount > 0 && (
+              <div className="mt-1 text-xs text-muted-foreground">
+                Used {skill.usageCount} time{skill.usageCount !== 1 ? "s" : ""}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
 
-      <div className="shrink-0 flex items-center gap-2">
-        <Switch
-          checked={skill.isEnabled}
-          onCheckedChange={onToggleEnabled}
-          title={skill.isEnabled ? "Disable skill" : "Enable skill"}
-        />
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onToggleFavorite}
-          title={skill.isFavorite ? "Remove from favorites" : "Add to favorites"}
-        >
-          <Star
-            className={
-              skill.isFavorite
-                ? "h-4 w-4 fill-current text-yellow-500"
-                : "h-4 w-4"
-            }
+        <div className="shrink-0 flex items-center gap-2">
+          <Switch
+            checked={skill.isEnabled}
+            onCheckedChange={onToggleEnabled}
+            title={skill.isEnabled ? "Disable skill" : "Enable skill"}
           />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onEdit}
-          title="Edit skill"
-        >
-          <Pencil className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onDelete}
-          disabled={skill.isBuiltIn}
-          title={skill.isBuiltIn ? "Built-in skills cannot be deleted" : "Delete skill"}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onToggleFavorite}
+            title={skill.isFavorite ? "Remove from favorites" : "Add to favorites"}
+          >
+            <Star
+              className={
+                skill.isFavorite
+                  ? "h-4 w-4 fill-current text-yellow-500"
+                  : "h-4 w-4"
+              }
+            />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onEdit}
+            title="Edit skill"
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onDelete}
+            disabled={skill.isBuiltIn}
+            title={skill.isBuiltIn ? "Built-in skills cannot be deleted" : "Delete skill"}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );

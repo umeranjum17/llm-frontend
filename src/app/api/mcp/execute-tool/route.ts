@@ -145,12 +145,10 @@ export async function POST(req: Request) {
       }
     }
 
-    console.log(`[MCP Execute] Running tool ${toolMeta.fullName} with args:`, toolArgs);
 
     // Execute the tool
     const result = await tool.execute(toolArgs);
 
-    console.log(`[MCP Execute] Tool ${toolMeta.fullName} completed`);
 
     return new Response(
       JSON.stringify({

@@ -82,7 +82,6 @@ export async function POST(req: Request) {
       `embedMany (${modelId})`
     );
 
-    console.log(`[Embeddings] Generated ${embeddings.length} embeddings using ${modelId}`);
 
     return new Response(
       JSON.stringify({

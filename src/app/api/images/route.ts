@@ -8,6 +8,8 @@ const ImageRequestSchema = z.object({
     providerBaseUrl: z.string().url().optional(),
     modelId: z.string().min(1),
     prompt: z.string().min(1).max(4000),
+    // Input images for image-to-image transformations (edit, style transfer, etc.)
+    inputImages: z.array(z.string()).optional(), // Array of base64 data URLs or URLs
     size: z.enum(["1024x1024", "1792x1024", "1024x1792", "512x512", "256x256"]).optional(),
     quality: z.enum(["standard", "hd"]).optional(),
     style: z.enum(["vivid", "natural"]).optional(),
@@ -33,6 +35,7 @@ export async function POST(req: Request) {
             providerBaseUrl,
             modelId,
             prompt,
+            inputImages = [],
             size = "1024x1024",
             quality = "standard",
             style = "vivid",
@@ -88,17 +91,54 @@ export async function POST(req: Request) {
             const isGeminiImageModel = modelId.toLowerCase().includes('gemini') &&
                 (modelId.toLowerCase().includes('image') || modelId.toLowerCase().includes('flash'));
 
+            // Check if this is an image-to-image request (has input images)
+            const hasInputImages = inputImages.length > 0;
+
             // Format prompt for image generation - some models need explicit instruction
-            const formattedPrompt = isGeminiImageModel
-                ? `Generate an image: ${prompt}`
-                : prompt;
+            let formattedPrompt = prompt;
+            if (isGeminiImageModel) {
+                if (hasInputImages) {
+                    // For image editing/transformation
+                    formattedPrompt = `Edit/transform this image: ${prompt}`;
+                } else {
+                    formattedPrompt = `Generate an image: ${prompt}`;
+                }
+            }
+
+            // Build message content - text only or multimodal with images
+            type ContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
+            let messageContent: string | ContentPart[];
+
+            if (hasInputImages) {
+                // Multimodal content with images + text prompt
+                const contentParts: ContentPart[] = [];
+
+                // Add input images first
+                for (const imgUrl of inputImages) {
+                    contentParts.push({
+                        type: "image_url",
+                        image_url: { url: imgUrl }
+                    });
+                }
+
+                // Add the text prompt
+                contentParts.push({
+                    type: "text",
+                    text: formattedPrompt
+                });
+
+                messageContent = contentParts;
+            } else {
+                // Text-only prompt for pure generation
+                messageContent = formattedPrompt;
+            }
 
             const requestBody: Record<string, unknown> = {
                 model: modelId, // OpenRouter needs full model ID
                 messages: [
                     {
                         role: "user",
-                        content: formattedPrompt,
+                        content: messageContent,
                     }
                 ],
             };
@@ -114,7 +154,6 @@ export async function POST(req: Request) {
                 };
             }
 
-            console.log("OpenRouter image request:", JSON.stringify(requestBody, null, 2));
 
             const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
                 method: "POST",
@@ -137,13 +176,10 @@ export async function POST(req: Request) {
             }
 
             const data = await response.json();
-            console.log("OpenRouter image response:", JSON.stringify(data, null, 2));
 
             const choice = (data as any).choices?.[0];
             const content = choice?.message?.content;
 
-            console.log("Content type:", typeof content, "Array?:", Array.isArray(content));
-            console.log("Content value:", JSON.stringify(content)?.slice(0, 200));
 
             // Extract images from the response
             const images: Array<{ url: string; revisedPrompt?: string }> = [];
@@ -179,7 +215,6 @@ export async function POST(req: Request) {
 
             // First, try to find images anywhere in the response
             const foundImages = findBase64Images(data);
-            console.log("Found images via recursive search:", foundImages.length);
 
             for (const img of foundImages) {
                 if (img.startsWith('data:') || img.startsWith('http')) {
@@ -238,20 +273,63 @@ export async function POST(req: Request) {
             if (images.length === 0) {
                 console.error("No images found in response. Full data:", JSON.stringify(data, null, 2));
 
-                // Check if the model didn't generate any content at all
+                // Check if the model returned text instead of an image
+                const textContent = typeof content === "string" ? content : "";
+                const hasTextResponse = textContent.length > 0;
+
+                // Classify the error and provide actionable suggestions
                 const usage = (data as any).usage;
-                if (usage?.completion_tokens === 0) {
+                const finishReason = choice?.finish_reason || (data as any).choices?.[0]?.finish_reason;
+
+                // Error: Model doesn't support image generation
+                if (usage?.completion_tokens === 0 || finishReason === "stop" && !hasTextResponse) {
                     return new Response(
                         JSON.stringify({
-                            error: "The model did not generate any image. This model may not support image generation via this method, or the prompt may need to be more specific. Try a different image model like 'openai/gpt-4o' or 'google/gemini-2.0-flash-exp:free'.",
+                            error: "This model doesn't support image generation",
+                            suggestion: "Try an image-capable model like 'openai/gpt-4o', 'google/gemini-2.0-flash-exp:free', or 'openai/dall-e-3' (requires OpenAI API key)",
+                            recoverable: true,
                         }),
                         { status: 400, headers: { "Content-Type": "application/json" } }
                     );
                 }
 
+                // Error: Content policy violation
+                if (textContent.toLowerCase().includes("cannot") ||
+                    textContent.toLowerCase().includes("sorry") ||
+                    textContent.toLowerCase().includes("inappropriate") ||
+                    textContent.toLowerCase().includes("policy") ||
+                    finishReason === "content_filter") {
+                    return new Response(
+                        JSON.stringify({
+                            error: "Image generation was blocked by content policy",
+                            suggestion: "Try rephrasing your prompt to avoid potentially sensitive content. Use more general descriptions.",
+                            recoverable: true,
+                        }),
+                        { status: 400, headers: { "Content-Type": "application/json" } }
+                    );
+                }
+
+                // Error: Gemini returned text instead of image
+                if (isGeminiImageModel && hasTextResponse) {
+                    return new Response(
+                        JSON.stringify({
+                            error: "Gemini returned text instead of an image",
+                            suggestion: "Start your prompt with 'Generate an image of...' or 'Create a picture of...' to trigger image generation mode",
+                            recoverable: true,
+                            debug: { textPreview: textContent.slice(0, 100) },
+                        }),
+                        { status: 400, headers: { "Content-Type": "application/json" } }
+                    );
+                }
+
+                // Generic fallback with helpful context
                 return new Response(
                     JSON.stringify({
-                        error: "No images found in response. The model may have returned text instead of an image.",
+                        error: "No images found in response",
+                        suggestion: hasTextResponse
+                            ? "The model responded with text instead of an image. Try being more explicit: 'Generate an image of...'"
+                            : "Try a different image model or be more specific with your prompt",
+                        recoverable: true,
                         debug: { contentType: typeof content, isArray: Array.isArray(content), contentPreview: typeof content === 'string' ? content?.slice?.(0, 200) : JSON.stringify(content)?.slice(0, 200) }
                     }),
                     { status: 500, headers: { "Content-Type": "application/json" } }

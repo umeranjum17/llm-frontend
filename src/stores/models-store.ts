@@ -99,14 +99,12 @@ export const useModelsStore = create<ModelsState>((set, get) => ({
         return { success: true, count: FEATURED_MODELS.length };
       }
 
-      console.log("[ModelsStore] API returned models:", payload.models.length);
 
       // Merge: Static models take priority, but add any new models from API
       const staticIds = new Set(ALL_STATIC_MODELS.map(m => m.id));
       const newFromApi = (payload.models as Model[]).filter(m => !staticIds.has(m.id));
 
       if (newFromApi.length > 0) {
-        console.log("[ModelsStore] New models from API:", newFromApi.length);
       }
 
       // Combine: Featured first, then any new from API

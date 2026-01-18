@@ -83,6 +83,7 @@ export interface Message {
   reasoning?: string; // For models with separate reasoning
   inputTokens?: number; // Tokens in the request
   outputTokens?: number; // Tokens in the response
+  cachedTokens?: number; // Cached tokens from prompt caching (OpenAI, Anthropic, OpenRouter)
   cost?: number; // Cost in USD for this message
   costIsEstimated?: boolean; // True when tokens/cost were locally estimated (provider usage unavailable)
   isIncomplete?: boolean; // Response was cut off mid-stream
@@ -130,7 +131,7 @@ export interface UserSettings {
   titleModelIdsByProvider?: Record<string, string>; // Per-provider title generation models
   embeddingsProvider?: "openrouter" | "openai"; // Which provider to use for embeddings (default: openrouter)
   embeddingsModelId?: string; // Which embedding model to use (must match what was used for skill embeddings)
-  skillMatchThreshold?: number; // Similarity threshold for skill auto-detection (0-1, default: 0.5)
+  skillMatchThreshold?: number; // Minimum floor for skill auto-detection (0-1, default: 0.25)
   onboardingCompleted?: boolean; // Whether user has completed onboarding
   onboardingCompletedAt?: number; // Timestamp when onboarding was completed
   // Auto-tagging settings
@@ -323,6 +324,15 @@ export interface Skill {
 
   // Approval flow - show draft and ask before executing tools
   requireApproval?: boolean;      // If true, show draft and confirm before tool use
+
+  // Auto-apply configuration (for requireApproval skills)
+  autoApplyQueries?: string[];      // Sample queries for auto-apply matching (positive examples)
+  autoApplyEmbeddings?: number[][]; // Individual embeddings for each query (for precise matching)
+  autoApplyThreshold?: number;      // Per-skill threshold override (optional)
+
+  // Exclusion queries - "hard negatives" that should NOT match this skill
+  exclusionQueries?: string[];      // Queries that are similar but should NOT trigger this skill
+  exclusionEmbeddings?: number[][]; // Individual embeddings for each exclusion query
 
   // UI display
   ui: SkillUI;

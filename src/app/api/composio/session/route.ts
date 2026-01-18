@@ -36,8 +36,6 @@ export async function POST(req: NextRequest) {
     sessionOptions.manageConnections = true;
 
     if (process.env.NODE_ENV === "development") {
-      console.log("[Composio] Creating session for user:", userId);
-      console.log("[Composio] Session options:", JSON.stringify(sessionOptions, null, 2));
     }
 
     // Create session: composio.create(userId) or composio.create(userId, options)
@@ -46,7 +44,6 @@ export async function POST(req: NextRequest) {
       : await composio.create(userId);
 
     if (process.env.NODE_ENV === "development") {
-      console.log("[Composio] Session created:", JSON.stringify(session, null, 2));
     }
 
     // Session returns { mcp: { url, headers }, sessionId }

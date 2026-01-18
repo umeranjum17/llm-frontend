@@ -81,7 +81,6 @@ export function useLiveQueryWithTimeout<T>(
   }, [data]);
 
   const retry = useCallback(() => {
-    console.log("[useLiveQueryWithTimeout] Retrying query...");
     hasLoadedRef.current = false;
     setIsTimedOut(false);
     setError(null);

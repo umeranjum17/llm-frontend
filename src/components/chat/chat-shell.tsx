@@ -389,15 +389,11 @@ export function ChatShell() {
     try {
       // Ensure settings are loaded before creating chat (prevents MCP servers from being empty on mobile)
       const state = useSettingsStore.getState();
-      console.log("[NewChat] Settings loaded:", state.isLoaded, "defaultMcpServerIds:", state.defaultMcpServerIds);
       if (!state.isLoaded) {
-        console.log("[NewChat] Loading settings...");
         await state.loadSettings();
-        console.log("[NewChat] Settings loaded, defaultMcpServerIds:", useSettingsStore.getState().defaultMcpServerIds);
       }
       const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultMcpServerIds, defaultReasoningLevel } =
         useSettingsStore.getState();
-      console.log("[NewChat] Creating chat with MCP servers:", defaultMcpServerIds);
       const { providerId, modelId } = getDefaultChatConfig({
         defaultProviderId,
         defaultModelId,

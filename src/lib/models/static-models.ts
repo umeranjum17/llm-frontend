@@ -249,7 +249,7 @@ export const USE_CASE_RECOMMENDATIONS: Record<string, { models: string[]; descri
   "image-generation": {
     models: [
       "black-forest-labs/flux.2-max",          // Best quality
-      "google/gemini-2.5-flash-image-preview", // Nano Banana - great text rendering
+      "google/gemini-2.5-flash-image", // Nano Banana GA - great text rendering
       "openai/gpt-5-image",                    // Native multimodal
       "black-forest-labs/flux.2-pro",          // Professional quality
       "black-forest-labs/flux.2-flex",         // Text & multi-reference

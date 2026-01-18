@@ -907,6 +907,207 @@ export async function toggleSkillEnabled(skillId: string) {
   });
 }
 
+// ============= SKILL AUTO-APPLY QUERIES =============
+
+/**
+ * Compute the average of multiple embeddings (composite embedding)
+ */
+function averageEmbeddings(embeddings: number[][]): number[] {
+  if (embeddings.length === 0) return [];
+  if (embeddings.length === 1) return embeddings[0];
+
+  const dimensions = embeddings[0].length;
+  const result = new Array(dimensions).fill(0);
+
+  for (const embedding of embeddings) {
+    for (let i = 0; i < dimensions; i++) {
+      result[i] += embedding[i];
+    }
+  }
+
+  for (let i = 0; i < dimensions; i++) {
+    result[i] /= embeddings.length;
+  }
+
+  return result;
+}
+
+/**
+ * Set skill's auto-apply queries and generate individual embeddings for each.
+ * Each query gets its own embedding for precise matching.
+ * Requires an API key and provider info for embedding generation.
+ */
+export async function setSkillAutoApplyQueries(
+  skillId: string,
+  queries: string[],
+  apiKey: string,
+  providerId: string = "openrouter",
+  modelId?: string
+): Promise<void> {
+  const { getEmbedding } = await import("@/lib/skills/skill-embeddings");
+
+  if (queries.length === 0) {
+    await updateSkill(skillId, {
+      autoApplyQueries: [],
+      autoApplyEmbeddings: undefined,
+    });
+    return;
+  }
+
+  // Generate individual embedding for each query
+  const embeddings: number[][] = [];
+  for (const query of queries) {
+    const embedding = await getEmbedding(query, apiKey, providerId, modelId);
+    if (embedding) {
+      embeddings.push(embedding);
+    }
+  }
+
+  if (embeddings.length === 0) {
+    console.warn("[Skills] Failed to generate any embeddings for auto-apply queries");
+    await updateSkill(skillId, {
+      autoApplyQueries: queries,
+      autoApplyEmbeddings: undefined,
+    });
+    return;
+  }
+
+  // Store individual embeddings (not averaged)
+  await updateSkill(skillId, {
+    autoApplyQueries: queries,
+    autoApplyEmbeddings: embeddings,
+  });
+
+}
+
+/**
+ * Add a single auto-apply query to a skill and recompute composite embedding.
+ */
+export async function addSkillAutoApplyQuery(
+  skillId: string,
+  query: string,
+  apiKey: string,
+  providerId: string = "openrouter",
+  modelId?: string
+): Promise<void> {
+  const skill = await db.skills.get(skillId);
+  if (!skill) return;
+
+  const existingQueries = skill.autoApplyQueries || [];
+  if (existingQueries.includes(query)) return; // Already exists
+
+  const newQueries = [...existingQueries, query];
+  await setSkillAutoApplyQueries(skillId, newQueries, apiKey, providerId, modelId);
+}
+
+/**
+ * Remove a single auto-apply query from a skill and recompute composite embedding.
+ */
+export async function removeSkillAutoApplyQuery(
+  skillId: string,
+  query: string,
+  apiKey: string,
+  providerId: string = "openrouter",
+  modelId?: string
+): Promise<void> {
+  const skill = await db.skills.get(skillId);
+  if (!skill) return;
+
+  const existingQueries = skill.autoApplyQueries || [];
+  const newQueries = existingQueries.filter((q) => q !== query);
+
+  await setSkillAutoApplyQueries(skillId, newQueries, apiKey, providerId, modelId);
+}
+
+// ============= SKILL EXCLUSION QUERIES =============
+
+/**
+ * Set skill's exclusion queries and generate individual embeddings for each.
+ * Each query gets its own embedding for precise matching.
+ * These are "hard negatives" - queries that should NOT match this skill.
+ */
+export async function setSkillExclusionQueries(
+  skillId: string,
+  queries: string[],
+  apiKey: string,
+  providerId: string = "openrouter",
+  modelId?: string
+): Promise<void> {
+  const { getEmbedding } = await import("@/lib/skills/skill-embeddings");
+
+  if (queries.length === 0) {
+    await updateSkill(skillId, {
+      exclusionQueries: [],
+      exclusionEmbeddings: undefined,
+    });
+    return;
+  }
+
+  // Generate individual embedding for each exclusion query
+  const embeddings: number[][] = [];
+  for (const query of queries) {
+    const embedding = await getEmbedding(query, apiKey, providerId, modelId);
+    if (embedding) {
+      embeddings.push(embedding);
+    }
+  }
+
+  if (embeddings.length === 0) {
+    console.warn("[Skills] Failed to generate any embeddings for exclusion queries");
+    await updateSkill(skillId, {
+      exclusionQueries: queries,
+      exclusionEmbeddings: undefined,
+    });
+    return;
+  }
+
+  // Store individual embeddings (not averaged)
+  await updateSkill(skillId, {
+    exclusionQueries: queries,
+    exclusionEmbeddings: embeddings,
+  });
+
+}
+
+/**
+ * Add a single exclusion query to a skill and recompute composite embedding.
+ */
+export async function addSkillExclusionQuery(
+  skillId: string,
+  query: string,
+  apiKey: string,
+  providerId: string = "openrouter",
+  modelId?: string
+): Promise<void> {
+  const skill = await db.skills.get(skillId);
+  if (!skill) return;
+
+  const existingQueries = skill.exclusionQueries || [];
+  if (existingQueries.includes(query)) return; // Already exists
+
+  const newQueries = [...existingQueries, query];
+  await setSkillExclusionQueries(skillId, newQueries, apiKey, providerId, modelId);
+}
+
+/**
+ * Remove a single exclusion query from a skill and recompute composite embedding.
+ */
+export async function removeSkillExclusionQuery(
+  skillId: string,
+  query: string,
+  apiKey: string,
+  providerId: string = "openrouter",
+  modelId?: string
+): Promise<void> {
+  const skill = await db.skills.get(skillId);
+  if (!skill) return;
+
+  const existingQueries = skill.exclusionQueries || [];
+  const newQueries = existingQueries.filter((q) => q !== query);
+
+  await setSkillExclusionQueries(skillId, newQueries, apiKey, providerId, modelId);
+}
+
 // ============= TAG QUERIES =============
 
 export async function getAllTags() {

@@ -92,18 +92,15 @@ export function estimateCost(
   let outputPricePer1M: number;
 
   if (model) {
-    console.log(`[Cost] Found model in catalog: ${model.id}, pricing: $${model.inputCost}/$${model.outputCost} per 1M tokens`);
     // Check if it's a free model (has :free suffix or zero pricing)
     const isFreeModel = modelId.includes(':free') || (model.inputCost === 0 && model.outputCost === 0);
     if (isFreeModel) {
-      console.log(`[Cost] Model "${modelId}" is a free tier model, cost will be $0`);
       // Even for "free" models, use fallback pricing for estimation if the model has 0/0 pricing
       // This helps users understand approximate usage even on free tiers
       if (model.inputCost === 0 && model.outputCost === 0 && !modelId.includes(':free')) {
         const fallback = getFallbackPricing(modelId);
         inputPricePer1M = fallback.input;
         outputPricePer1M = fallback.output;
-        console.log(`[Cost] Using fallback pricing for model with 0/0 catalog pricing: $${fallback.input}/$${fallback.output} per 1M tokens`);
       } else {
         inputPricePer1M = 0;
         outputPricePer1M = 0;

@@ -182,14 +182,12 @@ export async function POST(req: Request) {
     });
 
     // Load MCP tools using shared executor
-    console.log(`[Chat] Loading MCP tools for ${mcpServers.length} servers`);
     const { tools: allTools, metadata: mcpMetadata } = await loadMcpTools(
       mcpServers as McpServer[],
       enabledTools
     );
 
     const hasTools = Object.keys(allTools).length > 0;
-    console.log(`[Chat] Loaded ${Object.keys(allTools).length} tools`);
 
     // Build tool instructions using shared executor
     const toolInstructions = buildToolInstructions(
@@ -199,9 +197,7 @@ export async function POST(req: Request) {
     );
 
     if (mcpMetadata.length > 0) {
-      console.log(`[Chat] Added tool instructions for ${mcpMetadata.length} tools`);
     } else if (!hasTools) {
-      console.log('[Chat] No tools available - added no-tools instruction');
     }
 
     // Stream the response
@@ -265,13 +261,6 @@ export async function POST(req: Request) {
       tokenBreakdown.assistantMessages +
       tokenBreakdown.toolSchemas;
 
-    console.log(`[Chat] 📊 TOKEN BREAKDOWN:`);
-    console.log(`  System messages: ${tokenBreakdown.systemMessages}`);
-    console.log(`  Tool instructions: ${tokenBreakdown.toolInstructions}`);
-    console.log(`  User messages: ${tokenBreakdown.userMessages}`);
-    console.log(`  Assistant messages: ${tokenBreakdown.assistantMessages}`);
-    console.log(`  Tool schemas: ${tokenBreakdown.toolSchemas} (${Object.keys(allTools).length} tools)`);
-    console.log(`  ESTIMATED TOTAL: ${tokenBreakdown.total}`);
     // === END TOKEN BREAKDOWN ===
 
     // Provider options for streamText
@@ -311,7 +300,6 @@ export async function POST(req: Request) {
           ...providerOptions.anthropic,
           thinking: { type: 'enabled', budgetTokens }
         };
-        console.log(`[Chat] Enabled Anthropic extended thinking (level: ${reasoningLevel || 'medium'}, budget: ${budgetTokens} tokens)`);
       }
       // Note: OpenAI o1/o3 models handle reasoning automatically, but we could add temperature/other params here if needed
     }
@@ -322,7 +310,6 @@ export async function POST(req: Request) {
       : 1;
 
     if (hasTools) {
-      console.log(`[Chat] Tool calling tier: ${capabilities.toolCallingTier}, maxSteps: ${maxSteps}`);
     }
 
     const result = streamText({
@@ -348,19 +335,8 @@ export async function POST(req: Request) {
 
           try {
             for await (const part of result.fullStream) {
-              // DEBUG: Log stream events (OpenRouter uses 'text' property for text-delta)
-              console.log(`[Chat] Stream event: ${part.type}`,
-                part.type === 'text-delta'
-                  ? { text: (part as any).text?.slice(0, 50) }
-                  : part.type === 'finish' || part.type === 'finish-step'
-                    ? '(usage data)'
-                    : part
-              );
-
               // Log tool calls and results for debugging
               if (part.type === 'tool-call') {
-                console.log(`[Chat] Tool call: ${part.toolName}`, part.input);
-
                 // Check for MULTI_EXECUTE_TOOL with empty/missing input (common failure)
                 if (part.toolName.includes('MULTI_EXECUTE_TOOL')) {
                   const input = part.input as any;
@@ -373,7 +349,6 @@ export async function POST(req: Request) {
               }
 
               if (part.type === 'tool-result') {
-                console.log(`[Chat] Tool result: ${part.toolName}`, part.output);
 
                 // Track failures for retry detection
                 // Handle multiple error formats from different tools/servers
@@ -422,7 +397,6 @@ export async function POST(req: Request) {
                     composioHint = ' The connection IS active and working. DO NOT call MANAGE_CONNECTIONS again. Proceed to use the toolkit tools directly.';
                     // Reset failure count since this isn't a real failure
                     toolFailures.delete(part.toolName);
-                    console.log(`[Chat] COMPOSIO_MANAGE_CONNECTIONS "already defined" - connection is active, clearing failure count`);
 
                     // Emit a special hint event to help guide the model
                     controller.enqueue(
@@ -437,7 +411,6 @@ export async function POST(req: Request) {
 
                   // If we've hit retry limit, emit a hint event for the frontend
                   if (failCount > MAX_TOOL_RETRIES) {
-                    console.log(`[Chat] Tool ${part.toolName} exceeded retry limit, suggesting user prompt`);
 
                     // Generate specific suggestion based on error type
                     let suggestion = "The tool failed repeatedly.";
@@ -481,13 +454,10 @@ export async function POST(req: Request) {
                 
                 if (cachedTokens > 0) {
                   const cacheHitRate = ((cachedTokens / promptTokens) * 100).toFixed(1);
-                  console.log(`[PromptCache] ✅ Cache hit: ${cachedTokens}/${promptTokens} tokens cached (${cacheHitRate}% hit rate)`);
                 }
                 
-                console.log(`[Chat] ${part.type} event - usage:`, usage);
               }
               if ((part as any).providerMetadata) {
-                console.log(`[Chat] ${part.type} event - providerMetadata:`, (part as any).providerMetadata);
               }
 
               controller.enqueue(

@@ -63,7 +63,6 @@ Take the user's request and transform it into a detailed, professional image gen
       temperature: 0.7,
     });
 
-    console.log("[Prompt Optimizer] Generated prompt:", text.substring(0, 200) + "...");
 
     return new Response(
       JSON.stringify({ optimizedPrompt: text.trim() }),

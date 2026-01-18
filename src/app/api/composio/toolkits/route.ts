@@ -22,12 +22,9 @@ export async function POST(req: NextRequest) {
     try {
       rawResponse = await composio.connectedAccounts.list();
       if (process.env.NODE_ENV === "development") {
-        console.log("[Composio] RAW connectedAccounts.list() response:");
-        console.log(JSON.stringify(rawResponse, null, 2));
       }
     } catch (e) {
       if (process.env.NODE_ENV === "development") {
-        console.log("[Composio] Error fetching connected accounts:", e);
       }
       rawResponse = { items: [] };
     }
@@ -54,7 +51,6 @@ export async function POST(req: NextRequest) {
       connectionMap.set(toolkitSlug.toLowerCase(), { id, status });
 
       if (process.env.NODE_ENV === "development") {
-        console.log(`[Composio] Account ${id}: toolkit=${toolkitSlug}, status=${status}`);
       }
     }
 

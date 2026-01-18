@@ -12,6 +12,47 @@ const withPWA = withPWAInit({
     // Force service worker to claim clients immediately
     skipWaiting: true,
     clientsClaim: true,
+    // Selective precaching - exclude unnecessary files to reduce cache size
+    exclude: [
+      /\.map$/, // Source maps
+      /hot-update/, // Hot module replacement files (dev only, but good to exclude)
+      /_buildManifest\.js$/, // Build manifest (changes every build)
+      /_ssgManifest\.js$/, // SSG manifest
+      /\/api\//, // API routes (shouldn't be cached statically)
+      /\.test\./, // Test files (shouldn't be in prod, but safety)
+      /\.spec\./, // Spec files
+    ],
+    // Clean up caches when storage quota is exceeded
+    cleanupOutdatedCaches: true,
+    // Limit runtime cache size to prevent unbounded growth
+    runtimeCaching: [
+      {
+        // Cache page navigations with network-first strategy
+        urlPattern: /^https?.*\/(?!api\/).*$/,
+        handler: "NetworkFirst",
+        options: {
+          cacheName: "pages-cache",
+          expiration: {
+            maxEntries: 50, // Limit to 50 cached pages
+            maxAgeSeconds: 60 * 60 * 24, // 24 hours
+            purgeOnQuotaError: true, // Clear on storage overflow
+          },
+        },
+      },
+      {
+        // Cache static assets with cache-first strategy
+        urlPattern: /\.(?:js|css|woff2?|png|jpg|jpeg|gif|svg|ico)$/,
+        handler: "CacheFirst",
+        options: {
+          cacheName: "static-assets",
+          expiration: {
+            maxEntries: 200, // Limit cached assets
+            maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
+            purgeOnQuotaError: true,
+          },
+        },
+      },
+    ],
   },
 });
 

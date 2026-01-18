@@ -241,7 +241,6 @@ async function createStepComposioSession(
   try {
     // SECURITY: Derive unique userId from API key to isolate user sessions
     const userId = deriveUserIdFromApiKey(composioApiKey);
-    console.log("[Pipeline] Creating step-specific Composio session with toolkits:", stepToolkits);
 
     const response = await fetch(`${baseUrl}/api/composio/session`, {
       method: "POST",
@@ -261,7 +260,6 @@ async function createStepComposioSession(
     }
 
     const { mcp } = await response.json();
-    console.log("[Pipeline] Step-specific Composio session created:", mcp.url);
     return { url: mcp.url, headers: mcp.headers };
   } catch (error) {
     console.error("[Pipeline] Error creating step Composio session:", error);
@@ -322,21 +320,6 @@ async function executeLLMStep(options: LLMStepOptions): Promise<LLMStepResult> {
   const modelId = step.modelId || "openai/gpt-4o-mini";
   const providerId = step.providerId || "openrouter";
 
-  console.log("[Pipeline LLM Step] Step config:", {
-    stepId: step.id,
-    stepName: step.name,
-    modelId,
-    providerId,
-    hasImages: images && images.length > 0,
-    mcpServerIds: step.mcpServerIds,
-    stepEnabledTools: step.enabledTools,
-    agentEnabledTools,
-    agentDisabledTools,
-    stepIndex,
-    memoryEnabled: step.memoryEnabled,
-    includeHistory: step.includeHistory,
-  });
-
   // Build system prompt - combine agent-level and step-level prompts
   let systemPrompt = "";
 
@@ -388,9 +371,6 @@ async function executeLLMStep(options: LLMStepOptions): Promise<LLMStepResult> {
         ![...globalSet].every(t => effectiveSet.has(t));
 
       if (toolkitsDiffer && effectiveToolkits && effectiveToolkits.length > 0) {
-        console.log("[Pipeline LLM Step] Step has toolkit overrides, creating step-specific session");
-        console.log("[Pipeline LLM Step] Global toolkits:", composioGlobalToolkits);
-        console.log("[Pipeline LLM Step] Effective toolkits for step:", effectiveToolkits);
 
         // Create step-specific Composio session with only the allowed toolkits
         // This ensures the search tool only returns tools from these toolkits
@@ -406,7 +386,6 @@ async function executeLLMStep(options: LLMStepOptions): Promise<LLMStepResult> {
               ? { ...s, url: stepSession.url, headers: stepSession.headers }
               : s
           );
-          console.log("[Pipeline LLM Step] Using step-specific Composio session URL:", stepSession.url);
         }
       }
     }
@@ -427,7 +406,6 @@ async function executeLLMStep(options: LLMStepOptions): Promise<LLMStepResult> {
       { type: "text", text: input },
       ...images.map(img => ({ type: "image", image: img })),
     ];
-    console.log("[Pipeline LLM Step] Including", images.length, "images in request");
   } else {
     userContent = input;
   }
@@ -459,7 +437,6 @@ async function executeLLMStep(options: LLMStepOptions): Promise<LLMStepResult> {
     { maxTokens: 2000 }
   );
 
-  console.log("[Pipeline LLM Step] Completed with", result.toolCalls?.length || 0, "tool calls");
 
   return {
     text: result.text,
@@ -484,16 +461,6 @@ async function executeImageStep(
   const imageSize = step.imageSize || "1024x1024";
   const imageQuality = step.imageQuality || "hd"; // Default to HD for better quality
   const imageStyle = step.imageStyle || "natural";
-
-  console.log("[Pipeline Image Step] Step config:", {
-    stepId: step.id,
-    stepImageProviderId: step.imageProviderId,
-    effectiveProviderId: providerId,
-    modelId,
-    imageSize,
-    imageQuality,
-    imageStyle,
-  });
 
   // Call the images API
   const response = await fetch(`${baseUrl}/api/images`, {
@@ -603,12 +570,6 @@ async function executeToolStep(
     }
   }
 
-  console.log("[Pipeline Tool Step] Executing tool:", {
-    toolName: step.toolName,
-    args: toolArgs,
-    serverCount: mcpServers.length,
-  });
-
   // Call the MCP tool execution API
   const response = await fetch(`${baseUrl}/api/mcp/execute-tool`, {
     method: "POST",
@@ -656,8 +617,6 @@ export async function POST(req: Request) {
     const apiKey = req.headers.get("X-API-Key");
     const composioApiKey = req.headers.get("X-Composio-Key") || undefined;
 
-    console.log("[Pipeline] API Key present:", !!apiKey, "length:", apiKey?.length, "prefix:", apiKey?.slice(0, 10));
-    console.log("[Pipeline] Provider base URL:", providerBaseUrl);
 
     if (!apiKey) {
       return new Response(

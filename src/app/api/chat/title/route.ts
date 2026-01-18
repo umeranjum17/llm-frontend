@@ -11,7 +11,6 @@ export async function POST(req: Request) {
         // Use the titleModelId passed from client, or fall back to provider default
         const configuredTitleModel = titleModelId || DEFAULT_UTILITY_MODELS[providerId] || "gpt-4o-mini";
 
-        console.log(`[Title] Using model ${configuredTitleModel} for provider ${providerId}`);
 
         // Require user-provided API key for all providers
         if (!apiKey) {
@@ -68,7 +67,6 @@ Title:`,
             }
         }
 
-        console.log("[Title] Generated title:", title, `(cost: $${usage?.cost ?? 0}, tokens: ${usage?.inputTokens ?? 0}/${usage?.outputTokens ?? 0})`);
 
         return new Response(JSON.stringify({
             title,

@@ -77,3 +77,20 @@ export async function ensureBuiltIns() {
   await Promise.all([ensureBuiltInAgents(), ensureBuiltInSkills()]);
 }
 
+/**
+ * Reset all skills to defaults - deletes ALL skills (including custom ones)
+ * and re-initializes only the built-in skills.
+ */
+export async function resetSkillsToDefaults() {
+  // Delete all skill embeddings
+  await db.skillEmbeddings.clear();
+
+  // Delete all skills
+  await db.skills.clear();
+
+  // Re-add built-in skills
+  await db.skills.bulkAdd(BUILTIN_SKILLS);
+
+  return BUILTIN_SKILLS.length;
+}
+

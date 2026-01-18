@@ -16,7 +16,6 @@ export async function POST(req: Request) {
         }
 
         const configuredModel = DEFAULT_UTILITY_MODELS[providerId] || "gpt-4o-mini";
-        console.log(`[Summary] Using model ${configuredModel} for provider ${providerId}`);
 
         const { text, usage } = await generateSimpleText({
             providerId,
@@ -44,7 +43,6 @@ Rules:
 
         const summary = text.trim();
 
-        console.log("[Summary] Generated:", summary, `(cost: $${usage?.cost ?? 0}, tokens: ${usage?.inputTokens ?? 0}/${usage?.outputTokens ?? 0})`);
 
         return new Response(JSON.stringify({
             summary,

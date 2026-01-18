@@ -6,6 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Plus, X } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -52,7 +54,10 @@ interface SkillEditorDialogProps {
 export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDialogProps) {
   const isEditing = !!skill;
   const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+  const [triggerPhrases, setTriggerPhrases] = useState<string[]>([]);
+  const [newTriggerPhrase, setNewTriggerPhrase] = useState("");
+  const [exclusionKeywords, setExclusionKeywords] = useState<string[]>([]);
+  const [newExclusionKeyword, setNewExclusionKeyword] = useState("");
   const [category, setCategory] = useState<Skill["category"]>("coding");
   const [systemPrompt, setSystemPrompt] = useState("");
   const [userTemplate, setUserTemplate] = useState("");
@@ -76,10 +81,24 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
     // Priority: existing skill > prefilled data > defaults
     const source = skill || prefilledData;
 
-    console.log("[SkillEditor] Opening with source:", source?.name, source);
 
     setName(source?.name || "");
-    setDescription(source?.description || "");
+    // Load trigger phrases - merge from autoApplyQueries and description for backward compatibility
+    const existingTriggers = source?.autoApplyQueries || [];
+    const descKeywords = source?.description
+      ? source.description.split(",").map((k: string) => k.trim()).filter((k: string) => k.length > 0)
+      : [];
+    // Merge and deduplicate: prefer autoApplyQueries, add description keywords that aren't already there
+    const mergedTriggers = [...existingTriggers];
+    for (const kw of descKeywords) {
+      if (!mergedTriggers.some(t => t.toLowerCase() === kw.toLowerCase())) {
+        mergedTriggers.push(kw);
+      }
+    }
+    setTriggerPhrases(mergedTriggers);
+    setNewTriggerPhrase("");
+    setExclusionKeywords(source?.exclusionQueries || []);
+    setNewExclusionKeyword("");
     setCategory(source?.category || "coding");
     setSystemPrompt(source?.systemPrompt || "");
     setUserTemplate(source?.userTemplate || "");
@@ -106,10 +125,43 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
   const { getKeyForProvider } = useApiKeysStore();
   const { embeddingsProvider, embeddingsModelId } = useSettingsStore();
 
+  const handleAddTriggerPhrase = () => {
+    const phrase = newTriggerPhrase.trim();
+    if (!phrase) return;
+    if (triggerPhrases.some(t => t.toLowerCase() === phrase.toLowerCase())) {
+      toast.error("Trigger phrase already exists");
+      return;
+    }
+    setTriggerPhrases([...triggerPhrases, phrase]);
+    setNewTriggerPhrase("");
+  };
+
+  const handleRemoveTriggerPhrase = (phrase: string) => {
+    setTriggerPhrases(triggerPhrases.filter((p) => p !== phrase));
+  };
+
+  const handleAddExclusionKeyword = () => {
+    const keyword = newExclusionKeyword.trim();
+    if (!keyword) return;
+    if (exclusionKeywords.includes(keyword)) {
+      toast.error("Exclusion already exists");
+      return;
+    }
+    setExclusionKeywords([...exclusionKeywords, keyword]);
+    setNewExclusionKeyword("");
+  };
+
+  const handleRemoveExclusionKeyword = (keyword: string) => {
+    setExclusionKeywords(exclusionKeywords.filter((k) => k !== keyword));
+  };
+
   const handleSave = async () => {
     if (!name.trim()) return toast.error("Name is required");
-    if (!description.trim()) return toast.error("Description is required (used for auto-matching)");
+    if (autoTrigger && triggerPhrases.length === 0) return toast.error("At least one trigger phrase is required for auto-trigger skills");
     if (!systemPrompt.trim()) return toast.error("System prompt is required");
+
+    // Auto-generate description from trigger phrases (for display and backward compat)
+    const description = triggerPhrases.slice(0, 5).join(", ");
 
     setSaving(true);
     try {
@@ -121,45 +173,50 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
       };
 
       let savedSkill: Skill | null = null;
-      const descriptionChanged = skill?.description !== description.trim();
+      const triggersChanged = JSON.stringify(skill?.autoApplyQueries || []) !== JSON.stringify(triggerPhrases);
 
       if (skill) {
         await updateSkill(skill.id, {
           name: name.trim(),
-          description: description.trim(),
+          description,
           category,
           systemPrompt,
           userTemplate: userTemplate.trim() || undefined,
           variables: variables.length > 0 ? variables : undefined,
           trigger,
           requireApproval,
+          autoApplyQueries: triggerPhrases.length > 0 ? triggerPhrases : undefined,
+          exclusionQueries: exclusionKeywords.length > 0 ? exclusionKeywords : undefined,
           ui,
         });
-        // For updates, we need to regenerate embedding if description changed
-        if (descriptionChanged) {
+        // For updates, we need to regenerate embedding if triggers changed
+        if (triggersChanged) {
           savedSkill = {
             ...skill,
             name: name.trim(),
-            description: description.trim(),
+            description,
             category,
             systemPrompt,
             userTemplate: userTemplate.trim() || undefined,
             variables: variables.length > 0 ? variables : undefined,
             trigger,
             ui,
+            autoApplyQueries: triggerPhrases,
           };
         }
         toast.success("Skill updated");
       } else {
         savedSkill = await addSkill({
           name: name.trim(),
-          description: description.trim(),
+          description,
           category,
           systemPrompt,
           userTemplate: userTemplate.trim() || undefined,
           variables: variables.length > 0 ? variables : undefined,
           trigger,
           requireApproval,
+          autoApplyQueries: triggerPhrases.length > 0 ? triggerPhrases : undefined,
+          exclusionQueries: exclusionKeywords.length > 0 ? exclusionKeywords : undefined,
           ui,
           isBuiltIn: false,
           isEnabled: true,
@@ -168,21 +225,45 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
         toast.success("Skill created");
       }
 
-      // Auto-generate embedding if we have API key and settings
-      if (savedSkill && embeddingsProvider && embeddingsModelId) {
+      // Auto-generate embeddings for trigger phrases if we have API key
+      if (savedSkill && embeddingsProvider && embeddingsModelId && triggerPhrases.length > 0) {
         const apiKeyObj = getKeyForProvider(embeddingsProvider);
         if (apiKeyObj?.key) {
           try {
+            // Import and use the query embedding function
+            const { setSkillAutoApplyQueries, setSkillExclusionQueries } = await import("@/lib/db/queries");
+
+            // Generate trigger phrase embeddings
+            await setSkillAutoApplyQueries(
+              savedSkill.id,
+              triggerPhrases,
+              apiKeyObj.key,
+              embeddingsProvider,
+              embeddingsModelId
+            );
+
+            // Generate exclusion embeddings if any
+            if (exclusionKeywords.length > 0) {
+              await setSkillExclusionQueries(
+                savedSkill.id,
+                exclusionKeywords,
+                apiKeyObj.key,
+                embeddingsProvider,
+                embeddingsModelId
+              );
+            }
+
+            // Also generate description embedding for backward compat
             await generateSkillEmbedding(
               savedSkill,
               apiKeyObj.key,
               embeddingsProvider,
               embeddingsModelId
             );
-            toast.success("Skill embedding generated");
+
+            toast.success("Skill embeddings generated");
           } catch (embError) {
-            console.error("Failed to generate embedding:", embError);
-            // Don't fail the save, just warn about embedding
+            console.error("Failed to generate embeddings:", embError);
             toast.warning("Skill saved, but embedding generation failed. Regenerate from Settings > Skills.");
           }
         }
@@ -231,21 +312,121 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
             </div>
           </div>
 
-          {/* Description (Important for matching) */}
-          <div className="space-y-2">
-            <Label>
-              Description <span className="text-muted-foreground text-xs">(used for auto-matching)</span>
-            </Label>
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Keywords that trigger this skill, e.g.: code review, check for bugs, best practices, security"
-              className="min-h-[80px]"
-            />
-            <p className="text-xs text-muted-foreground">
-              Include keywords and phrases that users might say when they want to use this skill.
-            </p>
-          </div>
+          {/* Trigger Phrases - only show for auto-trigger skills */}
+          {autoTrigger && (
+            <div className="space-y-2">
+              <Label>
+                Trigger Phrases <span className="text-muted-foreground text-xs">(queries that activate this skill)</span>
+              </Label>
+
+              {triggerPhrases.length > 0 && (
+                <div className="flex flex-wrap gap-2 p-2 rounded-lg border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30">
+                  {triggerPhrases.map((phrase, index) => (
+                    <Badge
+                      key={index}
+                      variant="secondary"
+                      className="gap-1 pr-1 text-sm bg-green-100 dark:bg-green-900/50"
+                    >
+                      {phrase}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveTriggerPhrase(phrase)}
+                        className="ml-1 rounded-full p-0.5 hover:bg-destructive/20 hover:text-destructive"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Input
+                  value={newTriggerPhrase}
+                  onChange={(e) => setNewTriggerPhrase(e.target.value)}
+                  placeholder="e.g., Generate an AI image of..."
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddTriggerPhrase();
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={handleAddTriggerPhrase}
+                  disabled={!newTriggerPhrase.trim()}
+                  className="border-green-300 hover:bg-green-50 dark:border-green-700"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Add example queries that should trigger this skill. More examples = better matching.
+              </p>
+            </div>
+          )}
+
+          {/* Exclusion Queries (Negative Examples) - only show for auto-trigger skills */}
+          {autoTrigger && (
+            <div className="space-y-2">
+              <Label>
+                Exclusion Queries <span className="text-muted-foreground text-xs">(negative examples)</span>
+              </Label>
+
+              {exclusionKeywords.length > 0 && (
+                <div className="flex flex-wrap gap-2 p-2 rounded-lg border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30">
+                  {exclusionKeywords.map((keyword, index) => (
+                    <Badge
+                      key={index}
+                      variant="secondary"
+                      className="gap-1 pr-1 text-sm bg-red-100 dark:bg-red-900/50"
+                    >
+                      {keyword}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveExclusionKeyword(keyword)}
+                        className="ml-1 rounded-full p-0.5 hover:bg-destructive/20 hover:text-destructive"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Input
+                  value={newExclusionKeyword}
+                  onChange={(e) => setNewExclusionKeyword(e.target.value)}
+                  placeholder="e.g., Build a website..."
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddExclusionKeyword();
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={handleAddExclusionKeyword}
+                  disabled={!newExclusionKeyword.trim()}
+                  className="border-red-300 hover:bg-red-50 dark:border-red-700"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Queries that should NOT trigger this skill. These penalize the match score to prevent false positives.
+              </p>
+            </div>
+          )}
 
           {/* System Prompt */}
           <div className="space-y-2">

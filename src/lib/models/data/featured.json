@@ -907,7 +907,7 @@
       ]
     },
     {
-      "id": "google/gemini-2.5-flash-image-preview",
+      "id": "google/gemini-2.5-flash-image",
       "name": "Gemini 2.5 Flash Image (Nano Banana)",
       "provider": "Google",
       "description": "State-of-the-art image generation with contextual understanding. Image generation, edits, and multi-turn conversations.",

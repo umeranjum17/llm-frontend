@@ -139,7 +139,6 @@ export function configurePromptCaching(
       promptCacheKey: cacheKey,
       promptCacheRetention: 'in_memory', // Can be 'in_memory' or '24h' for supported models
     };
-    console.log(`[PromptCache] OpenAI: Enabled prompt caching (${systemTokens} tokens, key: ${cacheKey})`);
   }
   
   // Anthropic: Direct provider prompt caching
@@ -153,7 +152,6 @@ export function configurePromptCaching(
       (updatedMessages[lastSystemIdx] as any).providerOptions = {
         anthropic: { cacheControl: { type: 'ephemeral' } }
       };
-      console.log(`[PromptCache] Anthropic: Enabled prompt caching (${systemTokens} tokens)`);
     }
   }
   
@@ -204,11 +202,9 @@ export function configurePromptCaching(
           }
         }
         
-        console.log(`[PromptCache] OpenRouter: Enabled prompt caching for ${isGeminiModel ? 'Gemini' : 'Claude'} (${systemTokens} tokens)`);
       }
     } else {
       // OpenRouter automatic caching for other models (OpenAI, Groq, etc.)
-      console.log(`[PromptCache] OpenRouter: Using automatic prompt caching (${modelId})`);
     }
   }
   
@@ -270,10 +266,6 @@ export async function withRetry<T>(
         const delay = Math.min(
           RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt),
           RETRY_CONFIG.maxDelayMs
-        );
-        console.log(
-          `[ChatExecutor] ${context} - Retryable error (attempt ${attempt + 1}/${RETRY_CONFIG.maxRetries + 1}), retrying in ${delay}ms:`,
-          error instanceof Error ? error.message : error
         );
         await new Promise((resolve) => setTimeout(resolve, delay));
       } else {
@@ -422,7 +414,6 @@ export function createModel(config: {
                 return tool;
               });
 
-              console.log('[OpenRouter] Sanitized tool schemas before sending to provider');
             }
 
             options = {
@@ -475,7 +466,6 @@ export async function loadMcpTools(
   try {
     const { tools: loadedTools, metadata } = await mcpManager.getTools(enabledMcpServers);
 
-    console.log("[ChatExecutor] loadMcpTools - loaded:", Object.keys(loadedTools).length, "tools, enabledTools filter:", enabledTools, "disabledTools filter:", disabledTools);
 
     // Apply enabledTools filter if provided
     const enabledToolsSet = enabledTools && enabledTools.length > 0
@@ -524,7 +514,6 @@ export async function loadMcpTools(
       );
     }
 
-    console.log("[ChatExecutor] loadMcpTools - after filtering:", Object.keys(filteredTools).length, "tools");
     return { tools: filteredTools, metadata: filteredMetadata };
   } catch (error) {
     console.error("[ChatExecutor] Failed to load MCP tools:", error);
@@ -630,7 +619,6 @@ export async function executeChat(
   // Calculate maxSteps
   const maxSteps = options?.maxSteps ?? (hasTools ? getMaxStepsByTier(capabilities.toolCallingTier) : 1);
 
-  console.log(`[ChatExecutor] Executing chat with model: ${modelId}, tools: ${Object.keys(tools).length}, maxSteps: ${maxSteps}`);
 
   // Execute with retry for transient errors
   const result = await withRetry(
@@ -661,8 +649,6 @@ export async function executeChat(
     }
   }
 
-  console.log(`[ChatExecutor] Completed with ${allToolCalls.length} tool calls`);
-  console.log(`[ChatExecutor] Result text length: ${result.text?.length || 0}, preview: ${result.text?.slice(0, 100) || 'EMPTY'}`);
   
   // Log prompt cache metrics if available
   if (result.usage) {
@@ -670,9 +656,7 @@ export async function executeChat(
     const promptTokens = result.usage.inputTokens ?? 0;
     if (cachedTokens > 0) {
       const cacheHitRate = ((cachedTokens / promptTokens) * 100).toFixed(1);
-      console.log(`[PromptCache] ✅ Cache hit: ${cachedTokens}/${promptTokens} tokens cached (${cacheHitRate}% hit rate)`);
     } else if (promptTokens >= 1024) {
-      console.log(`[PromptCache] ℹ️  Prompt eligible for caching (${promptTokens} tokens) but no cache hit`);
     }
   }
 

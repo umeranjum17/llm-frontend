@@ -4,7 +4,7 @@ import { useState, memo, useMemo } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download, ThumbsUp, ThumbsDown, Volume2, VolumeX, ChevronDown, ChevronRight, Wrench, Loader2, Brain, RefreshCw } from "lucide-react";
+import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download, ThumbsUp, ThumbsDown, Volume2, VolumeX, ChevronDown, ChevronRight, Wrench, Loader2, Brain, RefreshCw, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
@@ -17,7 +17,7 @@ import { updateMessage } from "@/lib/db/queries";
 import { useVoiceOutput } from "@/hooks/use-voice-output";
 import { parseArtifactFences } from "@/lib/utils/artifact-fence-parser";
 import { useUIStore } from "@/stores/ui-store";
-import { useStreamingStore, type PipelineExecution } from "@/stores/streaming-store";
+import { useStreamingStore, type PipelineExecution, type ImageGenerationProgress, type ImageGenerationStage } from "@/stores/streaming-store";
 import { nanoid } from "nanoid";
 import { Code2 } from "lucide-react";
 import { ActiveSkillIndicator, SkillBadge } from "@/components/chat/active-skill-indicator";
@@ -162,6 +162,76 @@ function extractNestedTools(toolName: string, args: unknown): string[] {
 
   // Dedupe and return
   return [...new Set(toolSlugs)];
+}
+
+/** Image generation progress indicator */
+function ImageGenerationProgressIndicator({
+  progress,
+}: {
+  progress: ImageGenerationProgress;
+}) {
+  const stages: { key: ImageGenerationStage; label: string; description: string }[] = [
+    { key: "validating", label: "Validating", description: "Checking model compatibility..." },
+    { key: "optimizing", label: "Optimizing", description: "Crafting enhanced prompt..." },
+    { key: "generating", label: "Generating", description: "Creating your image..." },
+    { key: "processing", label: "Processing", description: "Finalizing image..." },
+  ];
+
+  const currentIndex = stages.findIndex(s => s.key === progress.stage);
+
+  return (
+    <div className="flex flex-col gap-3 py-4">
+      <div className="flex items-center gap-2 text-sm font-medium text-primary">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        <span>🎨 Generating Image</span>
+      </div>
+
+      <div className="flex items-center gap-2">
+        {stages.map((stage, index) => {
+          const isComplete = index < currentIndex;
+          const isCurrent = index === currentIndex;
+          const isPending = index > currentIndex;
+
+          return (
+            <div key={stage.key} className="flex items-center gap-2">
+              {/* Stage indicator */}
+              <div
+                className={cn(
+                  "h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium transition-all",
+                  isComplete && "bg-green-500/20 text-green-600 border border-green-500/30",
+                  isCurrent && "bg-primary/20 text-primary border border-primary/30 animate-pulse",
+                  isPending && "bg-muted text-muted-foreground border border-border"
+                )}
+              >
+                {isComplete ? (
+                  <Check className="h-4 w-4" />
+                ) : isCurrent ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  index + 1
+                )}
+              </div>
+
+              {/* Connector line (not after last item) */}
+              {index < stages.length - 1 && (
+                <div
+                  className={cn(
+                    "h-0.5 w-8 transition-colors",
+                    index < currentIndex ? "bg-green-500/50" : "bg-border"
+                  )}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Current stage description */}
+      <div className="text-sm text-muted-foreground">
+        {stages[currentIndex]?.description || "Processing..."}
+      </div>
+    </div>
+  );
 }
 
 /** Collapsible section for tool calls */
@@ -742,8 +812,9 @@ export const MessageItem = memo(function MessageItem({
 
   // Get streaming state for real-time updates
   // Include streamingVersion to ensure re-renders on each content update
-  const { streamingMessageId, streamingContent, streamingReasoning, streamingToolCalls, streamingToolResults, streamingVersion, pipelineExecution, activeSkill } = useStreamingStore();
+  const { streamingMessageId, streamingContent, streamingReasoning, streamingToolCalls, streamingToolResults, streamingVersion, pipelineExecution, activeSkill, imageGenerationProgress } = useStreamingStore();
   const isStreaming = message.id === streamingMessageId;
+  const isImageGenerating = imageGenerationProgress?.messageId === message.id && imageGenerationProgress?.isActive;
 
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
@@ -965,6 +1036,11 @@ export const MessageItem = memo(function MessageItem({
                 <PipelineProgressSection pipelineExecution={pipelineExecution} />
               )}
 
+              {/* Image Generation Progress Section */}
+              {!isEditing && isAssistant && isImageGenerating && imageGenerationProgress && (
+                <ImageGenerationProgressIndicator progress={imageGenerationProgress} />
+              )}
+
               {/* Thinking/Reasoning Section (for assistant messages with extended thinking) */}
               {!isEditing && isAssistant && reasoningContent && (
                 <ThinkingSection
@@ -990,6 +1066,9 @@ export const MessageItem = memo(function MessageItem({
                     </Button>
                   </div>
                 </div>
+              ) : isImageGenerating ? (
+                /* Image generation in progress - don't show empty content */
+                null
               ) : (
                 /* Message content */
                 <div className="prose prose-sm dark:prose-invert max-w-none break-words" style={{ overflowWrap: 'anywhere' }}>
@@ -1015,6 +1094,16 @@ export const MessageItem = memo(function MessageItem({
                     <span>Out: <span className="text-muted-foreground">{message.outputTokens?.toLocaleString() || 0}</span></span>
                     <span className="text-border">•</span>
                     <span className="font-bold opacity-80">Total: <span className="text-muted-foreground">{((message.inputTokens || 0) + (message.outputTokens || 0)).toLocaleString()}</span></span>
+                    {/* Cache hit indicator */}
+                    {message.cachedTokens && message.cachedTokens > 0 && (
+                      <>
+                        <span className="text-border">•</span>
+                        <span className="flex items-center gap-1 text-amber-500/80">
+                          <Zap className="h-3 w-3" />
+                          <span>{message.cachedTokens.toLocaleString()} cached</span>
+                        </span>
+                      </>
+                    )}
                   </div>
                   {typeof message.cost === "number" && (
                     <div className="flex items-center gap-1.5 bg-primary/5 px-1.5 py-0.5 rounded border border-primary/10 text-primary/70">

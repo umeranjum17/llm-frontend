@@ -28,7 +28,6 @@ export function useAutoTags(
         }
 
         const runAutoTagging = async () => {
-            console.log("[AutoTags] potentially triggering...");
             generatedRef.current = true; // Mark as started to prevent duplicates
             await generateAndApplyTags({ chatId, messages, keys });
         };

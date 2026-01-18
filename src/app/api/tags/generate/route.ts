@@ -16,7 +16,6 @@ export async function POST(req: Request) {
         }
 
         const configuredModel = DEFAULT_UTILITY_MODELS[providerId] || "gpt-4o-mini";
-        console.log(`[Tags] Using model ${configuredModel} for provider ${providerId}`);
 
         const { text } = await generateSimpleText({
             providerId,
@@ -43,7 +42,6 @@ Rules:
             temperature: 0.3,
         });
 
-        console.log("[Tags] Raw model output:", text);
 
         // Clean up response if it contains markdown code blocks
         let cleanText = text.trim();
@@ -51,7 +49,6 @@ Rules:
             cleanText = cleanText.replace(/^```(json)?/, "").replace(/```$/, "").trim();
         }
 
-        console.log("[Tags] Cleaned text:", cleanText);
 
         let tags: string[] = [];
         try {
@@ -65,12 +62,10 @@ Rules:
 
         // Validate
         if (!Array.isArray(tags)) {
-            console.log("[Tags] Parsed result is not an array:", tags);
             tags = [];
         }
         tags = tags.slice(0, 3); // Max 3 tags
 
-        console.log("[Tags] Final Generated:", tags);
 
         return new Response(JSON.stringify({ tags }), {
             headers: { "Content-Type": "application/json" },

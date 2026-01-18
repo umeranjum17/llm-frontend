@@ -93,8 +93,6 @@ export class OpenRouterFetcher implements ProviderFetcher {
 
     // Log image generation models found
     const imageGenModels = result.filter(m => m.category.includes("image-generation"));
-    console.log("[OpenRouter] Total models:", result.length);
-    console.log("[OpenRouter] Image generation models:", imageGenModels.length, imageGenModels.map(m => m.id));
 
     return result;
   }

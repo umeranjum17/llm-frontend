@@ -38,8 +38,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   loadSettings: async () => {
     const settings = await getSettings();
-    console.log("[Settings] v2 - Loaded from DB:", settings);
-    console.log("[Settings] v2 - defaultMcpServerIds from DB:", settings.defaultMcpServerIds);
     // Preserve defaults for arrays that might be undefined in DB
     set({
       ...settings,
@@ -104,13 +102,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   updateDefaultMcpServerIds: async (serverIds) => {
-    console.log("[Settings] Saving defaultMcpServerIds:", serverIds);
     await updateSettings({ defaultMcpServerIds: serverIds });
     set({ defaultMcpServerIds: serverIds });
   },
 
   updateEmbeddingsConfig: async (provider, modelId) => {
-    console.log("[Settings] Saving embeddings config:", { provider, modelId });
     await updateSettings({
       embeddingsProvider: provider,
       embeddingsModelId: modelId
@@ -119,13 +115,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   updateSkillMatchThreshold: async (threshold: number) => {
-    console.log("[Settings] Saving skill match threshold:", threshold);
     await updateSettings({ skillMatchThreshold: threshold });
     set({ skillMatchThreshold: threshold });
   },
 
   updateDefaultReasoningLevel: async (level: "low" | "medium" | "high" | "xhigh") => {
-    console.log("[Settings] Saving default reasoning level:", level);
     await updateSettings({ defaultReasoningLevel: level });
     set({ defaultReasoningLevel: level });
   },

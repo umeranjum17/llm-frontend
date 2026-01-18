@@ -7,11 +7,19 @@ import {
 } from "./skill-embeddings";
 
 /**
- * Default similarity threshold for skill matching
- * Higher = more strict matching, Lower = more generous
- * 0.5 provides good balance between precision and recall
+ * Minimum floor threshold for skill matching
+ * This is the absolute minimum - anything below this is considered irrelevant
+ * Using Top-1 approach: always match the best skill if above this floor
+ * 0.25 is industry standard minimum for RAG systems
  */
-export const DEFAULT_SIMILARITY_THRESHOLD = 0.5;
+export const DEFAULT_SIMILARITY_THRESHOLD = 0.25;
+
+/**
+ * Weight for exclusion query similarity penalty
+ * Applied as a multiplier to the MAX exclusion similarity
+ * Keep this low - exclusions should be a gentle nudge, not a hard block
+ */
+const EXCLUSION_QUERY_WEIGHT = 0.15;
 
 /**
  * Calculate cosine similarity between two vectors
@@ -43,16 +51,67 @@ export function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 /**
- * Match result with similarity score
+ * Match result with similarity score and query embedding
  */
 export interface SkillMatchResult {
   skill: Skill;
   similarity: number;
+  queryEmbedding?: number[]; // The embedding of the user's query (for auto-apply checks)
+}
+
+/**
+ * Minimum message length to use without context
+ * Short messages like "retry", "continue", "again" need conversation context
+ */
+const MIN_MESSAGE_LENGTH_FOR_STANDALONE = 20;
+
+/**
+ * Build context-aware message for short user inputs
+ * Combines recent conversation with the short message for better matching
+ */
+function buildContextAwareMessage(
+  userMessage: string,
+  conversationContext?: Array<{ role: string; content: string }>
+): string {
+  // If message is long enough, use it as-is
+  if (userMessage.length >= MIN_MESSAGE_LENGTH_FOR_STANDALONE) {
+    return userMessage;
+  }
+
+  // If no context, use message as-is
+  if (!conversationContext || conversationContext.length === 0) {
+    return userMessage;
+  }
+
+  // Get last few messages for context (up to 3)
+  const recentContext = conversationContext.slice(-3);
+
+  // Build context string: focus on what the conversation was about
+  const contextParts: string[] = [];
+  for (const msg of recentContext) {
+    // Only include user and assistant messages, truncate for relevance
+    if (msg.role === "user" || msg.role === "assistant") {
+      const truncated = msg.content.slice(0, 200);
+      contextParts.push(truncated);
+    }
+  }
+
+  if (contextParts.length === 0) {
+    return userMessage;
+  }
+
+  // Combine context with current message
+  // Format: "Context: [previous conversation]. Current request: [user message]"
+  const contextString = contextParts.join(" ");
+  return `Context: ${contextString}. Current request: ${userMessage}`;
 }
 
 /**
  * Find the best matching skill for a user message using embedding similarity
  * Returns null if no skill matches above the threshold
+ *
+ * This function is designed to fail gracefully - network errors, API issues,
+ * and other failures will return null (no skill matched).
  */
 export async function matchSkill(
   userMessage: string,
@@ -62,6 +121,7 @@ export async function matchSkill(
     modelId?: string;
     threshold?: number;
     excludeManualOnly?: boolean;
+    conversationContext?: Array<{ role: string; content: string }>;
   }
 ): Promise<SkillMatchResult | null> {
   const {
@@ -69,30 +129,21 @@ export async function matchSkill(
     modelId,
     threshold = DEFAULT_SIMILARITY_THRESHOLD,
     excludeManualOnly = true,
+    conversationContext,
   } = options || {};
 
-  // Ensure cache is initialized
-  const cacheWasInitialized = isCacheInitialized();
-  console.log("[Skill Matcher] Cache initialized:", cacheWasInitialized);
-
-  if (!cacheWasInitialized) {
-    console.log("[Skill Matcher] Loading embeddings cache...");
+  try {
+    // Always reload cache to ensure we have latest embeddings
     await loadEmbeddingsCache();
+  } catch (cacheError) {
+    // Cache loading failed - continue with empty cache
+    console.warn("[Skill Matcher] Cache init failed:", cacheError);
   }
 
   // Get skill embeddings from cache
   const skillEmbeddings = getSkillEmbeddingsFromCache();
-  console.log("[Skill Matcher] Skills in cache:", skillEmbeddings.length);
 
   if (skillEmbeddings.length === 0) {
-    console.log("[Skill Matcher] No skill embeddings in cache - falling back to keyword matching");
-    // Fallback to keyword-based matching when no embeddings are available
-    const allSkills = await db.skills.filter((s) => s.isEnabled).toArray();
-    const keywordMatch = matchSkillByKeywords(userMessage, allSkills, { excludeManualOnly });
-    if (keywordMatch) {
-      console.log(`[Skill Matcher] ✓ Keyword match: ${keywordMatch.name}`);
-      return { skill: keywordMatch, similarity: 0.6 }; // Assign a reasonable similarity score
-    }
     return null;
   }
 
@@ -102,49 +153,72 @@ export async function matchSkill(
     : skillEmbeddings;
 
   if (eligibleSkills.length === 0) {
-    console.log("[Skill Matcher] No auto-trigger skills available");
     return null;
   }
+
+  // Build context-aware message for short inputs like "retry", "continue", etc.
+  const messageToEmbed = buildContextAwareMessage(userMessage, conversationContext);
 
   // Get embedding for user message (must use same model as skill embeddings)
-  const messageEmbedding = await getEmbedding(userMessage, apiKey, providerId, modelId);
+  // Wrapped in try-catch for extra resilience against network/API issues
+  let messageEmbedding: number[] | null = null;
+  try {
+    messageEmbedding = await getEmbedding(messageToEmbed, apiKey, providerId, modelId);
+  } catch (embedError) {
+    console.warn("[Skill Matcher] Embedding request failed:", embedError);
+  }
 
   if (!messageEmbedding) {
-    console.log("[Skill Matcher] Failed to get message embedding");
     return null;
   }
 
-  // Find best match using cosine similarity
+  // Find best match using cosine similarity with positive/exclusion adjustments
   let bestMatch: SkillMatchResult | null = null;
   let bestScore = 0;
 
   for (const { skillId, embedding, skill } of eligibleSkills) {
-    const similarity = cosineSimilarity(messageEmbedding, embedding);
+    // PRIMARY: Use trigger phrase embeddings if available
+    let primaryScore = 0;
 
-    console.log(`[Skill Matcher] ${skill.name}: ${(similarity * 100).toFixed(1)}%`);
+    if (skill.autoApplyEmbeddings && skill.autoApplyEmbeddings.length > 0) {
+      // Find best matching trigger phrase (MAX similarity)
+      for (const queryEmbedding of skill.autoApplyEmbeddings) {
+        const sim = cosineSimilarity(messageEmbedding, queryEmbedding);
+        if (sim > primaryScore) {
+          primaryScore = sim;
+        }
+      }
+    } else {
+      // Fallback: use description embedding for backward compatibility
+      primaryScore = cosineSimilarity(messageEmbedding, embedding);
+    }
 
-    if (similarity > bestScore && similarity >= threshold) {
-      bestScore = similarity;
-      bestMatch = { skill, similarity };
+    // Calculate exclusion penalty using average similarity (gentle overall penalty)
+    let exclusionPenalty = 0;
+    if (skill.exclusionEmbeddings && skill.exclusionEmbeddings.length > 0) {
+      let totalExclusion = 0;
+      for (const queryEmbedding of skill.exclusionEmbeddings) {
+        totalExclusion += cosineSimilarity(messageEmbedding, queryEmbedding);
+      }
+      exclusionPenalty = (totalExclusion / skill.exclusionEmbeddings.length) * EXCLUSION_QUERY_WEIGHT;
+    }
+
+    // Final score = primary match - exclusion penalty
+    const adjustedScore = primaryScore - exclusionPenalty;
+
+    // Top-1 approach: track the best match regardless of threshold
+    if (adjustedScore > bestScore) {
+      bestScore = adjustedScore;
+      bestMatch = { skill, similarity: adjustedScore, queryEmbedding: messageEmbedding };
     }
   }
 
-  if (bestMatch) {
-    console.log(
-      `[Skill Matcher] ✓ Best match: ${bestMatch.skill.name} (${(bestMatch.similarity * 100).toFixed(1)}% >= ${(threshold * 100).toFixed(0)}% threshold)`
-    );
-  } else {
-    console.log(`[Skill Matcher] ✗ No embedding match above threshold (${(threshold * 100).toFixed(0)}%), trying keyword fallback`);
-    // Try keyword matching for skills that might not have embeddings yet
-    const allSkills = await db.skills.filter((s) => s.isEnabled).toArray();
-    const keywordMatch = matchSkillByKeywords(userMessage, allSkills, { excludeManualOnly });
-    if (keywordMatch) {
-      console.log(`[Skill Matcher] ✓ Keyword fallback match: ${keywordMatch.name}`);
-      return { skill: keywordMatch, similarity: 0.55 };
-    }
+  // Apply minimum floor threshold - only return if best match is above floor
+  if (bestMatch && bestMatch.similarity >= threshold) {
+    return bestMatch;
   }
 
-  return bestMatch;
+  return null;
 }
 
 /**
@@ -185,97 +259,3 @@ export async function getAllSkillMatches(
   return matches;
 }
 
-// Common words to ignore in keyword matching (too generic, cause false matches)
-const STOP_WORDS = new Set([
-  "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
-  "of", "with", "by", "from", "as", "is", "was", "are", "were", "been",
-  "be", "have", "has", "had", "do", "does", "did", "will", "would", "could",
-  "should", "may", "might", "must", "can", "this", "that", "these", "those",
-  "i", "you", "he", "she", "it", "we", "they", "me", "him", "her", "us", "them",
-  "my", "your", "his", "its", "our", "their", "what", "which", "who", "whom",
-  "how", "when", "where", "why", "all", "each", "every", "both", "few", "more",
-  "most", "other", "some", "such", "no", "not", "only", "own", "same", "so",
-  "than", "too", "very", "just", "also", "now", "here", "there", "then",
-  "make", "made", "get", "got", "take", "put", "use", "used", "new", "way"
-]);
-
-/**
- * Simple keyword-based fallback matcher for when embeddings are unavailable
- * Uses basic string matching against skill descriptions with phrase support
- */
-export function matchSkillByKeywords(
-  userMessage: string,
-  skills: Skill[],
-  options?: { excludeManualOnly?: boolean }
-): Skill | null {
-  const { excludeManualOnly = true } = options || {};
-
-  const messageLower = userMessage.toLowerCase();
-
-  const eligibleSkills = excludeManualOnly
-    ? skills.filter((s) => s.isEnabled && s.trigger.type === "auto")
-    : skills.filter((s) => s.isEnabled);
-
-  let bestMatch: Skill | null = null;
-  let bestScore = 0;
-
-  for (const skill of eligibleSkills) {
-    // First check for exact phrase matches (comma-separated in description)
-    // Phrases must be 2+ words to be meaningful
-    const phrases = skill.description
-      .toLowerCase()
-      .split(",")
-      .map((p) => p.trim())
-      .filter((p) => p.length > 3 && p.split(/\s+/).length >= 2);
-
-    let phraseMatchScore = 0;
-    let matchedPhrases: string[] = [];
-    for (const phrase of phrases) {
-      if (messageLower.includes(phrase)) {
-        // Give higher weight to longer phrase matches
-        const wordCount = phrase.split(/\s+/).length;
-        phraseMatchScore += wordCount * 3; // Higher weight for phrase matches
-        matchedPhrases.push(phrase);
-      }
-    }
-
-    // Check significant keywords (excluding stop words, min 4 chars)
-    const keywords = skill.description
-      .toLowerCase()
-      .split(/[\s,]+/)
-      .filter((k) => k.length >= 4 && !STOP_WORDS.has(k));
-
-    let keywordMatchCount = 0;
-    let matchedKeywords: string[] = [];
-    for (const keyword of keywords) {
-      // Use word boundary matching to avoid partial matches
-      const regex = new RegExp(`\\b${keyword}\\b`, 'i');
-      if (regex.test(messageLower)) {
-        keywordMatchCount++;
-        matchedKeywords.push(keyword);
-      }
-    }
-
-    // Calculate score - require meaningful matches
-    const keywordScore = keywords.length > 0 ? keywordMatchCount / keywords.length : 0;
-    const score = phraseMatchScore > 0
-      ? (phraseMatchScore / Math.max(phrases.length, 1)) + keywordScore
-      : keywordScore;
-
-    // Stricter requirements:
-    // - Need at least one phrase match of 2+ words, OR
-    // - Need at least 2 significant keyword matches
-    const hasStrongMatch = matchedPhrases.length >= 1 || keywordMatchCount >= 2;
-
-    // Minimum score threshold to avoid weak matches
-    const MIN_SCORE_THRESHOLD = 0.15;
-
-    if (score > bestScore && score >= MIN_SCORE_THRESHOLD && hasStrongMatch) {
-      bestScore = score;
-      bestMatch = skill;
-      console.log(`[Skill Matcher Keyword] ${skill.name}: score=${score.toFixed(2)} (phrases=[${matchedPhrases.join(', ')}], keywords=[${matchedKeywords.join(', ')}])`);
-    }
-  }
-
-  return bestMatch;
-}

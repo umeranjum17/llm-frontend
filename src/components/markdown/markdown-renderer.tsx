@@ -190,24 +190,45 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
           );
         },
         table: ({ node, children, ...props }) => (
-          <div className="my-4 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
-            <table className="w-full border-collapse min-w-[400px]" {...props}>
-              {children}
-            </table>
+          <div className="my-4 -mx-3 sm:mx-0">
+            <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
+              <div className="inline-block min-w-full align-middle px-3 sm:px-0">
+                <div className="overflow-hidden rounded-lg border border-border/60 shadow-sm">
+                  <table className="min-w-full divide-y divide-border/60" {...props}>
+                    {children}
+                  </table>
+                </div>
+              </div>
+            </div>
           </div>
+        ),
+        thead: ({ node, children, ...props }) => (
+          <thead className="bg-muted/60" {...props}>
+            {children}
+          </thead>
         ),
         th: ({ node, children, ...props }) => (
           <th
-            className="border bg-muted px-2 py-1 sm:px-4 sm:py-2 text-left font-semibold text-xs sm:text-sm"
+            className="px-3 py-2.5 sm:px-4 sm:py-3 text-left text-xs font-semibold text-foreground/90 uppercase tracking-wider whitespace-nowrap"
             {...props}
           >
             {children}
           </th>
         ),
         td: ({ node, children, ...props }) => (
-          <td className="border px-2 py-1 sm:px-4 sm:py-2 text-xs sm:text-sm" {...props}>
-            {children}
+          <td
+            className="px-3 py-3 sm:px-4 sm:py-4 text-sm text-foreground/80 align-top"
+            {...props}
+          >
+            <div className="max-w-xs sm:max-w-sm md:max-w-md lg:max-w-none">
+              {children}
+            </div>
           </td>
+        ),
+        tr: ({ node, children, ...props }) => (
+          <tr className="border-b border-border/40 last:border-b-0 hover:bg-muted/40 transition-colors" {...props}>
+            {children}
+          </tr>
         ),
         blockquote: ({ node, children, ...props }) => (
           <blockquote

@@ -1289,7 +1289,6 @@ export class McpManager {
 
                             // Single surgical log line with all key info
                             const toolNames = Object.keys(parsed.data.tool_schemas).join(', ');
-                            console.log(`[MCP] SEARCH → ${schemaKeys.length} tools (${toolNames}) | session: ${sessionId || 'none'} | guide: ${guide ? 'yes' : 'NO'}`);
                             if (!guide) {
                               console.warn(`[MCP] ⚠️ No parameter guide generated - check tool_schemas structure`);
                             }

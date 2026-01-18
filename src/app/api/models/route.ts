@@ -16,12 +16,10 @@ export async function GET(req: Request) {
   // Clear server cache on refresh
   if (refresh) {
     cache = null;
-    console.log("[API/models] Cache cleared by refresh request");
   }
 
   // Check cache
   if (!refresh && cache && Date.now() - cache.fetchedAt < CACHE_TTL_MS) {
-    console.log("[API/models] Returning cached models:", (cache.value as any)?.models?.length);
     return new Response(JSON.stringify(cache.value), {
       headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=3600" },
     });
@@ -45,14 +43,12 @@ export async function GET(req: Request) {
       useOpenRouter: true,
     });
 
-    console.log("[API/models] Fetched models from providers:", models.length);
 
     // Calculate rankings (rank models by weighted score)
     const rankedModels = rankingService.rankModels(models);
 
     // Count image generation models
     const imageGenCount = rankedModels.filter(m => m.category.includes("image-generation")).length;
-    console.log("[API/models] Image generation models:", imageGenCount);
 
     const payload = { fetchedAt: Date.now(), models: rankedModels };
     cache = { fetchedAt: Date.now(), value: payload };

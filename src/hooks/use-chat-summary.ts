@@ -33,7 +33,6 @@ export function useChatSummary(
             const apiKey = apiKeyEntry?.key;
 
             if (!apiKey) {
-                console.log(`[AutoSummary] No API key found for ${providerId}. Skipping.`);
                 return;
             }
 
@@ -85,7 +84,6 @@ export function useChatSummary(
         }
 
         const timer = setTimeout(() => {
-            console.log("[AutoSummary] Triggering for chat", chatId);
             generatedRef.current = true;
             generateSummary(chatId, messages);
         }, 5000); // 5s debounce/delay

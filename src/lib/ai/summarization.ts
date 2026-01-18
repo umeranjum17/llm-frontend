@@ -14,7 +14,6 @@ export async function generateAndApplySummary({ chatId, messages, keys }: Summar
     try {
         const chat = await db.chats.get(chatId);
         if (!chat) {
-            console.log("[AutoSummary] Chat not found in DB");
             return null;
         }
 
@@ -30,11 +29,9 @@ export async function generateAndApplySummary({ chatId, messages, keys }: Summar
         const apiKey = apiKeyEntry?.key;
 
         if (!apiKey) {
-            console.log(`[AutoSummary] No API key found for provider ${providerId} (model: ${chat.modelId}). Skipping.`);
             return null;
         }
 
-        console.log("[AutoSummary] Fetching summary from API...");
         const response = await fetch("/api/chat/summarize", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -53,7 +50,6 @@ export async function generateAndApplySummary({ chatId, messages, keys }: Summar
         }
 
         const { summary, cost: summaryCost } = await response.json();
-        console.log("[AutoSummary] Received summary:", summary, summaryCost ? `(cost: $${summaryCost})` : "");
 
         if (summary) {
             // Add summarization cost to chat total

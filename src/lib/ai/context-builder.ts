@@ -31,15 +31,12 @@ export const MEMORY_BUDGET = {
  * Filter and budget memories based on relevance and token limits.
  */
 function budgetMemories(memories: MemoryItem[]): MemoryItem[] {
-  console.log(`[Memory Budget] Input: ${memories.length} memories`);
 
   // Log scores for debugging
   if (memories.length > 0) {
     const scores = memories.map(m => m.score).filter(s => s !== undefined && s !== null);
     if (scores.length > 0) {
-      console.log(`[Memory Budget] Scores: min=${Math.min(...scores).toFixed(2)}, max=${Math.max(...scores).toFixed(2)}, threshold=${MEMORY_BUDGET.MIN_RELEVANCE}`);
     } else {
-      console.log(`[Memory Budget] No scores returned - including all memories`);
     }
   }
 
@@ -49,12 +46,10 @@ function budgetMemories(memories: MemoryItem[]): MemoryItem[] {
     if (m.score === undefined || m.score === null) return true;
     const passes = m.score >= MEMORY_BUDGET.MIN_RELEVANCE;
     if (!passes) {
-      console.log(`[Memory Budget] Filtered out (score ${m.score?.toFixed(2)}): "${m.memory.slice(0, 50)}..."`);
     }
     return passes;
   });
 
-  console.log(`[Memory Budget] After relevance filter: ${relevantMemories.length} memories`);
 
   // Sort by relevance (highest first)
   const sortedMemories = relevantMemories.sort((a, b) => {
@@ -79,7 +74,6 @@ function budgetMemories(memories: MemoryItem[]): MemoryItem[] {
     totalChars += memoryChars;
   }
 
-  console.log(`[Memory Budget] Final: ${budgetedMemories.length} memories, ${totalChars} chars`);
   return budgetedMemories;
 }
 
@@ -177,7 +171,6 @@ export async function buildContextMessages(
       const memoryQuery = userMessage;
       const rawMemories = await searchMemories(memoryQuery);
 
-      console.log(`[Context] 🧠 Memory search returned ${rawMemories?.length ?? 0} items for query: "${memoryQuery.slice(0, 50)}..."`);
 
       // Apply budgeting: relevance filter, item limit, token/char limit
       let budgetedMemories = rawMemories && rawMemories.length > 0 ? budgetMemories(rawMemories) : [];
@@ -187,7 +180,6 @@ export async function buildContextMessages(
       if (budgetedMemories.length === 0 && isIdentityQuestion(userMessage)) {
         const all = await getAllMemories();
         budgetedMemories = all && all.length > 0 ? budgetMemories(all) : [];
-        console.log(`[Context] 🧠 Identity fallback used: ${budgetedMemories.length}/${all?.length ?? 0} items`);
       }
 
       if (budgetedMemories.length > 0) {
@@ -195,12 +187,10 @@ export async function buildContextMessages(
         const filtered = rawLen > 0 ? rawLen - budgetedMemories.length : 0;
 
         // Format memories with clear instructions for the model
-        const memoryContext = `## User Memory (Personal Context)
-The following are stored memories about this user. Use this information to personalize responses and answer questions about the user WITHOUT using external tools or web search:
-
+        const memoryContext = `## User Memory
 ${budgetedMemories.map((m) => `- ${m.memory}`).join("\n")}
 
-When the user asks "what do you know about me" or similar personal questions, refer to these memories first.`;
+Use these memories ONLY when directly relevant to the user's question. Do NOT volunteer this information unprompted or mention memories unless the user specifically asks about themselves.`;
         const memoryTokens = Math.ceil(memoryContext.length / 4); // ~4 chars per token
 
         messages.push({
@@ -212,16 +202,13 @@ When the user asks "what do you know about me" or similar personal questions, re
         });
 
         // Log with budget info
-        console.log(`[Context] 🧠 Memories: ${budgetedMemories.length}/${rawLen} items (${filtered} filtered), ~${memoryTokens} tokens`);
       } else if (rawMemories && rawMemories.length > 0) {
-        console.log(`[Context] 🧠 Memories: 0 items passed relevance filter (${rawMemories.length} raw)`);
       }
     } catch (error) {
       console.error("[Context] Failed to load memory context:", error);
       // Continue without memory if it fails
     }
   } else if (perChatMemoryDisabled) {
-    console.log(`[Context] 🧠 Memory disabled for this chat`);
   }
 
   // RAG retrieval if enabled
@@ -266,7 +253,6 @@ When the user asks "what do you know about me" or similar personal questions, re
           content: alias.systemPrompt,
           createdAt: Date.now(),
         });
-        console.log(`[Context] 🏷️ Model alias prompt: ~${aliasTokens} tokens`);
       }
     } catch (error) {
       console.error("Failed to load model alias:", error);
@@ -286,7 +272,6 @@ When the user asks "what do you know about me" or similar personal questions, re
           content: agent.systemPrompt,
           createdAt: Date.now(),
         });
-        console.log(`[Context] 🤖 Agent "${agent.name}" prompt: ~${agentTokens} tokens`);
       }
     } catch (error) {
       console.error("Failed to load agent:", error);
@@ -333,7 +318,6 @@ When the user asks "what do you know about me" or similar personal questions, re
       content: `## Skill: ${options.skill.name}\n\n${options.skill.systemPrompt}`,
       createdAt: Date.now(),
     });
-    console.log(`[Context] ⚡ Skill "${options.skill.name}" prompt: ~${skillTokens} tokens`);
   }
 
   // Add file contents as context (uses batch-fetched files map)

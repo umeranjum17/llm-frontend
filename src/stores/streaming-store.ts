@@ -52,6 +52,14 @@ export interface PendingSkillApproval {
   resolve: (approved: boolean) => void;
 }
 
+export type ImageGenerationStage = "validating" | "optimizing" | "generating" | "processing";
+
+export interface ImageGenerationProgress {
+  isActive: boolean;
+  stage: ImageGenerationStage;
+  messageId: string;
+}
+
 interface StreamingState {
   // The ID of the message currently being streamed
   streamingMessageId: string | null;
@@ -73,6 +81,8 @@ interface StreamingState {
   activeSkill: ActiveSkill | null;
   // Pending skill approval (when requireApproval is true)
   pendingSkillApproval: PendingSkillApproval | null;
+  // Image generation progress
+  imageGenerationProgress: ImageGenerationProgress | null;
 
   // Actions
   setStreamingMessage: (messageId: string | null) => void;
@@ -96,6 +106,10 @@ interface StreamingState {
   approveSkill: () => void;
   rejectSkill: () => void;
 
+  // Image generation progress actions
+  setImageGenerationProgress: (messageId: string, stage: ImageGenerationStage) => void;
+  clearImageGenerationProgress: () => void;
+
   // Pipeline actions
   startPipeline: (steps: Array<{ id: string; name: string; type: "llm" | "image" | "tool" | "subagent" }>) => void;
   setStepRunning: (stepIndex: number, input?: string) => void;
@@ -118,6 +132,7 @@ export const useStreamingStore = create<StreamingState>((set, get) => ({
   optimisticMessage: null,
   activeSkill: null,
   pendingSkillApproval: null,
+  imageGenerationProgress: null,
 
   setStreamingMessage: (messageId) => set({
     streamingMessageId: messageId,
@@ -169,6 +184,7 @@ export const useStreamingStore = create<StreamingState>((set, get) => ({
     optimisticMessage: null,
     activeSkill: null,
     pendingSkillApproval: null,
+    imageGenerationProgress: null,
   }),
 
   setOptimisticMessage: (message) => set((state) => ({
@@ -219,6 +235,21 @@ export const useStreamingStore = create<StreamingState>((set, get) => ({
       }));
     }
   },
+
+  // Image generation progress actions
+  setImageGenerationProgress: (messageId, stage) => set((state) => ({
+    imageGenerationProgress: {
+      isActive: true,
+      stage,
+      messageId,
+    },
+    streamingVersion: state.streamingVersion + 1,
+  })),
+
+  clearImageGenerationProgress: () => set((state) => ({
+    imageGenerationProgress: null,
+    streamingVersion: state.streamingVersion + 1,
+  })),
 
   // Pipeline actions
   startPipeline: (steps) => set((state) => ({

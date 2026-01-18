@@ -122,7 +122,6 @@ export const useUIStore = create<UIState>((set, get) => ({
   setArtifactsFullscreen: (fullscreen) => set({ artifactsFullscreen: fullscreen }),
   setSkillEditorOpen: (open) => set({ skillEditorOpen: open }),
   openSkillEditorWithData: (data) => {
-    console.log("[UIStore] openSkillEditorWithData called with:", data?.name, data);
     set({ skillEditorOpen: true, skillEditorPrefilledData: data });
   },
   clearSkillEditorData: () => set({ skillEditorPrefilledData: null }),

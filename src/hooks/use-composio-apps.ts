@@ -184,7 +184,6 @@ export function useComposioApps() {
     // Migrate to "default" userId for better compatibility with existing connections
     // This ensures connections created under "default" entityId are found
     if (loaded && loaded.userId !== "default") {
-      console.log("[Composio] Migrating userId to 'default' for better compatibility");
       loaded = { ...loaded, userId: "default" };
       saveConfig(loaded);
 
@@ -193,7 +192,6 @@ export function useComposioApps() {
       (async () => {
         try {
           await db.mcpServers.delete("composio-consolidated");
-          console.log("[Composio] Cleared old session after userId migration - new session will be created");
         } catch {
           // Ignore
         }
@@ -225,7 +223,6 @@ export function useComposioApps() {
         if (existingServer) {
           const sessionExpiresAt = (existingServer as any).sessionExpiresAt;
           if (sessionExpiresAt && Date.now() > sessionExpiresAt) {
-            console.log("[Composio] Session expired, will create fresh session");
             // Delete the expired entry so a new session gets created
             await db.mcpServers.delete("composio-consolidated");
           }
@@ -437,8 +434,6 @@ export function useComposioApps() {
 
       const hasConnectedAccounts = Object.keys(connectedAccounts).length > 0;
       if (process.env.NODE_ENV === "development") {
-        console.log("[Composio] Creating session with connected accounts:", connectedAccounts);
-        console.log("[Composio] Enabled toolkits (apps filter):", config.enabledToolkits);
       }
 
       const response = await fetch("/api/composio/session", {
@@ -542,7 +537,6 @@ export function useComposioApps() {
       const { connectionMap, debug } = data;
 
       if (process.env.NODE_ENV === "development" && debug) {
-        console.log("[Composio] Debug info:", debug);
       }
 
       if (!connectionMap) return;
@@ -558,8 +552,6 @@ export function useComposioApps() {
       }
 
       if (process.env.NODE_ENV === "development") {
-        console.log("[Composio] Connection map:", connectionMap);
-        console.log("[Composio] Connected keys:", Array.from(connectedMap.keys()));
       }
 
       setAvailableToolkits((prev) => {
@@ -587,7 +579,6 @@ export function useComposioApps() {
           const isConnected = !!connectedAccountId;
 
           if (process.env.NODE_ENV === "development" && isConnected) {
-            console.log(`[Composio] Toolkit "${t.name}" (${t.key}) is connected with account ${connectedAccountId}`);
           }
 
           return {

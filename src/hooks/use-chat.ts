@@ -1,10 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useUIStore } from "@/stores/ui-store";
-import { useStreamingStore, type ActiveSkill, type PendingSkillApproval } from "@/stores/streaming-store";
+import { useStreamingStore, type ActiveSkill, type PendingSkillApproval, type ImageGenerationStage } from "@/stores/streaming-store";
 import { addMessage, updateChat, getChatById, updateMessage, getMessagesForBranch, getLastMessage, getMessageById, chatHasBranches, incrementAgentUsage, getMessages, getActiveMcpServersForChat, getAgentById, getSkillById, incrementSkillUsage } from "@/lib/db/queries";
 import { buildContextMessages } from "@/lib/ai/context-builder";
 import { countMessagesTokens, countTokens, estimateCost } from "@/lib/utils/token-counter";
+import { calculateContextBudget, truncateHistoryToFit, estimateMessagesTokens, validateSystemContextFits, type LLMMessage } from "@/lib/utils/context-budget";
 import type { MessageContent, Agent, Skill } from "@/lib/db/schema";
 import { getImagesFromMessageContent, getTextFromMessageContent, mapTextInMessageContent, convertToAISDKContent } from "@/lib/utils/message-content";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
@@ -66,6 +67,7 @@ async function generateOptimizedImagePrompt(
 /**
  * Handle image generation models separately from chat models.
  * Calls /api/images and creates a message with the generated image.
+ * Supports image-to-image transformations when inputImages are provided.
  */
 async function handleImageGeneration(
   chatId: string,
@@ -73,9 +75,11 @@ async function handleImageGeneration(
   providerId: string,
   apiKey: { key: string; baseUrl?: string } | undefined,
   prompt: string,
+  inputImages?: string[], // Input images for image-to-image transformations
   parentUserMessageId?: string,
   signal?: AbortSignal,
-  agentSystemPrompt?: string
+  agentSystemPrompt?: string,
+  onProgress?: (stage: ImageGenerationStage, messageId: string) => void
 ): Promise<void> {
   const { addMessage, updateMessage, updateChat, getChatById } = await import("@/lib/db/queries");
 
@@ -83,7 +87,7 @@ async function handleImageGeneration(
   const assistantMessage = await addMessage({
     chatId,
     role: "assistant",
-    content: [{ type: "text", text: agentSystemPrompt ? "🎨 Crafting your prompt..." : "🎨 Generating image..." }],
+    content: [{ type: "text", text: "" }], // Empty - UI will show progress indicator
     modelId,
     parentId: parentUserMessageId,
   });
@@ -92,22 +96,20 @@ async function handleImageGeneration(
   // and branch state is consistent even if generation fails
   await updateChat(chatId, { activeBranchLeafId: assistantMessage.id });
 
+  // Signal validating stage
+  onProgress?.("validating", assistantMessage.id);
+
   try {
     // If there's an agent system prompt, optimize the image prompt first
     let finalPrompt = prompt;
     if (agentSystemPrompt) {
-      console.log("[Image Gen] Optimizing prompt with agent system prompt...");
-      await updateMessage(assistantMessage.id, {
-        content: [{ type: "text", text: "🎨 Crafting optimized prompt..." }],
-      });
+      onProgress?.("optimizing", assistantMessage.id);
       finalPrompt = await generateOptimizedImagePrompt(prompt, agentSystemPrompt, apiKey, signal);
-      console.log("[Image Gen] Optimized prompt:", finalPrompt.substring(0, 200) + "...");
-      await updateMessage(assistantMessage.id, {
-        content: [{ type: "text", text: "🎨 Generating image..." }],
-      });
     }
 
-    console.log("[Image Gen] providerId:", providerId, "apiKey:", apiKey?.key ? "present" : "MISSING");
+    // Signal generating stage
+    onProgress?.("generating", assistantMessage.id);
+
     const response = await fetch("/api/images", {
       method: "POST",
       headers: {
@@ -119,6 +121,7 @@ async function handleImageGeneration(
         providerBaseUrl: apiKey?.baseUrl,
         modelId,
         prompt: finalPrompt,
+        inputImages: inputImages?.length ? inputImages : undefined, // Pass input images for image-to-image
         size: "1024x1024",
         quality: "standard",
       }),
@@ -127,15 +130,27 @@ async function handleImageGeneration(
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      const errorMessage = (errorData as any)?.error || response.statusText;
+      const errorObj = errorData as any;
+      // Build detailed error message with suggestion if available
+      let errorMessage = errorObj?.error || response.statusText;
+      if (errorObj?.suggestion) {
+        errorMessage += `\n\n💡 ${errorObj.suggestion}`;
+      }
       throw new Error(errorMessage);
     }
+
+    // Signal processing stage
+    onProgress?.("processing", assistantMessage.id);
 
     const data = await response.json();
     const images = (data as any).images || [];
 
     if (images.length === 0) {
-      throw new Error("No images generated");
+      // Extract helpful error info if available
+      const errorInfo = data as any;
+      const errorMsg = errorInfo.error || "No images generated";
+      const suggestion = errorInfo.suggestion;
+      throw new Error(suggestion ? `${errorMsg}\n\n💡 ${suggestion}` : errorMsg);
     }
 
     // Build content with generated images
@@ -168,10 +183,14 @@ async function handleImageGeneration(
       });
       return;
     }
-    // Update message with error
+    // Update message with formatted error
     const errorText = error instanceof Error ? error.message : "Image generation failed";
+    // Format error with proper line breaks for readability
+    const formattedError = errorText.includes('\n\n💡')
+      ? `**Image Generation Failed**\n\n${errorText}`
+      : `**Image Generation Failed**\n\n${errorText}`;
     await updateMessage(assistantMessage.id, {
-      content: `❌ ${errorText}`,
+      content: formattedError,
     });
     throw error;
   }
@@ -500,6 +519,8 @@ export function useChat(chatId: string) {
     setActiveSkill,
     clearActiveSkill,
     setPendingSkillApproval,
+    setImageGenerationProgress,
+    clearImageGenerationProgress,
   } = useStreamingStore();
   const extractionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const dbUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -529,7 +550,6 @@ export function useChat(chatId: string) {
             content: typeof m.content === 'string' ? m.content : getTextFromMessageContent(m.content)
           }));
           await addMemory(recentMessages);
-          console.log("[Chat] Sent recent interaction to Mem0 for learning");
         }
       } catch (err) {
         console.error("[Chat] Failed to extract memories:", err);
@@ -714,18 +734,23 @@ export function useChat(chatId: string) {
       // Create abort controller for image generation
       abortControllerRef.current = new AbortController();
       try {
+        // Extract any input images from the message (for image-to-image transformations)
+        const userInputImages = getImagesFromMessageContent(messageContent);
         return await handleImageGeneration(
           chatId,
           modelId,
           providerId,
           apiKey,
           getTextFromMessageContent(messageContent),
+          userInputImages.length > 0 ? userInputImages : undefined, // Pass user images for editing
           parentUserMessageId,
           abortControllerRef.current.signal,
-          agent?.systemPrompt // Pass agent's system prompt for prompt optimization
+          agent?.systemPrompt, // Pass agent's system prompt for prompt optimization
+          (stage, messageId) => setImageGenerationProgress(messageId, stage)
         );
       } finally {
         abortControllerRef.current = null;
+        clearImageGenerationProgress();
       }
     }
 
@@ -748,36 +773,64 @@ export function useChat(chatId: string) {
       { memoryDisabled: chat.memoryDisabled, skill: activeSkill }
     );
 
-    // Memories are already loaded by buildContextMessages() - no duplicate call needed
-    const history = await getMessagesForBranch(chatId, parentUserMessageId);
+    // === Context Window Management ===
+    // 1. Convert context messages to LLM format and estimate tokens
+    const systemMessages: LLMMessage[] = contextMessages.map((m) => ({
+      role: m.role as "system" | "user" | "assistant",
+      content: convertToAISDKContent(m.content, m.role as "system" | "user" | "assistant"),
+    }));
+    const systemTokens = estimateMessagesTokens(systemMessages);
 
+    // 2. Calculate attachment tokens
+    const attachmentMessages: LLMMessage[] = (attachments || []).map((file) => ({
+      role: "system" as const,
+      content: `File: ${file.name}\n\`\`\`\n${file.content}\n\`\`\``,
+    }));
+    const attachmentTokens = estimateMessagesTokens(attachmentMessages);
+
+    // 3. Validate system context fits within model limits
+    const validation = validateSystemContextFits(modelId, systemTokens + attachmentTokens);
+    if (!validation.fits) {
+      toast.error(validation.message || "System context exceeds model's context limit");
+      return;
+    }
+
+    // 4. Calculate available budget for history
+    const budget = calculateContextBudget(modelId, systemTokens, attachmentTokens);
+
+    // 5. Get and transform history to LLM format
+    const rawHistory = await getMessagesForBranch(chatId, parentUserMessageId);
+    const historyMessages: LLMMessage[] = rawHistory
+      .filter((m) => m.role === "system" || m.role === "user" || m.role === "assistant")
+      .map((m) => {
+        const role = m.role as "system" | "user" | "assistant";
+        // Clean references for user messages first
+        const content = role === "user"
+          ? mapTextInMessageContent(m.content, cleanReferencesForLLM)
+          : m.content;
+        // Convert to AI SDK format (image_url -> image for users, strip images from assistants)
+        return {
+          role,
+          content: convertToAISDKContent(content, role),
+        };
+      });
+
+    // 6. Truncate history to fit within budget
+    const { truncatedHistory, wasLimited, originalCount, truncatedCount } = truncateHistoryToFit(
+      historyMessages,
+      budget.remainingForHistory
+    );
+
+    // 7. Show warning toast if history was truncated
+    if (wasLimited) {
+      toast.warning(`Context limit: showing ${truncatedCount} of ${originalCount} messages`);
+    }
+
+    // 8. Build final LLM messages with truncated history
     const llmMessages = [
-      // Context messages (system prompts from memory, agent, skill, etc.)
-      // Need to convert to AI SDK format in case content is an array
-      ...contextMessages.map((m) => ({
-        role: m.role as "system" | "user" | "assistant",
-        content: convertToAISDKContent(m.content, m.role as "system" | "user" | "assistant"),
-      })),
-      ...(attachments || []).map((file) => ({
-        role: "system" as const,
-        content: `File: ${file.name}\n\`\`\`\n${file.content}\n\`\`\``,
-      })),
-      ...history
-        .filter(
-          (m) => m.role === "system" || m.role === "user" || m.role === "assistant"
-        )
-        .map((m) => {
-          const role = m.role as "system" | "user" | "assistant";
-          // Clean references for user messages first
-          let content = role === "user"
-            ? mapTextInMessageContent(m.content, cleanReferencesForLLM)
-            : m.content;
-          // Convert to AI SDK format (image_url -> image for users, strip images from assistants)
-          return {
-            role,
-            content: convertToAISDKContent(content, role),
-          };
-        }),
+      ...systemMessages,
+      ...attachmentMessages,
+      ...truncatedHistory,
     ];
 
     // Add empty assistant message that we'll update during streaming
@@ -852,6 +905,7 @@ export function useChat(chatId: string) {
       let fullReasoning = ""; // For extended thinking / reasoning
       let inputTokens = 0; // Accumulated across all steps
       let outputTokens = 0; // Accumulated across all steps
+      let cachedTokens = 0; // Accumulated cached tokens from prompt caching
       let actualCost = 0; // Accumulated cost from provider (OpenRouter, etc.)
       let hasReceivedUsage = false; // Track if we received any usage data
       let costIsEstimated = false;
@@ -881,14 +935,7 @@ export function useChat(chatId: string) {
           try {
             const parsed = JSON.parse(data);
 
-            // Debug: Log event types (OpenRouter uses 'text' property for text-delta)
-            console.log(`[Chat Stream] Event type: ${parsed.type}`,
-              parsed.type === 'text-delta'
-                ? { type: parsed.type, text: parsed.text?.slice(0, 50) }
-                : parsed
-            );
-
-            const extractUsage = (value: any): { inTok?: number; outTok?: number; cost?: number } => {
+            const extractUsage = (value: any): { inTok?: number; outTok?: number; cachedTok?: number; cost?: number } => {
               if (!value || typeof value !== "object") return {};
               const usage = (value.usage && typeof value.usage === "object") ? value.usage : value;
 
@@ -899,6 +946,19 @@ export function useChat(chatId: string) {
                 value.providerMetadata?.openrouter ||
                 value.response?.providerMetadata?.openrouter ||
                 {};
+
+              // Extract cached tokens from various provider formats:
+              // - OpenAI: usage.promptTokensDetails?.cachedTokens or usage.prompt_tokens_details?.cached_tokens
+              // - Anthropic: usage.cacheReadInputTokens or usage.cache_read_input_tokens
+              // - OpenRouter: same as underlying provider
+              const promptDetails = usage.promptTokensDetails ?? usage.prompt_tokens_details ?? {};
+              const cachedTok =
+                toNum(promptDetails.cachedTokens) ??
+                toNum(promptDetails.cached_tokens) ??
+                toNum(usage.cacheReadInputTokens) ??
+                toNum(usage.cache_read_input_tokens) ??
+                toNum(usage.cachedTokens) ??
+                toNum(usage.cached_tokens);
 
               return {
                 inTok:
@@ -915,6 +975,7 @@ export function useChat(chatId: string) {
                   toNum(usage.output_tokens) ??
                   toNum(usage.completion_tokens_total) ??
                   toNum(usage.output_tokens_total),
+                cachedTok,
                 // Actual cost from provider (OpenRouter returns this in providerMetadata)
                 cost:
                   toNum(providerMeta.cost) ??
@@ -1040,22 +1101,13 @@ export function useChat(chatId: string) {
               outputTokens += u.outTok;
               hasReceivedUsage = true;
             }
+            if (typeof u.cachedTok === "number") {
+              cachedTokens += u.cachedTok;
+              hasReceivedUsage = true;
+            }
             if (typeof u.cost === "number") {
               actualCost += u.cost;
               hasReceivedUsage = true;
-            }
-
-            // Debug: Log usage data summary (no sensitive content)
-            if (u.inTok || u.outTok || u.cost) {
-              console.log("[Chat] Stream usage data (step):", { stepTokens: u.inTok, stepOutput: u.outTok, stepCost: u.cost, totalCost: actualCost });
-            }
-
-            // Log step-finish and finish events for debugging (only type and usage, no content)
-            if (parsed.type === "step-finish" || parsed.type === "finish") {
-              console.log(`[Chat] ${parsed.type} event:`, {
-                type: parsed.type,
-                usage: extractUsage(parsed),
-              });
             }
 
             // Handle error events gracefully - don't break the stream
@@ -1125,16 +1177,13 @@ export function useChat(chatId: string) {
 
       // Use actual cost from provider if available, otherwise estimate
       let cost: number;
-      console.log(`[Chat] Cost calculation - model: ${modelId}, provider: ${providerId}, hasReceivedUsage: ${hasReceivedUsage}, actualCost: $${actualCost.toFixed(6)}, tokens: ${inputTokens}/${outputTokens}`);
 
       if (typeof actualCost === "number" && actualCost > 0) {
         cost = actualCost;
         costIsEstimated = false;
-        console.log(`[Chat] Using actual cost from provider: $${cost.toFixed(6)}`);
       } else {
         cost = estimateCost(inputTokens || 0, outputTokens || 0, modelId, providerId);
         // costIsEstimated is already true if we fell back to local token counting
-        console.log(`[Chat] Using estimated cost: $${cost.toFixed(6)} (model: ${modelId})`);
       }
 
       // Detect incomplete response (ends abruptly, no punctuation, or very long)
@@ -1148,6 +1197,7 @@ export function useChat(chatId: string) {
         reasoning: fullReasoning || undefined,
         inputTokens: inputTokens || 0,
         outputTokens: outputTokens || 0,
+        cachedTokens: cachedTokens > 0 ? cachedTokens : undefined,
         cost,
         costIsEstimated: costIsEstimated || undefined,
         isIncomplete,
@@ -1170,7 +1220,6 @@ export function useChat(chatId: string) {
         // We can fire-and-forget this
         (async () => {
           try {
-            console.log("[Chat] Auto-generating title...");
 
             // Read title model settings from IndexedDB (client-side only!)
             const { getSettings } = await import("@/lib/db/queries");
@@ -1189,7 +1238,6 @@ export function useChat(chatId: string) {
               DEFAULT_TITLE_MODELS[providerId] ||
               "gpt-4o-mini";
 
-            console.log("[Chat] Using title model:", titleModelId);
 
             const titleResponse = await fetch("/api/chat/title", {
               method: "POST",
@@ -1212,7 +1260,6 @@ export function useChat(chatId: string) {
 
             if (titleResponse.ok) {
               const { title, cost: titleCost } = await titleResponse.json();
-              console.log("[Chat] Generated title:", title, titleCost ? `(cost: $${titleCost})` : "");
               if (title && title.length > 0) {
                 // Add title generation cost to chat total
                 const chatForCost = await getChatById(chatId);
@@ -1290,7 +1337,7 @@ export function useChat(chatId: string) {
       // This keeps memories fresh without blocking the current response
       refreshCacheInBackground(userMessageText);
     }
-  }, [chatId, getKeyForProvider, keys, scheduleMemoryExtraction, setStreamingMessage, appendStreamingContent, appendStreamingReasoning, setStreamingToolCalls, setStreamingToolResults, clearStreaming, startPipeline, setStepRunning, setStepComplete, setStepError, completePipeline, failPipeline, clearPipeline, setActiveSkill]);
+  }, [chatId, getKeyForProvider, keys, scheduleMemoryExtraction, setStreamingMessage, appendStreamingContent, appendStreamingReasoning, setStreamingToolCalls, setStreamingToolResults, clearStreaming, startPipeline, setStepRunning, setStepComplete, setStepError, completePipeline, failPipeline, clearPipeline, setActiveSkill, setImageGenerationProgress, clearImageGenerationProgress]);
 
   const sendMessage = async (content: MessageContent, attachments?: Array<{ name: string; content: string }>, selectedSkill?: Skill | null) => {
     setIsLoading(true);
@@ -1356,21 +1403,22 @@ export function useChat(chatId: string) {
           const embeddingsProvider = settings?.embeddingsProvider;
           const embeddingsModelId = settings?.embeddingsModelId;
 
-          const threshold = settings?.skillMatchThreshold ?? 0.5;
-
-          console.log("[Chat] Skill auto-detection check:", {
-            hasSelectedSkill: !!selectedSkill,
-            embeddingsProvider,
-            embeddingsModelId,
-            threshold,
-          });
+          const threshold = settings?.skillMatchThreshold ?? 0.25;
 
           if (embeddingsProvider && embeddingsModelId) {
             const embeddingsApiKey = getKeyForProvider(embeddingsProvider);
-            console.log("[Chat] Embeddings API key found:", !!embeddingsApiKey?.key);
 
             if (embeddingsApiKey?.key) {
-              console.log("[Chat] Attempting auto skill detection for message:", messageText.slice(0, 100));
+              // Get recent conversation context for short messages like "retry", "continue"
+              let conversationContext: Array<{ role: string; content: string }> | undefined;
+              if (messageText.length < 20) {
+                const recentMessages = await getMessages(chatId);
+                conversationContext = recentMessages.slice(-4).map(m => ({
+                  role: m.role,
+                  content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+                }));
+              }
+
               const matchResult = await matchSkill(
                 messageText,
                 embeddingsApiKey.key,
@@ -1378,16 +1426,14 @@ export function useChat(chatId: string) {
                   providerId: embeddingsProvider,
                   modelId: embeddingsModelId,
                   threshold,
-                  excludeManualOnly: true // Only match auto-trigger skills
+                  excludeManualOnly: true, // Only match auto-trigger skills
+                  conversationContext,
                 }
               );
-              console.log("[Chat] matchSkill result:", matchResult ? { name: matchResult.skill.name, similarity: matchResult.similarity } : null);
               if (matchResult) {
                 // Check if skill requires approval
                 if (matchResult.skill.requireApproval) {
-                  console.log(`[Chat] Skill ${matchResult.skill.name} requires approval`);
-
-                  // Wait for user approval
+                  // Show approval dialog and wait for user decision
                   const approved = await new Promise<boolean>((resolve) => {
                     setPendingSkillApproval({
                       skill: {
@@ -1405,26 +1451,19 @@ export function useChat(chatId: string) {
 
                   if (approved) {
                     activeSkill = matchResult.skill;
-                    console.log(`[Chat] User approved skill: ${matchResult.skill.name}`);
-                  } else {
-                    console.log(`[Chat] User rejected skill: ${matchResult.skill.name}`);
                   }
                 } else {
                   activeSkill = matchResult.skill;
-                  console.log(`[Chat] Auto-detected skill: ${matchResult.skill.name} (${(matchResult.similarity * 100).toFixed(1)}%)`);
                 }
-              } else {
-                console.log("[Chat] No skill matched above threshold");
               }
-            } else {
-              console.log("[Chat] No API key for embeddings provider:", embeddingsProvider);
             }
-          } else {
-            console.log("[Chat] Embeddings not configured - skipping skill auto-detection");
           }
         } catch (err) {
-          // Don't fail the message send if skill detection fails
-          console.warn("[Chat] Skill auto-detection failed:", err);
+          // Skill detection is optional - fail silently without showing error to user
+          // Common causes: network issues, API key problems, embedding service down
+          // The message will still be sent without skill enhancement
+          const errorMessage = err instanceof Error ? err.message : "Unknown error";
+          console.warn(`[Chat] Skill auto-detection failed (continuing without skill): ${errorMessage}`);
         }
       }
 

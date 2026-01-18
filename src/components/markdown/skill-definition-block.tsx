@@ -119,7 +119,6 @@ export function SkillDefinitionBlock({ code }: SkillDefinitionBlockProps) {
       } as SkillUI,
     };
 
-    console.log("[SkillDefinitionBlock] Converting to skill:", skillData);
     openSkillEditorWithData(skillData);
   };
 
