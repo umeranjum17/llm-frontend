@@ -162,7 +162,7 @@ gantt
   {
     id: "skill_builtin_generate_image",
     name: "Generate Image",
-    description: "generate an image of, create a picture of, draw an illustration of, AI generated art, generate artwork, create AI image, image generation prompt, generate visual of, dall-e image, midjourney style",
+    description: "generate an AI image of, create AI art of, dall-e generate image, midjourney style image, stable diffusion prompt, AI art generation, generate with dall-e, create image using AI, AI image generation request, make AI artwork, generate digital art with AI",
     category: "creation",
     systemPrompt: `You are an AI image prompt engineer. Help users create effective prompts for image generation.
 
@@ -253,6 +253,70 @@ Structure your response:
       icon: "Bug",
       color: "red",
       activeLabel: "Debugging...",
+    },
+    isBuiltIn: true,
+    isEnabled: true,
+    usageCount: 0,
+    createdAt: now(),
+    updatedAt: now(),
+  },
+  {
+    id: "skill_builtin_code_writer",
+    name: "Code Writer",
+    description: "write code for me, create a function that, write a script to, implement a feature, code an algorithm, write html page, create javascript code, write python script, build a program, code a solution, implement typescript, write css styles, create a class, code a component, write some code, coding help needed, generate code for, word game code, create a game, build interactive app, make a game for me, write a method, create utility function, implement this logic, code this feature, write boilerplate, scaffold code, generate function",
+    category: "coding",
+    systemPrompt: `You are an expert code writer. When asked to write code:
+
+## Core Principles
+1. **Complete Code**: Write complete, runnable code - never use placeholder comments like "..." or "// rest of code"
+2. **Idiomatic Patterns**: Use modern, idiomatic patterns for the language
+3. **Clear Explanations**: Include brief explanations of key decisions
+4. **Proper Formatting**: Use code fences with language and filename when relevant
+
+## Language Guidelines
+
+**JavaScript/TypeScript:**
+- Modern ES6+ syntax (const/let, arrow functions, destructuring)
+- async/await for asynchronous code
+- TypeScript: proper types, interfaces, generics
+- Functional patterns where appropriate
+
+**Python:**
+- PEP 8 style guidelines
+- Type hints for function signatures
+- Docstrings for public functions
+- List comprehensions and generators where cleaner
+
+**HTML/CSS:**
+- Semantic HTML5 elements
+- Responsive design with mobile-first approach
+- CSS: modern features (flexbox, grid, custom properties)
+- Accessibility considerations (ARIA, alt text)
+
+**React:**
+- Functional components with hooks
+- Proper state management patterns
+- Component composition over inheritance
+- Clear prop interfaces
+
+## Output Format
+\`\`\`language:filename.ext
+// Your code here
+\`\`\`
+
+**Brief explanation of key design decisions**
+
+## Quality Checklist
+- [ ] Code is complete and runnable
+- [ ] No placeholder comments or TODO items
+- [ ] Handles edge cases appropriately
+- [ ] Clear variable and function names
+- [ ] Minimal but sufficient comments`,
+    trigger: { type: "auto" },
+    ui: {
+      icon: "Terminal",
+      color: "emerald",
+      activeLabel: "Writing code...",
     },
     isBuiltIn: true,
     isEnabled: true,
@@ -980,6 +1044,7 @@ blue, green, purple, pink, amber, red, cyan, sky, teal, orange, indigo, emerald
 
 After creating a skill, explain what makes it effective and how it will help the user. The user can click "Convert to Skill" to add it instantly!`,
     trigger: { type: "auto" },
+    requireApproval: true, // Require user confirmation to prevent false triggers
     ui: {
       icon: "Wand2",
       color: "purple",
