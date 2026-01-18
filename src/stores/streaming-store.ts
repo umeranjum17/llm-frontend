@@ -45,6 +45,13 @@ export interface ActiveSkill {
   activeLabel: string;
 }
 
+export interface PendingSkillApproval {
+  skill: ActiveSkill;
+  messageContent: any;
+  attachments?: Array<{ name: string; content: string }>;
+  resolve: (approved: boolean) => void;
+}
+
 interface StreamingState {
   // The ID of the message currently being streamed
   streamingMessageId: string | null;
@@ -64,6 +71,8 @@ interface StreamingState {
   optimisticMessage: OptimisticMessage | null;
   // Active skill during generation
   activeSkill: ActiveSkill | null;
+  // Pending skill approval (when requireApproval is true)
+  pendingSkillApproval: PendingSkillApproval | null;
 
   // Actions
   setStreamingMessage: (messageId: string | null) => void;
@@ -81,6 +90,11 @@ interface StreamingState {
   // Active skill actions
   setActiveSkill: (skill: ActiveSkill | null) => void;
   clearActiveSkill: () => void;
+
+  // Pending skill approval actions
+  setPendingSkillApproval: (approval: PendingSkillApproval | null) => void;
+  approveSkill: () => void;
+  rejectSkill: () => void;
 
   // Pipeline actions
   startPipeline: (steps: Array<{ id: string; name: string; type: "llm" | "image" | "tool" | "subagent" }>) => void;
@@ -103,6 +117,7 @@ export const useStreamingStore = create<StreamingState>((set, get) => ({
   pipelineExecution: null,
   optimisticMessage: null,
   activeSkill: null,
+  pendingSkillApproval: null,
 
   setStreamingMessage: (messageId) => set({
     streamingMessageId: messageId,
@@ -153,6 +168,7 @@ export const useStreamingStore = create<StreamingState>((set, get) => ({
     pipelineExecution: null,
     optimisticMessage: null,
     activeSkill: null,
+    pendingSkillApproval: null,
   }),
 
   setOptimisticMessage: (message) => set((state) => ({
@@ -175,6 +191,34 @@ export const useStreamingStore = create<StreamingState>((set, get) => ({
     activeSkill: null,
     streamingVersion: state.streamingVersion + 1,
   })),
+
+  // Pending skill approval actions
+  setPendingSkillApproval: (approval) => set((state) => ({
+    pendingSkillApproval: approval,
+    streamingVersion: state.streamingVersion + 1,
+  })),
+
+  approveSkill: () => {
+    const { pendingSkillApproval } = get();
+    if (pendingSkillApproval) {
+      pendingSkillApproval.resolve(true);
+      set((state) => ({
+        pendingSkillApproval: null,
+        streamingVersion: state.streamingVersion + 1,
+      }));
+    }
+  },
+
+  rejectSkill: () => {
+    const { pendingSkillApproval } = get();
+    if (pendingSkillApproval) {
+      pendingSkillApproval.resolve(false);
+      set((state) => ({
+        pendingSkillApproval: null,
+        streamingVersion: state.streamingVersion + 1,
+      }));
+    }
+  },
 
   // Pipeline actions
   startPipeline: (steps) => set((state) => ({

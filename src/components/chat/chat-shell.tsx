@@ -25,6 +25,7 @@ import { useChatSummary } from "@/hooks/use-chat-summary";
 import { BudgetSettingsDialog } from "./budget-settings-dialog";
 import { ChatSettingsPopover } from "./chat-settings-popover";
 import { ToolQuickToggle } from "./tool-quick-toggle";
+import { SkillApprovalDialog } from "./skill-approval-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
@@ -1002,6 +1003,9 @@ export function ChatShell() {
           onOpenChange={setSkillEditorOpen}
         />
       </Suspense>
+
+      {/* Skill Approval Dialog */}
+      <SkillApprovalDialog />
     </div>
   );
 }

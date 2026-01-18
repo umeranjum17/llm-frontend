@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useUIStore } from "@/stores/ui-store";
-import { useStreamingStore, type ActiveSkill } from "@/stores/streaming-store";
+import { useStreamingStore, type ActiveSkill, type PendingSkillApproval } from "@/stores/streaming-store";
 import { addMessage, updateChat, getChatById, updateMessage, getMessagesForBranch, getLastMessage, getMessageById, chatHasBranches, incrementAgentUsage, getMessages, getActiveMcpServersForChat, getAgentById, getSkillById, incrementSkillUsage } from "@/lib/db/queries";
 import { buildContextMessages } from "@/lib/ai/context-builder";
 import { countMessagesTokens, countTokens, estimateCost } from "@/lib/utils/token-counter";
@@ -499,6 +499,7 @@ export function useChat(chatId: string) {
     clearOptimisticMessage,
     setActiveSkill,
     clearActiveSkill,
+    setPendingSkillApproval,
   } = useStreamingStore();
   const extractionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const dbUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -1382,8 +1383,36 @@ export function useChat(chatId: string) {
               );
               console.log("[Chat] matchSkill result:", matchResult ? { name: matchResult.skill.name, similarity: matchResult.similarity } : null);
               if (matchResult) {
-                activeSkill = matchResult.skill;
-                console.log(`[Chat] Auto-detected skill: ${matchResult.skill.name} (${(matchResult.similarity * 100).toFixed(1)}%)`);
+                // Check if skill requires approval
+                if (matchResult.skill.requireApproval) {
+                  console.log(`[Chat] Skill ${matchResult.skill.name} requires approval`);
+
+                  // Wait for user approval
+                  const approved = await new Promise<boolean>((resolve) => {
+                    setPendingSkillApproval({
+                      skill: {
+                        id: matchResult.skill.id,
+                        name: matchResult.skill.name,
+                        icon: matchResult.skill.ui.icon,
+                        color: matchResult.skill.ui.color,
+                        activeLabel: matchResult.skill.ui.activeLabel,
+                      },
+                      messageContent: content,
+                      attachments,
+                      resolve,
+                    });
+                  });
+
+                  if (approved) {
+                    activeSkill = matchResult.skill;
+                    console.log(`[Chat] User approved skill: ${matchResult.skill.name}`);
+                  } else {
+                    console.log(`[Chat] User rejected skill: ${matchResult.skill.name}`);
+                  }
+                } else {
+                  activeSkill = matchResult.skill;
+                  console.log(`[Chat] Auto-detected skill: ${matchResult.skill.name} (${(matchResult.similarity * 100).toFixed(1)}%)`);
+                }
               } else {
                 console.log("[Chat] No skill matched above threshold");
               }
