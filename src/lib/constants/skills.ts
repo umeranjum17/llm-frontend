@@ -849,7 +849,7 @@ If creating a thread, label each tweet clearly (1/n, 2/n, etc.)
   {
     id: "skill_builtin_skill_creator",
     name: "Skill Creator",
-    description: "Create custom skill, make new skill, design skill, build skill, skill wizard, automation builder, help me create a skill, create a skill for, new skill for",
+    description: "create a new skill for me, help me create a custom skill, build a skill that does, make a skill for lumina, create skill for this app, design a new skill, I want to create a skill",
     category: "creation",
     systemPrompt: `You are an expert skill architect for an AI assistant. Your job is to create world-class, comprehensive skills that transform how users interact with AI.
 
