@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { Skill } from "@/lib/db/schema";
 
 export interface Artifact {
   id: string;
@@ -26,6 +27,8 @@ interface UIState {
   arenaModelIds: string[];
   isFocusMode: boolean;
   artifactsFullscreen: boolean;
+  skillEditorOpen: boolean;
+  skillEditorPrefilledData: Partial<Skill> | null;
 
   // Actions
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -44,6 +47,9 @@ interface UIState {
   setArenaModelIds: (ids: string[]) => void;
   setIsFocusMode: (enabled: boolean) => void;
   setArtifactsFullscreen: (fullscreen: boolean) => void;
+  setSkillEditorOpen: (open: boolean) => void;
+  openSkillEditorWithData: (data: Partial<Skill>) => void;
+  clearSkillEditorData: () => void;
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
@@ -61,6 +67,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   arenaModelIds: [],
   isFocusMode: false,
   artifactsFullscreen: false,
+  skillEditorOpen: false,
+  skillEditorPrefilledData: null,
 
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   setActiveChatId: (chatId) => set({ activeChatId: chatId }),
@@ -112,4 +120,10 @@ export const useUIStore = create<UIState>((set, get) => ({
   setArenaModelIds: (ids) => set({ arenaModelIds: ids }),
   setIsFocusMode: (enabled) => set({ isFocusMode: enabled }),
   setArtifactsFullscreen: (fullscreen) => set({ artifactsFullscreen: fullscreen }),
+  setSkillEditorOpen: (open) => set({ skillEditorOpen: open }),
+  openSkillEditorWithData: (data) => {
+    console.log("[UIStore] openSkillEditorWithData called with:", data?.name, data);
+    set({ skillEditorOpen: true, skillEditorPrefilledData: data });
+  },
+  clearSkillEditorData: () => set({ skillEditorPrefilledData: null }),
 }));

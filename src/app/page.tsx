@@ -17,7 +17,7 @@ import { useModelsStore } from "@/stores/models-store";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
-import { getAllChats, createChat, getChatById } from "@/lib/db/queries";
+import { getMostRecentChat, createChat, getChatById } from "@/lib/db/queries";
 import { getDefaultChatConfig } from "@/lib/ai/default-chat";
 import { toast } from "sonner";
 
@@ -65,10 +65,9 @@ export default function Home() {
       const activeChatId = useUIStore.getState().activeChatId;
       if (activeChatId) return; // Already has an active chat
 
-      const chats = await getAllChats();
-      if (chats.length > 0) {
-        // Get the most recent chat (first one after sorting by updatedAt)
-        const mostRecentChat = chats[0];
+      // Use efficient query that only fetches the most recent chat
+      const mostRecentChat = await getMostRecentChat();
+      if (mostRecentChat) {
         useUIStore.getState().setActiveChatId(mostRecentChat.id);
       }
     };
@@ -87,13 +86,9 @@ export default function Home() {
           // Verify the chat still exists (could have been deleted in another tab)
           const chat = await getChatById(activeChatId);
           if (!chat) {
-            // Chat was deleted - load most recent chat instead
-            const chats = await getAllChats();
-            if (chats.length > 0) {
-              useUIStore.getState().setActiveChatId(chats[0].id);
-            } else {
-              useUIStore.getState().setActiveChatId(null);
-            }
+            // Chat was deleted - load most recent chat instead (efficient query)
+            const mostRecentChat = await getMostRecentChat();
+            useUIStore.getState().setActiveChatId(mostRecentChat?.id || null);
           }
         }
       }

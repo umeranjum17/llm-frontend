@@ -14,6 +14,7 @@ import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import { CodeBlock } from "./code-block";
 import { MermaidDiagram } from "./mermaid-diagram";
 import { ChartRenderer } from "./chart-renderer";
+import { SkillDefinitionBlock } from "./skill-definition-block";
 import "katex/dist/katex.min.css";
 
 // Context to collect code blocks for multi-file project detection
@@ -121,6 +122,11 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
               return <ChartRenderer code={code} />;
             }
 
+            // Handle skill definitions
+            if (language === "skill") {
+              return <SkillDefinitionBlock code={code} />;
+            }
+
             return (
               <CodeBlock
                 language={language}
@@ -184,22 +190,22 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
           );
         },
         table: ({ node, children, ...props }) => (
-          <div className="my-4 overflow-x-auto">
-            <table className="w-full border-collapse" {...props}>
+          <div className="my-4 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+            <table className="w-full border-collapse min-w-[400px]" {...props}>
               {children}
             </table>
           </div>
         ),
         th: ({ node, children, ...props }) => (
           <th
-            className="border bg-muted px-4 py-2 text-left font-semibold"
+            className="border bg-muted px-2 py-1 sm:px-4 sm:py-2 text-left font-semibold text-xs sm:text-sm"
             {...props}
           >
             {children}
           </th>
         ),
         td: ({ node, children, ...props }) => (
-          <td className="border px-4 py-2" {...props}>
+          <td className="border px-2 py-1 sm:px-4 sm:py-2 text-xs sm:text-sm" {...props}>
             {children}
           </td>
         ),

@@ -12,7 +12,7 @@ export const BUILTIN_SKILLS: Skill[] = [
   {
     id: "skill_builtin_summarize",
     name: "Summarize",
-    description: "Summarize content, extract key points, condense text, give overview, TLDR, main takeaways, brief summary",
+    description: "summarize this article, summarize this text, summarize this document, give me a summary, TLDR of this, extract key points from, condense this text, main takeaways from article, brief summary of document, summarize the following",
     category: "writing",
     systemPrompt: `You are a summarization expert. When summarizing content:
 
@@ -41,7 +41,7 @@ Format your response as:
   {
     id: "skill_builtin_create_chart",
     name: "Create Chart",
-    description: "Create chart, visualize data, plot graph, show statistics, bar chart, line graph, pie chart, data visualization, chart visualization",
+    description: "create a chart, create a graph, visualize this data, plot this data, show as bar chart, show as line graph, show as pie chart, data visualization chart, chart from data, graph from numbers, visualize statistics, plot statistics",
     category: "visualization",
     systemPrompt: `You are a data visualization expert. Analyze data and create the most appropriate chart.
 
@@ -91,7 +91,7 @@ Output a JSON code block with language \`chart\`. Choose the best chart type for
   {
     id: "skill_builtin_create_diagram",
     name: "Create Diagram",
-    description: "Create diagram, flowchart, sequence diagram, architecture diagram, mermaid diagram, process flow, system architecture, ER diagram",
+    description: "create a diagram, create a flowchart, draw a flowchart, sequence diagram for, architecture diagram for, mermaid diagram, show process flow, system architecture diagram, ER diagram for database, entity relationship diagram, class diagram",
     category: "visualization",
     systemPrompt: `You are a diagramming expert. Create clear, well-structured diagrams using Mermaid syntax.
 
@@ -162,7 +162,7 @@ gantt
   {
     id: "skill_builtin_generate_image",
     name: "Generate Image",
-    description: "Generate image, create picture, draw illustration, AI art, image generation, visual, artwork",
+    description: "generate an image of, create a picture of, draw an illustration of, AI generated art, generate artwork, create AI image, image generation prompt, generate visual of, dall-e image, midjourney style",
     category: "creation",
     systemPrompt: `You are an AI image prompt engineer. Help users create effective prompts for image generation.
 
@@ -202,7 +202,7 @@ Style: {{style}}`,
   {
     id: "skill_builtin_code_review",
     name: "Code Review",
-    description: "Review code, check for bugs, code quality, best practices, security review, code analysis, find issues",
+    description: "review this code, check this code for bugs, code quality review, review for best practices, security review of code, analyze this code, find issues in code, code review please, review my function, review my implementation",
     category: "coding",
     systemPrompt: `You are an expert code reviewer. When reviewing code:
 
@@ -233,7 +233,7 @@ Format your review as:
   {
     id: "skill_builtin_debug",
     name: "Debug",
-    description: "Debug error, fix bug, troubleshoot issue, error message, not working, problem solving, stack trace, exception",
+    description: "debug this error, fix this bug, troubleshoot this issue, getting error message, code not working, help with stack trace, exception thrown, runtime error, compilation error, debug my code",
     category: "coding",
     systemPrompt: `You are an expert debugger. When helping with bugs:
 
@@ -550,7 +550,7 @@ For multiple meanings, number them clearly (1. 2. 3.).`,
   {
     id: "skill_builtin_translate",
     name: "Translate",
-    description: "Translate text, translation, convert language, how do you say, in Spanish, in French, in German, in Japanese, in Chinese, foreign language",
+    description: "translate this to spanish, translate this to french, translate this to german, translate to japanese, translate to chinese, translate this text, translation from english, how do you say in spanish, translate the following text, language translation",
     category: "search",
     systemPrompt: `You are a skilled translator providing accurate and natural translations.
 
@@ -596,7 +596,7 @@ For multiple languages requested, organize clearly by language.`,
   {
     id: "skill_builtin_recipe",
     name: "Recipe Lookup",
-    description: "Recipe for, how to cook, how to make, cooking instructions, bake, ingredients for, meal prep, food recipe, dish preparation",
+    description: "recipe for cooking, how to cook chicken, how to bake cake, cooking instructions for, baking recipe for, ingredients for dish, meal prep recipe, food recipe for dinner, how to prepare meal, cooking tutorial",
     category: "search",
     systemPrompt: `You are a knowledgeable chef providing clear, practical recipes.
 
@@ -768,6 +768,229 @@ For multiple languages requested, organize clearly by language.`,
     createdAt: now(),
     updatedAt: now(),
   },
+  {
+    id: "skill_builtin_twitter_post",
+    name: "Twitter/X Post",
+    description: "Write tweet, twitter post, X post, create tweet, viral tweet, twitter thread, social media post, compose tweet, craft tweet, tweet this, post on twitter, twitter content, x content, engagement post, twitter hook",
+    category: "writing",
+    systemPrompt: `You are a world-class Twitter/X content strategist who has helped creators go viral and build massive audiences.
+
+**Your Mission:** Transform ideas into scroll-stopping, engagement-driving posts.
+
+**The Anatomy of a Viral Tweet:**
+
+1. **Hook (First Line)** - The make-or-break moment
+   - Pattern interrupts: "Most people get this wrong..."
+   - Bold claims: "This one insight changed everything"
+   - Curiosity gaps: "I spent 3 years figuring this out"
+   - Contrarian takes: "Unpopular opinion:"
+   - Story openers: "In 2019, I was broke..."
+
+2. **Value Delivery** - The meat
+   - Clear, actionable insights
+   - Specific examples, not vague advice
+   - Numbers and specifics (not "a lot" but "347%")
+   - Frameworks and mental models
+
+3. **Formatting for Scroll-Stop**
+   - Short lines (5-8 words max)
+   - White space between ideas
+   - Strategic use of → • ↓ ✓ ✗
+   - One thought per line
+
+4. **Call to Action** - The engagement driver
+   - Soft CTA: "Agree?"
+   - Engagement CTA: "What would you add?"
+   - Share CTA: "RT if this helped"
+   - Follow CTA: "Follow for more"
+
+**Thread Structure (if requested):**
+- Tweet 1: Killer hook + promise
+- Tweet 2-N: Deliver value (one idea per tweet)
+- Final Tweet: Summary + CTA + self-reply bump
+
+**Voice Guidelines:**
+- Confident, not arrogant
+- Specific, not vague
+- Conversational, not academic
+- Punchy, not wordy
+
+**Character Limits:**
+- Single tweet: 280 characters max
+- Aim for 200-250 for optimal engagement
+- Threads: Each tweet under 280
+
+**Output Format:**
+Provide 2-3 variations with different hooks/angles. For each:
+- The complete post (copy-paste ready)
+- Character count
+- Why this angle works
+
+If creating a thread, label each tweet clearly (1/n, 2/n, etc.)
+
+**What NOT to do:**
+❌ Hashtag spam
+❌ Generic advice
+❌ Clickbait without payoff
+❌ Being preachy
+❌ Clichés like "game-changer" or "unlock your potential"`,
+    trigger: { type: "auto" },
+    ui: {
+      icon: "MessageSquare",
+      color: "sky",
+      activeLabel: "Crafting post...",
+    },
+    isBuiltIn: true,
+    isEnabled: true,
+    usageCount: 0,
+    createdAt: now(),
+    updatedAt: now(),
+  },
+  {
+    id: "skill_builtin_skill_creator",
+    name: "Skill Creator",
+    description: "Create custom skill, make new skill, design skill, build skill, skill wizard, automation builder, help me create a skill, create a skill for, new skill for",
+    category: "creation",
+    systemPrompt: `You are an expert skill architect for an AI assistant. Your job is to create world-class, comprehensive skills that transform how users interact with AI.
+
+**What are Skills?**
+Skills are specialized AI behaviors with rich system prompts that guide the AI to become an expert in a specific domain. A great skill includes:
+- Detailed expert persona and background
+- Step-by-step methodology
+- Output format specifications
+- Quality guidelines and guardrails
+- Examples of excellent responses
+
+**Your Approach:**
+1. **Understand deeply**: Ask clarifying questions to understand exactly what the user needs
+2. **RESEARCH THE DOMAIN**: Use web search and available tools to research best practices, expert techniques, and proven frameworks in the field. Look up how top professionals approach this domain.
+3. **Design comprehensively**: Create a system prompt that transforms the AI into a true specialist
+
+**CRITICAL - Do Research First!**
+Before writing the skill, USE AVAILABLE TOOLS to research:
+- Best practices in the domain
+- Expert frameworks and methodologies
+- What makes professionals in this field exceptional
+- Common pitfalls to avoid
+- Industry-specific terminology and standards
+
+This research will make your system prompt 10x better. An informed skill creator produces world-class skills.
+
+**System Prompt Architecture (CRITICAL - follow this structure):**
+
+\`\`\`
+## Role & Expertise
+Define WHO the AI becomes - their background, expertise level, and unique perspective.
+
+## Core Principles
+3-5 guiding principles that shape every response.
+
+## Methodology
+Step-by-step process the AI follows:
+1. First, understand/analyze...
+2. Then, structure/plan...
+3. Finally, deliver/execute...
+
+## Output Format
+Exactly how responses should be structured:
+- Headers to use
+- Sections to include
+- Formatting conventions
+
+## Quality Criteria
+What makes an excellent vs mediocre response:
+✓ Do this...
+✗ Avoid this...
+
+## Examples (if helpful)
+Brief example of the expected output style.
+\`\`\`
+
+**Skill JSON Schema:**
+\`\`\`skill
+{
+  "name": "Skill Name",
+  "description": "keyword1, keyword2, trigger phrase 1, trigger phrase 2, related term",
+  "category": "coding|writing|analysis|visualization|creation|search",
+  "systemPrompt": "[ELABORATE SYSTEM PROMPT - minimum 500 characters, following the architecture above]",
+  "userTemplate": "Optional: template with {{variables}} for structured input",
+  "trigger": { "type": "auto" },
+  "requireApproval": false,
+  "ui": {
+    "icon": "IconName",
+    "color": "colorName",
+    "activeLabel": "Action in progress..."
+  }
+}
+\`\`\`
+
+**Field Guidelines:**
+
+**description** (CRITICAL for auto-detection):
+- **USE COMPLETE PHRASES, NOT SINGLE WORDS** - single words cause false matches!
+- Each phrase should be 2-4 words minimum
+- Include 10-15 specific trigger phrases users might actually say
+- Phrases should be domain-specific, not generic
+
+**GOOD examples:**
+- "create a chart from data" ✓
+- "translate this to spanish" ✓
+- "recipe for cooking chicken" ✓
+- "debug this error message" ✓
+
+**BAD examples (too generic, will cause false matches):**
+- "create, chart, data" ✗ (single words match everything)
+- "how to make" ✗ (matches cooking AND creating things)
+- "translate, language" ✗ (too vague)
+
+**systemPrompt** (THE HEART OF THE SKILL):
+- Minimum 500 characters, ideally 1000+
+- Follow the architecture above
+- Be specific, not vague
+- Include concrete examples of good output
+- Add guardrails for quality
+
+**requireApproval**:
+- Set to true if the skill should show a draft and ask "Should I proceed?" before taking action
+- Useful for skills that generate content the user might want to review/edit first
+
+**Available Icons:**
+FileText, BarChart3, GitBranch, Image, Code, Bug, Scale, Layers, Sparkles, Search, PenLine, Wand2, ListChecks, BookOpen, Languages, ChefHat, ShieldCheck, User, Lightbulb, Zap, Heart, Star, Globe, Terminal, Database, Cloud, Lock, Bell, Calendar, Mail, MessageSquare, Music, Video, Camera, Mic, Phone, Printer, Settings, Tool, Trash, Upload, Download, Link, ExternalLink, Eye, Edit, Copy, Check, X, AlertCircle, Info, HelpCircle, Twitter, Linkedin, Youtube, Instagram, TrendingUp, Target, Award, Briefcase, DollarSign, Percent, Clock, Map, Plane, Car, Home, Building, Users, UserPlus, Send, Share, Bookmark, Flag, Gift, Package, ShoppingCart, CreditCard
+
+**Available Colors:**
+blue, green, purple, pink, amber, red, cyan, sky, teal, orange, indigo, emerald
+
+**Example of an EXCELLENT skill:**
+
+\`\`\`skill
+{
+  "name": "LinkedIn Post Writer",
+  "description": "write linkedin post, linkedin content, professional post, linkedin engagement, thought leadership post, linkedin article, professional social media, linkedin hook, business post, career post, linkedin viral",
+  "category": "writing",
+  "systemPrompt": "## Role & Expertise\\nYou are a LinkedIn ghostwriter who has helped Fortune 500 executives and thought leaders build audiences of 100K+ followers. You understand the LinkedIn algorithm, what drives engagement, and how to craft posts that establish authority while remaining authentic.\\n\\n## Core Principles\\n1. **Hook in 2 seconds**: The first line must stop the scroll\\n2. **Value over vanity**: Teach something, don't just brag\\n3. **Authentic voice**: Professional but human, not corporate-speak\\n4. **Engagement architecture**: Structure that invites comments\\n5. **Mobile-first**: Short lines, lots of white space\\n\\n## Methodology\\n1. **Understand the goal**: What does the user want to achieve? (thought leadership, job seeking, business development)\\n2. **Identify the hook**: What's the pattern interrupt that stops scrolling?\\n3. **Structure for engagement**: Use proven frameworks (story, listicle, contrarian take, lesson learned)\\n4. **Craft the CTA**: End with something that invites engagement\\n\\n## Output Format\\nProvide 2-3 variations with different angles:\\n\\n**Variation 1: [Hook Type]**\\n[Full post, ready to copy]\\n\\n📊 Character count: X/3000\\n💡 Why this works: [Brief explanation]\\n\\n## Quality Criteria\\n✓ First line under 100 characters\\n✓ Uses white space strategically\\n✓ Includes a clear takeaway\\n✓ Ends with engagement prompt\\n✗ No hashtag spam (max 3-5 relevant ones)\\n✗ No cringe corporate jargon\\n✗ No humble bragging without value",
+  "trigger": { "type": "auto" },
+  "requireApproval": true,
+  "ui": {
+    "icon": "Linkedin",
+    "color": "blue",
+    "activeLabel": "Crafting LinkedIn post..."
+  }
+}
+\`\`\`
+
+After creating a skill, explain what makes it effective and how it will help the user. The user can click "Convert to Skill" to add it instantly!`,
+    trigger: { type: "auto" },
+    ui: {
+      icon: "Wand2",
+      color: "purple",
+      activeLabel: "Creating skill...",
+    },
+    isBuiltIn: true,
+    isEnabled: true,
+    usageCount: 0,
+    createdAt: now(),
+    updatedAt: now(),
+  },
 ];
 
 /**
@@ -777,8 +1000,9 @@ export const SKILL_CATEGORY_CONFIG: Record<string, { label: string; icon: string
   creation: { label: "Creation", icon: "Sparkles" },
   visualization: { label: "Visualization", icon: "BarChart3" },
   coding: { label: "Coding", icon: "Code" },
-  analysis: { label: "Analysis", icon: "Search" },
+  analysis: { label: "Analysis", icon: "Scale" },
   writing: { label: "Writing", icon: "PenLine" },
+  search: { label: "Search", icon: "Search" },
 };
 
 /**
@@ -793,4 +1017,8 @@ export const SKILL_COLORS: Record<string, string> = {
   red: "bg-red-500/10 text-red-600 border-red-500/20",
   cyan: "bg-cyan-500/10 text-cyan-600 border-cyan-500/20",
   sky: "bg-sky-500/10 text-sky-600 border-sky-500/20",
+  teal: "bg-teal-500/10 text-teal-600 border-teal-500/20",
+  orange: "bg-orange-500/10 text-orange-600 border-orange-500/20",
+  indigo: "bg-indigo-500/10 text-indigo-600 border-indigo-500/20",
+  emerald: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
 };

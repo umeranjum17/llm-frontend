@@ -256,6 +256,22 @@
   @apply px-4 py-2 border;
 }
 
+/* Mobile-responsive table styles */
+@media (max-width: 640px) {
+  .prose table {
+    @apply text-xs;
+    min-width: 400px; /* Force horizontal scroll rather than squish */
+  }
+
+  .prose th {
+    @apply px-2 py-1 text-xs;
+  }
+
+  .prose td {
+    @apply px-2 py-1 text-xs;
+  }
+}
+
 .prose a {
   @apply text-primary hover:underline break-all;
   word-break: break-all;

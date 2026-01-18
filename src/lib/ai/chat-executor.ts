@@ -326,6 +326,27 @@ export interface ChatExecutorConfig {
   // Memory and context options
   memoryContext?: string; // Pre-fetched memory context to include
   includeNoToolsMessage?: boolean; // Whether to add "no tools available" message
+  // Reasoning/thinking options
+  reasoningLevel?: "low" | "medium" | "high" | "xhigh";
+}
+
+/**
+ * Map reasoning level to budget tokens for extended thinking.
+ * Must stay in sync with the mapping in /api/chat/route.ts
+ */
+function getReasoningBudgetTokens(level?: "low" | "medium" | "high" | "xhigh"): number {
+  switch (level) {
+    case "low":
+      return 5000;
+    case "medium":
+      return 10000;
+    case "high":
+      return 20000;
+    case "xhigh":
+      return 50000;
+    default:
+      return 10000; // Default to medium
+  }
 }
 
 export interface ChatMessage {
@@ -687,6 +708,7 @@ export async function executeChatStreaming(
     enabledTools,
     disabledTools,
     memoryContext,
+    reasoningLevel,
   } = config;
 
   // Create model
@@ -732,15 +754,16 @@ export async function executeChatStreaming(
     modelId,
     capabilities
   );
-  
+
   // Merge cache provider options with existing provider options
   Object.assign(providerOptions, cacheProviderOptions);
 
-  // Extended thinking
+  // Extended thinking with configurable reasoning level
   if (capabilities.supportsThinking && isAnthropicProvider) {
+    const budgetTokens = getReasoningBudgetTokens(reasoningLevel);
     providerOptions.anthropic = {
       ...providerOptions.anthropic,
-      thinking: { type: 'enabled', budgetTokens: 10000 }
+      thinking: { type: 'enabled', budgetTokens }
     };
   }
 

@@ -1,5 +1,8 @@
-import { db, type Chat, type Message, type Project, type ProjectFile, type ModelFavorite, type ApiKey, type UserSettings, type Agent, type Prompt, type Skill, type ModelAlias, type McpServer } from "./schema";
+import { db, type Chat, type Message, type Project, type ProjectFile, type ModelFavorite, type ApiKey, type UserSettings, type Agent, type Prompt, type Skill, type ModelAlias, type McpServer, type Folder, type Tag } from "./schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
+
+// Re-export db for direct access when needed (e.g., batch operations)
+export { db };
 
 // ============= DEFAULT PROJECT =============
 
@@ -46,9 +49,21 @@ export async function moveChatsToProject(fromProjectId: string, toProjectId: str
 
 // ============= CHAT QUERIES =============
 
-export async function getAllChats() {
-  const chats = await db.chats.toArray();
-  // Sort by: pinned first, then by explicit order if set, otherwise by recency
+// Simple in-memory cache for getAllChats to avoid repeated full table scans
+let chatsCache: { data: Chat[], timestamp: number } | null = null;
+const CHATS_CACHE_MAX_AGE = 5000; // 5 seconds
+
+/**
+ * Invalidate the chats cache. Call this after any chat mutation.
+ */
+export function invalidateChatsCache() {
+  chatsCache = null;
+}
+
+/**
+ * Sort chats by: pinned first, then by explicit order if set, otherwise by recency
+ */
+function sortChats(chats: Chat[]): Chat[] {
   return chats.sort((a, b) => {
     // Pinned chats always come first
     if (a.pinned && !b.pinned) return -1;
@@ -75,8 +90,67 @@ export async function getAllChats() {
   });
 }
 
+export async function getAllChats() {
+  const chats = await db.chats.toArray();
+  return sortChats(chats);
+}
+
+/**
+ * Get all chats with caching to reduce repeated IndexedDB queries.
+ * Use for read-heavy operations like the chat list sidebar.
+ * @param maxAge Maximum age of cache in ms (default 5000ms)
+ */
+export async function getAllChatsCached(maxAge = CHATS_CACHE_MAX_AGE): Promise<Chat[]> {
+  // Return cached data if still valid
+  if (chatsCache && Date.now() - chatsCache.timestamp < maxAge) {
+    return chatsCache.data;
+  }
+
+  // Fetch and sort chats using indexed query for better performance
+  const chats = await db.chats.orderBy('updatedAt').reverse().toArray();
+  const sorted = sortChats(chats);
+
+  // Update cache
+  chatsCache = { data: sorted, timestamp: Date.now() };
+  return sorted;
+}
+
 export async function getChatById(id: string) {
   return await db.chats.get(id);
+}
+
+/**
+ * Get chat with its messages in a single transaction.
+ * More efficient than separate queries when both are needed.
+ */
+export async function getChatWithMessages(chatId: string): Promise<{ chat: Chat | undefined; messages: Message[] }> {
+  return await db.transaction('r', [db.chats, db.messages], async () => {
+    const [chat, messages] = await Promise.all([
+      db.chats.get(chatId),
+      db.messages.where("chatId").equals(chatId).sortBy("createdAt")
+    ]);
+    return { chat, messages };
+  });
+}
+
+/**
+ * Get chat with its associated agent in a single transaction.
+ * Useful for chat-shell where both are needed together.
+ */
+export async function getChatWithAgent(chatId: string): Promise<{ chat: Chat | undefined; agent: Agent | undefined }> {
+  return await db.transaction('r', [db.chats, db.agents], async () => {
+    const chat = await db.chats.get(chatId);
+    const agent = chat?.agentId ? await db.agents.get(chat.agentId) : undefined;
+    return { chat, agent };
+  });
+}
+
+/**
+ * Get the most recent chat without loading all chats.
+ * Much faster than getAllChats()[0] for large chat histories.
+ */
+export async function getMostRecentChat(): Promise<Chat | undefined> {
+  return await db.chats.orderBy('updatedAt').reverse().first();
 }
 
 export async function getChatsByProject(projectId: string) {
@@ -117,11 +191,13 @@ export async function createChat(chat: Omit<Chat, "id" | "createdAt" | "updatedA
     updatedAt: now,
   };
   await db.chats.add(newChat);
+  invalidateChatsCache();
   return newChat;
 }
 
 export async function updateChat(id: string, updates: Partial<Chat>) {
   await db.chats.update(id, { ...updates, updatedAt: Date.now() });
+  invalidateChatsCache();
 }
 
 export async function deleteChat(id: string) {
@@ -129,6 +205,7 @@ export async function deleteChat(id: string) {
   await db.messages.where("chatId").equals(id).delete();
   // Delete the chat
   await db.chats.delete(id);
+  invalidateChatsCache();
 }
 
 export async function deleteAllChats() {
@@ -136,6 +213,7 @@ export async function deleteAllChats() {
   await db.messages.clear();
   // Delete all chats
   await db.chats.clear();
+  invalidateChatsCache();
 }
 
 export async function searchChats(query: string) {
@@ -152,21 +230,25 @@ export interface MessageSearchResult extends Message {
 
 export async function searchMessages(query: string): Promise<MessageSearchResult[]> {
   const lowerQuery = query.toLowerCase();
+  const messages: Message[] = [];
 
-  // Find messages matching content
-  const messages = await db.messages
-    .filter(msg => {
+  // Use cursor to avoid loading all messages into memory
+  // Scan in reverse chronological order and stop once we have 20 matches
+  await db.messages
+    .orderBy('createdAt')
+    .reverse()
+    .until(() => messages.length >= 20)
+    .each(msg => {
       // Only search text content of user/assistant messages
-      if (msg.role !== 'user' && msg.role !== 'assistant') return false;
+      if (msg.role !== 'user' && msg.role !== 'assistant') return;
 
       const content = getTextFromMessageContent(msg.content);
-      return content.toLowerCase().includes(lowerQuery);
-    })
-    .reverse()
-    .limit(20)
-    .toArray();
+      if (content.toLowerCase().includes(lowerQuery)) {
+        messages.push(msg);
+      }
+    });
 
-  // Fetch chat titles for context
+  // Batch fetch chat titles for context
   const chatIds = [...new Set(messages.map(m => m.chatId))];
   const chats = await db.chats.where('id').anyOf(chatIds).toArray();
   const chatMap = new Map(chats.map(c => [c.id, c]));
@@ -181,6 +263,43 @@ export async function searchMessages(query: string): Promise<MessageSearchResult
 
 export async function getMessages(chatId: string) {
   return await db.messages.where("chatId").equals(chatId).sortBy("createdAt");
+}
+
+/**
+ * Get recent messages for a chat with pagination.
+ * Loads only the most recent messages initially for faster load times.
+ * @param chatId The chat ID
+ * @param limit Number of messages to load (default 50)
+ * @param beforeTimestamp Load messages before this timestamp (for pagination)
+ */
+export async function getRecentMessages(
+  chatId: string,
+  limit: number = 50,
+  beforeTimestamp?: number
+): Promise<{ messages: Message[]; hasMore: boolean }> {
+  let query = db.messages.where("chatId").equals(chatId);
+
+  if (beforeTimestamp) {
+    query = query.filter((m) => m.createdAt < beforeTimestamp);
+  }
+
+  // Get limit + 1 to check if there are more
+  const messages = await query.reverse().limit(limit + 1).toArray();
+
+  const hasMore = messages.length > limit;
+  if (hasMore) {
+    messages.pop(); // Remove the extra one
+  }
+
+  // Return in chronological order
+  return { messages: messages.reverse(), hasMore };
+}
+
+/**
+ * Get the count of messages in a chat without loading them.
+ */
+export async function getMessageCount(chatId: string): Promise<number> {
+  return await db.messages.where("chatId").equals(chatId).count();
 }
 
 export async function getMessageById(id: string) {
@@ -198,35 +317,23 @@ export async function getLastMessage(chatId: string) {
 
 /**
  * Batch fetch last messages for multiple chats efficiently.
- * Avoids N+1 query problem when displaying chat list.
+ * Uses parallel queries with limit(1) - much faster than loading all messages.
  */
 export async function getLastMessagesForChats(chatIds: string[]): Promise<Map<string, Message | undefined>> {
   if (chatIds.length === 0) return new Map();
 
-  // Get all messages for these chats in one query
-  const allMessages = await db.messages
-    .where("chatId")
-    .anyOf(chatIds)
-    .toArray();
-
-  // Group by chatId and find the last one for each
-  const byChat = new Map<string, Message[]>();
-  for (const msg of allMessages) {
-    const arr = byChat.get(msg.chatId) || [];
-    arr.push(msg);
-    byChat.set(msg.chatId, arr);
-  }
-
   const result = new Map<string, Message | undefined>();
-  for (const chatId of chatIds) {
-    const messages = byChat.get(chatId) || [];
-    if (messages.length > 0) {
-      messages.sort((a, b) => a.createdAt - b.createdAt);
-      result.set(chatId, messages[messages.length - 1]);
-    } else {
-      result.set(chatId, undefined);
-    }
-  }
+
+  // Use parallel queries with limit(1) for each chat
+  // This is much faster than loading all messages and sorting
+  await Promise.all(chatIds.map(async (chatId) => {
+    const msg = await db.messages
+      .where('chatId')
+      .equals(chatId)
+      .reverse()
+      .first();
+    result.set(chatId, msg);
+  }));
 
   return result;
 }
@@ -375,6 +482,61 @@ export async function getProjectFileById(id: string) {
   return await db.projectFiles.get(id);
 }
 
+/**
+ * Batch fetch multiple project files by ID.
+ * More efficient than multiple getProjectFileById calls.
+ */
+export async function getProjectFilesByIds(ids: string[]): Promise<Map<string, ProjectFile>> {
+  if (ids.length === 0) return new Map();
+  const files = await db.projectFiles.where('id').anyOf(ids).toArray();
+  return new Map(files.map(f => [f.id, f]));
+}
+
+/**
+ * Batch fetch multiple chats with their messages.
+ * More efficient than separate queries for each chat.
+ */
+export async function getChatsWithMessagesByIds(
+  chatIds: string[]
+): Promise<Map<string, { chat: Chat; messages: Message[] }>> {
+  if (chatIds.length === 0) return new Map();
+
+  return await db.transaction('r', [db.chats, db.messages], async () => {
+    const [chats, allMessages] = await Promise.all([
+      db.chats.where('id').anyOf(chatIds).toArray(),
+      db.messages.where('chatId').anyOf(chatIds).toArray()
+    ]);
+
+    const chatMap = new Map(chats.map(c => [c.id, c]));
+    const messagesByChat = new Map<string, Message[]>();
+
+    // Group messages by chatId
+    for (const msg of allMessages) {
+      const arr = messagesByChat.get(msg.chatId) || [];
+      arr.push(msg);
+      messagesByChat.set(msg.chatId, arr);
+    }
+
+    // Sort messages by createdAt within each chat
+    for (const [, msgs] of messagesByChat) {
+      msgs.sort((a, b) => a.createdAt - b.createdAt);
+    }
+
+    const result = new Map<string, { chat: Chat; messages: Message[] }>();
+    for (const chatId of chatIds) {
+      const chat = chatMap.get(chatId);
+      if (chat) {
+        result.set(chatId, {
+          chat,
+          messages: messagesByChat.get(chatId) || []
+        });
+      }
+    }
+
+    return result;
+  });
+}
+
 export async function addProjectFile(file: Omit<ProjectFile, "id" | "createdAt">) {
   const newFile: ProjectFile = {
     ...file,
@@ -510,6 +672,16 @@ export async function getAllAgents() {
 
 export async function getAgentById(id: string) {
   return await db.agents.get(id);
+}
+
+/**
+ * Batch fetch multiple agents by ID.
+ * More efficient than multiple getAgentById calls.
+ */
+export async function getAgentsByIds(ids: string[]): Promise<Map<string, Agent>> {
+  if (ids.length === 0) return new Map();
+  const agents = await db.agents.where('id').anyOf(ids).toArray();
+  return new Map(agents.map(a => [a.id, a]));
 }
 
 export async function getActiveAgents() {

@@ -19,8 +19,12 @@ import { addSkill, updateSkill } from "@/lib/db/queries";
 import { buildVariablesFromTemplate } from "@/lib/utils/prompt-variables";
 import { SKILL_COLORS, SKILL_CATEGORY_CONFIG } from "@/lib/constants/skills";
 import { toast } from "sonner";
+import { useUIStore } from "@/stores/ui-store";
+import { useApiKeysStore } from "@/stores/api-keys-store";
+import { useSettingsStore } from "@/stores/settings-store";
+import { generateSkillEmbedding } from "@/lib/skills/skill-embeddings";
 
-const CATEGORIES = ["creation", "visualization", "coding", "analysis", "writing"] as const;
+const CATEGORIES = ["creation", "visualization", "coding", "analysis", "writing", "search"] as const;
 
 const ICONS = [
   "FileText",
@@ -37,7 +41,7 @@ const ICONS = [
   "Wand2",
 ] as const;
 
-const COLORS = ["blue", "green", "purple", "pink", "amber", "red", "cyan", "sky"] as const;
+const COLORS = ["blue", "green", "purple", "pink", "amber", "red", "cyan", "sky", "teal", "orange", "indigo", "emerald"] as const;
 
 interface SkillEditorDialogProps {
   open: boolean;
@@ -56,25 +60,51 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
   const [color, setColor] = useState<string>("blue");
   const [activeLabel, setActiveLabel] = useState("");
   const [autoTrigger, setAutoTrigger] = useState(true);
+  const [requireApproval, setRequireApproval] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Get prefilled data from UI store (for "Convert to Skill" feature)
+  // Use getState() to avoid stale closure issues with lazy-loaded components
+  const clearSkillEditorData = useUIStore((state) => state.clearSkillEditorData);
 
   useEffect(() => {
     if (!open) return;
-    setName(skill?.name || "");
-    setDescription(skill?.description || "");
-    setCategory(skill?.category || "coding");
-    setSystemPrompt(skill?.systemPrompt || "");
-    setUserTemplate(skill?.userTemplate || "");
-    setIcon(skill?.ui.icon || "Sparkles");
-    setColor(skill?.ui.color || "blue");
-    setActiveLabel(skill?.ui.activeLabel || "");
-    setAutoTrigger(skill?.trigger.type === "auto" || true);
-  }, [open, skill]);
+
+    // Read prefilled data directly from store to avoid stale closures
+    const prefilledData = useUIStore.getState().skillEditorPrefilledData;
+
+    // Priority: existing skill > prefilled data > defaults
+    const source = skill || prefilledData;
+
+    console.log("[SkillEditor] Opening with source:", source?.name, source);
+
+    setName(source?.name || "");
+    setDescription(source?.description || "");
+    setCategory(source?.category || "coding");
+    setSystemPrompt(source?.systemPrompt || "");
+    setUserTemplate(source?.userTemplate || "");
+    setIcon(source?.ui?.icon || "Sparkles");
+    setColor(source?.ui?.color || "blue");
+    setActiveLabel(source?.ui?.activeLabel || "");
+    setAutoTrigger(source?.trigger?.type ? source.trigger.type === "auto" : true);
+    setRequireApproval(source?.requireApproval || false);
+
+    // Clear prefilled data after a short delay to ensure state is applied
+    if (prefilledData && !skill) {
+      setTimeout(() => {
+        clearSkillEditorData();
+      }, 100);
+    }
+  }, [open, skill, clearSkillEditorData]);
 
   const variables = useMemo(
     () => buildVariablesFromTemplate(userTemplate, skill?.variables),
     [userTemplate, skill?.variables]
   );
+
+  // Get API keys and embedding settings for auto-generating embeddings
+  const { getKeyForProvider } = useApiKeysStore();
+  const { embeddingsProvider, embeddingsModelId } = useSettingsStore();
 
   const handleSave = async () => {
     if (!name.trim()) return toast.error("Name is required");
@@ -90,6 +120,9 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
         activeLabel: activeLabel.trim() || `Using ${name.trim()}...`,
       };
 
+      let savedSkill: Skill | null = null;
+      const descriptionChanged = skill?.description !== description.trim();
+
       if (skill) {
         await updateSkill(skill.id, {
           name: name.trim(),
@@ -99,11 +132,26 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
           userTemplate: userTemplate.trim() || undefined,
           variables: variables.length > 0 ? variables : undefined,
           trigger,
+          requireApproval,
           ui,
         });
+        // For updates, we need to regenerate embedding if description changed
+        if (descriptionChanged) {
+          savedSkill = {
+            ...skill,
+            name: name.trim(),
+            description: description.trim(),
+            category,
+            systemPrompt,
+            userTemplate: userTemplate.trim() || undefined,
+            variables: variables.length > 0 ? variables : undefined,
+            trigger,
+            ui,
+          };
+        }
         toast.success("Skill updated");
       } else {
-        await addSkill({
+        savedSkill = await addSkill({
           name: name.trim(),
           description: description.trim(),
           category,
@@ -111,6 +159,7 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
           userTemplate: userTemplate.trim() || undefined,
           variables: variables.length > 0 ? variables : undefined,
           trigger,
+          requireApproval,
           ui,
           isBuiltIn: false,
           isEnabled: true,
@@ -118,6 +167,27 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
         });
         toast.success("Skill created");
       }
+
+      // Auto-generate embedding if we have API key and settings
+      if (savedSkill && embeddingsProvider && embeddingsModelId) {
+        const apiKeyObj = getKeyForProvider(embeddingsProvider);
+        if (apiKeyObj?.key) {
+          try {
+            await generateSkillEmbedding(
+              savedSkill,
+              apiKeyObj.key,
+              embeddingsProvider,
+              embeddingsModelId
+            );
+            toast.success("Skill embedding generated");
+          } catch (embError) {
+            console.error("Failed to generate embedding:", embError);
+            // Don't fail the save, just warn about embedding
+            toast.warning("Skill saved, but embedding generation failed. Regenerate from Settings > Skills.");
+          }
+        }
+      }
+
       onOpenChange(false);
     } catch {
       toast.error("Failed to save skill");
@@ -262,14 +332,26 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
           </div>
 
           {/* Trigger Settings */}
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <div>
-              <Label>Auto-trigger</Label>
-              <p className="text-xs text-muted-foreground mt-1">
-                Automatically activate this skill based on message content
-              </p>
+          <div className="space-y-3 rounded-lg border p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Auto-trigger</Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Automatically activate this skill based on message content
+                </p>
+              </div>
+              <Switch checked={autoTrigger} onCheckedChange={setAutoTrigger} />
             </div>
-            <Switch checked={autoTrigger} onCheckedChange={setAutoTrigger} />
+
+            <div className="flex items-center justify-between pt-3 border-t">
+              <div>
+                <Label>Require Approval</Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Show draft and ask for confirmation before using tools
+                </p>
+              </div>
+              <Switch checked={requireApproval} onCheckedChange={setRequireApproval} />
+            </div>
           </div>
 
           {/* Actions */}

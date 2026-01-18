@@ -321,6 +321,9 @@ export interface Skill {
   // Trigger config
   trigger: SkillTrigger;
 
+  // Approval flow - show draft and ask before executing tools
+  requireApproval?: boolean;      // If true, show draft and confirm before tool use
+
   // UI display
   ui: SkillUI;
 
@@ -731,6 +734,33 @@ export class LuminaDB extends Dexie {
       chats:
         "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order",
       messages: "id, chatId, role, createdAt, parentId, rating, skillId",
+      apiKeys: "id, provider, createdAt, baseUrl",
+      settings: "id",
+      modelFavorites: "id, category, pinnedOrder, lastUsed",
+      userMemories: "id, category, source, createdAt, isActive",
+      folders: "id, projectId, name, createdAt, order",
+      tags: "id, name, createdAt, usageCount",
+      tagRules: "id, tagId, enabled, createdAt",
+      parameterPresets: "id, name, createdAt, isDefault",
+      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
+      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
+      skills: "id, name, category, isBuiltIn, isEnabled, isFavorite, usageCount, updatedAt",
+      skillEmbeddings: "skillId, modelId",
+      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
+      workflows: "id, name, createdAt, updatedAt",
+      modelAliases: "id, alias, updatedAt",
+      mcpServers: "id, enabled, createdAt",
+    });
+
+    // Version 16: Add composite indexes for performance optimization
+    // - [chatId+createdAt] on messages: faster message retrieval for a chat
+    // - [projectId+updatedAt] on chats: faster project-scoped chat queries
+    this.version(16).stores({
+      projects: "id, name, createdAt, updatedAt",
+      projectFiles: "id, projectId, name, createdAt",
+      chats:
+        "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order, [projectId+updatedAt]",
+      messages: "id, chatId, role, createdAt, parentId, rating, skillId, [chatId+createdAt]",
       apiKeys: "id, provider, createdAt, baseUrl",
       settings: "id",
       modelFavorites: "id, category, pinnedOrder, lastUsed",

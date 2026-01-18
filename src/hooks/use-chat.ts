@@ -804,12 +804,16 @@ export function useChat(chatId: string) {
     // Track content for abort handling (needs to be outside try block for catch access)
     let fullContent = "";
 
-    // Connection timeout for mobile networks (30 seconds)
+    // Connection timeout - longer for mobile networks
+    // Detect mobile using user agent (Android/iOS)
+    const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const timeoutMs = isMobile ? 60000 : 30000; // 60s for mobile, 30s for desktop
+
     const connectionTimeoutId = setTimeout(() => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
-    }, 30000);
+    }, timeoutMs);
 
     try {
       // Call API route for streaming
@@ -1395,18 +1399,19 @@ export function useChat(chatId: string) {
         }
       }
 
-      if (isArenaMode && arenaModelIds.length > 0) {
+      if (isArenaMode && arenaModelIds.length >= 2) {
+        // Arena mode requires at least 2 models to compare
         // Use allSettled so one model failure doesn't abort the others
         const results = await Promise.allSettled(
-          arenaModelIds.map(modelId => generateResponse(content, attachments, modelId, userMessage.id, activeSkill))
+          arenaModelIds.map(arenaModel => generateResponse(content, attachments, arenaModel, userMessage.id, activeSkill))
         );
         // Report individual failures without throwing (so the hook doesn't go into error state)
         for (let i = 0; i < results.length; i++) {
           const result = results[i];
           if (result.status === "rejected") {
-            const modelId = arenaModelIds[i];
+            const failedModelId = arenaModelIds[i];
             const errorMessage = result.reason instanceof Error ? result.reason.message : "Unknown error";
-            toast.error(`Arena: ${modelId} failed - ${errorMessage}`);
+            toast.error(`Arena: ${failedModelId} failed - ${errorMessage}`);
           }
         }
       } else {

@@ -8,12 +8,11 @@ import { useUIStore } from "@/stores/ui-store";
 import { useShallow } from "zustand/react/shallow";
 import {
   createChat,
-  getChatById,
+  getChatWithAgent,
   getModelPickerData,
   updateChat,
   updateModelLastUsed,
   getMessages,
-  getAgentById,
   updateAgent,
 } from "@/lib/db/queries";
 import { MODELS, type Model, getModelById, USE_CASE_RECOMMENDATIONS, MODEL_CATALOG } from "@/lib/constants/models";
@@ -38,6 +37,11 @@ const ModelPickerDialog = lazy(() =>
 const AgentPickerDialog = lazy(() =>
   import("@/components/agents/agent-picker-dialog").then((m) => ({
     default: m.AgentPickerDialog,
+  }))
+);
+const SkillEditorDialog = lazy(() =>
+  import("@/components/settings/skill-editor-dialog").then((m) => ({
+    default: m.SkillEditorDialog,
   }))
 );
 import {
@@ -93,6 +97,8 @@ export function ChatShell() {
     setArenaModelIds,
     isFocusMode,
     setIsFocusMode,
+    skillEditorOpen,
+    setSkillEditorOpen,
   } = useUIStore(
     useShallow((state) => ({
       activeChatId: state.activeChatId,
@@ -109,6 +115,8 @@ export function ChatShell() {
       setArenaModelIds: state.setArenaModelIds,
       isFocusMode: state.isFocusMode,
       setIsFocusMode: state.setIsFocusMode,
+      skillEditorOpen: state.skillEditorOpen,
+      setSkillEditorOpen: state.setSkillEditorOpen,
     }))
   );
 
@@ -137,17 +145,13 @@ export function ChatShell() {
   const [agentPickerOpen, setAgentPickerOpen] = useState(false);
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
 
-  // Get current chat details
-  const chat = useLiveQuery(
-    () => (activeChatId ? getChatById(activeChatId) : undefined),
+  // Get current chat and agent in a single query to reduce cascading re-renders
+  const chatData = useLiveQuery(
+    () => (activeChatId ? getChatWithAgent(activeChatId) : undefined),
     [activeChatId]
   );
-
-  // Get current agent
-  const currentAgent = useLiveQuery(
-    () => (chat?.agentId ? getAgentById(chat.agentId) : undefined),
-    [chat?.agentId]
-  );
+  const chat = chatData?.chat;
+  const currentAgent = chatData?.agent;
 
   const messages = useLiveQuery(() => (activeChatId ? getMessages(activeChatId) : undefined), [activeChatId]);
 
@@ -866,12 +870,12 @@ export function ChatShell() {
 
             {/* Messages Area */}
             <div className="flex-1 overflow-hidden relative bg-background/20">
-              {isArenaMode ? (
+              {isArenaMode && arenaModelIds.length >= 2 ? (
                 <ResizablePanelGroup direction="horizontal" className="h-full">
                   <ResizablePanel defaultSize={50} minSize={20}>
                     <div className="flex flex-col h-full border-r">
                       <div className="px-4 py-1.5 border-b bg-background/60 backdrop-blur flex justify-between items-center">
-                        <span className="text-[10px] font-bold uppercase">{getModelById(arenaModelIds[0] || "")?.name || arenaModelIds[0]?.split("/").pop()?.replace(/-/g, " ") || "Model 1"}</span>
+                        <span className="text-[10px] font-bold uppercase">{getModelById(arenaModelIds[0])?.name || arenaModelIds[0].split("/").pop()?.replace(/-/g, " ") || "Model 1"}</span>
                         <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setArenaPickerOpen({ open: true, index: 0 })}>
                           <Settings className="h-3 w-3" />
                         </Button>
@@ -883,7 +887,7 @@ export function ChatShell() {
                   <ResizablePanel defaultSize={50} minSize={20}>
                     <div className="flex flex-col h-full">
                       <div className="px-4 py-1.5 border-b bg-background/60 backdrop-blur flex justify-between items-center">
-                        <span className="text-[10px] font-bold uppercase">{getModelById(arenaModelIds[1] || "")?.name || arenaModelIds[1]?.split("/").pop()?.replace(/-/g, " ") || "Model 2"}</span>
+                        <span className="text-[10px] font-bold uppercase">{getModelById(arenaModelIds[1])?.name || arenaModelIds[1].split("/").pop()?.replace(/-/g, " ") || "Model 2"}</span>
                         <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setArenaPickerOpen({ open: true, index: 1 })}>
                           <Settings className="h-3 w-3" />
                         </Button>
@@ -990,6 +994,14 @@ export function ChatShell() {
         open={budgetDialogOpen}
         onOpenChange={setBudgetDialogOpen}
       />
+
+      {/* Global Skill Editor Dialog (for Convert to Skill feature) */}
+      <Suspense fallback={null}>
+        <SkillEditorDialog
+          open={skillEditorOpen}
+          onOpenChange={setSkillEditorOpen}
+        />
+      </Suspense>
     </div>
   );
 }

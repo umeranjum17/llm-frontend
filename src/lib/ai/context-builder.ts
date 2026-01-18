@@ -1,4 +1,4 @@
-import { getProjectFileById, getMessages, getChatById, getAgentById, getModelAlias, getSettings } from "@/lib/db/queries";
+import { getChatById, getAgentById, getAgentsByIds, getProjectFilesByIds, getChatsWithMessagesByIds, getModelAlias, getSettings } from "@/lib/db/queries";
 import type { Message, Skill } from "@/lib/db/schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { retrieveContext } from "@/lib/rag/retrieval";
@@ -148,11 +148,26 @@ export async function buildContextMessages(
 ): Promise<Message[]> {
   const messages: Message[] = [];
 
+  // Parse references from user message FIRST (needed for batch queries)
+  const { cleanContent, fileReferences, chatReferences, agentReferences } = await parseReferences(userMessage);
+
+  // Batch fetch all needed data upfront to avoid N+1 queries
+  const [settings, chat] = await Promise.all([
+    getSettings(),
+    getChatById(chatId)
+  ]);
+
+  // Batch fetch referenced entities in parallel
+  const [invokedAgentsMap, filesMap, referencedChatsMap] = await Promise.all([
+    getAgentsByIds(agentReferences.map(a => a.id)),
+    getProjectFilesByIds(fileReferences.map(f => f.id)),
+    getChatsWithMessagesByIds(chatReferences.map(c => c.id))
+  ]);
+
   // Add user memory context FIRST (personalizes all conversations)
   // Check if memory is enabled:
   // 1. Global setting (default: true)
   // 2. Per-chat override (memoryDisabled option)
-  const settings = await getSettings();
   const globalMemoryEnabled = settings?.memoryEnabled ?? true;
   const perChatMemoryDisabled = options?.memoryDisabled ?? false;
   const memoryEnabled = globalMemoryEnabled && !perChatMemoryDisabled;
@@ -209,13 +224,9 @@ When the user asks "what do you know about me" or similar personal questions, re
     console.log(`[Context] 🧠 Memory disabled for this chat`);
   }
 
-  // Parse references from user message
-  const { cleanContent, fileReferences, chatReferences, agentReferences } = await parseReferences(userMessage);
-
   // RAG retrieval if enabled
   if (options?.enableRAG) {
     try {
-      const chat = await getChatById(chatId);
       const ragResults = await retrieveContext(cleanContent, {
         chatId,
         projectId: chat?.projectId,
@@ -241,9 +252,6 @@ When the user asks "what do you know about me" or similar personal questions, re
       // Continue without RAG if it fails
     }
   }
-
-  // Get chat to access project and model
-  const chat = await getChatById(chatId);
 
   // Add model alias system prompt if exists
   if (chat?.modelId) {
@@ -286,20 +294,17 @@ When the user asks "what do you know about me" or similar personal questions, re
   }
 
   // Add INVOKED AGENTS (from @mentions) - These act as temporary persona overrides or supplements
+  // Uses batch-fetched agents map
   for (const agentRef of agentReferences) {
-    try {
-      const agent = await getAgentById(agentRef.id);
-      if (agent && agent.systemPrompt) {
-        messages.push({
-          id: `invoked-agent-${agent.id}`,
-          chatId,
-          role: "system",
-          content: `INVOKED AGENT: ${agent.name}\nINSTRUCTIONS:\n${agent.systemPrompt}`,
-          createdAt: Date.now(),
-        });
-      }
-    } catch (error) {
-      console.error(`Failed to load invoked agent ${agentRef.name}:`, error);
+    const agent = invokedAgentsMap.get(agentRef.id);
+    if (agent && agent.systemPrompt) {
+      messages.push({
+        id: `invoked-agent-${agent.id}`,
+        chatId,
+        role: "system",
+        content: `INVOKED AGENT: ${agent.name}\nINSTRUCTIONS:\n${agent.systemPrompt}`,
+        createdAt: Date.now(),
+      });
     }
   }
 
@@ -331,47 +336,37 @@ When the user asks "what do you know about me" or similar personal questions, re
     console.log(`[Context] ⚡ Skill "${options.skill.name}" prompt: ~${skillTokens} tokens`);
   }
 
-  // Add file contents as context
+  // Add file contents as context (uses batch-fetched files map)
   for (const fileRef of fileReferences) {
-    try {
-      const file = await getProjectFileById(fileRef.id);
-      if (file && file.text) {
-        messages.push({
-          id: `file-${fileRef.id}`,
-          chatId,
-          role: "system",
-          content: `File: ${file.name}\n\`\`\`\n${file.text}\n\`\`\``,
-          createdAt: Date.now(),
-        });
-      }
-    } catch (error) {
-      console.error(`Failed to load file ${fileRef.name}:`, error);
+    const file = filesMap.get(fileRef.id);
+    if (file && file.text) {
+      messages.push({
+        id: `file-${fileRef.id}`,
+        chatId,
+        role: "system",
+        content: `File: ${file.name}\n\`\`\`\n${file.text}\n\`\`\``,
+        createdAt: Date.now(),
+      });
     }
   }
 
-  // Add chat contents as context
+  // Add chat contents as context (uses batch-fetched chats map)
   for (const chatRef of chatReferences) {
-    try {
-      const refChat = await getChatById(chatRef.id);
-      const refMessages = await getMessages(chatRef.id);
+    const refData = referencedChatsMap.get(chatRef.id);
+    if (refData && refData.messages.length > 0) {
+      // Summarize or include recent messages
+      const recentMessages = refData.messages.slice(-10); // Last 10 messages
+      const summary = recentMessages
+        .map((m) => `${m.role}: ${getTextFromMessageContent(m.content)}`)
+        .join("\n\n");
 
-      if (refChat && refMessages.length > 0) {
-        // Summarize or include recent messages
-        const recentMessages = refMessages.slice(-10); // Last 10 messages
-        const summary = recentMessages
-          .map((m) => `${m.role}: ${getTextFromMessageContent(m.content)}`)
-          .join("\n\n");
-
-        messages.push({
-          id: `chat-${chatRef.id}`,
-          chatId,
-          role: "system",
-          content: `Referenced chat: ${refChat.title}\n\nRecent messages:\n${summary}`,
-          createdAt: Date.now(),
-        });
-      }
-    } catch (error) {
-      console.error(`Failed to load chat ${chatRef.name}:`, error);
+      messages.push({
+        id: `chat-${chatRef.id}`,
+        chatId,
+        role: "system",
+        content: `Referenced chat: ${refData.chat.title}\n\nRecent messages:\n${summary}`,
+        createdAt: Date.now(),
+      });
     }
   }
 

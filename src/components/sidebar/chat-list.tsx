@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
+import { useLiveQueryWithTimeout } from "@/hooks/use-live-query-with-timeout";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { MessageSquare, Pin, Star, Trash2, Folder, ChevronDown, ChevronRight, FolderPlus, MoreVertical, Edit2 } from "lucide-react";
+import { MessageSquare, Pin, Star, Trash2, Folder, ChevronDown, ChevronRight, FolderPlus, MoreVertical, Edit2, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getAllChats, deleteChat, updateChat, getAllFolders, createFolder, moveChatToFolder, updateFolder, deleteFolder, getLastMessagesForChats, getChatById, getAllTags } from "@/lib/db/queries";
+import { getAllChatsCached, deleteChat, updateChat, getAllFolders, createFolder, moveChatToFolder, updateFolder, deleteFolder, getLastMessagesForChats, getAllTags, db } from "@/lib/db/queries";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { useUIStore } from "@/stores/ui-store";
 import { useChatSearch } from "@/hooks/use-search";
@@ -65,35 +65,56 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
 
   const scrollParentRef = useRef<HTMLDivElement>(null);
 
-  // Use Dexie live query for reactive updates - filter by project
-  const allChats = useLiveQuery(() => getAllChats(), []);
+  // Consolidate three queries into one to reduce IndexedDB round-trips
+  // This is critical for mobile performance where IndexedDB can be slow
+  const { data: chatListData, isTimedOut, retry: handleRetry } = useLiveQueryWithTimeout(
+    async () => {
+      const [chatsResult, foldersResult, tagsResult] = await Promise.all([
+        getAllChatsCached(),
+        db.folders.toArray(),
+        db.tags.orderBy('name').toArray()
+      ]);
+      // Sort folders by order
+      foldersResult.sort((a: FolderType, b: FolderType) => {
+        if (a.order !== undefined && b.order !== undefined) return a.order - b.order;
+        if (a.order !== undefined) return -1;
+        if (b.order !== undefined) return 1;
+        return a.createdAt - b.createdAt;
+      });
+      return { chats: chatsResult, folders: foldersResult, tags: tagsResult };
+    },
+    [],
+    { timeoutMs: 5000 }
+  );
+
+  const allChats = chatListData?.chats;
+  const folders = chatListData?.folders;
+  const tags = chatListData?.tags;
 
   // Filter chats by current project
   const chats = useMemo(() => {
     if (!allChats) return undefined;
     if (!currentProjectId) return allChats;
-    return allChats.filter(chat => chat.projectId === currentProjectId);
+    return allChats.filter((chat: Chat) => chat.projectId === currentProjectId);
   }, [allChats, currentProjectId]);
-  const folders = useLiveQuery(() => getAllFolders(), []);
-  const tags = useLiveQuery(() => getAllTags(), []);
 
   const filteredFolders = useMemo(() => {
     if (!folders) return undefined;
     if (!currentProjectId) return folders;
     const folderIdsInProject = new Set(
       (chats || [])
-        .map((chat) => chat.folderId)
+        .map((chat: Chat) => chat.folderId)
         .filter((folderId): folderId is string => Boolean(folderId))
     );
     return folders.filter(
-      (folder) =>
+      (folder: FolderType) =>
         folder.projectId === currentProjectId ||
         (!folder.projectId && folderIdsInProject.has(folder.id))
     );
   }, [folders, currentProjectId, chats]);
 
   // Memoize the chat IDs string to avoid stale message previews
-  const chatIdsKey = useMemo(() => chats?.map(c => c.id).join(",") ?? "", [chats]);
+  const chatIdsKey = useMemo(() => chats?.map((c: Chat) => c.id).join(",") ?? "", [chats]);
 
   useEffect(() => {
     setLastMessagesMap(new Map());
@@ -166,15 +187,19 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
   };
 
   const handleBulkTag = async (chatIds: string[], tagId: string) => {
-    for (const chatId of chatIds) {
-      const chat = await getChatById(chatId);
-      if (chat) {
+    // Batch fetch all chats at once to avoid N+1 query pattern
+    const chats = await db.chats.where('id').anyOf(chatIds).toArray();
+
+    // Batch update in transaction for better performance
+    await db.transaction('rw', db.chats, async () => {
+      for (const chat of chats) {
         const currentTags = chat.tags || [];
         if (!currentTags.includes(tagId)) {
-          await updateChat(chatId, { tags: [...currentTags, tagId] });
+          await db.chats.update(chat.id, { tags: [...currentTags, tagId] });
         }
       }
-    }
+    });
+
     setSelectedChats(new Set());
     toast.success(`Tagged ${chatIds.length} chat${chatIds.length > 1 ? "s" : ""}`);
   };
@@ -256,11 +281,11 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
     const items: ListItem[] = [];
 
     // Add folders
-    filteredFolders.forEach(folder => {
+    filteredFolders.forEach((folder: FolderType) => {
       items.push({ type: "folder", folder });
       if (expandedFolders[folder.id]) {
         const folderChats = chatsByFolder[folder.id] || [];
-        folderChats.forEach(chat => items.push({ type: "chat", chat }));
+        folderChats.forEach((chat: Chat) => items.push({ type: "chat", chat }));
       }
     });
 
@@ -332,8 +357,23 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
 
   if (!chats || !filteredFolders) {
     return (
-      <div className="flex items-center justify-center p-8 text-muted-foreground">
-        Loading...
+      <div className="flex flex-col items-center justify-center p-8 text-muted-foreground gap-3">
+        {isTimedOut ? (
+          <>
+            <p className="text-sm">Loading took too long</p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRetry}
+              className="gap-2"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Retry
+            </Button>
+          </>
+        ) : (
+          <p className="text-sm">Loading...</p>
+        )}
       </div>
     );
   }
@@ -408,7 +448,7 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
               const item = items[virtualItem.index];
               if (!item) return null;
               if (item.type === "folder") {
-                const folderChatCount = chats?.filter(c => c.folderId === item.folder.id).length || 0;
+                const folderChatCount = chats?.filter((c: Chat) => c.folderId === item.folder.id).length || 0;
                 return (
                   <div
                     key={virtualItem.key}

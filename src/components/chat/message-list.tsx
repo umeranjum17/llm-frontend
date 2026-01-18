@@ -2,11 +2,11 @@
 
 import { useEffect, useRef, useState, useMemo, useCallback, memo } from "react";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
-import { useLiveQuery } from "dexie-react-hooks";
-import { getChatById, getMessages, updateChat } from "@/lib/db/queries";
+import { useLiveQueryWithTimeout } from "@/hooks/use-live-query-with-timeout";
+import { getChatWithMessages, updateChat } from "@/lib/db/queries";
 import { MessageItem } from "./message-item";
 import { useChat } from "@/hooks/use-chat";
-import { Loader2, ArrowDown } from "lucide-react";
+import { Loader2, ArrowDown, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Message } from "@/lib/db/schema";
 import { BranchNavigator } from "./branch-navigator";
@@ -207,9 +207,15 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
   // Get streaming state to pass to MessageRow for proper re-renders
   const { streamingMessageId, streamingContent, streamingVersion, pipelineExecution } = useStreamingStore();
 
-  // Use Dexie live query for reactive updates
-  const allMessages = useLiveQuery(() => getMessages(chatId), [chatId]);
-  const chat = useLiveQuery(() => getChatById(chatId), [chatId]);
+  // Use combined query to fetch chat and messages in one transaction
+  const { data: chatData, isTimedOut, retry: handleRetry } = useLiveQueryWithTimeout(
+    () => getChatWithMessages(chatId),
+    [chatId],
+    { timeoutMs: 5000 }
+  );
+
+  const allMessages = chatData?.messages;
+  const chat = chatData?.chat;
 
   // Memoize the maps to avoid rebuilding on every render
   const { byId, childrenByParent } = useMemo(() => {
@@ -345,8 +351,23 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
 
   if (!messages) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="flex h-full flex-col items-center justify-center gap-3">
+        {isTimedOut ? (
+          <>
+            <p className="text-sm text-muted-foreground">Loading took too long</p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRetry}
+              className="gap-2"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Retry
+            </Button>
+          </>
+        ) : (
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        )}
       </div>
     );
   }
