@@ -385,6 +385,11 @@ export async function addMessage(message: Omit<Message, "id" | "createdAt">) {
     createdAt: Date.now(),
   };
   await db.messages.add(newMessage);
+
+  // Update the chat's updatedAt to reflect new activity
+  await db.chats.update(message.chatId, { updatedAt: Date.now() });
+  invalidateChatsCache();
+
   return newMessage;
 }
 
