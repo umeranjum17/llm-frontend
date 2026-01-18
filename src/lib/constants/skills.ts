@@ -202,7 +202,7 @@ Style: {{style}}`,
   {
     id: "skill_builtin_code_review",
     name: "Code Review",
-    description: "review this code, check this code for bugs, code quality review, review for best practices, security review of code, analyze this code, find issues in code, code review please, review my function, review my implementation",
+    description: "review this code snippet, code review my function, check my code for bugs, review my javascript code, review my python code, review this pull request code, code quality check, peer review this code, review my typescript implementation, security audit this code, lint and review code",
     category: "coding",
     systemPrompt: `You are an expert code reviewer. When reviewing code:
 
@@ -233,7 +233,7 @@ Format your review as:
   {
     id: "skill_builtin_debug",
     name: "Debug",
-    description: "debug this error, fix this bug, troubleshoot this issue, getting error message, code not working, help with stack trace, exception thrown, runtime error, compilation error, debug my code",
+    description: "debug this error message, fix this bug in code, troubleshoot this stack trace, my code throws exception, fix runtime error, fix compilation error, debug my javascript, debug my python code, null pointer exception, undefined is not a function, type error in code",
     category: "coding",
     systemPrompt: `You are an expert debugger. When helping with bugs:
 
@@ -263,7 +263,7 @@ Structure your response:
   {
     id: "skill_builtin_pros_cons",
     name: "Pros & Cons",
-    description: "Compare options, pros and cons, trade-offs, which is better, decision analysis, comparison, evaluate alternatives",
+    description: "compare pros and cons of, list advantages and disadvantages, trade-offs between options, which option is better for, decision analysis between, compare these two options, evaluate alternatives for",
     category: "analysis",
     systemPrompt: `You are a decision analysis expert. When comparing options:
 
@@ -409,7 +409,7 @@ Use a clean, readable format with headers. Include a note about your knowledge c
   {
     id: "skill_builtin_research",
     name: "Research",
-    description: "Research topic, find information, learn about, what is, how does, explain topic, look up, search for, tell me about, information about",
+    description: "research this topic thoroughly, find detailed information about, deep dive into topic, comprehensive research on, give me background on, research and explain topic, look up information about, in-depth research about, learn everything about topic",
     category: "search",
     systemPrompt: `You are a thorough research assistant providing well-organized information on any topic.
 
@@ -450,7 +450,7 @@ Remember: It's better to be helpful with limitations acknowledged than to appear
   {
     id: "skill_builtin_define",
     name: "Define",
-    description: "Define word, meaning of, what does mean, dictionary, definition, vocabulary, terminology, glossary, explain term",
+    description: "define the word, dictionary definition of, what does this word mean, vocabulary word meaning, define this term, terminology definition, glossary entry for, meaning of this word, look up word definition",
     category: "search",
     systemPrompt: `You are a comprehensive dictionary and terminology expert.
 
@@ -501,7 +501,7 @@ For multiple meanings, number them clearly (1. 2. 3.).`,
   {
     id: "skill_builtin_explain_simply",
     name: "Explain Simply",
-    description: "Explain like I'm 5, ELI5, simple explanation, dumb it down, explain simply, make it simple, beginner explanation, easy to understand",
+    description: "explain like im five, ELI5 explanation, explain in simple terms, dumb it down for me, explain simply to beginner, explain for non-technical person, layman terms explanation, simple explanation for",
     category: "search",
     systemPrompt: `You are an expert at explaining complex topics in simple, accessible terms.
 
@@ -654,7 +654,7 @@ For multiple languages requested, organize clearly by language.`,
   {
     id: "skill_builtin_fact_check",
     name: "Fact Check",
-    description: "Is it true that, fact check, verify claim, myth or fact, true or false, debunk, verify information, is this real",
+    description: "is it true that claim, fact check this statement, verify this claim, myth or fact check, debunk this claim, verify if information is true, fact check this rumor, is this real or fake",
     category: "search",
     systemPrompt: `You are a careful fact-checker helping verify claims and information.
 
@@ -707,7 +707,7 @@ For multiple languages requested, organize clearly by language.`,
   {
     id: "skill_builtin_how_to",
     name: "How To Guide",
-    description: "How to, step by step, tutorial, guide me through, instructions for, walkthrough, teach me how, show me how",
+    description: "how to guide for, step by step tutorial, guide me through process, detailed instructions for, complete walkthrough of, teach me how to do, step by step instructions for, beginner tutorial for",
     category: "search",
     systemPrompt: `You are a patient instructor creating clear, actionable how-to guides.
 
