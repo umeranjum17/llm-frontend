@@ -45,6 +45,11 @@ const SkillEditorDialog = lazy(() =>
     default: m.SkillEditorDialog,
   }))
 );
+const AgentEditorDialog = lazy(() =>
+  import("@/components/agents/agent-editor-dialog").then((m) => ({
+    default: m.AgentEditorDialog,
+  }))
+);
 import {
   Check,
   Settings,
@@ -100,6 +105,8 @@ export function ChatShell() {
     setIsFocusMode,
     skillEditorOpen,
     setSkillEditorOpen,
+    agentEditorOpen,
+    setAgentEditorOpen,
   } = useUIStore(
     useShallow((state) => ({
       activeChatId: state.activeChatId,
@@ -118,6 +125,8 @@ export function ChatShell() {
       setIsFocusMode: state.setIsFocusMode,
       skillEditorOpen: state.skillEditorOpen,
       setSkillEditorOpen: state.setSkillEditorOpen,
+      agentEditorOpen: state.agentEditorOpen,
+      setAgentEditorOpen: state.setAgentEditorOpen,
     }))
   );
 
@@ -997,6 +1006,14 @@ export function ChatShell() {
         <SkillEditorDialog
           open={skillEditorOpen}
           onOpenChange={setSkillEditorOpen}
+        />
+      </Suspense>
+
+      {/* Global Agent Editor Dialog (for Convert to Agent feature) */}
+      <Suspense fallback={null}>
+        <AgentEditorDialog
+          open={agentEditorOpen}
+          onOpenChange={setAgentEditorOpen}
         />
       </Suspense>
 

@@ -438,6 +438,282 @@ After creating, click "Convert to Skill" to add it to your skills!`,
     createdAt: now(),
     updatedAt: now(),
   },
+  {
+    id: "skill_builtin_skill_editor",
+    name: "Skill Editor",
+    description: "edit a skill, update a skill, modify a skill, change skill settings",
+    category: "creation",
+    systemPrompt: `You are an expert skill architect. Help users edit and update existing skills.
+
+## What are Skills?
+Skills are specialized AI behaviors defined by a system prompt. When a user's message matches a skill's trigger phrases, that skill's system prompt is automatically applied.
+
+## Editing Skills
+When editing a skill, you should:
+1. Ask which skill they want to edit (or infer from context)
+2. Output the skill definition in the \`\`\`skill JSON format below
+3. **Include the skill's ID** if you know it, or the exact name for matching
+4. Include all fields they want to change
+
+## Skill JSON Schema
+
+\`\`\`skill
+{
+  "id": "skill_id_here",  // Include ID for edit flows
+  "name": "Skill Name",
+  "description": "Brief description of what this skill does",
+  "category": "coding|writing|analysis|visualization|creation|search",
+  "systemPrompt": "Detailed instructions for the AI...",
+  "trigger": { "type": "auto" },
+  "autoApplyQueries": [
+    "trigger phrase that SHOULD activate this skill",
+    "another example user message"
+  ],
+  "exclusionQueries": [
+    "similar phrase that should NOT trigger this skill"
+  ],
+  "ui": {
+    "icon": "IconName",
+    "color": "colorName",
+    "activeLabel": "Doing something..."
+  }
+}
+\`\`\`
+
+## Field Guide
+
+### autoApplyQueries (Trigger Phrases) - CRITICAL
+These are example user messages that SHOULD trigger this skill. Keep phrases SHORT (3-6 words work best).
+
+### exclusionQueries (Exclusion Phrases)
+Phrases similar to triggers that should NOT activate the skill.
+
+### systemPrompt
+The instructions given to the AI when this skill is active.
+
+### ui
+- **icon**: FileText, Code, Terminal, Lightbulb, PenLine, Search, BarChart3, GitBranch, Sparkles, Wand2, Scale, Layers, BookOpen, MessageSquare, Mail, Calendar, Database, Cloud, Zap, Bug
+- **color**: blue, green, purple, pink, amber, red, cyan, sky, teal, orange, indigo, emerald
+- **activeLabel**: Shown while skill is active (e.g., "Writing post...")
+
+After creating the skill definition, click "Update Skill" to save changes!`,
+    trigger: { type: "auto" },
+    requireApproval: true,
+    autoApplyQueries: [
+      "edit a skill",
+      "update a skill",
+      "modify a skill",
+      "change skill settings",
+      "update skill",
+      "edit skill",
+    ],
+    exclusionQueries: [
+      "create a skill",
+      "make a skill",
+      "build a skill",
+    ],
+    ui: {
+      icon: "Wand2",
+      color: "purple",
+      activeLabel: "Editing skill...",
+    },
+    isBuiltIn: true,
+    isEnabled: true,
+    usageCount: 0,
+    createdAt: now(),
+    updatedAt: now(),
+  },
+  {
+    id: "skill_builtin_agent_creator",
+    name: "Agent Creator",
+    description: "create a new agent, help me create a custom agent, build an agent, make an agent for lumina, design a new agent, I want to create an agent",
+    category: "creation",
+    systemPrompt: `You are an expert agent architect. Create multi-step pipeline agents that enhance how users interact with AI.
+
+## What are Agents?
+Agents are reusable AI personas with multi-step execution pipelines. Each step can be:
+- **LLM step**: Generate text using a model
+- **Image step**: Generate images
+- **Subagent step**: Invoke another agent
+- **Tool step**: Call MCP tools (deprecated, use LLM steps with tools enabled)
+
+## Agent JSON Schema
+
+\`\`\`agent
+{
+  "name": "Agent Name",
+  "description": "What does this agent do?",
+  "avatar": "🤖",
+  "isActive": true,
+  "executionType": "pipeline",
+  "pipeline": {
+    "steps": [
+      {
+        "id": "step_1",
+        "name": "Step 1 Name",
+        "type": "llm",
+        "modelId": "model-id-here",
+        "providerId": "openrouter",
+        "systemPrompt": "System prompt for this step",
+        "inputTemplate": "{{userInput}}",
+        "outputVariable": "step1Output",
+        "mcpServerIds": ["server-id-1"],
+        "enabledTools": ["tool-name-1", "tool-name-2"]
+      },
+      {
+        "id": "step_2",
+        "name": "Step 2 Name",
+        "type": "image",
+        "imageModelId": "openai/gpt-5-image",
+        "imageProviderId": "openrouter",
+        "imageSize": "1024x1024",
+        "imageQuality": "hd",
+        "inputTemplate": "{{step1Output}}",
+        "outputVariable": "finalImage"
+      }
+    ]
+  }
+}
+\`\`\`
+
+## Step Types
+
+### LLM Step
+- **modelId**: Model to use (check available models below)
+- **providerId**: Provider (openrouter, anthropic, openai, etc.)
+- **systemPrompt**: Instructions for this step
+- **inputTemplate**: Template with {{variables}} (e.g., "{{userInput}}", "{{step1Output}}")
+- **outputVariable**: Variable name to store result
+- **mcpServerIds**: Array of MCP server IDs to enable tools
+- **enabledTools**: Array of tool names (optional allowlist)
+
+### Image Step
+- **imageModelId**: Image generation model
+- **imageProviderId**: Provider for image generation
+- **imageSize**: "256x256" | "512x512" | "1024x1024" | "1024x1792" | "1792x1024" | "auto"
+- **imageQuality**: "standard" | "hd"
+- **inputTemplate**: Prompt template (usually from previous step)
+- **outputVariable**: Variable name for the image
+
+### Subagent Step
+- **agentId**: ID of agent to invoke
+- **inputTemplate**: Input to pass to subagent
+- **outputVariable**: Variable name for subagent output
+
+## Available Resources
+Check the context below for available tools and models in the current environment.
+
+## Best Practices
+1. **Start simple**: One LLM step is often enough
+2. **Use variables**: Chain steps with {{step1Output}}, {{step2Output}}, etc.
+3. **Choose appropriate models**: Use coding models for code, vision models for image analysis
+4. **Enable tools selectively**: Only enable tools needed for each step
+5. **Name steps clearly**: "Analyzing request", "Generating response", etc.
+
+After creating, click "Convert to Agent" to add it!`,
+    trigger: { type: "auto" },
+    requireApproval: true,
+    autoApplyQueries: [
+      "create an agent",
+      "create a new agent",
+      "make an agent",
+      "build an agent",
+      "create an agent for",
+      "help me create an agent",
+      "design a new agent",
+    ],
+    exclusionQueries: [
+      "edit an agent",
+      "update an agent",
+      "modify an agent",
+      "create a skill",
+      "make a skill",
+    ],
+    ui: {
+      icon: "Bot",
+      color: "purple",
+      activeLabel: "Creating agent...",
+    },
+    isBuiltIn: true,
+    isEnabled: true,
+    usageCount: 0,
+    createdAt: now(),
+    updatedAt: now(),
+  },
+  {
+    id: "skill_builtin_agent_editor",
+    name: "Agent Editor",
+    description: "edit an agent, update an agent, modify an agent, change agent settings",
+    category: "creation",
+    systemPrompt: `You are an expert agent architect. Help users edit and update existing agents.
+
+## What are Agents?
+Agents are reusable AI personas with multi-step execution pipelines. Each step can be LLM, Image, Subagent, or Tool steps.
+
+## Editing Agents
+When editing an agent, you should:
+1. Ask which agent they want to edit (or infer from context)
+2. Output the agent definition in the \`\`\`agent JSON format below
+3. **Include the agent's ID** if you know it, or the exact name for matching
+4. Include all fields they want to change
+
+## Agent JSON Schema
+
+\`\`\`agent
+{
+  "id": "agent_id_here",  // Include ID for edit flows
+  "name": "Agent Name",
+  "description": "What does this agent do?",
+  "avatar": "🤖",
+  "isActive": true,
+  "executionType": "pipeline",
+  "pipeline": {
+    "steps": [
+      {
+        "id": "step_1",
+        "name": "Step 1 Name",
+        "type": "llm",
+        "modelId": "model-id-here",
+        "providerId": "openrouter",
+        "systemPrompt": "System prompt for this step",
+        "inputTemplate": "{{userInput}}",
+        "outputVariable": "step1Output"
+      }
+    ]
+  }
+}
+\`\`\`
+
+## Available Resources
+Check the context below for available tools and models in the current environment.
+
+After creating the agent definition, click "Update Agent" to save changes!`,
+    trigger: { type: "auto" },
+    requireApproval: true,
+    autoApplyQueries: [
+      "edit an agent",
+      "update an agent",
+      "modify an agent",
+      "change agent settings",
+      "update agent",
+      "edit agent",
+    ],
+    exclusionQueries: [
+      "create an agent",
+      "make an agent",
+      "build an agent",
+    ],
+    ui: {
+      icon: "Bot",
+      color: "purple",
+      activeLabel: "Editing agent...",
+    },
+    isBuiltIn: true,
+    isEnabled: true,
+    usageCount: 0,
+    createdAt: now(),
+    updatedAt: now(),
+  },
 ];
 
 /**

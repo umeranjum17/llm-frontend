@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
 import { Copy, Check, Wand2, AlertCircle, Zap, Hand } from "lucide-react";
 import { useUIStore } from "@/stores/ui-store";
@@ -8,8 +9,10 @@ import { cn } from "@/lib/utils";
 import { SKILL_COLORS, SKILL_CATEGORY_CONFIG } from "@/lib/constants/skills";
 import * as LucideIcons from "lucide-react";
 import type { Skill, SkillTrigger, SkillUI } from "@/lib/db/schema";
+import { getAllSkills } from "@/lib/db/queries";
 
 interface SkillDefinitionData {
+  id?: string; // Optional ID for edit flows
   name: string;
   description: string;
   category: Skill["category"];
@@ -17,6 +20,8 @@ interface SkillDefinitionData {
   userTemplate?: string;
   trigger?: { type: "auto" | "manual" };
   requireApproval?: boolean;
+  autoApplyQueries?: string[];
+  exclusionQueries?: string[];
   ui?: {
     icon?: string;
     color?: string;
@@ -61,6 +66,7 @@ function parseSkillDefinition(code: string): ParseResult {
     return {
       success: true,
       data: {
+        id: data.id,
         name: data.name,
         description: data.description,
         category: data.category,
@@ -68,6 +74,8 @@ function parseSkillDefinition(code: string): ParseResult {
         userTemplate: data.userTemplate,
         trigger: data.trigger || { type: "auto" },
         requireApproval: data.requireApproval || false,
+        autoApplyQueries: data.autoApplyQueries,
+        exclusionQueries: data.exclusionQueries,
         ui: data.ui || {},
       },
     };
@@ -88,9 +96,33 @@ interface SkillDefinitionBlockProps {
 
 export function SkillDefinitionBlock({ code }: SkillDefinitionBlockProps) {
   const [copied, setCopied] = useState(false);
+  const [existingSkillId, setExistingSkillId] = useState<string | null>(null);
   const openSkillEditorWithData = useUIStore((state) => state.openSkillEditorWithData);
+  const skills = useLiveQuery(() => getAllSkills(), []);
 
   const parseResult = useMemo(() => parseSkillDefinition(code), [code]);
+  
+  // Check if this is an edit flow by matching ID or name
+  useEffect(() => {
+    if (!parseResult.success || !skills) {
+      setExistingSkillId(null);
+      return;
+    }
+    
+    const data = parseResult.data;
+    if (data.id) {
+      const found = skills.find(s => s.id === data.id);
+      setExistingSkillId(found?.id || null);
+    } else if (data.name) {
+      // Try name match (case-insensitive)
+      const found = skills.find(s => s.name.toLowerCase() === data.name.toLowerCase());
+      setExistingSkillId(found?.id || null);
+    } else {
+      setExistingSkillId(null);
+    }
+  }, [parseResult, skills]);
+  
+  const isEditFlow = !!existingSkillId;
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(code);
@@ -112,6 +144,8 @@ export function SkillDefinitionBlock({ code }: SkillDefinitionBlockProps) {
       userTemplate: data.userTemplate,
       trigger: data.trigger as SkillTrigger,
       requireApproval: data.requireApproval,
+      autoApplyQueries: data.autoApplyQueries,
+      exclusionQueries: data.exclusionQueries,
       ui: {
         icon: data.ui?.icon || "Sparkles",
         color: data.ui?.color || "blue",
@@ -119,7 +153,7 @@ export function SkillDefinitionBlock({ code }: SkillDefinitionBlockProps) {
       } as SkillUI,
     };
 
-    openSkillEditorWithData(skillData);
+    openSkillEditorWithData(skillData, existingSkillId);
   };
 
   // Error state
@@ -228,7 +262,7 @@ export function SkillDefinitionBlock({ code }: SkillDefinitionBlockProps) {
           onClick={handleConvertToSkill}
         >
           <Wand2 className="h-3.5 w-3.5 mr-1.5" />
-          Convert to Skill
+          {isEditFlow ? "Update Skill" : "Convert to Skill"}
         </Button>
       </div>
     </div>

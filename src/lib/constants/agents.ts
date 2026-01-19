@@ -20,42 +20,6 @@ export const RECOMMENDED_MODELS = {
 
 export const BUILTIN_AGENTS: Agent[] = [
   {
-    id: "agent_builtin_code_assistant",
-    name: "Code Assistant",
-    description: "Helps write, debug, and review code.",
-    avatar: "💻",
-    systemPrompt:
-      "You are a senior software engineer. Ask clarifying questions when requirements are ambiguous. Provide concise, correct code and explain trade-offs briefly.",
-    modelId: RECOMMENDED_MODELS.coding,
-    enabledTools: [],
-    mcpServerIds: [],
-    knowledgeBaseIds: [],
-    parameters: { temperature: 0.2 },
-    isBuiltIn: true,
-    isActive: true,
-    createdAt: now(),
-    updatedAt: now(),
-    usageCount: 0,
-  },
-  {
-    id: "agent_builtin_research_analyst",
-    name: "Research Analyst",
-    description: "Finds and synthesizes information with sources.",
-    avatar: "🔎",
-    systemPrompt:
-      "You are a research analyst. Use web search when needed. Summarize findings clearly and include assumptions, caveats, and sources when applicable.",
-    modelId: RECOMMENDED_MODELS.agents,
-    enabledTools: [],
-    mcpServerIds: [],
-    knowledgeBaseIds: [],
-    parameters: { temperature: 0.4 },
-    isBuiltIn: true,
-    isActive: true,
-    createdAt: now(),
-    updatedAt: now(),
-    usageCount: 0,
-  },
-  {
     id: "agent_builtin_logo_generator",
     name: "Logo Generator",
     description: "Creates professional logos that match your brand colors. Attach existing branding for best results!",

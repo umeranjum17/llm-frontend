@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { Skill, SkillTrigger, SkillUI } from "@/lib/db/schema";
-import { addSkill, updateSkill } from "@/lib/db/queries";
+import { addSkill, updateSkill, getSkillById } from "@/lib/db/queries";
 import { buildVariablesFromTemplate } from "@/lib/utils/prompt-variables";
 import { SKILL_COLORS, SKILL_CATEGORY_CONFIG } from "@/lib/constants/skills";
 import { toast } from "sonner";
@@ -52,7 +52,8 @@ interface SkillEditorDialogProps {
 }
 
 export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDialogProps) {
-  const isEditing = !!skill;
+  const skillEditorTargetId = useUIStore((state) => state.skillEditorTargetId);
+  const isEditing = !!skill || !!skillEditorTargetId;
   const [name, setName] = useState("");
   const [triggerPhrases, setTriggerPhrases] = useState<string[]>([]);
   const [newTriggerPhrase, setNewTriggerPhrase] = useState("");
@@ -77,43 +78,69 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
 
     // Read prefilled data directly from store to avoid stale closures
     const prefilledData = useUIStore.getState().skillEditorPrefilledData;
+    const targetId = useUIStore.getState().skillEditorTargetId;
 
-    // Priority: existing skill > prefilled data > defaults
-    const source = skill || prefilledData;
-
-
-    setName(source?.name || "");
-    // Load trigger phrases - merge from autoApplyQueries and description for backward compatibility
-    const existingTriggers = source?.autoApplyQueries || [];
-    const descKeywords = source?.description
-      ? source.description.split(",").map((k: string) => k.trim()).filter((k: string) => k.length > 0)
-      : [];
-    // Merge and deduplicate: prefer autoApplyQueries, add description keywords that aren't already there
-    const mergedTriggers = [...existingTriggers];
-    for (const kw of descKeywords) {
-      if (!mergedTriggers.some(t => t.toLowerCase() === kw.toLowerCase())) {
-        mergedTriggers.push(kw);
+    // If we have a targetId but no skill prop, fetch the existing skill
+    const loadExistingSkill = async () => {
+      if (targetId && !skill && prefilledData) {
+        const existingSkill = await getSkillById(targetId);
+        if (existingSkill) {
+          // Merge prefilled data over existing skill (prefill takes precedence)
+          const merged = { ...existingSkill, ...prefilledData };
+          setName(merged.name || "");
+          setTriggerPhrases(merged.autoApplyQueries || []);
+          setExclusionKeywords(merged.exclusionQueries || []);
+          setCategory(merged.category || "coding");
+          setSystemPrompt(merged.systemPrompt || "");
+          setUserTemplate(merged.userTemplate || "");
+          setIcon(merged.ui?.icon || "Sparkles");
+          setColor(merged.ui?.color || "blue");
+          setActiveLabel(merged.ui?.activeLabel || "");
+          setAutoTrigger(merged.trigger?.type ? merged.trigger.type === "auto" : true);
+          setRequireApproval(merged.requireApproval || false);
+          return;
+        }
       }
-    }
-    setTriggerPhrases(mergedTriggers);
-    setNewTriggerPhrase("");
-    setExclusionKeywords(source?.exclusionQueries || []);
-    setNewExclusionKeyword("");
-    setCategory(source?.category || "coding");
-    setSystemPrompt(source?.systemPrompt || "");
-    setUserTemplate(source?.userTemplate || "");
-    setIcon(source?.ui?.icon || "Sparkles");
-    setColor(source?.ui?.color || "blue");
-    setActiveLabel(source?.ui?.activeLabel || "");
-    setAutoTrigger(source?.trigger?.type ? source.trigger.type === "auto" : true);
-    setRequireApproval(source?.requireApproval || false);
 
-    // Clear prefilled data after a short delay to ensure state is applied
-    if (prefilledData && !skill) {
-      setTimeout(() => {
-        clearSkillEditorData();
-      }, 100);
-    }
+      // Priority: existing skill > prefilled data > defaults
+      const source = skill || prefilledData;
+
+      setName(source?.name || "");
+      // Load trigger phrases - merge from autoApplyQueries and description for backward compatibility
+      const existingTriggers = source?.autoApplyQueries || [];
+      const descKeywords = source?.description
+        ? source.description.split(",").map((k: string) => k.trim()).filter((k: string) => k.length > 0)
+        : [];
+      // Merge and deduplicate: prefer autoApplyQueries, add description keywords that aren't already there
+      const mergedTriggers = [...existingTriggers];
+      for (const kw of descKeywords) {
+        if (!mergedTriggers.some(t => t.toLowerCase() === kw.toLowerCase())) {
+          mergedTriggers.push(kw);
+        }
+      }
+      setTriggerPhrases(mergedTriggers);
+      setNewTriggerPhrase("");
+      setExclusionKeywords(source?.exclusionQueries || []);
+      setNewExclusionKeyword("");
+      setCategory(source?.category || "coding");
+      setSystemPrompt(source?.systemPrompt || "");
+      setUserTemplate(source?.userTemplate || "");
+      setIcon(source?.ui?.icon || "Sparkles");
+      setColor(source?.ui?.color || "blue");
+      setActiveLabel(source?.ui?.activeLabel || "");
+      setAutoTrigger(source?.trigger?.type ? source.trigger.type === "auto" : true);
+      setRequireApproval(source?.requireApproval || false);
+
+      // Clear prefilled data after a short delay to ensure state is applied
+      if (prefilledData && !skill) {
+        setTimeout(() => {
+          clearSkillEditorData();
+        }, 100);
+      }
+    };
+
+    // Call the async function
+    loadExistingSkill();
   }, [open, skill, clearSkillEditorData]);
 
   const variables = useMemo(
@@ -173,10 +200,14 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
       };
 
       let savedSkill: Skill | null = null;
-      const triggersChanged = JSON.stringify(skill?.autoApplyQueries || []) !== JSON.stringify(triggerPhrases);
+      const targetId = useUIStore.getState().skillEditorTargetId;
+      
+      // Check if we're editing an existing skill (via skill prop or targetId)
+      const existingSkill = skill || (targetId ? await getSkillById(targetId) : null);
+      const triggersChanged = existingSkill ? JSON.stringify(existingSkill.autoApplyQueries || []) !== JSON.stringify(triggerPhrases) : false;
 
-      if (skill) {
-        await updateSkill(skill.id, {
+      if (existingSkill) {
+        await updateSkill(existingSkill.id, {
           name: name.trim(),
           description,
           category,
@@ -192,7 +223,7 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
         // For updates, we need to regenerate embedding if triggers changed
         if (triggersChanged) {
           savedSkill = {
-            ...skill,
+            ...existingSkill,
             name: name.trim(),
             description,
             category,
@@ -202,7 +233,7 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
             trigger,
             ui,
             autoApplyQueries: triggerPhrases,
-          };
+          } as Skill;
         }
         toast.success("Skill updated");
       } else {

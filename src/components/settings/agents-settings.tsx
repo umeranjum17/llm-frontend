@@ -11,6 +11,7 @@ import type { Agent } from "@/lib/db/schema";
 import { AgentEditorDialog } from "@/components/agents/agent-editor-dialog";
 import { toast } from "sonner";
 import { getModelById } from "@/lib/constants/models";
+import { BUILTIN_AGENTS } from "@/lib/constants/agents";
 
 export function AgentsSettings() {
   const [query, setQuery] = useState("");
@@ -21,9 +22,14 @@ export function AgentsSettings() {
 
   const filtered = useMemo(() => {
     const list = agents || [];
+    const builtInIds = new Set(BUILTIN_AGENTS.map(a => a.id));
+    
+    // Filter: only show built-ins that are in BUILTIN_AGENTS, plus all custom agents
+    const visibleAgents = list.filter(a => !a.isBuiltIn || builtInIds.has(a.id));
+    
     const q = query.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter(
+    if (!q) return visibleAgents;
+    return visibleAgents.filter(
       (a) =>
         a.name.toLowerCase().includes(q) ||
         (a.description || "").toLowerCase().includes(q)

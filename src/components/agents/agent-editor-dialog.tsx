@@ -15,8 +15,9 @@ import { MODELS } from "@/lib/constants/models";
 import { useModelsStore } from "@/stores/models-store";
 import type { Agent, McpServer, PipelineStep } from "@/lib/db/schema";
 import { PROVIDERS } from "@/lib/providers/registry";
-import { addAgent, updateAgent, getAllMcpServers, getAllAgents, resetAgentToDefault } from "@/lib/db/queries";
+import { addAgent, updateAgent, getAllMcpServers, getAllAgents, resetAgentToDefault, getAgentById } from "@/lib/db/queries";
 import { toast } from "sonner";
+import { useUIStore } from "@/stores/ui-store";
 import { Server, Loader2, AlertCircle, Search, Check, Plus, Trash2, GripVertical, MessageSquare, ImageIcon, Bot, Settings2, LayoutGrid, List, ChevronDown, ChevronRight, RotateCcw, Wrench } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { isImageGenerationModel } from "@/lib/constants/model-capabilities";
@@ -92,7 +93,9 @@ function validatePipelineSteps(steps: PipelineStep[]): PipelineValidationError[]
 }
 
 export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset }: AgentEditorDialogProps) {
-  const isEditing = !!agent;
+  const agentEditorTargetId = useUIStore((state) => state.agentEditorTargetId);
+  const clearAgentEditorData = useUIStore((state) => state.clearAgentEditorData);
+  const isEditing = !!agent || !!agentEditorTargetId;
   const isBuiltIn = agent?.isBuiltIn ?? false;
 
   // Form state
@@ -124,33 +127,74 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
   useEffect(() => {
     if (!open) return;
     loadModels().catch(() => {});
-    setName(agent?.name || "");
-    setDescription(agent?.description || "");
-    setAvatar(agent?.avatar || "");
-    setIsActive(agent?.isActive ?? true);
-    // Pipeline state - ensure steps have default providerId values
-    const existingSteps = agent?.pipeline?.steps || [];
-    const stepsWithDefaults = existingSteps.map((step) => ({
-      ...step,
-      providerId: step.providerId || "openrouter",
-      imageProviderId: step.type === "image" ? (step.imageProviderId || "openrouter") : step.imageProviderId,
-    }));
 
-    // For new agents, create a default first LLM step
-    if (!agent && stepsWithDefaults.length === 0) {
-      const defaultStep: PipelineStep = {
-        id: `step_${Date.now()}`,
-        name: "Step 1",
-        type: "llm",
-        providerId: "openrouter",
-        inputTemplate: "{{userInput}}",
-        outputVariable: "step1Output",
-      };
-      setPipelineSteps([defaultStep]);
-    } else {
-      setPipelineSteps(stepsWithDefaults);
+    // Read prefilled data directly from store
+    const prefilledData = useUIStore.getState().agentEditorPrefilledData;
+    const targetId = useUIStore.getState().agentEditorTargetId;
+
+    // If we have a targetId but no agent prop, fetch the existing agent
+    const loadExistingAgent = async () => {
+      if (targetId && !agent && prefilledData) {
+        const existingAgent = await getAgentById(targetId);
+        if (existingAgent) {
+          // Merge prefilled data over existing agent (prefill takes precedence)
+          const merged = { ...existingAgent, ...prefilledData };
+          setName(merged.name || "");
+          setDescription(merged.description || "");
+          setAvatar(merged.avatar || "");
+          setIsActive(merged.isActive ?? true);
+          
+          const existingSteps = merged.pipeline?.steps || [];
+          const stepsWithDefaults = existingSteps.map((step) => ({
+            ...step,
+            providerId: step.providerId || "openrouter",
+            imageProviderId: step.type === "image" ? (step.imageProviderId || "openrouter") : step.imageProviderId,
+          }));
+          setPipelineSteps(stepsWithDefaults.length > 0 ? stepsWithDefaults : []);
+          return;
+        }
+      }
+      
+      // Priority: existing agent > prefilled data > defaults
+      const source = agent || prefilledData;
+      setName(source?.name || "");
+      setDescription(source?.description || "");
+      setAvatar(source?.avatar || "");
+      setIsActive(source?.isActive ?? true);
+      
+      // Pipeline state - ensure steps have default providerId values
+      const existingSteps = source?.pipeline?.steps || [];
+      const stepsWithDefaults = existingSteps.map((step) => ({
+        ...step,
+        providerId: step.providerId || "openrouter",
+        imageProviderId: step.type === "image" ? (step.imageProviderId || "openrouter") : step.imageProviderId,
+      }));
+
+      // For new agents, create a default first LLM step
+      if (!source && stepsWithDefaults.length === 0) {
+        const defaultStep: PipelineStep = {
+          id: `step_${Date.now()}`,
+          name: "Step 1",
+          type: "llm",
+          providerId: "openrouter",
+          inputTemplate: "{{userInput}}",
+          outputVariable: "step1Output",
+        };
+        setPipelineSteps([defaultStep]);
+      } else {
+        setPipelineSteps(stepsWithDefaults);
+      }
+    };
+
+    loadExistingAgent().catch(console.error);
+
+    // Clear prefilled data after a short delay to ensure state is applied
+    if (prefilledData && !agent) {
+      setTimeout(() => {
+        clearAgentEditorData();
+      }, 100);
     }
-  }, [open, agent, loadModels]);
+  }, [open, agent, loadModels, clearAgentEditorData]);
 
   const modelOptions = useMemo(() => (models.length > 0 ? models : MODELS), [models]);
 
@@ -214,17 +258,22 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
         ? { steps: pipelineSteps }
         : undefined;
 
-      if (agent) {
+      const targetId = useUIStore.getState().agentEditorTargetId;
+      
+      // Check if we're editing an existing agent (via agent prop or targetId)
+      const existingAgent = agent || (targetId ? await getAgentById(targetId) : null);
+      
+      if (existingAgent) {
         // For built-in agents, only update specific fields
-        if (isBuiltIn) {
-          await updateAgent(agent.id, {
+        if (existingAgent.isBuiltIn) {
+          await updateAgent(existingAgent.id, {
             isActive,
             executionType: "pipeline",
             pipeline: pipelineConfig,
           });
           toast.success("Agent settings updated");
         } else {
-          await updateAgent(agent.id, {
+          await updateAgent(existingAgent.id, {
             name: name.trim(),
             description: description.trim() || undefined,
             avatar: avatar.trim() || undefined,
@@ -235,7 +284,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
           });
           toast.success("Agent updated");
         }
-        onSaved?.(agent.id);
+        onSaved?.(existingAgent.id);
       } else {
         const created = await addAgent({
           name: name.trim(),

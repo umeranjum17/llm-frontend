@@ -15,6 +15,7 @@ import { CodeBlock } from "./code-block";
 import { MermaidDiagram } from "./mermaid-diagram";
 import { ChartRenderer } from "./chart-renderer";
 import { SkillDefinitionBlock } from "./skill-definition-block";
+import { AgentDefinitionBlock } from "./agent-definition-block";
 import "katex/dist/katex.min.css";
 
 // Context to collect code blocks for multi-file project detection
@@ -125,6 +126,11 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
             // Handle skill definitions
             if (language === "skill") {
               return <SkillDefinitionBlock code={code} />;
+            }
+
+            // Handle agent definitions
+            if (language === "agent") {
+              return <AgentDefinitionBlock code={code} />;
             }
 
             return (

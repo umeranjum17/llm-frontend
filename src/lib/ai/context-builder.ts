@@ -311,11 +311,38 @@ Use these memories ONLY when directly relevant to the user's question. Do NOT vo
   // Add skill system prompt if skill is active (injected based on semantic match or manual selection)
   if (options?.skill?.systemPrompt) {
     const skillTokens = Math.ceil(options.skill.systemPrompt.length / 4);
+    let skillContent = `## Skill: ${options.skill.name}\n\n${options.skill.systemPrompt}`;
+    
+    // For agent creator/editor skills, inject tool/model context
+    const isAgentSkill = options.skill.id === "skill_builtin_agent_creator" || 
+                         options.skill.id === "skill_builtin_agent_editor";
+    
+    if (isAgentSkill && chat) {
+      try {
+        const response = await fetch("/api/agent-context", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chatId: chat.id,
+            mcpServerIds: chat.activeMcpServerIds || [],
+          }),
+        });
+        
+        if (response.ok) {
+          const { contextMessage } = await response.json();
+          skillContent += `\n\n${contextMessage}`;
+        }
+      } catch (error) {
+        console.error("[Context Builder] Failed to fetch agent context:", error);
+        // Continue without context - not critical
+      }
+    }
+    
     messages.push({
       id: `system-skill-${options.skill.id}`,
       chatId,
       role: "system",
-      content: `## Skill: ${options.skill.name}\n\n${options.skill.systemPrompt}`,
+      content: skillContent,
       createdAt: Date.now(),
     });
   }

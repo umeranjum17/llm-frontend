@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Skill } from "@/lib/db/schema";
+import type { Skill, Agent } from "@/lib/db/schema";
 
 export interface Artifact {
   id: string;
@@ -29,6 +29,10 @@ interface UIState {
   artifactsFullscreen: boolean;
   skillEditorOpen: boolean;
   skillEditorPrefilledData: Partial<Skill> | null;
+  skillEditorTargetId: string | null; // ID of skill to edit (for edit flows)
+  agentEditorOpen: boolean;
+  agentEditorPrefilledData: Partial<Agent> | null;
+  agentEditorTargetId: string | null; // ID of agent to edit (for edit flows)
 
   // Actions
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -48,8 +52,11 @@ interface UIState {
   setIsFocusMode: (enabled: boolean) => void;
   setArtifactsFullscreen: (fullscreen: boolean) => void;
   setSkillEditorOpen: (open: boolean) => void;
-  openSkillEditorWithData: (data: Partial<Skill>) => void;
+  openSkillEditorWithData: (data: Partial<Skill>, targetId?: string | null) => void;
   clearSkillEditorData: () => void;
+  setAgentEditorOpen: (open: boolean) => void;
+  openAgentEditorWithData: (data: Partial<Agent>, targetId?: string | null) => void;
+  clearAgentEditorData: () => void;
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
@@ -69,6 +76,10 @@ export const useUIStore = create<UIState>((set, get) => ({
   artifactsFullscreen: false,
   skillEditorOpen: false,
   skillEditorPrefilledData: null,
+  skillEditorTargetId: null,
+  agentEditorOpen: false,
+  agentEditorPrefilledData: null,
+  agentEditorTargetId: null,
 
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   setActiveChatId: (chatId) => set({ activeChatId: chatId }),
@@ -121,8 +132,21 @@ export const useUIStore = create<UIState>((set, get) => ({
   setIsFocusMode: (enabled) => set({ isFocusMode: enabled }),
   setArtifactsFullscreen: (fullscreen) => set({ artifactsFullscreen: fullscreen }),
   setSkillEditorOpen: (open) => set({ skillEditorOpen: open }),
-  openSkillEditorWithData: (data) => {
-    set({ skillEditorOpen: true, skillEditorPrefilledData: data });
+  openSkillEditorWithData: (data, targetId) => {
+    set({ 
+      skillEditorOpen: true, 
+      skillEditorPrefilledData: data,
+      skillEditorTargetId: targetId || null
+    });
   },
-  clearSkillEditorData: () => set({ skillEditorPrefilledData: null }),
+  clearSkillEditorData: () => set({ skillEditorPrefilledData: null, skillEditorTargetId: null }),
+  setAgentEditorOpen: (open) => set({ agentEditorOpen: open }),
+  openAgentEditorWithData: (data, targetId) => {
+    set({ 
+      agentEditorOpen: true, 
+      agentEditorPrefilledData: data,
+      agentEditorTargetId: targetId || null
+    });
+  },
+  clearAgentEditorData: () => set({ agentEditorPrefilledData: null, agentEditorTargetId: null }),
 }));
