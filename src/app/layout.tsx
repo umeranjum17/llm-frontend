@@ -6,6 +6,7 @@ import { Toaster as SonnerToaster } from "sonner";
 import { CommandPalette } from "@/components/command-palette/command-palette";
 import { MobileNav } from "@/components/mobile-nav";
 import { InstallPrompt, UpdatePrompt } from "@/components/pwa";
+import { ErrorBoundary } from "@/components/error-boundary";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -44,20 +45,22 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${GeistSans.variable} font-sans antialiased`}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <GlobalHooks />
-          {children}
-          <CommandPalette />
-          <MobileNav />
-          <InstallPrompt />
-          <UpdatePrompt />
-          <SonnerToaster richColors closeButton />
-        </ThemeProvider>
+        <ErrorBoundary>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <GlobalHooks />
+            {children}
+            <CommandPalette />
+            <MobileNav />
+            <InstallPrompt />
+            <UpdatePrompt />
+            <SonnerToaster richColors closeButton />
+          </ThemeProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

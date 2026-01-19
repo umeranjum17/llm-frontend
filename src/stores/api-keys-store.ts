@@ -12,6 +12,7 @@ import {
   decryptApiKey,
   isEncryptedKey,
 } from "@/lib/crypto/api-key-crypto";
+import { toast } from "sonner";
 
 interface ApiKeysState {
   keys: ApiKey[];
@@ -30,32 +31,97 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
   isLoaded: false,
 
   loadKeys: async () => {
-    const encryptedKeys = await getAllApiKeys();
-
-    // Decrypt keys and migrate any plaintext keys to encrypted format
-    const decryptedKeys: ApiKey[] = [];
-    for (const storedKey of encryptedKeys) {
+    const maxRetries = 3;
+    let retryCount = 0;
+    
+    const attemptLoad = async (): Promise<void> => {
       try {
-        const decryptedKeyValue = await decryptApiKey(storedKey.key);
+        const encryptedKeys = await getAllApiKeys();
 
-        // Migrate plaintext keys to encrypted format
-        if (!isEncryptedKey(storedKey.key)) {
-          const encryptedValue = await encryptApiKey(decryptedKeyValue);
-          await dbUpdateApiKey(storedKey.id, { key: encryptedValue });
+        // Decrypt keys and migrate any plaintext keys to encrypted format
+        const decryptedKeys: ApiKey[] = [];
+        const failedDecryptionKeys: string[] = [];
+
+        for (const storedKey of encryptedKeys) {
+          try {
+            const decryptedKeyValue = await decryptApiKey(storedKey.key);
+
+            // Migrate plaintext keys to encrypted format
+            if (!isEncryptedKey(storedKey.key)) {
+              const encryptedValue = await encryptApiKey(decryptedKeyValue);
+              await dbUpdateApiKey(storedKey.id, { key: encryptedValue });
+            }
+
+            decryptedKeys.push({
+              ...storedKey,
+              key: decryptedKeyValue, // Store decrypted value in memory
+            });
+          } catch (error) {
+            const errorObj = error as Error;
+            const errorMessage = errorObj?.message || "Unknown error";
+
+            // If it's an encrypted key and decryption failed, mark as unusable
+            if (isEncryptedKey(storedKey.key)) {
+              console.warn(
+                `[API Keys] Decryption failed for ${storedKey.provider}:`,
+                errorMessage
+              );
+              failedDecryptionKeys.push(storedKey.provider);
+              // Don't include unusable keys - they need to be re-entered
+              continue;
+            }
+
+            // For plaintext keys, include as-is (graceful degradation)
+            // But log the error for debugging
+            console.warn(
+              `[API Keys] Error processing plaintext key for ${storedKey.provider}:`,
+              errorMessage
+            );
+            decryptedKeys.push(storedKey);
+          }
         }
 
-        decryptedKeys.push({
-          ...storedKey,
-          key: decryptedKeyValue, // Store decrypted value in memory
-        });
-      } catch (error) {
-        console.error(`[API Keys] Failed to process key for ${storedKey.provider}:`, error);
-        // Include key as-is if decryption fails
-        decryptedKeys.push(storedKey);
-      }
-    }
+        // Show toast if any keys failed decryption
+        if (failedDecryptionKeys.length > 0) {
+          toast.error("API Keys Need Re-entry", {
+            description: `The following API keys could not be decrypted (likely due to device secret change): ${failedDecryptionKeys.join(", ")}. Please re-enter them in Settings.`,
+            duration: 10000,
+          });
+        }
 
-    set({ keys: decryptedKeys, isLoaded: true });
+        set({ keys: decryptedKeys, isLoaded: true });
+      } catch (error) {
+        const errorObj = error as Error;
+        const errorName = errorObj?.name || "UnknownError";
+
+        console.warn(`[API Keys Store] Failed to load keys (attempt ${retryCount + 1}/${maxRetries + 1}):`, errorObj?.message);
+
+        // Check if it's a DB-related error
+        const isDBError = 
+          errorName === "DatabaseClosedError" ||
+          errorName === "InvalidStateError" ||
+          errorName === "VersionError" ||
+          errorObj?.message?.includes("database");
+
+        if (isDBError && retryCount < maxRetries) {
+          // Retry with exponential backoff
+          retryCount++;
+          const backoffMs = Math.min(1000 * Math.pow(2, retryCount - 1), 3000);
+          console.log(`[API Keys Store] Retrying in ${backoffMs}ms...`);
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+          return attemptLoad(); // Recursive retry
+        } else if (isDBError) {
+          // DB health hook will handle recovery, but we should still set defaults
+          console.warn("[API Keys Store] Max retries reached, using empty keys");
+          set({ keys: [], isLoaded: true }); // Mark as loaded to prevent UI hang
+        } else {
+          // Re-throw non-DB errors
+          throw error;
+        }
+      }
+    };
+    
+    return attemptLoad();
   },
 
   getKeyForProvider: (provider) => {

@@ -1412,77 +1412,45 @@ export class McpManager {
 
     let instructions = "# MCP Tools\n\n";
 
-    // Detailed Composio instructions with examples
+    // Optimized Composio instructions - preserves all critical info, reduced token usage
     if (hasComposioSearchAndExecute) {
-      instructions += `## Composio Tool Usage
+      instructions += `## Composio Workflow
 
-### Step 1: Search for Tools
-Call \`${searchTool.fullName}\` with queries describing what you need:
+**1. Search:** Call \`${searchTool.fullName}\`
 \`\`\`json
-{"queries": [{"use_case": "search reddit for latest posts"}]}
+{"queries": [{"use_case": "describe what you need"}]}
 \`\`\`
 
-### Step 2: Parse & Follow Search Response - CRITICAL
-The response contains fields you **MUST READ AND FOLLOW**:
+**2. Parse Response - Read These Fields:**
+- \`tool_schemas[TOOL].input_schema.required\` - mandatory params (NEVER pass empty {})
+- \`tool_schemas[TOOL].input_schema.properties\` - param descriptions
+- \`recommended_plan_steps\` - execution order
+- \`known_pitfalls\` - common errors to avoid
+- \`session.id\` - required for all subsequent calls
+- \`_parameter_guide\` - shows how to structure arguments
 
-**REQUIRED READING:**
-- \`tool_schemas[TOOL_NAME].input_schema.required\`: Lists MANDATORY parameters - **NEVER pass empty arguments {}**
-- \`tool_schemas[TOOL_NAME].input_schema.properties\`: Shows all parameters with descriptions and examples
-- \`recommended_plan_steps\`: **FOLLOW THESE EXECUTION STEPS**
-- \`known_pitfalls\`: **READ TO AVOID COMMON ERRORS**
-- \`session.id\`: **REQUIRED** in all subsequent calls
-- \`_parameter_guide\`: Shows exactly how to structure your MULTI_EXECUTE_TOOL call
+IGNORE \`toolkit_connection_statuses\` (often stale).
 
-**CONNECTION CHECK (IGNORE THIS - see Step 3):**
-- \`toolkit_connection_statuses\` is often stale - **do NOT preemptively call MANAGE_CONNECTIONS**
-- Just proceed to execute tools directly
-
-### Step 3: SKIP Connection Management - Execute Directly
-**IMPORTANT: IGNORE \`has_active_connection: false\` in toolkit_connection_statuses.**
-
-The connection status is often stale/incorrect. Instead:
-1. **Proceed directly to Step 4** (execute tools) without calling COMPOSIO_MANAGE_CONNECTIONS
-2. If execution fails with "No active connection found", THEN call COMPOSIO_MANAGE_CONNECTIONS once
-3. **NEVER call COMPOSIO_MANAGE_CONNECTIONS preemptively** based on toolkit_connection_statuses
-
-**If you see "Connected account already defined"** → Connection IS working. Do NOT retry. Execute tools directly.
-
-### Step 4: Execute Tools
-Use \`${executeTool.fullName}\`. **You MUST fill in the "arguments" object with ALL required parameters from tool_schemas.input_schema.required**:
+**3. Execute:** Call \`${executeTool.fullName}\`
 \`\`\`json
 {
-  "tools": [
-    {
-      "tool_slug": "REDDIT_SEARCH_ACROSS_SUBREDDITS",
-      "arguments": {
-        "search_query": "YOUR ACTUAL SEARCH QUERY HERE",
-        "limit": 10,
-        "sort": "new"
-      }
-    }
-  ],
-  "session_id": "<session.id from search response>"
+  "tools": [{
+    "tool_slug": "TOOL_NAME",
+    "arguments": {"param": "value"}  // ALL required params from step 2
+  }],
+  "session_id": "from step 2"
 }
 \`\`\`
 
-**⚠️ ARGUMENTS ARE MANDATORY - NEVER EMPTY:**
-- The \`arguments\` object MUST contain all parameters from \`tool_schemas[TOOL].input_schema.required\`
-- Example: If \`required: ["search_query"]\`, you MUST include \`"arguments": {"search_query": "your query"}\`
-- Empty \`"arguments": {}\` will ALWAYS fail with an error
+**Connection Handling:**
+- Execute directly, skip MANAGE_CONNECTIONS
+- Only if fails with "No active connection" → call MANAGE_CONNECTIONS once, retry
+- "Connected account already defined" = working, proceed
 
-**CRITICAL WORKFLOW:**
-1. **Search first** → get tool_schemas, recommended_plan_steps, known_pitfalls, session.id
-2. **READ tool_schemas[TOOL].input_schema.required** → identify ALL mandatory parameters
-3. **SKIP MANAGE_CONNECTIONS** → ignore toolkit_connection_statuses, execute directly
-4. **Execute with ALL required params filled in arguments** → copy required param names and provide values
-5. **Only if execute fails with "No active connection"** → call MANAGE_CONNECTIONS once, then retry
-
-**ABSOLUTE RULES:**
-- **"arguments" MUST contain ALL required parameters** - check tool_schemas[TOOL].input_schema.required
-- **NEVER pass empty arguments: {}** - this will ALWAYS fail with an error
-- **NEVER call COMPOSIO_MANAGE_CONNECTIONS preemptively** - only as fallback after execute fails
-- **"Connected account already defined"** = connection works, proceed to execute
-- Always include session_id from search response
+**Critical Rules:**
+- arguments object MUST have all required params from tool_schemas[TOOL].input_schema.required
+- Empty arguments {} will fail
+- Never call MANAGE_CONNECTIONS preemptively
 
 `;
     } else if (hasComposioSearchOnly) {
@@ -1521,8 +1489,44 @@ Then call the returned tools using parameters from tool_schemas.
       instructions += "\n";
     }
 
-    // Condensed footer
-    instructions += "Use tools only for external services. Always provide a text summary after tool operations.\n";
+    // Intelligent tool usage guidelines
+    instructions += `
+## Tool Usage Guidelines
+
+**THINK FIRST - Answer directly if you have the knowledge:**
+You have extensive training knowledge. Use it! Only call tools when:
+1. User explicitly requests ("search", "look up", "find current")
+2. Need real-time/current data (news, weather, prices, recent events)
+3. Need to interact with external services (GitHub, email, etc.)
+
+**Common Mistakes to Avoid:**
+- ❌ Searching for general programming concepts (React, Python, OAuth, etc.)
+- ❌ Searching for historical facts or well-known information
+- ❌ Using tools for math, logic, code debugging, or creative tasks
+- ✅ Answer these directly with your training knowledge
+
+**Web Search - Use ONLY for:**
+- Recent/breaking news and events
+- Current prices, weather, scores, live data
+- Information explicitly after your training cutoff (April 2024)
+- When user says "search", "look up online", or "find current"
+
+**Decision Process (silent reasoning):**
+1. Knowledge Check: Can I answer this with training data?
+2. Recency Check: Does this need data after April 2024?
+3. Explicit Request: Did user ask me to search/use tools?
+→ If only #2 or #3 is YES, use tools. Otherwise, answer directly.
+
+**Examples:**
+- "Explain OAuth" → Answer directly (you know this)
+- "Latest AI news" → Search (recent/current)
+- "Debug my Python code" → Answer directly (code analysis)
+- "Weather in Tokyo now" → Use tool (real-time data)
+- "How does async/await work?" → Answer directly (you know this)
+- "Search for React 19 features" → Search (explicit request)
+
+Always provide clear, helpful responses. After tool use, synthesize results into natural language.
+`;
 
     return instructions;
   }

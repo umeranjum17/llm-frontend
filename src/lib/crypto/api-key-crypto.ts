@@ -108,6 +108,7 @@ export async function encryptApiKey(plainKey: string): Promise<string> {
 /**
  * Decrypts an API key from storage
  * Handles both encrypted (v1:...) and plaintext keys for migration
+ * @throws Error if decryption fails for an encrypted key (device secret may have changed)
  */
 export async function decryptApiKey(storedKey: string): Promise<string> {
   if (!storedKey) return storedKey;
@@ -138,9 +139,11 @@ export async function decryptApiKey(storedKey: string): Promise<string> {
     return decoder.decode(plaintext);
   } catch (error) {
     console.error("[API Key Crypto] Decryption failed:", error);
-    // If decryption fails, assume it's a legacy plaintext key
-    // This handles edge cases where key looks like "v1:..." but isn't encrypted
-    return storedKey;
+    // Re-throw the error so callers can detect decryption failures
+    // This is important when device secret changes (e.g., after PWA reinstall)
+    throw new Error(
+      `Failed to decrypt API key: ${error instanceof Error ? error.message : "Unknown error"}. Device secret may have changed.`
+    );
   }
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useLoadingStore } from "@/stores/loading-store";
 
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[];
@@ -16,11 +17,12 @@ interface PWAState {
   isInstalled: boolean;
   isOnline: boolean;
   isUpdateAvailable: boolean;
+  isUpdating: boolean;
 }
 
 interface UsePWAReturn extends PWAState {
   install: () => Promise<boolean>;
-  update: () => void;
+  update: () => Promise<void>;
   dismissInstall: () => void;
 }
 
@@ -31,8 +33,11 @@ export function usePWA(): UsePWAReturn {
   const [isInstalled, setIsInstalled] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
   const [registration, setRegistration] =
     useState<ServiceWorkerRegistration | null>(null);
+  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const setPwaUpdating = useLoadingStore((state) => state.setPwaUpdating);
 
   // Check if already installed (standalone mode)
   useEffect(() => {
@@ -129,12 +134,29 @@ export function usePWA(): UsePWAReturn {
 
     // Listen for controller change (after update)
     let refreshing = false;
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
+    const handleControllerChange = () => {
       if (refreshing) return;
       refreshing = true;
-      window.location.reload();
-    });
-  }, []);
+      
+      // Show reloading status
+      setPwaUpdating(true, "reloading", "Reloading application");
+      setIsUpdating(true);
+      
+      // Small delay to ensure the overlay is visible
+      setTimeout(() => {
+        window.location.reload();
+      }, 100);
+    };
+
+    navigator.serviceWorker.addEventListener("controllerchange", handleControllerChange);
+
+    return () => {
+      navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange);
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current);
+      }
+    };
+  }, [setPwaUpdating]);
 
   const install = useCallback(async (): Promise<boolean> => {
     if (!deferredPrompt) return false;
@@ -155,12 +177,53 @@ export function usePWA(): UsePWAReturn {
     }
   }, [deferredPrompt]);
 
-  const update = useCallback(() => {
+  const update = useCallback(async () => {
     if (!registration?.waiting) return;
 
-    // Tell the waiting service worker to skip waiting
-    registration.waiting.postMessage({ type: "SKIP_WAITING" });
-  }, [registration]);
+    try {
+      setIsUpdating(true);
+      
+      // Step 1: Clear caches
+      setPwaUpdating(true, "clearing-cache", "Clearing old cache");
+      
+      if ("caches" in window) {
+        const cacheNames = await caches.keys();
+        await Promise.all(
+          cacheNames.map((cacheName) => {
+            console.log("[PWA] Clearing cache:", cacheName);
+            return caches.delete(cacheName);
+          })
+        );
+      }
+
+      // Small delay to show the clearing cache message
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Step 2: Send skip waiting message
+      setPwaUpdating(true, "updating", "Installing new version");
+      registration.waiting.postMessage({ type: "SKIP_WAITING" });
+
+      // Set timeout for update process (10 seconds)
+      updateTimeoutRef.current = setTimeout(() => {
+        console.error("[PWA] Update timeout - forcing reload");
+        setPwaUpdating(true, "error", "Update timeout. Trying to reload...");
+        
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+      }, 10000);
+
+    } catch (error) {
+      console.error("[PWA] Update failed:", error);
+      setPwaUpdating(true, "error", "Update failed. Please try refreshing manually.");
+      setIsUpdating(false);
+      
+      // Auto-hide error after 5 seconds
+      setTimeout(() => {
+        setPwaUpdating(false);
+      }, 5000);
+    }
+  }, [registration, setPwaUpdating]);
 
   const dismissInstall = useCallback(() => {
     setIsInstallable(false);
@@ -179,6 +242,7 @@ export function usePWA(): UsePWAReturn {
     isInstalled,
     isOnline,
     isUpdateAvailable,
+    isUpdating,
     install,
     update,
     dismissInstall,

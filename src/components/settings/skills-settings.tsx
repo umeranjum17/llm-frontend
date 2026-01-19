@@ -55,6 +55,7 @@ import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { regenerateAllEmbeddings } from "@/lib/skills/skill-embeddings";
 import { db } from "@/lib/db/schema";
+import { Slider } from "@/components/ui/slider";
 
 // Embedding models by provider
 const EMBEDDING_MODELS: Record<
@@ -464,13 +465,13 @@ export function SkillsSettings() {
                   {Math.round((skillMatchThreshold ?? 0.25) * 100)}%
                 </span>
               </div>
-              <input
-                type="range"
-                min="10"
-                max="60"
-                value={Math.round((skillMatchThreshold ?? 0.25) * 100)}
-                onChange={(e) => updateSkillMatchThreshold(parseInt(e.target.value) / 100)}
-                className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
+              <Slider
+                min={10}
+                max={60}
+                step={1}
+                value={[Math.round((skillMatchThreshold ?? 0.25) * 100)]}
+                onValueChange={(values) => updateSkillMatchThreshold(values[0] / 100)}
+                className="w-full py-2"
               />
               <p className="text-xs text-muted-foreground">
                 Top skill wins if above floor. Lower = more matches, Higher = stricter.

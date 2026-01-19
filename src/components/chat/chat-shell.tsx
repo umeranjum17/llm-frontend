@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef, lazy, Suspense } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useLiveQuery } from "dexie-react-hooks";
+import { useLiveQueryWithTimeout } from "@/hooks/use-live-query-with-timeout";
 import { useRouter } from "next/navigation";
 import { useUIStore } from "@/stores/ui-store";
 import { useShallow } from "zustand/react/shallow";
@@ -156,14 +157,22 @@ export function ChatShell() {
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
 
   // Get current chat and agent in a single query to reduce cascading re-renders
-  const chatData = useLiveQuery(
+  // Use timeout wrapper for critical queries to detect DB stalls
+  const chatDataQuery = useLiveQueryWithTimeout(
     () => (activeChatId ? getChatWithAgent(activeChatId) : undefined),
-    [activeChatId]
+    [activeChatId],
+    { timeoutMs: 5000 }
   );
+  const chatData = chatDataQuery.data;
   const chat = chatData?.chat;
   const currentAgent = chatData?.agent;
 
-  const messages = useLiveQuery(() => (activeChatId ? getMessages(activeChatId) : undefined), [activeChatId]);
+  const messagesQuery = useLiveQueryWithTimeout(
+    () => (activeChatId ? getMessages(activeChatId) : undefined),
+    [activeChatId],
+    { timeoutMs: 5000, defaultValue: [] }
+  );
+  const messages = messagesQuery.data;
 
   // Map messages to match ai SDK Message type (createdAt as Date)
   const aiMessages = useMemo(() => {
@@ -451,6 +460,36 @@ export function ChatShell() {
         availableProviderIds: llmProviderIds,
       }))
     : null;
+
+  // Show error state if critical queries timed out
+  if (chatDataQuery.isTimedOut || messagesQuery.isTimedOut) {
+    return (
+      <EmptyState
+        icon={MessageSquare}
+        title="Database Timeout"
+        description="The database is not responding. This may indicate a stale cache or corrupted database."
+        action={{
+          label: "Refresh Page",
+          onClick: () => window.location.reload(),
+        }}
+        secondaryAction={{
+          label: "Clear Cache & Reload",
+          onClick: async () => {
+            if ("caches" in window) {
+              const cacheNames = await caches.keys();
+              await Promise.all(cacheNames.map((name) => caches.delete(name)));
+            }
+            if ("serviceWorker" in navigator) {
+              const registrations = await navigator.serviceWorker.getRegistrations();
+              await Promise.all(registrations.map((reg) => reg.unregister()));
+            }
+            window.location.reload();
+          },
+        }}
+        className="h-full"
+      />
+    );
+  }
 
   if (!activeChatId) {
     return (

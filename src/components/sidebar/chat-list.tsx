@@ -67,13 +67,41 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
 
   // Consolidate three queries into one to reduce IndexedDB round-trips
   // This is critical for mobile performance where IndexedDB can be slow
+  // Use direct DB queries (not cached) so useLiveQuery tracks changes and triggers re-renders
   const { data: chatListData, isTimedOut, retry: handleRetry } = useLiveQueryWithTimeout(
     async () => {
       const [chatsResult, foldersResult, tagsResult] = await Promise.all([
-        getAllChatsCached(),
+        db.chats.orderBy('updatedAt').reverse().toArray(),
         db.folders.toArray(),
         db.tags.orderBy('name').toArray()
       ]);
+      
+      // Sort chats: pinned first, then by explicit order if set, otherwise by recency
+      chatsResult.sort((a, b) => {
+        // Pinned chats always come first
+        if (a.pinned && !b.pinned) return -1;
+        if (!a.pinned && b.pinned) return 1;
+
+        const aHasOrder = a.order !== undefined;
+        const bHasOrder = b.order !== undefined;
+
+        // Within the same folder, respect order
+        if (a.folderId === b.folderId) {
+          // If both have explicit order, sort by order
+          if (aHasOrder && bHasOrder) {
+            if (a.order !== b.order) return (a.order ?? 0) - (b.order ?? 0);
+            // Fallback to recency for same order
+            return b.updatedAt - a.updatedAt;
+          }
+          // If only one has order, that one comes first
+          if (aHasOrder && !bHasOrder) return -1;
+          if (!aHasOrder && bHasOrder) return 1;
+        }
+
+        // Default to newest first for items without explicit order
+        return b.updatedAt - a.updatedAt;
+      });
+      
       // Sort folders by order
       foldersResult.sort((a: FolderType, b: FolderType) => {
         if (a.order !== undefined && b.order !== undefined) return a.order - b.order;
@@ -81,6 +109,7 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
         if (b.order !== undefined) return 1;
         return a.createdAt - b.createdAt;
       });
+      
       return { chats: chatsResult, folders: foldersResult, tags: tagsResult };
     },
     [],
@@ -357,22 +386,65 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
 
   if (!chats || !filteredFolders) {
     return (
-      <div className="flex flex-col items-center justify-center p-8 text-muted-foreground gap-3">
+      <div className="flex flex-col h-full">
         {isTimedOut ? (
-          <>
-            <p className="text-sm">Loading took too long</p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRetry}
-              className="gap-2"
-            >
-              <RefreshCw className="h-4 w-4" />
-              Retry
-            </Button>
-          </>
+          <div className="flex flex-col items-center justify-center flex-1 p-8 text-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/10">
+              <RefreshCw className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Loading took too long</p>
+              <p className="text-xs text-muted-foreground">
+                This may indicate a database issue or slow connection.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 w-full max-w-xs">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRetry}
+                className="gap-2"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Retry
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={async () => {
+                  if ("caches" in window) {
+                    const cacheNames = await caches.keys();
+                    await Promise.all(cacheNames.map((name) => caches.delete(name)));
+                  }
+                  window.location.reload();
+                }}
+                className="gap-2 text-xs"
+              >
+                Clear Cache & Reload
+              </Button>
+            </div>
+          </div>
         ) : (
-          <p className="text-sm">Loading...</p>
+          <div className="flex-1 p-4 space-y-3">
+            {/* Skeleton UI */}
+            <div className="space-y-2">
+              <div className="h-4 w-24 bg-muted/50 rounded animate-pulse" />
+              <div className="space-y-2">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="flex gap-2 p-2.5 rounded-lg border border-transparent">
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3 bg-muted/50 rounded animate-pulse" style={{ width: `${60 + Math.random() * 30}%` }} />
+                      <div className="h-2 bg-muted/30 rounded animate-pulse" style={{ width: `${40 + Math.random() * 40}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground/60 pt-4">
+              <RefreshCw className="h-3 w-3 animate-spin" />
+              <span>Loading chats...</span>
+            </div>
+          </div>
         )}
       </div>
     );

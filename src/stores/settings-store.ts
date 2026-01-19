@@ -37,15 +37,61 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   defaultReasoningLevel: "medium",
 
   loadSettings: async () => {
-    const settings = await getSettings();
-    // Preserve defaults for arrays that might be undefined in DB
-    set({
-      ...settings,
-      defaultMcpServerIds: settings.defaultMcpServerIds ?? [],
-      enabledTools: settings.enabledTools ?? [],
-      shortcuts: settings.shortcuts ?? {},
-      isLoaded: true
-    });
+    const maxRetries = 3;
+    let retryCount = 0;
+    
+    const attemptLoad = async (): Promise<void> => {
+      try {
+        const settings = await getSettings();
+        // Preserve defaults for arrays that might be undefined in DB
+        set({
+          ...settings,
+          defaultMcpServerIds: settings.defaultMcpServerIds ?? [],
+          enabledTools: settings.enabledTools ?? [],
+          shortcuts: settings.shortcuts ?? {},
+          isLoaded: true
+        });
+      } catch (error) {
+        const errorObj = error as Error;
+        const errorName = errorObj?.name || "UnknownError";
+        
+        console.warn(`[Settings Store] Failed to load settings (attempt ${retryCount + 1}/${maxRetries + 1}):`, errorObj?.message);
+        
+        // Check if it's a DB-related error
+        const isDBError = 
+          errorName === "DatabaseClosedError" ||
+          errorName === "InvalidStateError" ||
+          errorName === "VersionError" ||
+          errorObj?.message?.includes("database");
+        
+        if (isDBError && retryCount < maxRetries) {
+          // Retry with exponential backoff
+          retryCount++;
+          const backoffMs = Math.min(1000 * Math.pow(2, retryCount - 1), 3000);
+          console.log(`[Settings Store] Retrying in ${backoffMs}ms...`);
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+          return attemptLoad(); // Recursive retry
+        } else if (isDBError) {
+          // DB health hook will handle recovery, but we should still set defaults
+          console.warn("[Settings Store] Max retries reached, using defaults");
+          set({
+            theme: "system",
+            defaultModelIdsByProvider: {},
+            defaultMcpServerIds: [],
+            enabledTools: [],
+            shortcuts: {},
+            autoTaggingEnabled: false,
+            defaultReasoningLevel: "medium",
+            isLoaded: true, // Mark as loaded to prevent UI hang
+          });
+        } else {
+          // Re-throw non-DB errors
+          throw error;
+        }
+      }
+    };
+    
+    return attemptLoad();
   },
 
   updateTheme: async (theme) => {

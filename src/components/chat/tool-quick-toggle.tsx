@@ -2,6 +2,7 @@
 
 import { useState, memo, useMemo, useDeferredValue, useCallback, useEffect, useRef } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { useLiveQueryWithTimeout } from "@/hooks/use-live-query-with-timeout";
 import { Plug, PlugZap, Check, AlertCircle, Loader2, Box, Search, X, ChevronDown, ChevronRight, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -330,8 +331,20 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
         }
     }, [open]);
 
-    const mcpServers = useLiveQuery(() => getAllMcpServers(), []);
-    const chat = useLiveQuery(() => chatId ? getChatById(chatId) : undefined, [chatId]);
+    // Use timeout wrapper for critical queries to detect DB stalls
+    const mcpServersQuery = useLiveQueryWithTimeout(
+        () => getAllMcpServers(),
+        [],
+        { timeoutMs: 5000, defaultValue: [] }
+    );
+    const mcpServers = mcpServersQuery.data;
+
+    const chatQuery = useLiveQueryWithTimeout(
+        () => chatId ? getChatById(chatId) : undefined,
+        [chatId],
+        { timeoutMs: 5000 }
+    );
+    const chat = chatQuery.data;
 
     // Get agent if chat has one
     const agent = useLiveQuery(
@@ -461,6 +474,23 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
         ]);
         toast.success("All MCP servers disabled");
     };
+
+    // Show error state if queries timed out
+    if (mcpServersQuery.isTimedOut || chatQuery.isTimedOut) {
+        return (
+            <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                title="Database timeout - click to retry"
+                onClick={() => {
+                    window.location.reload();
+                }}
+            >
+                <Plug className="h-4 w-4 text-destructive" />
+            </Button>
+        );
+    }
 
     // Hide for pipeline agents - tools are configured per-step
     const isPipelineAgent = agent?.pipeline?.steps && agent.pipeline.steps.length > 0;
