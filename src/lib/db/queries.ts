@@ -639,13 +639,21 @@ export async function deleteApiKey(id: string) {
 export async function getSettings() {
   let settings = await db.settings.get("default");
   if (!settings) {
-    // Create default settings
+    // Import DEFAULT_MODEL dynamically to avoid circular dependency
+    const { DEFAULT_MODEL } = await import("@/lib/constants/models");
+
+    // Create default settings with working model/provider config
     settings = {
       id: "default",
       theme: "system",
+      defaultModelId: DEFAULT_MODEL.id,
+      defaultModelIdsByProvider: {},
+      defaultMcpServerIds: [],
       enabledTools: [],
       shortcuts: {},
       currentProjectId: undefined,
+      autoTaggingEnabled: false,
+      defaultReasoningLevel: "medium",
       updatedAt: Date.now(),
     };
     await db.settings.add(settings);
