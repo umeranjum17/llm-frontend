@@ -1493,39 +1493,22 @@ Then call the returned tools using parameters from tool_schemas.
     instructions += `
 ## Tool Usage Guidelines
 
-**THINK FIRST - Answer directly if you have the knowledge:**
-You have extensive training knowledge. Use it! Only call tools when:
+**THINK FIRST:** You have extensive training knowledge - use it! Only call tools when:
 1. User explicitly requests ("search", "look up", "find current")
-2. Need real-time/current data (news, weather, prices, recent events)
-3. Need to interact with external services (GitHub, email, etc.)
+2. Need real-time data (news, weather, prices, recent events)
+3. Need external service interaction (GitHub, email, APIs)
 
-**Common Mistakes to Avoid:**
-- ❌ Searching for general programming concepts (React, Python, OAuth, etc.)
-- ❌ Searching for historical facts or well-known information
-- ❌ Using tools for math, logic, code debugging, or creative tasks
-- ✅ Answer these directly with your training knowledge
+**Don't use tools for:** General programming concepts, historical facts, code debugging, creative tasks - answer these directly.
 
-**Web Search - Use ONLY for:**
+**Web Search - ONLY for:**
 - Recent/breaking news and events
 - Current prices, weather, scores, live data
-- Information explicitly after your training cutoff (April 2024)
-- When user says "search", "look up online", or "find current"
+- Info after your training cutoff (January 2025)
+- When user says "search", "look up online", "find current"
 
-**Decision Process (silent reasoning):**
-1. Knowledge Check: Can I answer this with training data?
-2. Recency Check: Does this need data after April 2024?
-3. Explicit Request: Did user ask me to search/use tools?
-→ If only #2 or #3 is YES, use tools. Otherwise, answer directly.
+**Quick Decision:** Can I answer from training? Yes → answer directly. Need recent data or user requested search? → Use tools.
 
-**Examples:**
-- "Explain OAuth" → Answer directly (you know this)
-- "Latest AI news" → Search (recent/current)
-- "Debug my Python code" → Answer directly (code analysis)
-- "Weather in Tokyo now" → Use tool (real-time data)
-- "How does async/await work?" → Answer directly (you know this)
-- "Search for React 19 features" → Search (explicit request)
-
-Always provide clear, helpful responses. After tool use, synthesize results into natural language.
+After tool use, synthesize results into natural language.
 `;
 
     return instructions;

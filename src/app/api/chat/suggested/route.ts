@@ -18,12 +18,7 @@ export async function POST(req: Request) {
             messages: [
                 {
                     role: "system",
-                    content: `You are a helpful assistant. Based on the conversation history, suggest 3 short follow-up prompts or questions the user might want to ask next.
-Rules:
-- Keep them very short (3-8 words each).
-- Make them diverse and helpful.
-- Format: Just the 3 suggestions separated by newlines.
-- No numbering, no bullets, no introductory text.`,
+                    content: `Suggest 3 follow-up questions (3-8 words each). Output 3 lines, one per suggestion. No numbering, bullets, or intro text.`,
                 },
                 ...messages.slice(-5).map((m: any) => ({
                     role: m.role as "system" | "user" | "assistant",

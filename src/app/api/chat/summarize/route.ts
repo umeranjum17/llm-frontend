@@ -25,12 +25,7 @@ export async function POST(req: Request) {
             messages: [
                 {
                     role: "system",
-                    content: `You are a helpful assistant. Summarize the following conversation in 1-2 short sentences.
-Rules:
-- Capture the main topic and key decision/outcome.
-- Be concise (max 30 words).
-- No labels like "Summary:" or "Topic:".
-- Just the text.`,
+                    content: `Summarize this conversation in 1-2 sentences (max 30 words). Capture the main topic and outcome. Output only the summary text, no labels.`,
                 },
                 ...messages.slice(-10).map((m: any) => ({
                     role: m.role as "system" | "user" | "assistant",

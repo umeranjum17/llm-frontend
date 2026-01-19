@@ -28,6 +28,15 @@ export const MEMORY_BUDGET = {
 } as const;
 
 /**
+ * Build priority header for multiple active contexts.
+ * Helps model understand which context takes precedence when conflicting.
+ */
+function buildPriorityHeader(activeContexts: string[]): string {
+  if (activeContexts.length <= 2) return "";
+  return `## Context Priority (follow highest when conflicting)\n${activeContexts.map((c, i) => `${i + 1}. ${c}`).join('\n')}\n`;
+}
+
+/**
  * Filter and budget memories based on relevance and token limits.
  */
 function budgetMemories(memories: MemoryItem[]): MemoryItem[] {
@@ -141,6 +150,7 @@ export async function buildContextMessages(
   }
 ): Promise<Message[]> {
   const messages: Message[] = [];
+  const activeContexts: string[] = []; // Track active contexts for priority header
 
   // Parse references from user message FIRST (needed for batch queries)
   const { cleanContent, fileReferences, chatReferences, agentReferences } = await parseReferences(userMessage);
@@ -190,7 +200,10 @@ export async function buildContextMessages(
         const memoryContext = `## User Memory
 ${budgetedMemories.map((m) => `- ${m.memory}`).join("\n")}
 
-Use these memories ONLY when directly relevant to the user's question. Do NOT volunteer this information unprompted or mention memories unless the user specifically asks about themselves.`;
+CRITICAL: Use memories ONLY when directly relevant. NEVER:
+- Volunteer personal info unprompted
+- Reference memories unless user asks about themselves
+- Say "I remember you..." or "Based on your memory..."`;
         const memoryTokens = Math.ceil(memoryContext.length / 4); // ~4 chars per token
 
         messages.push({
@@ -200,6 +213,7 @@ Use these memories ONLY when directly relevant to the user's question. Do NOT vo
           content: memoryContext,
           createdAt: Date.now(),
         });
+        activeContexts.push("User Memory");
 
         // Log with budget info
       } else if (rawMemories && rawMemories.length > 0) {
@@ -233,6 +247,7 @@ Use these memories ONLY when directly relevant to the user's question. Do NOT vo
           content: `Relevant context from previous conversations:\n\n${ragContext}`,
           createdAt: Date.now(),
         });
+        activeContexts.push("RAG Context");
       }
     } catch (error) {
       console.error("RAG retrieval failed:", error);
@@ -253,6 +268,7 @@ Use these memories ONLY when directly relevant to the user's question. Do NOT vo
           content: alias.systemPrompt,
           createdAt: Date.now(),
         });
+        activeContexts.push("Model Alias");
       }
     } catch (error) {
       console.error("Failed to load model alias:", error);
@@ -272,6 +288,7 @@ Use these memories ONLY when directly relevant to the user's question. Do NOT vo
           content: agent.systemPrompt,
           createdAt: Date.now(),
         });
+        activeContexts.push("Agent Instructions");
       }
     } catch (error) {
       console.error("Failed to load agent:", error);
@@ -280,6 +297,7 @@ Use these memories ONLY when directly relevant to the user's question. Do NOT vo
 
   // Add INVOKED AGENTS (from @mentions) - These act as temporary persona overrides or supplements
   // Uses batch-fetched agents map
+  let invokedAgentCount = 0;
   for (const agentRef of agentReferences) {
     const agent = invokedAgentsMap.get(agentRef.id);
     if (agent && agent.systemPrompt) {
@@ -290,7 +308,11 @@ Use these memories ONLY when directly relevant to the user's question. Do NOT vo
         content: `INVOKED AGENT: ${agent.name}\nINSTRUCTIONS:\n${agent.systemPrompt}`,
         createdAt: Date.now(),
       });
+      invokedAgentCount++;
     }
+  }
+  if (invokedAgentCount > 0) {
+    activeContexts.push(`Invoked Agent${invokedAgentCount > 1 ? 's' : ''}`);
   }
 
   // Add project system prompt if exists
@@ -305,6 +327,7 @@ Use these memories ONLY when directly relevant to the user's question. Do NOT vo
         content: project.systemPrompt,
         createdAt: Date.now(),
       });
+      activeContexts.push("Project Instructions");
     }
   }
 
@@ -345,6 +368,7 @@ Use these memories ONLY when directly relevant to the user's question. Do NOT vo
       content: skillContent,
       createdAt: Date.now(),
     });
+    activeContexts.push("Skill Instructions");
   }
 
   // Add file contents as context (uses batch-fetched files map)
@@ -379,6 +403,18 @@ Use these memories ONLY when directly relevant to the user's question. Do NOT vo
         createdAt: Date.now(),
       });
     }
+  }
+
+  // Prepend priority header if multiple contexts are active (helps model resolve conflicts)
+  const priorityHeader = buildPriorityHeader(activeContexts.reverse()); // Highest priority first
+  if (priorityHeader) {
+    messages.unshift({
+      id: "context-priority",
+      chatId,
+      role: "system",
+      content: priorityHeader,
+      createdAt: Date.now(),
+    });
   }
 
   return messages;

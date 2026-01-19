@@ -22,33 +22,28 @@ const ExtractRequestSchema = z.object({
 
 const EXTRACTION_PROMPT = `Analyze this conversation and extract key facts about the user that would be useful to remember for future conversations.
 
-IMPORTANT RULES:
+RULES:
 - Only extract CLEAR, FACTUAL information directly stated or strongly implied
-- Do NOT make assumptions or inferences beyond what's stated
 - Focus on stable, long-term information (not temporary situations)
-- Avoid extracting sensitive information (passwords, financial details, etc.)
+- Avoid sensitive info (passwords, financial details)
 
-What to extract:
-- User's name, profession, or role
-- Technical skills and expertise areas
-- Current projects or companies they work with
-- Communication preferences and style
-- Tools, languages, or frameworks they use
-- Goals or objectives they've mentioned
-
-Return a JSON array. If no significant facts to extract, return empty array.
+What to extract: name, profession, skills, projects, tools/languages, preferences, goals
 
 Categories:
-- fact: Personal info (name, job title, location, company)
+- fact: Personal info (name, job, location, company)
 - skill: Technical abilities, languages, frameworks
 - project: Current work, projects, products
-- preference: Style preferences, communication preferences
+- preference: Style/communication preferences
 - other: Anything else useful
 
-CONVERSATION:
-{{CONVERSATION}}
+Examples:
+- "I work at Google" → {"content": "Works at Google", "category": "fact", "confidence": 0.95}
+- "I prefer TypeScript" → {"content": "Prefers TypeScript over JavaScript", "category": "preference", "confidence": 0.85}
 
-Extract memories as a JSON array with content, category, and confidence (0.0-1.0).`;
+Return JSON array. Empty [] if no significant facts.
+
+CONVERSATION:
+{{CONVERSATION}}`;
 
 export async function POST(req: Request) {
   try {

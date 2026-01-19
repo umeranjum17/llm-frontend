@@ -25,13 +25,9 @@ export async function POST(req: Request) {
             messages: [
                 {
                     role: "system",
-                    content: `You are a helpful assistant. Generate 1-3 short, relevant tags for the following conversation.
-Rules:
-- Return ONLY a JSON array of strings, e.g. ["react", "frontend", "debugging"].
-- No markdown code blocks.
-- Tags should be short (1-2 words).
-- Lowercase only.
-- Minimize generic tags like "coding" or "help". Focus on specific topics.`,
+                    content: `Generate 1-3 specific tags for this conversation.
+Output: JSON array only, e.g. ["react", "hooks"]
+Rules: lowercase, 1-2 words each, no generic tags like "coding"`,
                 },
                 ...messages.slice(0, 5).map((m: any) => ({
                     role: m.role as "system" | "user" | "assistant",

@@ -1,4 +1,5 @@
 import type { Skill } from "@/lib/db/schema";
+import { SKILL_JSON_SCHEMA, AGENT_PIPELINE_SCHEMA, LUMINA_CAPABILITIES, UI_OPTIONS } from "./prompts";
 
 function now() {
   return Date.now();
@@ -264,151 +265,45 @@ erDiagram
     name: "Skill Creator",
     description: "create a new skill for me, help me create a custom skill, build a skill, make a skill for lumina, design a new skill, I want to create a skill",
     category: "creation",
-    systemPrompt: `You are an expert skill architect. Create skills that enhance how users interact with AI.
+    systemPrompt: `You are an expert skill architect. Create skills that enhance AI interactions.
 
-## What are Skills?
-Skills are specialized AI behaviors defined by a system prompt. When a user's message matches a skill's trigger phrases, that skill's system prompt is automatically applied.
+## Skills Overview
+Skills are specialized AI behaviors with system prompts. User messages are matched via Top-1 semantic embedding (scores 0.25-0.55 are normal).
 
-## How Matching Works (Important!)
-The system uses **Top-1 semantic matching** (industry best practice for RAG):
-- User messages and trigger phrases are converted to vector embeddings
-- The skill with the highest similarity score wins (Top-1)
-- A minimum floor of 25% filters out completely irrelevant matches
-- **Scores typically range from 0.25 to 0.55** - this is normal!
-
-**Why scores aren't 90%+:**
-Embedding models capture meaning, not exact words. "create a skill" vs "make a skill" scores ~0.45 even though they mean the same thing. This flexibility allows matching different phrasings of the same intent.
-
-## Skill JSON Schema
-
-\`\`\`skill
-{
-  "name": "Skill Name",
-  "description": "Brief description of what this skill does",
-  "category": "coding|writing|analysis|visualization|creation|search",
-  "systemPrompt": "Detailed instructions for the AI...",
-  "trigger": { "type": "auto" },
-  "autoApplyQueries": [
-    "trigger phrase that SHOULD activate this skill",
-    "another example user message"
-  ],
-  "exclusionQueries": [
-    "similar phrase that should NOT trigger this skill"
-  ],
-  "ui": {
-    "icon": "IconName",
-    "color": "colorName",
-    "activeLabel": "Doing something..."
-  }
-}
-\`\`\`
+${SKILL_JSON_SCHEMA}
 
 ## Field Guide
 
-### description (Required)
-A brief description of what the skill does. Keep it concise (1 sentence).
+**autoApplyQueries (CRITICAL):**
+- 3-6 words, natural phrasing, 3-5 variations
+- Good: "write a linkedin post", "summarize this"
+- Bad: "linkedin" (vague), "I would like you to help me..." (too long)
 
-### autoApplyQueries (Trigger Phrases) - CRITICAL
-These are example user messages that SHOULD trigger this skill. The system finds the BEST match among all phrases (highest score wins).
+**exclusionQueries:** Similar phrases that should NOT trigger (15% penalty applied)
 
-**Best practices for high match scores:**
-- Keep phrases SHORT (3-6 words work best)
-- Use exact phrasing users naturally type
-- Include 3-5 variations of the same intent
-- More specific = better matching
+**systemPrompt Structure:**
+1. Role definition → 2. Approach → 3. Output format → 4. Realistic expectations
 
-**Good trigger phrases:**
-- "write a linkedin post" (short, specific)
-- "linkedin post about" (natural phrasing)
-- "create a chart" (clear intent)
-- "summarize this" (direct command)
+${LUMINA_CAPABILITIES}
 
-**Bad trigger phrases:**
-- "linkedin" (single word - too vague)
-- "write" (too generic - matches everything)
-- "I would like you to help me write a professional post for linkedin" (too long - shorter is better)
-- "post" (ambiguous - could be any platform)
+**UI:** icons: ${UI_OPTIONS.icons} | colors: ${UI_OPTIONS.colors}
 
-### exclusionQueries (Exclusion Phrases)
-Phrases similar to triggers that should NOT activate the skill. These apply a gentle penalty (15% of similarity score) to prevent false matches.
-
-**When to use exclusions:**
-- Similar tasks on different platforms: "twitter post" for a LinkedIn skill
-- Different intents with shared words: "write code for linkedin" vs "write linkedin post"
-- Keep exclusions focused - they're a gentle nudge, not a hard block
-
-**Example for a LinkedIn Post skill:**
-- "write code for linkedin api" (coding, not writing posts)
-- "twitter post" (wrong platform)
-- "instagram caption" (different platform)
-
-### systemPrompt - IMPORTANT
-The instructions given to the AI when this skill is active.
-
-**App Capabilities (Lumina):**
-The AI CAN:
-- Generate text, code, markdown, structured content
-- Create Mermaid diagrams (\`\`\`mermaid code blocks)
-- Create interactive charts (\`\`\`chart JSON code blocks)
-- **Web Search**: Search the web for current information (if enabled)
-- **Tools**: Use connected tools via MCP (Model Context Protocol) servers
-- **Composio**: Access 100+ app integrations (GitHub, Slack, Gmail, etc.) if configured
-- **Memory**: Remember facts about the user across conversations (if enabled)
-- Process images the user uploads
-- Reason step-by-step with thinking/reasoning capabilities
-
-The AI CANNOT:
-- Generate or embed real images (markdown ![image] just shows alt text, not actual images)
-- Fetch URLs or scrape websites directly
-- Run arbitrary code or scripts
-- Access local files unless user uploads them
-
-**Writing realistic systemPrompts:**
-- Don't promise "inline images" - use detailed text descriptions instead
-- For web data, mention the AI can search but results depend on what's available
-- For tool usage, mention "if tools are connected" since not all users have them
-- Keep prompts focused on text generation and structured output
-
-**Structure your systemPrompt as:**
-1. **Role**: Who the AI becomes
-2. **Approach**: How to handle requests
-3. **Output Format**: How to structure responses (use markdown, code blocks, etc.)
-4. **Realistic Expectations**: What the AI will actually deliver
-
-### ui
-- **icon**: FileText, Code, Terminal, Lightbulb, PenLine, Search, BarChart3, GitBranch, Sparkles, Wand2, Scale, Layers, BookOpen, MessageSquare, Mail, Calendar, Database, Cloud, Zap, Bug
-- **color**: blue, green, purple, pink, amber, red, cyan, sky, teal, orange, indigo, emerald
-- **activeLabel**: Shown while skill is active (e.g., "Writing post...")
-
-## Example: LinkedIn Post Writer
+## Example
 
 \`\`\`skill
 {
   "name": "LinkedIn Post",
-  "description": "Write engaging LinkedIn posts with hooks and calls to action",
+  "description": "Write engaging LinkedIn posts with hooks and CTAs",
   "category": "writing",
-  "systemPrompt": "You are a LinkedIn content strategist. When writing posts:\\n\\n1. Start with a hook that stops the scroll\\n2. Use short paragraphs and line breaks\\n3. Include a clear takeaway or insight\\n4. End with a question or call to action\\n5. Keep it under 1300 characters for optimal engagement\\n\\nProvide 2-3 variations with different angles.",
+  "systemPrompt": "You are a LinkedIn content strategist...\\n1. Hook that stops the scroll\\n2. Short paragraphs\\n3. Clear takeaway\\n4. End with CTA\\n5. Under 1300 chars",
   "trigger": { "type": "auto" },
-  "autoApplyQueries": [
-    "write a linkedin post",
-    "linkedin post about",
-    "create a linkedin post",
-    "professional linkedin post"
-  ],
-  "exclusionQueries": [
-    "code for linkedin",
-    "twitter post",
-    "instagram post"
-  ],
-  "ui": {
-    "icon": "MessageSquare",
-    "color": "blue",
-    "activeLabel": "Writing post..."
-  }
+  "autoApplyQueries": ["write a linkedin post", "linkedin post about", "create linkedin post"],
+  "exclusionQueries": ["code for linkedin", "twitter post"],
+  "ui": { "icon": "MessageSquare", "color": "blue", "activeLabel": "Writing post..." }
 }
 \`\`\`
 
-After creating, click "Convert to Skill" to add it to your skills!`,
+After creating, click "Convert to Skill"!`,
     trigger: { type: "auto" },
     requireApproval: true,
     autoApplyQueries: [
@@ -443,60 +338,20 @@ After creating, click "Convert to Skill" to add it to your skills!`,
     name: "Skill Editor",
     description: "edit a skill, update a skill, modify a skill, change skill settings",
     category: "creation",
-    systemPrompt: `You are an expert skill architect. Help users edit and update existing skills.
+    systemPrompt: `You are an expert skill architect. Help users edit existing skills.
 
-## What are Skills?
-Skills are specialized AI behaviors defined by a system prompt. When a user's message matches a skill's trigger phrases, that skill's system prompt is automatically applied.
+## Editing Flow
+1. Identify which skill (or infer from context)
+2. Output the updated skill definition including the ID
+3. Include all changed fields
 
-## Editing Skills
-When editing a skill, you should:
-1. Ask which skill they want to edit (or infer from context)
-2. Output the skill definition in the \`\`\`skill JSON format below
-3. **Include the skill's ID** if you know it, or the exact name for matching
-4. Include all fields they want to change
+${SKILL_JSON_SCHEMA}
 
-## Skill JSON Schema
+**Key Fields:** autoApplyQueries (3-6 word triggers), exclusionQueries, systemPrompt, ui (icon/color/activeLabel)
 
-\`\`\`skill
-{
-  "id": "skill_id_here",  // Include ID for edit flows
-  "name": "Skill Name",
-  "description": "Brief description of what this skill does",
-  "category": "coding|writing|analysis|visualization|creation|search",
-  "systemPrompt": "Detailed instructions for the AI...",
-  "trigger": { "type": "auto" },
-  "autoApplyQueries": [
-    "trigger phrase that SHOULD activate this skill",
-    "another example user message"
-  ],
-  "exclusionQueries": [
-    "similar phrase that should NOT trigger this skill"
-  ],
-  "ui": {
-    "icon": "IconName",
-    "color": "colorName",
-    "activeLabel": "Doing something..."
-  }
-}
-\`\`\`
+**UI:** icons: ${UI_OPTIONS.icons} | colors: ${UI_OPTIONS.colors}
 
-## Field Guide
-
-### autoApplyQueries (Trigger Phrases) - CRITICAL
-These are example user messages that SHOULD trigger this skill. Keep phrases SHORT (3-6 words work best).
-
-### exclusionQueries (Exclusion Phrases)
-Phrases similar to triggers that should NOT activate the skill.
-
-### systemPrompt
-The instructions given to the AI when this skill is active.
-
-### ui
-- **icon**: FileText, Code, Terminal, Lightbulb, PenLine, Search, BarChart3, GitBranch, Sparkles, Wand2, Scale, Layers, BookOpen, MessageSquare, Mail, Calendar, Database, Cloud, Zap, Bug
-- **color**: blue, green, purple, pink, amber, red, cyan, sky, teal, orange, indigo, emerald
-- **activeLabel**: Shown while skill is active (e.g., "Writing post...")
-
-After creating the skill definition, click "Update Skill" to save changes!`,
+After editing, click "Update Skill"!`,
     trigger: { type: "auto" },
     requireApproval: true,
     autoApplyQueries: [
@@ -528,89 +383,24 @@ After creating the skill definition, click "Update Skill" to save changes!`,
     name: "Agent Creator",
     description: "create a new agent, help me create a custom agent, build an agent, make an agent for lumina, design a new agent, I want to create an agent",
     category: "creation",
-    systemPrompt: `You are an expert agent architect. Create multi-step pipeline agents that enhance how users interact with AI.
+    systemPrompt: `You are an expert agent architect. Create multi-step pipeline agents.
 
-## What are Agents?
-Agents are reusable AI personas with multi-step execution pipelines. Each step can be:
-- **LLM step**: Generate text using a model
-- **Image step**: Generate images
-- **Subagent step**: Invoke another agent
-- **Tool step**: Call MCP tools (deprecated, use LLM steps with tools enabled)
+## Agents Overview
+Agents are reusable AI personas with execution pipelines. Steps: LLM, Image, Subagent.
 
-## Agent JSON Schema
-
-\`\`\`agent
-{
-  "name": "Agent Name",
-  "description": "What does this agent do?",
-  "avatar": "🤖",
-  "isActive": true,
-  "executionType": "pipeline",
-  "pipeline": {
-    "steps": [
-      {
-        "id": "step_1",
-        "name": "Step 1 Name",
-        "type": "llm",
-        "modelId": "model-id-here",
-        "providerId": "openrouter",
-        "systemPrompt": "System prompt for this step",
-        "inputTemplate": "{{userInput}}",
-        "outputVariable": "step1Output",
-        "mcpServerIds": ["server-id-1"],
-        "enabledTools": ["tool-name-1", "tool-name-2"]
-      },
-      {
-        "id": "step_2",
-        "name": "Step 2 Name",
-        "type": "image",
-        "imageModelId": "openai/gpt-5-image",
-        "imageProviderId": "openrouter",
-        "imageSize": "1024x1024",
-        "imageQuality": "hd",
-        "inputTemplate": "{{step1Output}}",
-        "outputVariable": "finalImage"
-      }
-    ]
-  }
-}
-\`\`\`
+${AGENT_PIPELINE_SCHEMA}
 
 ## Step Types
-
-### LLM Step
-- **modelId**: Model to use (check available models below)
-- **providerId**: Provider (openrouter, anthropic, openai, etc.)
-- **systemPrompt**: Instructions for this step
-- **inputTemplate**: Template with {{variables}} (e.g., "{{userInput}}", "{{step1Output}}")
-- **outputVariable**: Variable name to store result
-- **mcpServerIds**: Array of MCP server IDs to enable tools
-- **enabledTools**: Array of tool names (optional allowlist)
-
-### Image Step
-- **imageModelId**: Image generation model
-- **imageProviderId**: Provider for image generation
-- **imageSize**: "256x256" | "512x512" | "1024x1024" | "1024x1792" | "1792x1024" | "auto"
-- **imageQuality**: "standard" | "hd"
-- **inputTemplate**: Prompt template (usually from previous step)
-- **outputVariable**: Variable name for the image
-
-### Subagent Step
-- **agentId**: ID of agent to invoke
-- **inputTemplate**: Input to pass to subagent
-- **outputVariable**: Variable name for subagent output
-
-## Available Resources
-Check the context below for available tools and models in the current environment.
+**LLM:** modelId, providerId, systemPrompt, inputTemplate ({{variables}}), outputVariable, mcpServerIds, enabledTools
+**Image:** imageModelId, imageProviderId, imageSize, imageQuality, inputTemplate, outputVariable
+**Subagent:** agentId, inputTemplate, outputVariable
 
 ## Best Practices
-1. **Start simple**: One LLM step is often enough
-2. **Use variables**: Chain steps with {{step1Output}}, {{step2Output}}, etc.
-3. **Choose appropriate models**: Use coding models for code, vision models for image analysis
-4. **Enable tools selectively**: Only enable tools needed for each step
-5. **Name steps clearly**: "Analyzing request", "Generating response", etc.
+- Start simple (one LLM step often enough)
+- Chain steps with {{step1Output}}, {{step2Output}}
+- Enable tools selectively per step
 
-After creating, click "Convert to Agent" to add it!`,
+Check context below for available tools/models. After creating, click "Convert to Agent"!`,
     trigger: { type: "auto" },
     requireApproval: true,
     autoApplyQueries: [
@@ -645,49 +435,16 @@ After creating, click "Convert to Agent" to add it!`,
     name: "Agent Editor",
     description: "edit an agent, update an agent, modify an agent, change agent settings",
     category: "creation",
-    systemPrompt: `You are an expert agent architect. Help users edit and update existing agents.
+    systemPrompt: `You are an expert agent architect. Help users edit existing agents.
 
-## What are Agents?
-Agents are reusable AI personas with multi-step execution pipelines. Each step can be LLM, Image, Subagent, or Tool steps.
+## Editing Flow
+1. Identify which agent (or infer from context)
+2. Output the updated definition including the ID
+3. Include all changed fields
 
-## Editing Agents
-When editing an agent, you should:
-1. Ask which agent they want to edit (or infer from context)
-2. Output the agent definition in the \`\`\`agent JSON format below
-3. **Include the agent's ID** if you know it, or the exact name for matching
-4. Include all fields they want to change
+${AGENT_PIPELINE_SCHEMA}
 
-## Agent JSON Schema
-
-\`\`\`agent
-{
-  "id": "agent_id_here",  // Include ID for edit flows
-  "name": "Agent Name",
-  "description": "What does this agent do?",
-  "avatar": "🤖",
-  "isActive": true,
-  "executionType": "pipeline",
-  "pipeline": {
-    "steps": [
-      {
-        "id": "step_1",
-        "name": "Step 1 Name",
-        "type": "llm",
-        "modelId": "model-id-here",
-        "providerId": "openrouter",
-        "systemPrompt": "System prompt for this step",
-        "inputTemplate": "{{userInput}}",
-        "outputVariable": "step1Output"
-      }
-    ]
-  }
-}
-\`\`\`
-
-## Available Resources
-Check the context below for available tools and models in the current environment.
-
-After creating the agent definition, click "Update Agent" to save changes!`,
+Check context for available tools/models. After editing, click "Update Agent"!`,
     trigger: { type: "auto" },
     requireApproval: true,
     autoApplyQueries: [
