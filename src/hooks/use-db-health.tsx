@@ -245,5 +245,27 @@ export function useDBHealth() {
     };
   }, [handleRecovery, state.retryCount, setDbInitializing]);
 
+  // Visibility-based DB management to reduce multi-tab conflicts
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        // When tab goes to background, close DB to let other tabs work
+        if (db.isOpen()) {
+          db.close();
+        }
+      } else {
+        // When tab becomes visible, reopen
+        if (!db.isOpen()) {
+          db.open().catch((error) => {
+            console.error("[DB Health] Failed to reopen database:", error);
+          });
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
   return state;
 }

@@ -99,6 +99,7 @@ export function SkillsSettings() {
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [localThreshold, setLocalThreshold] = useState<number | null>(null);
 
   const { getKeyForProvider, keys } = useApiKeysStore();
   const {
@@ -166,6 +167,13 @@ export function SkillsSettings() {
   const availableModels = useMemo(() => {
     return EMBEDDING_MODELS[selectedProvider] || [];
   }, [selectedProvider]);
+
+  // Sync local threshold with store on mount and when it changes
+  useEffect(() => {
+    if (localThreshold === null) {
+      setLocalThreshold(skillMatchThreshold ?? 0.25);
+    }
+  }, [skillMatchThreshold, localThreshold]);
 
   // Update model when provider changes
   const handleProviderChange = (providerId: string) => {
@@ -462,15 +470,16 @@ export function SkillsSettings() {
               <div className="flex items-center justify-between">
                 <Label className="text-xs">Minimum Floor</Label>
                 <span className="text-xs text-muted-foreground font-mono">
-                  {Math.round((skillMatchThreshold ?? 0.25) * 100)}%
+                  {Math.round((localThreshold ?? 0.25) * 100)}%
                 </span>
               </div>
               <Slider
                 min={10}
                 max={60}
                 step={1}
-                value={[Math.round((skillMatchThreshold ?? 0.25) * 100)]}
-                onValueChange={(values) => updateSkillMatchThreshold(values[0] / 100)}
+                value={[Math.round((localThreshold ?? 0.25) * 100)]}
+                onValueChange={(values) => setLocalThreshold(values[0] / 100)}
+                onValueCommit={(values) => updateSkillMatchThreshold(values[0] / 100)}
                 className="w-full py-2"
               />
               <p className="text-xs text-muted-foreground">

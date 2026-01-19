@@ -62,55 +62,65 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
   const [selectedChats, setSelectedChats] = useState<Set<string>>(new Set());
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const [lastMessagesMap, setLastMessagesMap] = useState<Map<string, Message | undefined>>(new Map());
+  const [searchResults, setSearchResults] = useState<Chat[] | null>(null);
 
   const scrollParentRef = useRef<HTMLDivElement>(null);
 
-  // Consolidate three queries into one to reduce IndexedDB round-trips
+  // Consolidate three queries into one transaction to reduce IndexedDB round-trips
+  // Load only what's needed: 100 recent chats + pinned chats (merged and deduped)
   // This is critical for mobile performance where IndexedDB can be slow
   // Use direct DB queries (not cached) so useLiveQuery tracks changes and triggers re-renders
   const { data: chatListData, isTimedOut, retry: handleRetry } = useLiveQueryWithTimeout(
     async () => {
-      const [chatsResult, foldersResult, tagsResult] = await Promise.all([
-        db.chats.orderBy('updatedAt').reverse().toArray(),
-        db.folders.toArray(),
-        db.tags.orderBy('name').toArray()
-      ]);
-      
-      // Sort chats: pinned first, then by explicit order if set, otherwise by recency
-      chatsResult.sort((a, b) => {
-        // Pinned chats always come first
-        if (a.pinned && !b.pinned) return -1;
-        if (!a.pinned && b.pinned) return 1;
+      const result = await db.transaction('r', [db.chats, db.folders, db.tags], async () => {
+        const [pinnedChats, recentChats, foldersResult, tagsResult] = await Promise.all([
+          db.chats.where('pinned').equals(1).toArray(),
+          db.chats.orderBy('updatedAt').reverse().limit(100).toArray(),
+          db.folders.toArray(),
+          db.tags.orderBy('name').toArray()
+        ]);
 
-        const aHasOrder = a.order !== undefined;
-        const bHasOrder = b.order !== undefined;
+        // Merge and dedupe (pinned may overlap with recent)
+        const pinnedIds = new Set(pinnedChats.map(c => c.id));
+        const allChats = [...pinnedChats, ...recentChats.filter(c => !pinnedIds.has(c.id))];
 
-        // Within the same folder, respect order
-        if (a.folderId === b.folderId) {
-          // If both have explicit order, sort by order
-          if (aHasOrder && bHasOrder) {
-            if (a.order !== b.order) return (a.order ?? 0) - (b.order ?? 0);
-            // Fallback to recency for same order
-            return b.updatedAt - a.updatedAt;
+        // Sort chats: pinned first, then by explicit order if set, otherwise by recency
+        allChats.sort((a, b) => {
+          // Pinned chats always come first
+          if (a.pinned && !b.pinned) return -1;
+          if (!a.pinned && b.pinned) return 1;
+
+          const aHasOrder = a.order !== undefined;
+          const bHasOrder = b.order !== undefined;
+
+          // Within the same folder, respect order
+          if (a.folderId === b.folderId) {
+            // If both have explicit order, sort by order
+            if (aHasOrder && bHasOrder) {
+              if (a.order !== b.order) return (a.order ?? 0) - (b.order ?? 0);
+              // Fallback to recency for same order
+              return b.updatedAt - a.updatedAt;
+            }
+            // If only one has order, that one comes first
+            if (aHasOrder && !bHasOrder) return -1;
+            if (!aHasOrder && bHasOrder) return 1;
           }
-          // If only one has order, that one comes first
-          if (aHasOrder && !bHasOrder) return -1;
-          if (!aHasOrder && bHasOrder) return 1;
-        }
 
-        // Default to newest first for items without explicit order
-        return b.updatedAt - a.updatedAt;
+          // Default to newest first for items without explicit order
+          return b.updatedAt - a.updatedAt;
+        });
+
+        // Sort folders by order
+        foldersResult.sort((a: FolderType, b: FolderType) => {
+          if (a.order !== undefined && b.order !== undefined) return a.order - b.order;
+          if (a.order !== undefined) return -1;
+          if (b.order !== undefined) return 1;
+          return a.createdAt - b.createdAt;
+        });
+
+        return { chats: allChats, folders: foldersResult, tags: tagsResult };
       });
-      
-      // Sort folders by order
-      foldersResult.sort((a: FolderType, b: FolderType) => {
-        if (a.order !== undefined && b.order !== undefined) return a.order - b.order;
-        if (a.order !== undefined) return -1;
-        if (b.order !== undefined) return 1;
-        return a.createdAt - b.createdAt;
-      });
-      
-      return { chats: chatsResult, folders: foldersResult, tags: tagsResult };
+      return result;
     },
     [],
     { timeoutMs: 5000 }
@@ -149,8 +159,41 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
     setLastMessagesMap(new Map());
   }, [chatIdsKey, searchQuery]);
 
-  // Use fuzzy search with Fuse.js
-  const { chats: filteredChats, matches: messageMatches } = useChatSearch(chats || [], searchQuery);
+  // Lazy-load search: only load all chats when user types a search query
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults(null);  // Clear results, show default list
+      return;
+    }
+
+    const timeout = setTimeout(async () => {
+      try {
+        // Only now do we load ALL chats for search
+        const allChatsForSearch = await db.chats.orderBy('updatedAt').reverse().toArray();
+        // Filter by current project if applicable
+        const projectFilteredChats = currentProjectId
+          ? allChatsForSearch.filter((chat: Chat) => chat.projectId === currentProjectId)
+          : allChatsForSearch;
+
+        // Perform fuzzy search using Fuse.js
+        const Fuse = (await import('fuse.js')).default;
+        const fuse = new Fuse(projectFilteredChats, {
+          keys: ['title', 'summary'],
+          threshold: 0.4
+        });
+        setSearchResults(fuse.search(searchQuery).map(r => r.item));
+      } catch (error) {
+        console.error("Failed to search chats:", error);
+        setSearchResults([]);
+      }
+    }, 300);  // 300ms debounce
+
+    return () => clearTimeout(timeout);
+  }, [searchQuery, currentProjectId]);
+
+  // Use search results if searching, otherwise use default limited list
+  const { matches: messageMatches } = useChatSearch(chats || [], searchQuery);
+  const filteredChats = searchResults ?? (chats || []);
 
   const handleChatClick = (chatId: string, index: number, e: React.MouseEvent) => {
     const isSplitView = useUIStore.getState().isSplitView;
