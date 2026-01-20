@@ -8,7 +8,7 @@ export async function POST(req: Request) {
             return new Response("No messages provided", { status: 400 });
         }
 
-        const configuredModel = DEFAULT_UTILITY_MODELS[providerId] || "gpt-4o-mini";
+        const configuredModel = DEFAULT_UTILITY_MODELS[providerId] || "gpt-5-nano";
 
         const { text } = await generateSimpleText({
             providerId,

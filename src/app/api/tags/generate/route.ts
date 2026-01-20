@@ -15,7 +15,7 @@ export async function POST(req: Request) {
             });
         }
 
-        const configuredModel = DEFAULT_UTILITY_MODELS[providerId] || "gpt-4o-mini";
+        const configuredModel = DEFAULT_UTILITY_MODELS[providerId] || "gpt-5-nano";
 
         const { text } = await generateSimpleText({
             providerId,

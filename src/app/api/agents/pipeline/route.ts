@@ -317,7 +317,7 @@ async function executeLLMStep(options: LLMStepOptions): Promise<LLMStepResult> {
     pipelineBaseUrl,
   } = options;
 
-  const modelId = step.modelId || "openai/gpt-4o-mini";
+  const modelId = step.modelId || "openai/gpt-5-mini";
   const providerId = step.providerId || "openrouter";
 
   // Build system prompt - combine agent-level and step-level prompts

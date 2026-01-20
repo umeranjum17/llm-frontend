@@ -36,7 +36,7 @@ const BACKGROUND_MODELS: BackgroundModel[] = [
         description: "Model used to generate chat titles automatically",
         icon: FileText,
         settingKey: "titleModelId",
-        defaultModel: "openai/gpt-4o-mini", // $0.15/$0.60 - cheapest capable
+        defaultModel: "openai/gpt-5-nano", // $0.05/$0.40 - ultra cheap, great for classification
     },
     {
         id: "tagging",
@@ -44,7 +44,7 @@ const BACKGROUND_MODELS: BackgroundModel[] = [
         description: "Model used to generate tags for chats",
         icon: Tag,
         settingKey: "taggingModelId",
-        defaultModel: "openai/gpt-4o-mini", // $0.15/$0.60 - fast & cheap
+        defaultModel: "openai/gpt-5-nano", // $0.05/$0.40 - perfect for tagging/classification
     },
     {
         id: "memory",
@@ -52,7 +52,7 @@ const BACKGROUND_MODELS: BackgroundModel[] = [
         description: "Model used to extract facts and preferences",
         icon: Brain,
         settingKey: "memoryModelId",
-        defaultModel: "anthropic/claude-3-haiku", // $0.25/$1.25 - good at extraction
+        defaultModel: "openai/gpt-5-nano", // $0.05/$0.40 - 3x cheaper, excellent at extraction
     },
     {
         id: "summary",
@@ -60,7 +60,7 @@ const BACKGROUND_MODELS: BackgroundModel[] = [
         description: "Model used to generate chat summaries",
         icon: MessageSquare,
         settingKey: "summaryModelId",
-        defaultModel: "openai/gpt-4o-mini", // $0.15/$0.60 - good at summarization
+        defaultModel: "openai/gpt-5-nano", // $0.05/$0.40 - excels at summarization
     },
 ];
 

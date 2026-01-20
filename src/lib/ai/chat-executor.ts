@@ -300,10 +300,11 @@ export async function withRetry<T>(
 
 /**
  * Default fast/cheap models per provider for utility tasks (title, summary, tags, etc.)
+ * Using GPT-5 Nano for maximum cost savings ($0.05/$0.40 vs $0.15/$0.60)
  */
 export const DEFAULT_UTILITY_MODELS: Record<string, string> = {
-  openrouter: "openai/gpt-4o-mini",
-  openai: "gpt-4o-mini",
+  openrouter: "openai/gpt-5-nano",
+  openai: "gpt-5-nano",
   anthropic: "claude-3-haiku-20240307",
   groq: "llama-3.1-8b-instant",
   google: "gemini-1.5-flash",

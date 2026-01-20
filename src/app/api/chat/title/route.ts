@@ -9,7 +9,7 @@ export async function POST(req: Request) {
         }
 
         // Use the titleModelId passed from client, or fall back to provider default
-        const configuredTitleModel = titleModelId || DEFAULT_UTILITY_MODELS[providerId] || "gpt-4o-mini";
+        const configuredTitleModel = titleModelId || DEFAULT_UTILITY_MODELS[providerId] || "gpt-5-nano";
 
 
         // Require user-provided API key for all providers
