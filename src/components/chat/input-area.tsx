@@ -918,7 +918,7 @@ export function InputArea({ chatId }: InputAreaProps) {
             onPaste={handlePaste}
             onFocus={() => setInputFocused(true)}
             onBlur={() => setInputFocused(false)}
-            placeholder={inputFocused ? "@ for agents, # for chats, / for skills" : "Message Lumina..."}
+            placeholder={inputFocused ? "@ for agents & skills, # for chats" : "Message Lumina..."}
             className="w-full resize-none bg-transparent px-2 py-2 pr-10 text-sm leading-6 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 min-h-10 max-h-[200px] disabled:opacity-60"
             rows={1}
             disabled={isLoading}
@@ -993,7 +993,7 @@ export function InputArea({ chatId }: InputAreaProps) {
       {/* Minimal footer - only show hints when relevant */}
       {(voice.isListening && voiceDraft) && (
         <div className="mt-1.5 text-xs text-muted-foreground">
-          <span>Listening: "{voiceDraft}"</span>
+          <span>Listening: &quot;{voiceDraft}&quot;</span>
         </div>
       )}
 
