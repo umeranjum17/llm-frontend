@@ -1,7 +1,7 @@
 "use client";
 
-import { OnboardingShell } from "@/components/onboarding/onboarding-shell";
+import { OnboardingShellV2 } from "@/components/onboarding/onboarding-shell-v2";
 
 export default function OnboardingPage() {
-  return <OnboardingShell />;
+  return <OnboardingShellV2 />;
 }
