@@ -142,13 +142,20 @@ export function configurePromptCaching(
   const systemPrompts = updatedMessages.filter(m => m.role === 'system');
   const systemTokens = getSystemPromptTokens(systemPrompts);
   
-  // OpenAI: Explicit prompt caching for 1024+ token prompts
+  // OpenAI: Explicit prompt caching for supported models with 1024+ token prompts
+  // Note: All gpt-4o+ models cache automatically. Only gpt-4o, gpt-4o-mini accept
+  // the explicit prompt_cache_retention parameter per Vercel AI SDK v3.0.12.
+  // Models like gpt-5-mini support caching but reject the explicit parameter.
   if (providerId === 'openai' && systemTokens >= 1024) {
-    const cacheKey = generatePromptCacheKey(systemPrompts);
-    providerOptions.openai = {
-      promptCacheKey: cacheKey,
-      promptCacheRetention: 'in_memory', // Can be 'in_memory' or '24h' for supported models
-    };
+    // Only set explicit parameter for models that support it
+    if (capabilities.supportsExplicitCacheParameter) {
+      const cacheKey = generatePromptCacheKey(systemPrompts);
+      providerOptions.openai = {
+        promptCacheKey: cacheKey,
+        promptCacheRetention: 'in_memory',
+      };
+    }
+    // Else: OpenAI handles caching automatically (no parameter needed)
   }
   
   // Anthropic: Direct provider prompt caching

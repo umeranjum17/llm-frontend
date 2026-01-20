@@ -81,6 +81,9 @@ export default function Home() {
   useEffect(() => {
     const handleVisibilityChange = async () => {
       if (document.visibilityState === "visible") {
+        // Wait briefly for DB health hook to validate/reopen connection
+        await new Promise(resolve => setTimeout(resolve, 50));
+
         const activeChatId = useUIStore.getState().activeChatId;
         if (activeChatId) {
           // Verify the chat still exists (could have been deleted in another tab)

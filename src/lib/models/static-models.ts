@@ -220,7 +220,7 @@ export const USE_CASE_RECOMMENDATIONS: Record<string, { models: string[]; descri
     description: "Complex problem-solving and multi-step reasoning",
   },
   chat: {
-    models: ["google/gemini-3-flash-preview", "openai/gpt-5", "anthropic/claude-haiku-4", "deepseek/deepseek-v3.2"],
+    models: ["google/gemini-3-flash-preview", "openai/gpt-5.2", "anthropic/claude-haiku-4", "deepseek/deepseek-v3.2"],
     description: "Fast, natural conversation",
   },
   budget: {
@@ -228,7 +228,7 @@ export const USE_CASE_RECOMMENDATIONS: Record<string, { models: string[]; descri
     description: "Maximum value for cost-sensitive applications",
   },
   creative: {
-    models: ["openai/gpt-5", "anthropic/claude-sonnet-4", "google/gemini-3-pro", "openai/gpt-5-image"],
+    models: ["openai/gpt-5.2", "anthropic/claude-sonnet-4.5", "google/gemini-3-pro", "openai/gpt-5-image"],
     description: "Creative writing, brainstorming, and ideation",
   },
   research: {

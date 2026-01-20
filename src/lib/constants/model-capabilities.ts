@@ -35,6 +35,7 @@ export interface ModelCapabilities {
   isImageGeneration: boolean;
   // Advanced features
   supportsPromptCaching: boolean; // Anthropic prompt caching
+  supportsExplicitCacheParameter: boolean; // OpenAI explicit cache parameter support
   supportsThinking: boolean; // Extended thinking (Claude, o1, o3, etc.)
   toolCallingTier: ToolCallingTier; // How well the model handles tool calling
 }
@@ -256,6 +257,7 @@ export function getModelCapabilities(modelId: string): ModelCapabilities {
       supportsStreaming: defaults.supportsStreaming ?? true,
       isImageGeneration: isImageGen,
       supportsPromptCaching: false,
+      supportsExplicitCacheParameter: false,
       supportsThinking: false,
       toolCallingTier: getToolCallingTier(modelId, supportsTools),
     };
@@ -290,6 +292,7 @@ export function getModelCapabilities(modelId: string): ModelCapabilities {
     isImageGeneration: isImageGen,
     // Use stable boolean flags from model data
     supportsPromptCaching: (model as any).supportsPromptCaching ?? false,
+    supportsExplicitCacheParameter: (model as any).supportsExplicitCacheParameter ?? false,
     supportsThinking: (model as any).supportsThinking ?? false,
     toolCallingTier: getToolCallingTier(modelId, supportsTools),
   };
@@ -353,6 +356,7 @@ export const DEFAULT_CAPABILITIES: ModelCapabilities = {
   supportsStreaming: true,
   isImageGeneration: false,
   supportsPromptCaching: false,
+  supportsExplicitCacheParameter: false,
   supportsThinking: false,
   toolCallingTier: "none",
 };

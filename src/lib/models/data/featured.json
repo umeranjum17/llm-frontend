@@ -4,6 +4,7 @@
   "_updated": "2026-01-16",
   "_capabilities_notes": {
     "supportsPromptCaching": "Anthropic: explicit cache_control. Google: implicit/explicit. OpenAI: automatic (no flag needed in API). DeepSeek: supported.",
+    "supportsExplicitCacheParameter": "OpenAI ONLY: Models that accept explicit prompt_cache_retention parameter in Vercel AI SDK v3.0.12. Only gpt-4o and gpt-4o-mini support this. Budget models like gpt-5-mini cache automatically without the parameter (SDK rejects it).",
     "supportsThinking": "Extended thinking/reasoning mode. Anthropic: thinking parameter. OpenAI o-series: built-in. Google: thinkingLevel/Budget. DeepSeek: deepseek-reasoner."
   },
   "models": [
@@ -52,6 +53,7 @@
       "supportsReasoning": true,
       "supportsVision": true,
       "supportsPromptCaching": true,
+      "supportsExplicitCacheParameter": false,
       "releaseDate": "2026-01",
       "recommendedFor": [
         "Complex reasoning",
@@ -76,6 +78,7 @@
       "supportsVision": true,
       "supportsThinking": true,
       "supportsPromptCaching": true,
+      "supportsExplicitCacheParameter": false,
       "releaseDate": "2026-01",
       "recommendedFor": [
         "Hardest problems",
@@ -99,6 +102,7 @@
       "supportsReasoning": true,
       "supportsVision": false,
       "supportsPromptCaching": true,
+      "supportsExplicitCacheParameter": false,
       "releaseDate": "2025-12",
       "recommendedFor": [
         "Coding",
@@ -123,6 +127,7 @@
       "supportsReasoning": true,
       "supportsVision": true,
       "supportsPromptCaching": true,
+      "supportsExplicitCacheParameter": false,
       "releaseDate": "2025-08",
       "recommendedFor": [
         "Creative writing",
@@ -148,6 +153,7 @@
       "supportsReasoning": true,
       "supportsVision": true,
       "supportsPromptCaching": true,
+      "supportsExplicitCacheParameter": false,
       "releaseDate": "2025-08",
       "recommendedFor": [
         "Agent pipelines",
@@ -173,6 +179,7 @@
       "supportsReasoning": true,
       "supportsVision": true,
       "supportsPromptCaching": true,
+      "supportsExplicitCacheParameter": false,
       "releaseDate": "2025-08",
       "recommendedFor": [
         "Maximum cost savings",
@@ -351,6 +358,7 @@
       "supportsVision": true,
       "supportsThinking": true,
       "supportsPromptCaching": true,
+      "supportsExplicitCacheParameter": false,
       "releaseDate": "2025-04",
       "recommendedFor": [
         "Math problems",
@@ -375,6 +383,7 @@
       "supportsVision": true,
       "supportsThinking": true,
       "supportsPromptCaching": true,
+      "supportsExplicitCacheParameter": false,
       "releaseDate": "2025-12",
       "recommendedFor": [
         "Complex reasoning",
@@ -886,6 +895,8 @@
       ],
       "tier": "flagship",
       "supportsVision": true,
+      "supportsPromptCaching": true,
+      "supportsExplicitCacheParameter": false,
       "releaseDate": "2025-10",
       "recommendedFor": [
         "Image generation",
@@ -1021,6 +1032,8 @@
       ],
       "tier": "fast",
       "supportsVision": true,
+      "supportsPromptCaching": true,
+      "supportsExplicitCacheParameter": false,
       "releaseDate": "2025-12",
       "recommendedFor": [
         "Budget image generation",
@@ -1044,6 +1057,7 @@
       "tier": "balanced",
       "supportsVision": true,
       "supportsPromptCaching": true,
+      "supportsExplicitCacheParameter": true,
       "releaseDate": "2024-05",
       "recommendedFor": [
         "General tasks",
@@ -1068,6 +1082,7 @@
       "tier": "budget",
       "supportsVision": true,
       "supportsPromptCaching": true,
+      "supportsExplicitCacheParameter": true,
       "releaseDate": "2024-07",
       "recommendedFor": [
         "Cost-efficient tool calling",

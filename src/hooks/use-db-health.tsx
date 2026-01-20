@@ -25,6 +25,7 @@ export function useDBHealth() {
     retryCount: 0,
   });
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isValidatingConnectionRef = useRef(false);
   const maxRetries = 3;
   const setDbInitializing = useLoadingStore((state) => state.setDbInitializing);
 
@@ -245,27 +246,91 @@ export function useDBHealth() {
     };
   }, [handleRecovery, state.retryCount, setDbInitializing]);
 
-  // Visibility-based DB management to reduce multi-tab conflicts
+  // Focus-based DB connection validation to handle multi-tab scenarios
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        // When tab goes to background, close DB to let other tabs work
-        if (db.isOpen()) {
-          db.close();
-        }
-      } else {
-        // When tab becomes visible, reopen
+    const handleFocusChange = async () => {
+      // Only act when window gains focus AND is visible
+      if (!document.hasFocus() || document.visibilityState !== 'visible') {
+        return;
+      }
+
+      // Prevent concurrent validation attempts
+      if (isValidatingConnectionRef.current) {
+        return;
+      }
+
+      isValidatingConnectionRef.current = true;
+
+      try {
+        // Check if database connection is healthy
         if (!db.isOpen()) {
-          db.open().catch((error) => {
-            console.error("[DB Health] Failed to reopen database:", error);
-          });
+          console.log('[DB Health] Connection closed while in background, reopening...');
+          await db.open();
+          return;
         }
+
+        // Verify connection is actually usable with a lightweight query
+        try {
+          await db.settings.count();
+          // Connection is healthy, no action needed
+        } catch (queryError) {
+          const errorName = (queryError as Error)?.name || 'UnknownError';
+
+          if (
+            errorName === 'DatabaseClosedError' ||
+            errorName === 'InvalidStateError'
+          ) {
+            // Connection is stale, reinitialize
+            console.log('[DB Health] Stale connection detected, reinitializing...');
+
+            // Close if somehow still "open" but unusable
+            if (db.isOpen()) {
+              await db.close();
+            }
+
+            // Reopen fresh connection
+            await db.open();
+
+            // Verify the new connection works
+            await db.settings.count();
+          } else {
+            // Other errors are transient, log but don't reinitialize
+            console.warn('[DB Health] Query error on focus, but continuing:', queryError);
+          }
+        }
+      } catch (error) {
+        console.error('[DB Health] Failed to validate/reinitialize connection:', error);
+
+        // Last resort: show error to user if we can't recover
+        const errorObj = error as Error;
+        handleRecovery(
+          'focus_validation_failed',
+          `Database connection failed: ${errorObj?.message || 'Unknown error'}`,
+          true // Allow retry
+        );
+      } finally {
+        isValidatingConnectionRef.current = false;
+      }
+    };
+
+    // Listen for focus events
+    window.addEventListener('focus', handleFocusChange);
+
+    // Also listen to visibility change to catch edge cases where
+    // focus might not fire (e.g., mobile browser tab switching)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && document.hasFocus()) {
+        handleFocusChange();
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, []);
+
+    return () => {
+      window.removeEventListener('focus', handleFocusChange);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [handleRecovery]);
 
   return state;
 }

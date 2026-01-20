@@ -20,8 +20,14 @@ export interface Model {
   supportsVision?: boolean;
   /** Extended thinking mode (Claude thinking, o1/o3, Gemini deep think) */
   supportsThinking?: boolean;
-  /** Prompt caching support (Anthropic, Google) */
+  /** Prompt caching support (Anthropic, Google, OpenAI automatic) */
   supportsPromptCaching?: boolean;
+  /**
+   * Supports explicit cache parameter (e.g., prompt_cache_retention for OpenAI).
+   * If false but supportsPromptCaching is true, caching works automatically.
+   * OpenAI: Only gpt-4o, gpt-4o-mini, and gpt-5.1+ variants support explicit parameter.
+   */
+  supportsExplicitCacheParameter?: boolean;
   description?: string;
   maxCompletionTokens?: number;
   /** Tier: flagship (best), balanced (recommended), fast (speed), budget (cheap) */
