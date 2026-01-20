@@ -8,7 +8,7 @@ import { Send, Loader2, Paperclip, X, FileText, Image as ImageIcon, Mic, Square,
 import { useChat } from "@/hooks/use-chat";
 import { useChatKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { TokenDisplay } from "./token-display";
-import { getChatById, getProjectFiles, getChatsByProject, getAllAgents, getAllTags, getMessages } from "@/lib/db/queries";
+import { getChatById, getProjectFiles, getChatsByProject, getAllAgents, getAllTags, getMessages, getAllSkills } from "@/lib/db/queries";
 import { countMessagesTokens, countTokens } from "@/lib/utils/token-counter";
 import { getModelById } from "@/lib/constants/models";
 import { BUILTIN_AGENTS } from "@/lib/constants/agents";
@@ -203,6 +203,7 @@ export function InputArea({ chatId }: InputAreaProps) {
   const chat = useLiveQuery(() => getChatById(chatId), [chatId]);
   const agents = useLiveQuery(() => getAllAgents(), []);
   const tags = useLiveQuery(() => getAllTags(), []);
+  const skills = useLiveQuery(() => getAllSkills(), []);
 
   // New: Fetch additional mention data
   const files = useLiveQuery(() => (chat?.projectId ? getProjectFiles(chat.projectId) : []), [chat?.projectId]);
@@ -277,6 +278,22 @@ export function InputArea({ chatId }: InputAreaProps) {
       });
     }
 
+    // Skills (@ trigger)
+    if (skills) {
+      skills.forEach(s => {
+        if (!s.isEnabled) return;
+        items.push({
+          id: s.id,
+          type: "skill",
+          label: s.name,
+          value: `@skill:${s.id}[${s.name}]`,
+          description: s.description || "Skill",
+          metadata: { skill: s },
+          trigger: "@",
+        });
+      });
+    }
+
     // Files (@ trigger)
     if (files) {
       files.forEach(f => {
@@ -323,7 +340,7 @@ export function InputArea({ chatId }: InputAreaProps) {
     }
 
     return items;
-  }, [files, otherChats, chatId, agents, tags]);
+  }, [files, otherChats, chatId, agents, tags, skills]);
 
   // Handle submit function for keyboard shortcut
   const handleSubmitMessage = () => {

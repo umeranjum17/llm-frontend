@@ -5,7 +5,7 @@ import { useMentions } from "@/lib/mentions/use-mentions";
 import { MentionItem } from "@/lib/mentions/types";
 import { cn } from "@/lib/utils";
 import { segmentTextWithMentions } from "@/lib/mentions/mention-parser";
-import { Bot, FileText, MessageSquare, Tag } from "lucide-react";
+import { Bot, FileText, MessageSquare, Tag, Zap } from "lucide-react";
 
 interface MentionTextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
     mentionItems: MentionItem[];
@@ -19,6 +19,7 @@ const MENTION_ICONS: Record<string, React.ElementType> = {
     file: FileText,
     chat: MessageSquare,
     tag: Tag,
+    skill: Zap,
 };
 
 const MENTION_COLORS: Record<string, string> = {
@@ -26,6 +27,7 @@ const MENTION_COLORS: Record<string, string> = {
     file: "bg-blue-500/20 text-blue-400 border-blue-500/30",
     chat: "bg-green-500/20 text-green-400 border-green-500/30",
     tag: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+    skill: "bg-orange-500/20 text-orange-400 border-orange-500/30",
 };
 
 export const MentionTextarea = forwardRef<HTMLTextAreaElement, MentionTextareaProps>(
@@ -96,6 +98,8 @@ export const MentionTextarea = forwardRef<HTMLTextAreaElement, MentionTextareaPr
                     insertion = `@file:${item.id}[${item.label}]`;
                 } else if (item.type === 'agent') {
                     insertion = `@agent:${item.id}[${item.label}]`;
+                } else if (item.type === 'skill') {
+                    insertion = `@skill:${item.id}[${item.label}]`;
                 } else if (item.type === 'chat') {
                     insertion = `#chat:${item.id}[${item.label}]`;
                 } else if (item.type === 'tag') {

@@ -1,7 +1,7 @@
 
 import { cn } from "@/lib/utils";
 import { MentionItem } from "@/lib/mentions/types";
-import { FileText, Bot, Hash, Terminal, MessageSquare, Tag } from "lucide-react";
+import { FileText, Bot, Hash, Terminal, MessageSquare, Tag, Zap } from "lucide-react";
 
 interface MentionListProps {
     items: MentionItem[];
@@ -24,6 +24,8 @@ const getIcon = (type: MentionItem["type"]) => {
             return <Tag className="h-4 w-4" />;
         case "prompt":
             return <Hash className="h-4 w-4" />;
+        case "skill":
+            return <Zap className="h-4 w-4" />;
         default:
             return <Hash className="h-4 w-4" />;
     }
