@@ -436,6 +436,80 @@
   }
 }
 
+/* Streaming shimmer effect for text during streaming */
+@layer components {
+  .streaming-shimmer {
+    position: relative;
+  }
+
+  .streaming-shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      hsl(var(--primary) / 0.08) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: text-shimmer 2s infinite linear;
+    pointer-events: none;
+    border-radius: inherit;
+  }
+
+  /* Ripple button effect */
+  .ripple-button {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .ripple-button::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: currentColor;
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .ripple-button:active::before {
+    animation: ripple 400ms ease-out;
+  }
+
+  /* Breathing cursor for streaming */
+  .cursor-breathing {
+    animation: cursor-breathe 800ms ease-in-out infinite;
+  }
+}
+
+/* Animation keyframes that can be used inline */
+@keyframes text-shimmer {
+  0%, 100% { background-position: -200% center; }
+  50% { background-position: 200% center; }
+}
+
+@keyframes ripple {
+  to {
+    transform: translate(-50%, -50%) scale(4);
+    opacity: 0;
+  }
+}
+
+/* Framer Motion reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  [data-framer-motion],
+  [data-framer-portal] * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
 /* Prevent layout shifts during streaming */
 .prose > *:last-child {
   margin-bottom: 0;

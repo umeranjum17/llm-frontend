@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useContext } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Copy, Check, Maximize2, ChevronRight, Eye, Code, FolderOpen } from "lucide-react";
 import { codeToHtml } from "shiki";
@@ -275,10 +276,19 @@ export function CodeBlock({ language, code, filename, isStreaming = false }: Cod
           onClick={() => setIsExpanded(!isExpanded)}
           className="flex items-center gap-1.5 hover:text-primary/80 transition-colors min-w-0"
         >
-          <span className="transition-transform duration-150 shrink-0" style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+          <motion.span
+            className="shrink-0"
+            animate={{ rotate: isExpanded ? 90 : 0 }}
+            transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
+          >
             <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-          </span>
-          <span className="truncate">
+          </motion.span>
+          <motion.span
+            className="truncate"
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.2, delay: 0.05 }}
+          >
             {filename ? (
               <>
                 <span className="text-muted-foreground">{language}</span>
@@ -288,17 +298,24 @@ export function CodeBlock({ language, code, filename, isStreaming = false }: Cod
             ) : (
               language || "text"
             )}
-          </span>
-          <span className={cn(
-            "text-muted-foreground text-xs ml-1 transition-opacity duration-150 shrink-0",
-            isExpanded ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
-          )}>
-            {isStreaming ? (
-              <span className="text-primary/70 animate-pulse">generating...</span>
-            ) : (
-              <>({lineCount} {lineCount === 1 ? 'line' : 'lines'})</>
+          </motion.span>
+          <AnimatePresence>
+            {!isExpanded && (
+              <motion.span
+                className="text-muted-foreground text-xs ml-1 shrink-0"
+                initial={{ opacity: 0, width: 0 }}
+                animate={{ opacity: 1, width: "auto" }}
+                exit={{ opacity: 0, width: 0 }}
+                transition={{ duration: 0.15 }}
+              >
+                {isStreaming ? (
+                  <span className="text-primary/70 animate-pulse">generating...</span>
+                ) : (
+                  <>({lineCount} {lineCount === 1 ? 'line' : 'lines'})</>
+                )}
+              </motion.span>
             )}
-          </span>
+          </AnimatePresence>
         </button>
         <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
           {canOpenAsProject && (
@@ -336,19 +353,43 @@ export function CodeBlock({ language, code, filename, isStreaming = false }: Cod
           >
             <Maximize2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 sm:h-8 sm:w-8"
-            onClick={handleCopy}
-            title="Copy code"
+          <motion.div
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            transition={{ type: "spring", stiffness: 400, damping: 25 }}
           >
-            {copied ? (
-              <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-500" />
-            ) : (
-              <Copy className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-            )}
-          </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 sm:h-8 sm:w-8 ripple-button"
+              onClick={handleCopy}
+              title="Copy code"
+            >
+              <AnimatePresence mode="wait">
+                {copied ? (
+                  <motion.span
+                    key="check"
+                    initial={{ scale: 0.8, rotate: -180 }}
+                    animate={{ scale: 1, rotate: 0 }}
+                    exit={{ scale: 0.8, rotate: 180 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-500" />
+                  </motion.span>
+                ) : (
+                  <motion.span
+                    key="copy"
+                    initial={{ scale: 0.8 }}
+                    animate={{ scale: 1 }}
+                    exit={{ scale: 0.8 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <Copy className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </Button>
+          </motion.div>
         </div>
       </div>
       {/* Use grid for smooth expand/collapse without max-height limits */}
@@ -367,16 +408,27 @@ export function CodeBlock({ language, code, filename, isStreaming = false }: Cod
             </div>
           ) : (
             <div className="overflow-x-auto">
-              {highlightedHtml ? (
-                <div
-                  className="[&>pre]:m-0 [&>pre]:rounded-none [&>pre]:rounded-b-lg [&>pre]:bg-transparent [&>pre]:p-3 sm:[&>pre]:p-4 [&>pre]:text-[11px] sm:[&>pre]:text-[13px] [&_code]:text-[11px] sm:[&_code]:text-[13px]"
-                  dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-                />
-              ) : (
-                <pre className="text-[#e1e4e8] p-3 sm:p-4 m-0 font-mono text-[11px] sm:text-[13px] leading-relaxed whitespace-pre-wrap break-words">
-                  <code>{code}</code>
-                </pre>
-              )}
+              <AnimatePresence mode="wait">
+                {highlightedHtml ? (
+                  <motion.div
+                    key="highlighted"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.2 }}
+                    className="[&>pre]:m-0 [&>pre]:rounded-none [&>pre]:rounded-b-lg [&>pre]:bg-transparent [&>pre]:p-3 sm:[&>pre]:p-4 [&>pre]:text-[11px] sm:[&>pre]:text-[13px] [&_code]:text-[11px] sm:[&_code]:text-[13px]"
+                    dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+                  />
+                ) : (
+                  <motion.pre
+                    key="plain"
+                    initial={{ opacity: 0.7 }}
+                    animate={{ opacity: 1 }}
+                    className="text-[#e1e4e8] p-3 sm:p-4 m-0 font-mono text-[11px] sm:text-[13px] leading-relaxed whitespace-pre-wrap break-words"
+                  >
+                    <code>{code}</code>
+                  </motion.pre>
+                )}
+              </AnimatePresence>
             </div>
           )}
         </div>

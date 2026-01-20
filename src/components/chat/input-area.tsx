@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -678,106 +679,140 @@ export function InputArea({ chatId }: InputAreaProps) {
           {/* Image and file attachments row */}
           {(imageAttachments.length > 0 || attachments.length > 0) && (
             <div className="flex flex-wrap gap-2 rounded-xl border bg-background/60 p-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/40">
-              {imageAttachments.map((img, i) => (
-                <div
-                  key={`${img.dataUrl}-${i}`}
-                  className="relative overflow-hidden rounded-md border bg-background"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={img.dataUrl}
-                    alt={img.name}
-                    className="h-16 w-16 object-cover"
-                    loading="lazy"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeImageAttachment(i)}
-                    className="absolute right-1 top-1 rounded bg-background/80 p-0.5 text-muted-foreground hover:text-foreground"
-                    title="Remove image"
+              <AnimatePresence mode="popLayout">
+                {imageAttachments.map((img, i) => (
+                  <motion.div
+                    key={`${img.dataUrl}-${i}`}
+                    layout
+                    initial={{ scale: 0.8, opacity: 0, y: -20 }}
+                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                    exit={{ scale: 0.8, opacity: 0, rotate: 15 }}
+                    transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                    className="relative overflow-hidden rounded-md border bg-background"
                   >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={img.dataUrl}
+                      alt={img.name}
+                      className="h-16 w-16 object-cover"
+                      loading="lazy"
+                    />
+                    <motion.button
+                      type="button"
+                      onClick={() => removeImageAttachment(i)}
+                      className="absolute right-1 top-1 rounded bg-background/80 p-0.5 text-muted-foreground hover:text-foreground"
+                      title="Remove image"
+                      whileHover={{ scale: 1.2 }}
+                      whileTap={{ scale: 0.9 }}
+                    >
+                      <X className="h-3 w-3" />
+                    </motion.button>
+                  </motion.div>
+                ))}
 
-              {attachments.map((file, i) => (
-                <div
-                  key={`${file.name}-${i}`}
-                  className="flex items-center gap-1 bg-background border rounded-md px-2 py-1 text-xs"
-                >
-                  <FileText className="h-3 w-3 text-muted-foreground" />
-                  <span className="max-w-[150px] truncate">{file.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => removeAttachment(i)}
-                    className="text-muted-foreground hover:text-foreground"
-                    title="Remove file"
+                {attachments.map((file, i) => (
+                  <motion.div
+                    key={`${file.name}-${i}`}
+                    layout
+                    initial={{ scale: 0.8, opacity: 0, y: -20 }}
+                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                    exit={{ scale: 0.8, opacity: 0, x: 20 }}
+                    transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                    className="flex items-center gap-1 bg-background border rounded-md px-2 py-1 text-xs"
                   >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
+                    <FileText className="h-3 w-3 text-muted-foreground" />
+                    <span className="max-w-[150px] truncate">{file.name}</span>
+                    <motion.button
+                      type="button"
+                      onClick={() => removeAttachment(i)}
+                      className="text-muted-foreground hover:text-foreground"
+                      title="Remove file"
+                      whileHover={{ scale: 1.2 }}
+                      whileTap={{ scale: 0.9 }}
+                    >
+                      <X className="h-3 w-3" />
+                    </motion.button>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </div>
           )}
 
           {/* Code snippets */}
-          {codeSnippets.map((snippet) => {
-            const isExpanded = expandedSnippets.has(snippet.id);
-            const previewLines = snippet.content.split('\n').slice(0, 4);
-            const hasMore = snippet.lineCount > 4;
+          <AnimatePresence mode="popLayout">
+            {codeSnippets.map((snippet) => {
+              const isExpanded = expandedSnippets.has(snippet.id);
+              const previewLines = snippet.content.split('\n').slice(0, 4);
+              const hasMore = snippet.lineCount > 4;
 
-            return (
-              <div
-                key={snippet.id}
-                className="rounded-xl border bg-zinc-950 shadow-sm overflow-hidden"
-              >
-                {/* Header */}
-                <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-900/80 border-b border-zinc-800">
-                  <div className="flex items-center gap-2 text-xs text-zinc-400">
-                    <Code2 className="h-3.5 w-3.5" />
-                    <span>{snippet.language || 'code'}</span>
-                    <span className="text-zinc-600">•</span>
-                    <span>{snippet.lineCount} lines</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {hasMore && (
-                      <button
+              return (
+                <motion.div
+                  key={snippet.id}
+                  layout
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.25, ease: [0, 0, 0.2, 1] }}
+                  className="rounded-xl border bg-zinc-950 shadow-sm overflow-hidden"
+                >
+                  {/* Header */}
+                  <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-900/80 border-b border-zinc-800">
+                    <div className="flex items-center gap-2 text-xs text-zinc-400">
+                      <Code2 className="h-3.5 w-3.5" />
+                      <span>{snippet.language || 'code'}</span>
+                      <span className="text-zinc-600">•</span>
+                      <span>{snippet.lineCount} lines</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {hasMore && (
+                        <motion.button
+                          type="button"
+                          onClick={() => toggleSnippetExpanded(snippet.id)}
+                          className="p-1 text-zinc-500 hover:text-zinc-300 transition-colors"
+                          title={isExpanded ? "Collapse" : "Expand"}
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
+                        >
+                          <motion.span
+                            animate={{ rotate: isExpanded ? 180 : 0 }}
+                            transition={{ duration: 0.2 }}
+                          >
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          </motion.span>
+                        </motion.button>
+                      )}
+                      <motion.button
                         type="button"
-                        onClick={() => toggleSnippetExpanded(snippet.id)}
+                        onClick={() => removeCodeSnippet(snippet.id)}
                         className="p-1 text-zinc-500 hover:text-zinc-300 transition-colors"
-                        title={isExpanded ? "Collapse" : "Expand"}
+                        title="Remove snippet"
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
                       >
-                        {isExpanded ? (
-                          <ChevronUp className="h-3.5 w-3.5" />
-                        ) : (
-                          <ChevronDown className="h-3.5 w-3.5" />
-                        )}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => removeCodeSnippet(snippet.id)}
-                      className="p-1 text-zinc-500 hover:text-zinc-300 transition-colors"
-                      title="Remove snippet"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
+                        <X className="h-3.5 w-3.5" />
+                      </motion.button>
+                    </div>
                   </div>
-                </div>
 
-                {/* Code preview */}
-                <pre className={`px-3 py-2 text-xs font-mono text-zinc-300 overflow-x-auto ${isExpanded ? 'max-h-[300px]' : 'max-h-[100px]'} overflow-y-auto`}>
-                  <code>
-                    {isExpanded ? snippet.content : previewLines.join('\n')}
-                    {!isExpanded && hasMore && (
-                      <span className="text-zinc-600">{'\n'}...</span>
-                    )}
-                  </code>
-                </pre>
-              </div>
-            );
-          })}
+                  {/* Code preview */}
+                  <motion.div
+                    animate={{ height: isExpanded ? 'auto' : '100px' }}
+                    transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
+                    className="overflow-hidden"
+                  >
+                    <pre className="px-3 py-2 text-xs font-mono text-zinc-300 overflow-x-auto overflow-y-auto" style={{ maxHeight: isExpanded ? '300px' : '100px' }}>
+                      <code>
+                        {isExpanded ? snippet.content : previewLines.join('\n')}
+                        {!isExpanded && hasMore && (
+                          <span className="text-zinc-600">{'\n'}...</span>
+                        )}
+                      </code>
+                    </pre>
+                  </motion.div>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
         </div>
       )}
 
@@ -875,28 +910,48 @@ export function InputArea({ chatId }: InputAreaProps) {
           )}
         </div>
 
-        {isLoading ? (
-          <Button
-            type="button"
-            size="icon"
-            variant="destructive"
-            onClick={cancelRequest}
-            className="h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-lg sm:rounded-xl"
-            title="Stop generating"
-          >
-            <Square className="h-4 w-4 sm:h-5 sm:w-5" />
-          </Button>
-        ) : (
-          <Button
-            type="submit"
-            size="icon"
-            disabled={!input.trim() && attachments.length === 0 && imageAttachments.length === 0 && codeSnippets.length === 0}
-            className="h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-lg sm:rounded-xl"
-            title="Send"
-          >
-            <Send className="h-4 w-4 sm:h-5 sm:w-5" />
-          </Button>
-        )}
+        <AnimatePresence mode="wait">
+          {isLoading ? (
+            <motion.div
+              key="stop"
+              initial={{ scale: 0.8, rotate: -90 }}
+              animate={{ scale: 1, rotate: 0 }}
+              exit={{ scale: 0.8, rotate: 90 }}
+              transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
+            >
+              <Button
+                type="button"
+                size="icon"
+                variant="destructive"
+                onClick={cancelRequest}
+                className="h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-lg sm:rounded-xl"
+                title="Stop generating"
+              >
+                <Square className="h-4 w-4 sm:h-5 sm:w-5" />
+              </Button>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="send"
+              initial={{ scale: 0.8, rotate: 90 }}
+              animate={{ scale: 1, rotate: 0 }}
+              exit={{ scale: 0.8, rotate: -90 }}
+              transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Button
+                type="submit"
+                size="icon"
+                disabled={!input.trim() && attachments.length === 0 && imageAttachments.length === 0 && codeSnippets.length === 0}
+                className="h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-lg sm:rounded-xl"
+                title="Send"
+              >
+                <Send className="h-4 w-4 sm:h-5 sm:w-5" />
+              </Button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <div className="mt-1.5 sm:mt-2 flex items-center justify-between text-[10px] sm:text-xs text-muted-foreground">

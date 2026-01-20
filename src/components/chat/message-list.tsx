@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useMemo, useCallback, memo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 import { useLiveQueryWithTimeout } from "@/hooks/use-live-query-with-timeout";
 import { getChatWithMessages, updateChat } from "@/lib/db/queries";
@@ -150,34 +151,55 @@ const MessageRow = memo(function MessageRow({
 function PipelineProgressIndicator({ execution }: { execution: NonNullable<ReturnType<typeof useStreamingStore.getState>['pipelineExecution']> }) {
   const currentStep = execution.steps[execution.currentStepIndex];
   const completedSteps = execution.steps.filter(s => s.status === "complete").length;
+  const progress = ((completedSteps + 0.5) / execution.totalSteps) * 100;
 
   return (
-    <div className="py-4 animate-in fade-in duration-200">
+    <motion.div
+      className="py-4"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: [0, 0, 0.2, 1] }}
+    >
       <div className="flex items-start gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
+        <motion.div
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground"
+          animate={{ scale: [1, 1.05, 1] }}
+          transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+        >
           <Loader2 className="h-4 w-4 animate-spin" />
-        </div>
+        </motion.div>
         <div className="flex-1 space-y-2">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium">
+            <motion.span
+              key={currentStep?.name}
+              className="text-sm font-medium"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.2 }}
+            >
               {currentStep?.name || "Processing..."}
-            </span>
+            </motion.span>
             <span className="text-xs text-muted-foreground">
               ({completedSteps + 1}/{execution.totalSteps})
             </span>
           </div>
           {/* Progress bar */}
           <div className="h-1.5 w-full max-w-xs bg-secondary rounded-full overflow-hidden">
-            <div
-              className="h-full bg-primary transition-all duration-300 ease-out"
-              style={{ width: `${((completedSteps + 0.5) / execution.totalSteps) * 100}%` }}
+            <motion.div
+              className="h-full bg-primary"
+              initial={{ width: 0 }}
+              animate={{ width: `${progress}%` }}
+              transition={{ duration: 0.3, ease: [0, 0, 0.2, 1] }}
             />
           </div>
           {/* Step list */}
           <div className="flex flex-wrap gap-1.5 mt-2">
             {execution.steps.map((step, idx) => (
-              <div
+              <motion.div
                 key={step.id}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: idx * 0.05, duration: 0.2 }}
                 className={cn(
                   "text-xs px-2 py-0.5 rounded-full transition-colors",
                   step.status === "complete" && "bg-green-500/20 text-green-600 dark:text-green-400",
@@ -188,12 +210,12 @@ function PipelineProgressIndicator({ execution }: { execution: NonNullable<Retur
               >
                 {step.status === "running" && <Loader2 className="h-2.5 w-2.5 animate-spin inline mr-1" />}
                 {step.name}
-              </div>
+              </motion.div>
             ))}
           </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -441,18 +463,40 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
       />
 
       {/* New Messages Indicator */}
-      {showNewMessagesButton && !isAtBottom && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
-          <Button
-            onClick={scrollToBottom}
-            size="sm"
-            className="shadow-lg gap-2"
+      <AnimatePresence>
+        {showNewMessagesButton && !isAtBottom && (
+          <motion.div
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10"
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{
+              opacity: 1,
+              y: 0,
+              scale: 1,
+            }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
           >
-            <ArrowDown className="h-4 w-4" />
-            New messages
-          </Button>
-        </div>
-      )}
+            <motion.div
+              animate={{ scale: [1, 1.02, 1] }}
+              transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+            >
+              <Button
+                onClick={scrollToBottom}
+                size="sm"
+                className="shadow-lg gap-2"
+              >
+                <motion.span
+                  animate={{ y: [0, 2, 0] }}
+                  transition={{ repeat: Infinity, duration: 1, ease: "easeInOut" }}
+                >
+                  <ArrowDown className="h-4 w-4" />
+                </motion.span>
+                New messages
+              </Button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

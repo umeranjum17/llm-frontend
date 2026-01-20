@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useLiveQueryWithTimeout } from "@/hooks/use-live-query-with-timeout";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { MessageSquare, Pin, Star, Trash2, Folder, ChevronDown, ChevronRight, FolderPlus, MoreVertical, Edit2, RefreshCw } from "lucide-react";
@@ -7,6 +8,7 @@ import { getAllChatsCached, deleteChat, updateChat, getAllFolders, createFolder,
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { useUIStore } from "@/stores/ui-store";
 import { useChatSearch } from "@/hooks/use-search";
+import { useLongPress } from "@/hooks/use-long-press";
 import { Button } from "@/components/ui/button";
 import type { Chat, Folder as FolderType, Message } from "@/lib/db/schema";
 import { formatDistanceToNow } from "date-fns";
@@ -679,17 +681,26 @@ interface FolderItemProps {
 
 function FolderItem({ folder, isExpanded, onToggle, chatCount = 0, onEdit, onDelete }: FolderItemProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <div
+    <motion.div
       className={cn(
         "flex max-w-full min-w-0 items-center gap-2 overflow-hidden px-3 py-1.5 mx-2 my-0.5 cursor-pointer hover:bg-accent/50 group rounded-lg transition-colors select-none",
       )}
       onClick={onToggle}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      whileHover={{ scale: 1.01 }}
+      whileTap={{ scale: 0.99 }}
+      transition={{ type: "spring", stiffness: 400, damping: 30 }}
     >
-      {isExpanded ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+      <motion.span
+        animate={{ rotate: isExpanded ? 90 : 0 }}
+        transition={{ duration: 0.2 }}
+      >
+        <ChevronRight className="h-3 w-3 text-muted-foreground" />
+      </motion.span>
       <Folder className="h-3.5 w-3.5" style={folder.color ? { color: folder.color } : undefined} />
       <span className="text-xs font-medium truncate flex-1 min-w-0">{folder.name}</span>
       {chatCount > 0 && (
@@ -697,26 +708,35 @@ function FolderItem({ folder, isExpanded, onToggle, chatCount = 0, onEdit, onDel
           {chatCount}
         </span>
       )}
-      {isHovered && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-            <Button variant="ghost" size="icon" className="h-5 w-5">
-              <MoreVertical className="h-3 w-3" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(); }}>
-              <Edit2 className="h-3.5 w-3.5 mr-2" />
-              Rename
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDelete(); }} className="text-destructive">
-              <Trash2 className="h-3.5 w-3.5 mr-2" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </div>
+      <AnimatePresence>
+        {(isHovered || menuOpen) && (
+          <motion.div
+            initial={{ opacity: 0, x: 5 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 5 }}
+            transition={{ duration: 0.15 }}
+          >
+            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                <Button variant="ghost" size="icon" className="h-5 w-5">
+                  <MoreVertical className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(); setMenuOpen(false); }}>
+                  <Edit2 className="h-3.5 w-3.5 mr-2" />
+                  Rename
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDelete(); setMenuOpen(false); }} className="text-destructive">
+                  <Trash2 className="h-3.5 w-3.5 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 }
 
@@ -752,6 +772,7 @@ function ChatItem({
   onMoveToFolder,
 }: SortableChatItemProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // Use search match snippet if available, otherwise last message
   const rawPreview = searchMatches && searchMatches.length > 0
@@ -763,9 +784,22 @@ function ChatItem({
   const previewText =
     rawPreview.length > 120 ? `${rawPreview.slice(0, 120).trimEnd()}…` : rawPreview;
 
+  // Long press support for mobile
+  const longPressHandlers = useLongPress({
+    onLongPress: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setMenuOpen(true);
+    },
+    onClick: (e) => {
+      // Convert TouchEvent to MouseEvent-like for onClick
+      onClick(e as React.MouseEvent);
+    },
+  });
+
   return (
     <TooltipProvider>
-      <div
+      <motion.div
         className={cn(
           "group relative cursor-pointer px-2.5 py-2 mx-2 my-0.5 rounded-lg transition-colors hover:bg-accent/60 select-none max-w-full min-w-0 overflow-hidden",
           isActive && "bg-accent",
@@ -773,17 +807,42 @@ function ChatItem({
           isSelected && "bg-accent/60 ring-1 ring-primary/40",
           isNested && "ml-6",
         )}
-        onClick={onClick}
+        {...longPressHandlers}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
+        whileHover={{ scale: 1.01 }}
+        whileTap={{ scale: 0.99 }}
+        transition={{ type: "spring", stiffness: 400, damping: 30 }}
       >
         <div className="flex items-center gap-1 min-w-0 w-full max-w-full overflow-hidden">
           <Tooltip delayDuration={500}>
             <TooltipTrigger asChild>
               <div className="flex-1 min-w-0 w-0 overflow-hidden">
                 <div className="flex items-center gap-1 min-w-0">
-                  {chat.pinned && <Pin className="h-2.5 w-2.5 text-muted-foreground shrink-0" />}
-                  {chat.favorite && <Star className="h-2.5 w-2.5 text-yellow-500/70 shrink-0" />}
+                  <AnimatePresence>
+                    {chat.pinned && (
+                      <motion.span
+                        initial={{ scale: 0, rotate: -180 }}
+                        animate={{ scale: 1, rotate: 0 }}
+                        exit={{ scale: 0, rotate: 180 }}
+                        transition={{ type: "spring", stiffness: 400, damping: 20 }}
+                      >
+                        <Pin className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                  <AnimatePresence>
+                    {chat.favorite && (
+                      <motion.span
+                        initial={{ scale: 0, rotate: -180 }}
+                        animate={{ scale: 1, rotate: 0 }}
+                        exit={{ scale: 0, rotate: 180 }}
+                        transition={{ type: "spring", stiffness: 400, damping: 20 }}
+                      >
+                        <Star className="h-2.5 w-2.5 text-yellow-500/70 shrink-0" />
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
                   <h3 className="text-xs font-medium truncate flex-1 min-w-0" title={chat.title}>
                     {chat.title}
                   </h3>
@@ -800,66 +859,59 @@ function ChatItem({
             )}
           </Tooltip>
 
-          {/* Actions (shown on hover) */}
-          <div
-            className={cn(
-              "flex items-center gap-0.5 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100",
-              (isHovered || isActive) && "opacity-100"
-            )}
-          >
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5"
-                  onClick={onTogglePin}
-                >
-                  <Pin className={cn("h-2.5 w-2.5", chat.pinned && "fill-current")} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top">
-                {chat.pinned ? "Unpin" : "Pin"}
-              </TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5"
-                  onClick={onToggleFavorite}
-                >
-                  <Star className={cn("h-2.5 w-2.5", chat.favorite && "fill-current text-yellow-500")} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top">
-                {chat.favorite ? "Unfavorite" : "Favorite"}
-              </TooltipContent>
-            </Tooltip>
-
-            <DropdownMenu>
-              <Tooltip>
-                <TooltipTrigger asChild>
+          {/* Three-dot menu (shown on hover or when menu is open) */}
+          <AnimatePresence>
+            {(isHovered || isActive || menuOpen) && (
+              <motion.div
+                className="flex items-center shrink-0"
+                initial={{ opacity: 0, x: 5 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 5 }}
+                transition={{ duration: 0.15 }}
+              >
+                <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
                   <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-5 w-5"
+                      className="h-6 w-6 hover:bg-accent"
                     >
-                      <Folder className="h-2.5 w-2.5" />
+                      <MoreVertical className="h-3.5 w-3.5" />
                     </Button>
                   </DropdownMenuTrigger>
-                </TooltipTrigger>
-                <TooltipContent side="top">Move to Folder</TooltipContent>
-              </Tooltip>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Move to Folder</DropdownMenuLabel>
-                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onMoveToFolder(null); }}>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onTogglePin(e);
+                    setMenuOpen(false);
+                  }}
+                >
+                  <Pin className={cn("h-3.5 w-3.5 mr-2", chat.pinned && "fill-current")} />
+                  {chat.pinned ? "Unpin" : "Pin"}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleFavorite(e);
+                    setMenuOpen(false);
+                  }}
+                >
+                  <Star className={cn("h-3.5 w-3.5 mr-2", chat.favorite && "fill-current text-yellow-500")} />
+                  {chat.favorite ? "Unfavorite" : "Favorite"}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs">Move to Folder</DropdownMenuLabel>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMoveToFolder(null);
+                    setMenuOpen(false);
+                  }}
+                >
+                  <Folder className="h-3.5 w-3.5 mr-2" />
                   No Folder
                 </DropdownMenuItem>
-                {folders.length > 0 && <DropdownMenuSeparator />}
                 {folders.map((folder) => (
                   <DropdownMenuItem
                     key={folder.id}
@@ -867,31 +919,32 @@ function ChatItem({
                       e.stopPropagation();
                       onMoveToFolder(folder.id);
                       toast.success(`Moved to ${folder.name}`);
+                      setMenuOpen(false);
                     }}
                   >
                     <Folder className="h-3.5 w-3.5 mr-2" style={folder.color ? { color: folder.color } : undefined} />
                     <span className="truncate flex-1">{folder.name}</span>
                   </DropdownMenuItem>
                 ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(e);
+                    setMenuOpen(false);
+                  }}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-2" />
+                  Delete
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5"
-                  onClick={onDelete}
-                >
-                  <Trash2 className="h-2.5 w-2.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top">Delete</TooltipContent>
-            </Tooltip>
-          </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-      </div>
+      </motion.div>
     </TooltipProvider>
   );
 }

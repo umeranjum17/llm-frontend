@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, memo, useMemo } from "react";
+import { useState, memo, useMemo, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download, ThumbsUp, ThumbsDown, Volume2, VolumeX, ChevronDown, ChevronRight, Wrench, Loader2, Brain, RefreshCw } from "lucide-react";
+import { usePrefersReducedMotion } from "@/hooks/use-motion-config";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
@@ -274,22 +276,39 @@ function ToolCallsSection({
         onClick={() => setIsExpanded(!isExpanded)}
         className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
       >
-        {isExpanded ? (
-          <ChevronDown className="h-4 w-4 shrink-0" />
-        ) : (
-          <ChevronRight className="h-4 w-4 shrink-0" />
-        )}
+        <motion.span
+          animate={{ rotate: isExpanded ? 90 : 0 }}
+          transition={{ duration: 0.2 }}
+          className="shrink-0"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </motion.span>
         <Wrench className="h-3.5 w-3.5 shrink-0" />
         <span className="font-medium truncate">
           {summaryText}
         </span>
         <span className="text-xs opacity-70 flex items-center gap-2 shrink-0">
-          {runningCount > 0 && <span className="text-yellow-600 flex items-center gap-0.5"><Loader2 className="h-3 w-3 animate-spin" /> {runningCount} running</span>}
+          {runningCount > 0 && (
+            <motion.span
+              className="text-yellow-600 flex items-center gap-0.5"
+              animate={{ scale: [1, 1.05, 1] }}
+              transition={{ repeat: Infinity, duration: 1.5 }}
+            >
+              <Loader2 className="h-3 w-3 animate-spin" /> {runningCount} running
+            </motion.span>
+          )}
         </span>
       </button>
 
       {/* Expanded content */}
+      <AnimatePresence initial={false}>
       {isExpanded && (
+        <motion.div
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: "auto", opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
+        >
         <div className="px-3 pb-3 space-y-2 border-t border-border/50">
           {toolEvents.map((toolEvent) => {
             const displayName = getToolDisplayName(toolEvent.name);
@@ -319,9 +338,38 @@ function ToolCallsSection({
               >
                 <div className="flex items-center justify-between px-3 py-2 bg-muted/30">
                   <div className="flex items-center gap-2 text-sm font-medium flex-wrap">
-                    {status === "running" && <Loader2 className="h-3.5 w-3.5 animate-spin text-yellow-500" />}
-                    {status === "done" && <Check className="h-3.5 w-3.5 text-green-500" />}
-                    {status === "error" && <XIcon className="h-3.5 w-3.5 text-red-500" />}
+                    <AnimatePresence mode="wait">
+                      {status === "running" && (
+                        <motion.span
+                          key="running"
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          exit={{ scale: 0 }}
+                        >
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-yellow-500" />
+                        </motion.span>
+                      )}
+                      {status === "done" && (
+                        <motion.span
+                          key="done"
+                          initial={{ scale: 0 }}
+                          animate={{ scale: [0, 1.2, 1] }}
+                          transition={{ duration: 0.3 }}
+                        >
+                          <Check className="h-3.5 w-3.5 text-green-500" />
+                        </motion.span>
+                      )}
+                      {status === "error" && (
+                        <motion.span
+                          key="error"
+                          initial={{ x: 0 }}
+                          animate={{ x: [-4, 4, -4, 4, 0] }}
+                          transition={{ duration: 0.3 }}
+                        >
+                          <XIcon className="h-3.5 w-3.5 text-red-500" />
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
 
                     {/* Show nested tools directly if available, otherwise show generic name */}
                     {nestedTools.length > 0 ? nestedTools.join(", ") : displayName}
@@ -355,7 +403,9 @@ function ToolCallsSection({
             );
           })}
         </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -369,6 +419,7 @@ function ThinkingSection({
   isStreaming?: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const prefersReducedMotion = usePrefersReducedMotion();
 
   if (!reasoning) return null;
 
@@ -380,12 +431,20 @@ function ThinkingSection({
         onClick={() => setIsExpanded(!isExpanded)}
         className="w-full flex items-center gap-2 px-3 py-2 text-sm text-purple-600 dark:text-purple-400 hover:bg-purple-500/10 transition-colors"
       >
-        {isExpanded ? (
-          <ChevronDown className="h-4 w-4" />
-        ) : (
+        <motion.span
+          animate={{ rotate: isExpanded ? 90 : 0 }}
+          transition={{ duration: prefersReducedMotion ? 0 : 0.2 }}
+        >
           <ChevronRight className="h-4 w-4" />
-        )}
-        <Brain className="h-3.5 w-3.5" />
+        </motion.span>
+        <motion.span
+          animate={isStreaming && !prefersReducedMotion ? {
+            rotate: [0, 5, -5, 0],
+          } : {}}
+          transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+        >
+          <Brain className="h-3.5 w-3.5" />
+        </motion.span>
         <span className="font-medium">Thinking</span>
         {isStreaming && (
           <span className="flex items-center gap-1 text-xs opacity-70">
@@ -396,16 +455,25 @@ function ThinkingSection({
       </button>
 
       {/* Expanded content */}
+      <AnimatePresence initial={false}>
       {isExpanded && (
+        <motion.div
+          initial={prefersReducedMotion ? false : { height: 0, opacity: 0 }}
+          animate={{ height: "auto", opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
+        >
         <div className="px-3 pb-3 border-t border-purple-500/20">
           <div className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap font-mono text-xs leading-relaxed max-h-96 overflow-y-auto">
             {reasoning}
             {isStreaming && (
-              <span className="inline-block w-1.5 h-3 ml-0.5 bg-purple-500/70 animate-pulse" />
+              <span className="inline-block w-1.5 h-3 ml-0.5 bg-purple-500/70 cursor-breathing" />
             )}
           </div>
         </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1071,12 +1139,18 @@ export const MessageItem = memo(function MessageItem({
                 null
               ) : (
                 /* Message content */
-                <div className="prose prose-sm dark:prose-invert max-w-none break-words" style={{ overflowWrap: 'anywhere' }}>
+                <div
+                  className={cn(
+                    "prose prose-sm dark:prose-invert max-w-none break-words",
+                    isAssistant && isStreaming && "streaming-shimmer"
+                  )}
+                  style={{ overflowWrap: 'anywhere' }}
+                >
                   {isAssistant ? (
                     <>
                       <MarkdownRenderer content={textContent} isStreaming={isStreaming} />
                       {isStreaming && (
-                        <span className="inline-block w-2 h-4 ml-0.5 bg-primary/70 animate-pulse" />
+                        <span className="inline-block w-2 h-4 ml-0.5 bg-primary/70 cursor-breathing" />
                       )}
                     </>
                   ) : (
@@ -1314,98 +1388,170 @@ export const MessageItem = memo(function MessageItem({
 
           {/* Desktop Actions - Outside bubble */}
           {!isEditing && (
-            <div className="hidden sm:flex shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex-col gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={handleCopy}
-                title="Copy message"
+            <motion.div
+              className="hidden sm:flex shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex-col gap-1"
+              initial={{ opacity: 0, x: 10 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              transition={{ staggerChildren: 0.03, delayChildren: 0.05 }}
+            >
+              <motion.div
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                transition={{ type: "spring", stiffness: 400, damping: 25 }}
               >
-                {copied ? (
-                  <Check className="h-4 w-4 text-green-500" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
-              </Button>
-              {isAssistant && (
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={cn("h-8 w-8 text-muted-foreground", isPlaying && "text-primary")}
-                  onClick={() => isPlaying ? stop() : speak(textContent)}
-                  title={isPlaying ? "Stop" : "Read aloud"}
+                  className="h-8 w-8 ripple-button"
+                  onClick={handleCopy}
+                  title="Copy message"
                 >
-                  {isPlaying ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                  <AnimatePresence mode="wait">
+                    {copied ? (
+                      <motion.span
+                        key="check"
+                        initial={{ scale: 0.8, rotate: -180 }}
+                        animate={{ scale: 1, rotate: 0 }}
+                        exit={{ scale: 0.8, rotate: 180 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <Check className="h-4 w-4 text-green-500" />
+                      </motion.span>
+                    ) : (
+                      <motion.span
+                        key="copy"
+                        initial={{ scale: 0.8 }}
+                        animate={{ scale: 1 }}
+                        exit={{ scale: 0.8 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
                 </Button>
+              </motion.div>
+              {isAssistant && (
+                <motion.div
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                  animate={isPlaying ? { scale: [1, 1.1, 1] } : {}}
+                >
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={cn("h-8 w-8 text-muted-foreground", isPlaying && "text-primary")}
+                    onClick={() => isPlaying ? stop() : speak(textContent)}
+                    title={isPlaying ? "Stop" : "Read aloud"}
+                  >
+                    {isPlaying ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                  </Button>
+                </motion.div>
               )}
               {canFork && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => onFork?.(message.id)}
-                  title="Fork from here"
+                <motion.div
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
                 >
-                  <GitBranch className="h-4 w-4" />
-                </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => onFork?.(message.id)}
+                    title="Fork from here"
+                  >
+                    <GitBranch className="h-4 w-4" />
+                  </Button>
+                </motion.div>
               )}
               {canRegenerate && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => onRegenerate?.(message.id)}
-                  title="Regenerate (new branch)"
+                <motion.div
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
                 >
-                  <RotateCcw className="h-4 w-4" />
-                </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => onRegenerate?.(message.id)}
+                    title="Regenerate (new branch)"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                  </Button>
+                </motion.div>
               )}
               {canResend && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => onResend?.(message.id)}
-                  title="Resend message"
+                <motion.div
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
                 >
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => onResend?.(message.id)}
+                    title="Resend message"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                </motion.div>
               )}
               {canEdit && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => setIsEditing(true)}
-                  title="Edit message"
+                <motion.div
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
                 >
-                  <Pencil className="h-4 w-4" />
-                </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setIsEditing(true)}
+                    title="Edit message"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                </motion.div>
               )}
               {isAssistant && (
                 <>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => handleRate("up")}
-                    title="Good response"
+                  <motion.div
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ rotate: 360, transition: { duration: 0.3 } }}
+                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
                   >
-                    <ThumbsUp className={cn("h-4 w-4", message.rating === "up" && "fill-current text-green-500")} />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => handleRate("down")}
-                    title="Bad response"
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => handleRate("up")}
+                      title="Good response"
+                    >
+                      <ThumbsUp className={cn("h-4 w-4", message.rating === "up" && "fill-current text-green-500")} />
+                    </Button>
+                  </motion.div>
+                  <motion.div
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ rotate: -360, transition: { duration: 0.3 } }}
+                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
                   >
-                    <ThumbsDown className={cn("h-4 w-4", message.rating === "down" && "fill-current text-red-500")} />
-                  </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => handleRate("down")}
+                      title="Bad response"
+                    >
+                      <ThumbsDown className={cn("h-4 w-4", message.rating === "down" && "fill-current text-red-500")} />
+                    </Button>
+                  </motion.div>
                 </>
               )}
-            </div>
+            </motion.div>
           )}
         </div>
       </div>
