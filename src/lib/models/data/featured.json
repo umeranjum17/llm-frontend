@@ -157,6 +157,32 @@
       ]
     },
     {
+      "id": "openai/gpt-5-nano",
+      "name": "GPT-5 Nano",
+      "provider": "OpenAI",
+      "description": "Ultra-cheap GPT-5 variant. 10x cheaper than Mini. Excels at summarization, classification, and math. 400K context.",
+      "contextLength": 400000,
+      "inputCost": 0.05,
+      "outputCost": 0.4,
+      "category": [
+        "cheap",
+        "fast",
+        "coding"
+      ],
+      "tier": "budget",
+      "supportsReasoning": true,
+      "supportsVision": true,
+      "supportsPromptCaching": true,
+      "releaseDate": "2025-08",
+      "recommendedFor": [
+        "Maximum cost savings",
+        "Summarization",
+        "Classification",
+        "Math problems",
+        "High volume"
+      ]
+    },
+    {
       "id": "anthropic/claude-opus-4.5",
       "name": "Claude Opus 4.5",
       "provider": "Anthropic",
