@@ -100,6 +100,13 @@ export function isCacheInitialized(): boolean {
 }
 
 /**
+ * Result type for embedding generation
+ */
+export type GenerateEmbeddingResult =
+  | { success: true; embedding: number[] }
+  | { success: false; error: string; skillName: string };
+
+/**
  * Generate and store embedding for a skill
  */
 export async function generateSkillEmbedding(
@@ -107,7 +114,7 @@ export async function generateSkillEmbedding(
   apiKey: string,
   providerId: string = "openrouter",
   modelId?: string
-): Promise<number[] | null> {
+): Promise<GenerateEmbeddingResult> {
   try {
     const response = await fetch("/api/embeddings", {
       method: "POST",
@@ -123,8 +130,23 @@ export async function generateSkillEmbedding(
     });
 
     if (!response.ok) {
-      console.error("[Skill Embeddings] API error:", await response.text());
-      return null;
+      const errorText = await response.text();
+      let errorMessage = errorText;
+
+      // Try to parse JSON error
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error || errorText;
+      } catch {
+        // Use raw text if not JSON
+      }
+
+      console.error("[Skill Embeddings] API error:", errorMessage);
+      return {
+        success: false,
+        error: errorMessage,
+        skillName: skill.name
+      };
     }
 
     const data = await response.json();
@@ -132,7 +154,11 @@ export async function generateSkillEmbedding(
 
     if (!embedding) {
       console.error("[Skill Embeddings] No embedding returned");
-      return null;
+      return {
+        success: false,
+        error: "No embedding returned from API",
+        skillName: skill.name
+      };
     }
 
     // Store in database
@@ -149,10 +175,15 @@ export async function generateSkillEmbedding(
     // Update cache
     embeddingsCache.set(skill.id, { embedding, skill });
 
-    return embedding;
+    return { success: true, embedding };
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     console.error(`[Skill Embeddings] Failed to generate embedding for ${skill.name}:`, error);
-    return null;
+    return {
+      success: false,
+      error: errorMessage,
+      skillName: skill.name
+    };
   }
 }
 
@@ -192,7 +223,13 @@ export async function regenerateAllEmbeddings(
   apiKey: string,
   providerId: string = "openrouter",
   modelId?: string
-): Promise<{ generated: number; failed: number; skipped: number; reasons: Record<string, number> }> {
+): Promise<{
+  generated: number;
+  failed: number;
+  skipped: number;
+  reasons: Record<string, number>;
+  errors: Array<{ skillName: string; error: string }>;
+}> {
   const skills = await db.skills.filter((s) => s.isEnabled).toArray();
   let generated = 0;
   let failed = 0;
@@ -202,16 +239,18 @@ export async function regenerateAllEmbeddings(
     description_changed: 0,
     model_changed: 0,
   };
+  const errors: Array<{ skillName: string; error: string }> = [];
 
   for (const skill of skills) {
     const { needsRegen, reason } = await needsEmbeddingRegeneration(skill, modelId);
     if (needsRegen) {
       reasons[reason] = (reasons[reason] || 0) + 1;
-      const embedding = await generateSkillEmbedding(skill, apiKey, providerId, modelId);
-      if (embedding) {
+      const result = await generateSkillEmbedding(skill, apiKey, providerId, modelId);
+      if (result.success) {
         generated++;
       } else {
         failed++;
+        errors.push({ skillName: result.skillName, error: result.error });
       }
     } else {
       skipped++;
@@ -255,7 +294,7 @@ export async function regenerateAllEmbeddings(
   // Reload cache after regeneration
   await loadEmbeddingsCache();
 
-  return { generated, failed, skipped, reasons };
+  return { generated, failed, skipped, reasons, errors };
 }
 
 /**

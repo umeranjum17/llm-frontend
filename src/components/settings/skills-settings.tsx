@@ -66,6 +66,7 @@ const EMBEDDING_MODELS: Record<
   openai: [
     { id: "text-embedding-3-small", name: "text-embedding-3-small", dimensions: 1536 },
     { id: "text-embedding-3-large", name: "text-embedding-3-large", dimensions: 3072 },
+    { id: "text-embedding-ada-002", name: "text-embedding-ada-002 (legacy)", dimensions: 1536 },
   ],
   openrouter: [
     { id: "openai/text-embedding-3-small", name: "text-embedding-3-small", dimensions: 1536 },
@@ -241,9 +242,44 @@ export function SkillsSettings() {
       if (result.generated === 0 && result.skipped > 0) {
         toast.success(`All ${result.skipped} skills already up to date`);
       } else if (result.failed > 0) {
-        toast.warning(
-          `Generated ${result.generated}, skipped ${result.skipped}, failed ${result.failed}`
+        // Check if errors are due to model access issues
+        const hasAccessError = result.errors.some(e =>
+          e.error.toLowerCase().includes("does not have access to model") ||
+          e.error.toLowerCase().includes("access denied") ||
+          e.error.toLowerCase().includes("insufficient_quota")
         );
+
+        if (hasAccessError) {
+          // Provide helpful suggestions for access errors
+          const errorMsg = result.errors[0].error;
+          const missingModel = errorMsg.match(/model ['`]([^'`]+)['`]/)?.[1] || selectedModel;
+
+          toast.error(
+            `API key does not have access to model: ${missingModel}\n\n` +
+            `Solutions:\n` +
+            `1. Select "text-embedding-ada-002 (legacy)" model instead\n` +
+            `2. Generate a new OpenAI API key with proper access at platform.openai.com\n` +
+            `3. Update your API key in Settings → API Keys`,
+            { duration: 15000 }
+          );
+        } else {
+          // Show detailed error messages for other failures
+          const errorSummary = result.errors.length > 0
+            ? result.errors.slice(0, 3).map(e => `${e.skillName}: ${e.error}`).join("\n")
+            : "Unknown errors occurred";
+
+          const moreErrors = result.errors.length > 3 ? ` (+${result.errors.length - 3} more)` : "";
+
+          toast.error(
+            `Failed to generate ${result.failed} embedding${result.failed !== 1 ? "s" : ""}${moreErrors}\n\n${errorSummary}`,
+            { duration: 10000 }
+          );
+        }
+
+        // If some succeeded, show that too
+        if (result.generated > 0) {
+          toast.success(`Generated ${result.generated} embeddings successfully`);
+        }
       } else if (result.generated > 0) {
         const reasonParts: string[] = [];
         if (result.reasons.missing > 0) reasonParts.push(`${result.reasons.missing} new`);
@@ -255,7 +291,8 @@ export function SkillsSettings() {
       }
     } catch (error) {
       console.error("Failed to generate embeddings:", error);
-      toast.error("Failed to generate embeddings");
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      toast.error(`Failed to generate embeddings: ${errorMessage}`, { duration: 8000 });
     } finally {
       setIsGenerating(false);
     }
