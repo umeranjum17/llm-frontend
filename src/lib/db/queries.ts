@@ -1,6 +1,5 @@
 import { db, type Chat, type Message, type Project, type ProjectFile, type ModelFavorite, type ApiKey, type UserSettings, type Agent, type Prompt, type Skill, type ModelAlias, type McpServer, type Folder, type Tag } from "./schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
-import { getCrossTabCoordinator, CrossTabMessages } from "@/lib/utils/cross-tab";
 
 // Re-export db for direct access when needed (e.g., batch operations)
 export { db };
@@ -54,36 +53,11 @@ export async function moveChatsToProject(fromProjectId: string, toProjectId: str
 let chatsCache: { data: Chat[], timestamp: number } | null = null;
 const CHATS_CACHE_MAX_AGE = 5000; // 5 seconds
 
-// Initialize cross-tab listener for cache invalidation (browser only, deferred)
-let crossTabListenerInitialized = false;
-function initCrossTabListener() {
-  if (crossTabListenerInitialized || typeof window === "undefined") return;
-  crossTabListenerInitialized = true;
-
-  try {
-    getCrossTabCoordinator().on(CrossTabMessages.CACHE_INVALIDATED, () => {
-      chatsCache = null;
-    });
-  } catch (error) {
-    console.warn("[Queries] Failed to initialize cross-tab listener:", error);
-  }
-}
-
 /**
  * Invalidate the chats cache. Call this after any chat mutation.
- * Also notifies other tabs to invalidate their caches.
  */
 export function invalidateChatsCache() {
   chatsCache = null;
-  // Notify other tabs (also ensures listener is initialized)
-  if (typeof window !== "undefined") {
-    initCrossTabListener();
-    try {
-      getCrossTabCoordinator().broadcast(CrossTabMessages.CACHE_INVALIDATED);
-    } catch (error) {
-      // Ignore broadcast errors - not critical
-    }
-  }
 }
 
 /**
@@ -127,9 +101,6 @@ export async function getAllChats() {
  * @param maxAge Maximum age of cache in ms (default 5000ms)
  */
 export async function getAllChatsCached(maxAge = CHATS_CACHE_MAX_AGE): Promise<Chat[]> {
-  // Initialize cross-tab listener on first cache access
-  initCrossTabListener();
-
   // Return cached data if still valid
   if (chatsCache && Date.now() - chatsCache.timestamp < maxAge) {
     return chatsCache.data;
@@ -235,14 +206,6 @@ export async function deleteChat(id: string) {
   // Delete the chat
   await db.chats.delete(id);
   invalidateChatsCache();
-  // Notify other tabs about the deletion
-  if (typeof window !== "undefined") {
-    try {
-      getCrossTabCoordinator().broadcast(CrossTabMessages.CHAT_DELETED, { chatId: id });
-    } catch (error) {
-      // Ignore broadcast errors - not critical
-    }
-  }
 }
 
 export async function deleteAllChats() {

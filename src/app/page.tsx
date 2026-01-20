@@ -17,10 +17,9 @@ import { useModelsStore } from "@/stores/models-store";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
-import { getMostRecentChat, createChat, getChatById, db } from "@/lib/db/queries";
+import { getMostRecentChat, createChat, getChatById } from "@/lib/db/queries";
 import { getDefaultChatConfig } from "@/lib/ai/default-chat";
 import { toast } from "sonner";
-import { getCrossTabCoordinator, CrossTabMessages } from "@/lib/utils/cross-tab";
 
 export default function Home() {
   const router = useRouter();
@@ -80,24 +79,11 @@ export default function Home() {
 
   // Handle PWA resume - validate active chat still exists when app comes back to foreground
   useEffect(() => {
-    // Wait for DB to be ready with proper timeout (instead of fragile 50ms delay)
-    const waitForDb = async (maxWaitMs = 2000): Promise<boolean> => {
-      const startTime = Date.now();
-      while (!db.isOpen() && Date.now() - startTime < maxWaitMs) {
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-      return db.isOpen();
-    };
-
     const handleVisibilityChange = async () => {
       if (document.visibilityState !== "visible") return;
 
-      // Wait for DB to be ready (the db-health hook will reopen it if closed)
-      const dbReady = await waitForDb();
-      if (!dbReady) {
-        console.warn("[Page] DB not ready after visibility change");
-        return;
-      }
+      // Wait briefly for DB health hook to validate/reopen connection
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const activeChatId = useUIStore.getState().activeChatId;
       if (activeChatId) {
@@ -119,30 +105,6 @@ export default function Home() {
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
-  // Listen for cross-tab chat deletion
-  useEffect(() => {
-    try {
-      const coordinator = getCrossTabCoordinator();
-
-      const handleChatDeleted = (data: unknown) => {
-        const { chatId } = data as { chatId: string };
-        const activeChatId = useUIStore.getState().activeChatId;
-
-        if (activeChatId === chatId) {
-          // Active chat was deleted in another tab - switch to most recent
-          getMostRecentChat().then((chat) => {
-            useUIStore.getState().setActiveChatId(chat?.id || null);
-          });
-        }
-      };
-
-      const unsubscribe = coordinator.on(CrossTabMessages.CHAT_DELETED, handleChatDeleted);
-      return () => unsubscribe();
-    } catch (error) {
-      console.warn("[Page] Failed to setup cross-tab listener:", error);
-      return () => {}; // No-op cleanup
-    }
-  }, []);
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 768px)");
