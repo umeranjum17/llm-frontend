@@ -66,7 +66,6 @@ const EMBEDDING_MODELS: Record<
   openai: [
     { id: "text-embedding-3-small", name: "text-embedding-3-small", dimensions: 1536 },
     { id: "text-embedding-3-large", name: "text-embedding-3-large", dimensions: 3072 },
-    { id: "text-embedding-ada-002", name: "text-embedding-ada-002 (legacy)", dimensions: 1536 },
   ],
   openrouter: [
     { id: "openai/text-embedding-3-small", name: "text-embedding-3-small", dimensions: 1536 },
@@ -257,7 +256,7 @@ export function SkillsSettings() {
           toast.error(
             `API key does not have access to model: ${missingModel}\n\n` +
             `Solutions:\n` +
-            `1. Select "text-embedding-ada-002 (legacy)" model instead\n` +
+            `1. Switch to OpenRouter provider (has access to all embedding models)\n` +
             `2. Generate a new OpenAI API key with proper access at platform.openai.com\n` +
             `3. Update your API key in Settings → API Keys`,
             { duration: 15000 }
