@@ -168,10 +168,127 @@ export async function buildContextMessages(
     getChatsWithMessagesByIds(chatReferences.map(c => c.id))
   ]);
 
-  // Add user memory context FIRST (personalizes all conversations)
-  // Check if memory is enabled:
-  // 1. Global setting (default: true)
-  // 2. Per-chat override (memoryDisabled option)
+  // ============================================================
+  // OPTIMIZED CONTEXT ORDER FOR PROMPT CACHING
+  // Static content first (cached across messages) → Dynamic content last
+  // ============================================================
+
+  // 1. Agent system prompt (constant per chat) - Most cacheable
+  if (chat?.agentId) {
+    try {
+      const agent = await getAgentById(chat.agentId);
+      if (agent?.isActive && agent.systemPrompt) {
+        const agentTokens = Math.ceil(agent.systemPrompt.length / 4);
+        messages.push({
+          id: `system-agent-${agent.id}`,
+          chatId,
+          role: "system",
+          content: agent.systemPrompt,
+          createdAt: Date.now(),
+        });
+        activeContexts.push("Agent Instructions");
+      }
+    } catch (error) {
+      console.error("Failed to load agent:", error);
+    }
+  }
+
+  // 2. Project system prompt (constant per project)
+  if (chat?.projectId) {
+    const { getProjectById } = await import("@/lib/db/queries");
+    const project = await getProjectById(chat.projectId);
+    if (project?.systemPrompt) {
+      messages.push({
+        id: "system-project",
+        chatId,
+        role: "system",
+        content: project.systemPrompt,
+        createdAt: Date.now(),
+      });
+      activeContexts.push("Project Instructions");
+    }
+  }
+
+  // 3. Model alias (constant per model)
+  if (chat?.modelId) {
+    try {
+      const alias = await getModelAlias(chat.modelId);
+      if (alias?.systemPrompt) {
+        const aliasTokens = Math.ceil(alias.systemPrompt.length / 4);
+        messages.push({
+          id: `system-model-alias-${chat.modelId}`,
+          chatId,
+          role: "system",
+          content: alias.systemPrompt,
+          createdAt: Date.now(),
+        });
+        activeContexts.push("Model Alias");
+      }
+    } catch (error) {
+      console.error("Failed to load model alias:", error);
+    }
+  }
+
+  // 4. Skill system prompt (changes per skill, but stable within skill usage)
+  if (options?.skill?.systemPrompt) {
+    const skillTokens = Math.ceil(options.skill.systemPrompt.length / 4);
+    let skillContent = `## Skill: ${options.skill.name}\n\n${options.skill.systemPrompt}`;
+
+    // For agent creator/editor skills, inject tool/model context
+    const isAgentSkill = options.skill.id === "skill_builtin_agent_creator" ||
+                         options.skill.id === "skill_builtin_agent_editor";
+
+    if (isAgentSkill && chat) {
+      try {
+        const response = await fetch("/api/agent-context", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chatId: chat.id,
+            mcpServerIds: chat.activeMcpServerIds || [],
+          }),
+        });
+
+        if (response.ok) {
+          const { contextMessage } = await response.json();
+          skillContent += `\n\n${contextMessage}`;
+        }
+      } catch (error) {
+        console.error("[Context Builder] Failed to fetch agent context:", error);
+        // Continue without context - not critical
+      }
+    }
+
+    messages.push({
+      id: `system-skill-${options.skill.id}`,
+      chatId,
+      role: "system",
+      content: skillContent,
+      createdAt: Date.now(),
+    });
+    activeContexts.push("Skill Instructions");
+  }
+
+  // 5. Invoked agents (from @mentions - less stable but still relatively static)
+  let invokedAgentCount = 0;
+  for (const agentRef of agentReferences) {
+    const agent = invokedAgentsMap.get(agentRef.id);
+    if (agent && agent.systemPrompt) {
+      messages.push({
+        id: `invoked-agent-${agent.id}`,
+        chatId,
+        role: "system",
+        content: `INVOKED AGENT: ${agent.name}\nINSTRUCTIONS:\n${agent.systemPrompt}`,
+        createdAt: Date.now(),
+      });
+      invokedAgentCount++;
+    }
+  }
+  if (invokedAgentCount > 0) {
+    activeContexts.push(`Invoked Agent${invokedAgentCount > 1 ? 's' : ''}`);
+  }
+
+  // 6. Memory context (searched per message - dynamic)
   const globalMemoryEnabled = settings?.memoryEnabled ?? true;
   const perChatMemoryDisabled = options?.memoryDisabled ?? false;
   const memoryEnabled = globalMemoryEnabled && !perChatMemoryDisabled;
@@ -180,7 +297,6 @@ export async function buildContextMessages(
     try {
       const memoryQuery = userMessage;
       const rawMemories = await searchMemories(memoryQuery);
-
 
       // Apply budgeting: relevance filter, item limit, token/char limit
       let budgetedMemories = rawMemories && rawMemories.length > 0 ? budgetMemories(rawMemories) : [];
@@ -225,7 +341,7 @@ CRITICAL: Use memories ONLY when directly relevant. NEVER:
   } else if (perChatMemoryDisabled) {
   }
 
-  // RAG retrieval if enabled
+  // 7. RAG retrieval (most dynamic - changes with every query)
   if (options?.enableRAG) {
     try {
       const ragResults = await retrieveContext(cleanContent, {
@@ -253,122 +369,6 @@ CRITICAL: Use memories ONLY when directly relevant. NEVER:
       console.error("RAG retrieval failed:", error);
       // Continue without RAG if it fails
     }
-  }
-
-  // Add model alias system prompt if exists
-  if (chat?.modelId) {
-    try {
-      const alias = await getModelAlias(chat.modelId);
-      if (alias?.systemPrompt) {
-        const aliasTokens = Math.ceil(alias.systemPrompt.length / 4);
-        messages.push({
-          id: `system-model-alias-${chat.modelId}`,
-          chatId,
-          role: "system",
-          content: alias.systemPrompt,
-          createdAt: Date.now(),
-        });
-        activeContexts.push("Model Alias");
-      }
-    } catch (error) {
-      console.error("Failed to load model alias:", error);
-    }
-  }
-
-  // Add agent system prompt if exists (BASE AGENT from Chat Settings)
-  if (chat?.agentId) {
-    try {
-      const agent = await getAgentById(chat.agentId);
-      if (agent?.isActive && agent.systemPrompt) {
-        const agentTokens = Math.ceil(agent.systemPrompt.length / 4);
-        messages.push({
-          id: `system-agent-${agent.id}`,
-          chatId,
-          role: "system",
-          content: agent.systemPrompt,
-          createdAt: Date.now(),
-        });
-        activeContexts.push("Agent Instructions");
-      }
-    } catch (error) {
-      console.error("Failed to load agent:", error);
-    }
-  }
-
-  // Add INVOKED AGENTS (from @mentions) - These act as temporary persona overrides or supplements
-  // Uses batch-fetched agents map
-  let invokedAgentCount = 0;
-  for (const agentRef of agentReferences) {
-    const agent = invokedAgentsMap.get(agentRef.id);
-    if (agent && agent.systemPrompt) {
-      messages.push({
-        id: `invoked-agent-${agent.id}`,
-        chatId,
-        role: "system",
-        content: `INVOKED AGENT: ${agent.name}\nINSTRUCTIONS:\n${agent.systemPrompt}`,
-        createdAt: Date.now(),
-      });
-      invokedAgentCount++;
-    }
-  }
-  if (invokedAgentCount > 0) {
-    activeContexts.push(`Invoked Agent${invokedAgentCount > 1 ? 's' : ''}`);
-  }
-
-  // Add project system prompt if exists
-  if (chat?.projectId) {
-    const { getProjectById } = await import("@/lib/db/queries");
-    const project = await getProjectById(chat.projectId);
-    if (project?.systemPrompt) {
-      messages.push({
-        id: "system-project",
-        chatId,
-        role: "system",
-        content: project.systemPrompt,
-        createdAt: Date.now(),
-      });
-      activeContexts.push("Project Instructions");
-    }
-  }
-
-  // Add skill system prompt if skill is active (injected based on semantic match or manual selection)
-  if (options?.skill?.systemPrompt) {
-    const skillTokens = Math.ceil(options.skill.systemPrompt.length / 4);
-    let skillContent = `## Skill: ${options.skill.name}\n\n${options.skill.systemPrompt}`;
-    
-    // For agent creator/editor skills, inject tool/model context
-    const isAgentSkill = options.skill.id === "skill_builtin_agent_creator" || 
-                         options.skill.id === "skill_builtin_agent_editor";
-    
-    if (isAgentSkill && chat) {
-      try {
-        const response = await fetch("/api/agent-context", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chatId: chat.id,
-            mcpServerIds: chat.activeMcpServerIds || [],
-          }),
-        });
-        
-        if (response.ok) {
-          const { contextMessage } = await response.json();
-          skillContent += `\n\n${contextMessage}`;
-        }
-      } catch (error) {
-        console.error("[Context Builder] Failed to fetch agent context:", error);
-        // Continue without context - not critical
-      }
-    }
-    
-    messages.push({
-      id: `system-skill-${options.skill.id}`,
-      chatId,
-      role: "system",
-      content: skillContent,
-      createdAt: Date.now(),
-    });
-    activeContexts.push("Skill Instructions");
   }
 
   // Add file contents as context (uses batch-fetched files map)

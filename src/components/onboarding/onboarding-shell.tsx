@@ -58,7 +58,7 @@ export function OnboardingShell() {
   };
 
   const handleComplete = async () => {
-    await markOnboardingCompleted();
+    await markOnboardingCompleted(configuredFeatures.provider || undefined);
     router.push("/");
   };
 

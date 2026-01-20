@@ -64,6 +64,58 @@ export function getAllModels(): Model[] {
   return FEATURED_MODELS;
 }
 
+/**
+ * Default model ID for each provider.
+ * Used during onboarding to set an appropriate default model
+ * based on the provider the user selects.
+ */
+export const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
+  openrouter: "google/gemini-3-flash-preview", // Universal access, best value
+  openai: "openai/gpt-5-mini", // Balanced, good for agents and tool calling
+  anthropic: "anthropic/claude-sonnet-4.5", // Best coding model
+  google: "google/gemini-3-flash-preview", // Best value
+  deepseek: "deepseek/deepseek-v3.2", // Cheapest high-quality
+  mistral: "mistralai/mistral-large-3", // Open source flagship
+  xai: "x-ai/grok-3", // Balanced
+  groq: "meta-llama/llama-3.3-70b-instruct", // Fast open source
+  together: "meta-llama/llama-3.3-70b-instruct", // Open source
+  perplexity: "perplexity/sonar-pro", // Search-enhanced
+};
+
+/**
+ * Get the default model ID for a given provider.
+ * Falls back to the global DEFAULT_MODEL if provider is unknown.
+ */
+export function getDefaultModelIdForProvider(providerId: string): string {
+  const { DEFAULT_MODEL } = require("@/lib/models/static-models");
+  return DEFAULT_MODEL_BY_PROVIDER[providerId] || DEFAULT_MODEL.id;
+}
+
+/**
+ * Default fast/cheap models per provider for background/utility tasks.
+ * Each provider uses their own cheapest capable model.
+ */
+export const DEFAULT_UTILITY_MODEL_BY_PROVIDER: Record<string, string> = {
+  openrouter: "openai/gpt-5-nano",
+  openai: "openai/gpt-5-nano",
+  anthropic: "anthropic/claude-3-haiku",
+  google: "google/gemini-2.0-flash-001",
+  groq: "meta-llama/llama-3.1-8b-instant",
+  deepseek: "deepseek/deepseek-chat-v3-0324",
+  mistral: "mistralai/mistral-medium-3",
+  xai: "x-ai/grok-code-fast-1",
+  together: "meta-llama/llama-3.3-70b-instruct",
+  perplexity: "perplexity/sonar",
+};
+
+/**
+ * Get the default utility model ID for a given provider (for background tasks).
+ * Falls back to gpt-5-nano via openrouter if provider is unknown.
+ */
+export function getDefaultUtilityModelIdForProvider(providerId: string): string {
+  return DEFAULT_UTILITY_MODEL_BY_PROVIDER[providerId] || "openai/gpt-5-nano";
+}
+
 // Model tiers for quick filtering
 export const MODEL_TIERS = {
   get flagship() {

@@ -189,3 +189,51 @@ export function estimateRequestCost(
     estimatedCost,
   };
 }
+
+// Provider cache discount rates (as percentages saved on cached tokens)
+const CACHE_DISCOUNT_RATES: Record<string, number> = {
+  openai: 0.50, // 50% discount
+  anthropic: 0.90, // 90% discount on reads
+  deepseek: 0.90, // 90% discount
+  google: 0.75, // 75% discount
+  groq: 0.75, // 75% discount (automatic)
+  xai: 0.50, // 50% discount (automatic)
+  openrouter: 0.75, // 75% average (varies by model)
+};
+
+/**
+ * Calculate USD savings from prompt caching
+ * @param cachedTokens - Number of tokens served from cache
+ * @param modelId - Model ID used for the request
+ * @param providerId - Provider ID (e.g., 'openai', 'anthropic')
+ * @returns Amount saved in USD
+ */
+export function calculateCacheSavings(
+  cachedTokens: number,
+  modelId: string,
+  providerId?: string
+): number {
+  if (!cachedTokens || cachedTokens <= 0) return 0;
+
+  // Get the discount rate for this provider
+  const provider = providerId?.toLowerCase() || "";
+  const discountRate = CACHE_DISCOUNT_RATES[provider] || 0.5; // Default 50%
+
+  // Calculate what the cached tokens would have cost without caching
+  const fullCost = estimateCost(cachedTokens, 0, modelId, providerId);
+
+  // Calculate savings (discount rate * full cost)
+  return fullCost * discountRate;
+}
+
+/**
+ * Format cache savings for display
+ * @param savings - Savings amount in USD
+ * @returns Formatted string (e.g., "Saved $0.0125")
+ */
+export function formatCacheSavings(savings: number): string {
+  if (savings === 0) return "";
+  if (savings < 0.001) return "Saved <$0.001";
+  if (savings < 0.01) return `Saved $${savings.toFixed(4)}`;
+  return `Saved $${savings.toFixed(3)}`;
+}

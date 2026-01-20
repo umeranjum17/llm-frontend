@@ -24,6 +24,7 @@ interface SettingsState extends Partial<UserSettings> {
   updateEmbeddingsConfig: (provider: "openrouter" | "openai", modelId: string) => Promise<void>;
   updateSkillMatchThreshold: (threshold: number) => Promise<void>;
   updateDefaultReasoningLevel: (level: "low" | "medium" | "high" | "xhigh") => Promise<void>;
+  updateLastProviderForModel: (modelId: string, providerId: string) => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -35,6 +36,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   shortcuts: {},
   autoTaggingEnabled: false,
   defaultReasoningLevel: "medium",
+  lastProviderIdByModel: {},
 
   loadSettings: async () => {
     const maxRetries = 3;
@@ -49,6 +51,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           defaultMcpServerIds: settings.defaultMcpServerIds ?? [],
           enabledTools: settings.enabledTools ?? [],
           shortcuts: settings.shortcuts ?? {},
+          lastProviderIdByModel: settings.lastProviderIdByModel ?? {},
           isLoaded: true
         });
       } catch (error) {
@@ -82,6 +85,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
             shortcuts: {},
             autoTaggingEnabled: false,
             defaultReasoningLevel: "medium",
+            lastProviderIdByModel: {},
             isLoaded: true, // Mark as loaded to prevent UI hang
           });
         } else {
@@ -168,5 +172,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateDefaultReasoningLevel: async (level: "low" | "medium" | "high" | "xhigh") => {
     await updateSettings({ defaultReasoningLevel: level });
     set({ defaultReasoningLevel: level });
+  },
+
+  updateLastProviderForModel: async (modelId: string, providerId: string) => {
+    const current = get().lastProviderIdByModel ?? {};
+    const updated = { ...current, [modelId]: providerId };
+    await updateSettings({ lastProviderIdByModel: updated });
+    set({ lastProviderIdByModel: updated });
   },
 }));

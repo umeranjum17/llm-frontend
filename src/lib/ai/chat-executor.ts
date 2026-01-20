@@ -300,14 +300,19 @@ export async function withRetry<T>(
 
 /**
  * Default fast/cheap models per provider for utility tasks (title, summary, tags, etc.)
- * Using GPT-5 Nano for maximum cost savings ($0.05/$0.40 vs $0.15/$0.60)
+ * Each provider uses their own cheapest capable model for background tasks.
  */
 export const DEFAULT_UTILITY_MODELS: Record<string, string> = {
   openrouter: "openai/gpt-5-nano",
   openai: "gpt-5-nano",
   anthropic: "claude-3-haiku-20240307",
+  google: "gemini-2.0-flash-001",
   groq: "llama-3.1-8b-instant",
-  google: "gemini-1.5-flash",
+  deepseek: "deepseek-chat-v3-0324",
+  mistral: "mistral-medium-3",
+  xai: "grok-code-fast-1",
+  together: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+  perplexity: "sonar",
 };
 
 /**

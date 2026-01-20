@@ -135,6 +135,8 @@ export function ChatShell() {
   const keys = useApiKeysStore((s) => s.keys);
   const models = useModelsStore((state) => state.models);
   const autoTaggingEnabled = useSettingsStore((state) => state.autoTaggingEnabled);
+  const lastProviderIdByModel = useSettingsStore((state) => state.lastProviderIdByModel);
+  const updateLastProviderForModel = useSettingsStore((state) => state.updateLastProviderForModel);
 
   const llmProviderIds = useMemo(
     () =>
@@ -383,11 +385,23 @@ export function ChatShell() {
   const handleQuickModelChange = async (modelId: string) => {
     if (!activeChatId || chat?.modelId === modelId) return;
     await updateModelLastUsed(modelId);
+
     const updates: { modelId: string; providerId?: string } = { modelId };
-    if (chat?.providerId && !isModelIdCompatibleWithProviderId(chat.providerId, modelId)) {
+
+    // Check for remembered provider first
+    const remembered = lastProviderIdByModel?.[modelId];
+    if (
+      remembered &&
+      llmProviderIds.includes(remembered) &&
+      isModelIdCompatibleWithProviderId(remembered, modelId)
+    ) {
+      updates.providerId = remembered;
+    } else if (chat?.providerId && !isModelIdCompatibleWithProviderId(chat.providerId, modelId)) {
+      // Current provider incompatible, fall back to best provider
       const next = pickBestProviderId({ modelId, availableProviderIds: llmProviderIds });
       updates.providerId = next || undefined;
     }
+
     await updateChat(activeChatId, updates);
 
     // Also persist model preference to the agent if one is selected
@@ -607,7 +621,15 @@ export function ChatShell() {
                                 {compatibleProviders.map((p) => (
                                   <DropdownMenuItem
                                     key={p.id}
-                                    onClick={() => activeChatId && updateChat(activeChatId, { providerId: p.id })}
+                                    onClick={async () => {
+                                      if (activeChatId) {
+                                        await updateChat(activeChatId, { providerId: p.id });
+                                        // Remember this provider for this model
+                                        if (chat?.modelId) {
+                                          await updateLastProviderForModel(chat.modelId, p.id);
+                                        }
+                                      }
+                                    }}
                                     className="cursor-pointer"
                                   >
                                     <div className="flex w-full items-center gap-2">

@@ -12,9 +12,9 @@ import { useApiKeysStore } from "@/stores/api-keys-store";
 import { cn } from "@/lib/utils";
 
 const PROVIDERS = [
-    { id: "openrouter", name: "OpenRouter", placeholder: "sk-or-...", url: "https://openrouter.ai/keys", recommended: true },
-    { id: "openai", name: "OpenAI", placeholder: "sk-...", url: "https://platform.openai.com/api-keys", recommended: false },
-    { id: "anthropic", name: "Anthropic", placeholder: "sk-ant-...", url: "https://console.anthropic.com/settings/keys", recommended: false },
+    { id: "openrouter", name: "OpenRouter", placeholder: "sk-or-...", url: "https://openrouter.ai/keys" },
+    { id: "openai", name: "OpenAI", placeholder: "sk-...", url: "https://platform.openai.com/api-keys" },
+    { id: "anthropic", name: "Anthropic", placeholder: "sk-ant-...", url: "https://console.anthropic.com/settings/keys" },
 ] as const;
 
 interface ProviderStepProps {
@@ -105,14 +105,7 @@ export function ProviderStep({ onComplete, onBack }: ProviderStepProps) {
                             <SelectContent>
                                 {PROVIDERS.map((p) => (
                                     <SelectItem key={p.id} value={p.id}>
-                                        <div className="flex items-center gap-2">
-                                            {p.name}
-                                            {p.recommended && (
-                                                <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded">
-                                                    Recommended
-                                                </span>
-                                            )}
-                                        </div>
+                                        {p.name}
                                     </SelectItem>
                                 ))}
                             </SelectContent>

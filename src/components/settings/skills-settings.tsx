@@ -254,11 +254,12 @@ export function SkillsSettings() {
           const missingModel = errorMsg.match(/model ['`]([^'`]+)['`]/)?.[1] || selectedModel;
 
           toast.error(
-            `API key does not have access to model: ${missingModel}\n\n` +
-            `Solutions:\n` +
-            `1. Switch to OpenRouter provider (has access to all embedding models)\n` +
-            `2. Generate a new OpenAI API key with proper access at platform.openai.com\n` +
-            `3. Update your API key in Settings → API Keys`,
+            `Your OpenAI API key doesn't have access to this embedding model.\n\n` +
+            `To fix this:\n` +
+            `1. Ensure your OpenAI account has billing set up (embedding models require paid tier)\n` +
+            `2. Generate a new API key at platform.openai.com/api-keys\n` +
+            `3. Update the key in Settings → API Keys → OpenAI\n\n` +
+            `Need help? Check OpenAI's documentation on API access and billing.`,
             { duration: 15000 }
           );
         } else {

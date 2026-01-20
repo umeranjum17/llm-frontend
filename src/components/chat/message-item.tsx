@@ -24,6 +24,7 @@ import { ActiveSkillIndicator, SkillBadge } from "@/components/chat/active-skill
 import { MentionRenderer } from "@/components/chat/mention-renderer";
 import { useLiveQuery } from "dexie-react-hooks";
 import { getSkillById } from "@/lib/db/queries";
+import { calculateCacheSavings, formatCacheSavings } from "@/lib/utils/token-counter";
 
 type ToolCallLike = {
   id?: string;
@@ -1095,15 +1096,30 @@ export const MessageItem = memo(function MessageItem({
                     <span className="text-border">•</span>
                     <span className="font-bold opacity-80">Total: <span className="text-muted-foreground">{((message.inputTokens || 0) + (message.outputTokens || 0)).toLocaleString()}</span></span>
                     {/* Cache hit indicator */}
-                    {message.cachedTokens && message.cachedTokens > 0 && (
-                      <>
-                        <span className="text-border">•</span>
-                        <span className="flex items-center gap-1 text-amber-500/80">
-                          <Zap className="h-3 w-3" />
-                          <span>{message.cachedTokens.toLocaleString()} cached</span>
-                        </span>
-                      </>
-                    )}
+                    {message.cachedTokens && message.cachedTokens > 0 && (() => {
+                      const totalTokens = (message.inputTokens || 0) + (message.outputTokens || 0);
+                      const cachePercentage = totalTokens > 0
+                        ? Math.round((message.cachedTokens / totalTokens) * 100)
+                        : 0;
+                      const cacheSavings = message.cacheSavings || 0;
+                      const savingsText = cacheSavings > 0 ? formatCacheSavings(cacheSavings) : "";
+
+                      return (
+                        <>
+                          <span className="text-border">•</span>
+                          <span className="flex items-center gap-1 text-emerald-500/80">
+                            <Zap className="h-3 w-3" />
+                            <span>{message.cachedTokens.toLocaleString()} cached ({cachePercentage}%)</span>
+                          </span>
+                          {savingsText && (
+                            <>
+                              <span className="text-border">•</span>
+                              <span className="text-emerald-500/80 font-semibold">{savingsText}</span>
+                            </>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                   {typeof message.cost === "number" && (
                     <div className="flex items-center gap-1.5 bg-primary/5 px-1.5 py-0.5 rounded border border-primary/10 text-primary/70">

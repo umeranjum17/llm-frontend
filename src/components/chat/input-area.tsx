@@ -3,7 +3,9 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
-import { Send, Loader2, Paperclip, X, FileText, Image as ImageIcon, Mic, Square, Star, Code2, ChevronDown, ChevronUp } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Send, Loader2, Paperclip, X, FileText, Image as ImageIcon, Mic, Square, Star, Code2, ChevronDown, ChevronUp, Zap } from "lucide-react";
 import { useChat } from "@/hooks/use-chat";
 import { useChatKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { TokenDisplay } from "./token-display";
@@ -975,12 +977,30 @@ function TokenCalculator({
     return null;
   }
 
+  // Check cache eligibility (minimum 1024 tokens for OpenAI/Anthropic)
+  const isCacheEligible = historyTokens >= 1024;
+
   return (
     <div className="flex flex-col items-end gap-1">
       {isHighUsage && (
         <span className="text-[10px] text-destructive animate-pulse font-medium">
           Context nearly full - consider summarizing
         </span>
+      )}
+      {isCacheEligible && (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20 cursor-help">
+                <Zap className="h-3 w-3 mr-1" />
+                Cache eligible
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-xs text-xs">
+              <p>Repeated system prompts will be cached, reducing costs by ~50-90%</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       )}
       <TokenDisplay
         historyTokens={historyTokens}

@@ -319,7 +319,8 @@ function ModelBadges({ model, compact = false }: { model: Model; compact?: boole
 
 /**
  * Simplified cheap model selector for background tasks.
+ * Shows provider filter by default so users can select their preferred provider.
  */
-export function CheapModelSelector(props: Omit<ModelSelectorProps, "cheapOnly" | "showProviderFilter">) {
-  return <ModelSelector {...props} cheapOnly showProviderFilter={false} />;
+export function CheapModelSelector(props: Omit<ModelSelectorProps, "cheapOnly"> & { showProviderFilter?: boolean }) {
+  return <ModelSelector {...props} cheapOnly showProviderFilter={props.showProviderFilter ?? true} />;
 }

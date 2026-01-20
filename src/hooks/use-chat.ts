@@ -4,7 +4,7 @@ import { useUIStore } from "@/stores/ui-store";
 import { useStreamingStore, type ActiveSkill, type PendingSkillApproval, type ImageGenerationStage } from "@/stores/streaming-store";
 import { addMessage, updateChat, getChatById, updateMessage, getMessagesForBranch, getLastMessage, getMessageById, chatHasBranches, incrementAgentUsage, getMessages, getActiveMcpServersForChat, getAgentById, getSkillById, incrementSkillUsage } from "@/lib/db/queries";
 import { buildContextMessages } from "@/lib/ai/context-builder";
-import { countMessagesTokens, countTokens, estimateCost } from "@/lib/utils/token-counter";
+import { countMessagesTokens, countTokens, estimateCost, calculateCacheSavings } from "@/lib/utils/token-counter";
 import { calculateContextBudget, truncateHistoryToFit, estimateMessagesTokens, validateSystemContextFits, type LLMMessage } from "@/lib/utils/context-budget";
 import type { MessageContent, Agent, Skill } from "@/lib/db/schema";
 import { getImagesFromMessageContent, getTextFromMessageContent, mapTextInMessageContent, convertToAISDKContent } from "@/lib/utils/message-content";
@@ -1191,6 +1191,11 @@ export function useChat(chatId: string) {
         fullContent.length > 0 &&
         (!/[.!?]$/.test(fullContent.trim()) || fullContent.length > 3000);
 
+      // Calculate cache savings from prompt caching
+      const cacheSavings = cachedTokens > 0
+        ? calculateCacheSavings(cachedTokens, modelId, providerId)
+        : 0;
+
       // Update the assistant message with full content and metadata
       await updateMessage(assistantMessage.id, {
         content: fullContent,
@@ -1198,6 +1203,7 @@ export function useChat(chatId: string) {
         inputTokens: inputTokens || 0,
         outputTokens: outputTokens || 0,
         cachedTokens: cachedTokens > 0 ? cachedTokens : undefined,
+        cacheSavings: cacheSavings > 0 ? cacheSavings : undefined,
         cost,
         costIsEstimated: costIsEstimated || undefined,
         isIncomplete,
@@ -1206,10 +1212,12 @@ export function useChat(chatId: string) {
         toolResults: toolResults.length > 0 ? toolResults : undefined,
       });
 
-      // Update chat's total cost (activeBranchLeafId already set when assistant message was created)
+      // Update chat's total cost and cache savings (activeBranchLeafId already set when assistant message was created)
       const currentTotalCost = chat.totalCost || 0;
+      const currentTotalCacheSavings = chat.totalCacheSavings || 0;
       await updateChat(chatId, {
         totalCost: currentTotalCost + cost,
+        totalCacheSavings: currentTotalCacheSavings + cacheSavings,
       });
 
       // Auto-generate title after the first exchange

@@ -665,11 +665,27 @@ export async function updateSettings(updates: Partial<Omit<UserSettings, "id">>)
   await db.settings.update("default", { ...updates, updatedAt: Date.now() });
 }
 
-export async function markOnboardingCompleted() {
-  await updateSettings({
+export async function markOnboardingCompleted(providerId?: string) {
+  const { getDefaultModelIdForProvider, getDefaultUtilityModelIdForProvider } = await import("@/lib/constants/models");
+
+  const updates: Partial<Omit<UserSettings, "id">> = {
     onboardingCompleted: true,
     onboardingCompletedAt: Date.now(),
-  });
+  };
+
+  // If a provider was selected during onboarding, set provider-appropriate defaults
+  if (providerId) {
+    const utilityModelId = getDefaultUtilityModelIdForProvider(providerId);
+
+    updates.defaultProviderId = providerId;
+    updates.defaultModelId = getDefaultModelIdForProvider(providerId);
+
+    // Set background task model defaults for this provider
+    updates.titleModelIdsByProvider = { [providerId]: utilityModelId };
+    updates.memoryModelIdsByProvider = { [providerId]: utilityModelId };
+  }
+
+  await updateSettings(updates);
 }
 
 export async function isOnboardingCompleted(): Promise<boolean> {

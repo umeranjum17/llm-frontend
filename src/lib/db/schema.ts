@@ -39,6 +39,7 @@ export interface Chat {
   activeMcpServerIds?: string[]; // Active MCP servers for this chat (from agent or user selection)
   budgetCap?: number; // Max spend in USD
   totalCost?: number; // Running total cost in USD
+  totalCacheSavings?: number; // Cumulative savings from caching in USD
   activeBranchLeafId?: string; // Currently selected conversation leaf
   hasBranches?: boolean; // Quick indicator for sidebar/UI
   summary?: string; // AI-generated summary of the conversation
@@ -84,6 +85,7 @@ export interface Message {
   inputTokens?: number; // Tokens in the request
   outputTokens?: number; // Tokens in the response
   cachedTokens?: number; // Cached tokens from prompt caching (OpenAI, Anthropic, OpenRouter)
+  cacheSavings?: number; // USD saved from caching
   cost?: number; // Cost in USD for this message
   costIsEstimated?: boolean; // True when tokens/cost were locally estimated (provider usage unavailable)
   isIncomplete?: boolean; // Response was cut off mid-stream
@@ -138,6 +140,7 @@ export interface UserSettings {
   autoTaggingEnabled?: boolean;      // Whether to auto-generate tags for new chats (default: false)
   // Default MCP server settings
   defaultMcpServerIds?: string[];    // Default MCP servers to enable for new chats
+  lastProviderIdByModel?: Record<string, string>;  // modelId -> providerId (remembered provider per model)
 }
 
 export interface ModelFavorite {
