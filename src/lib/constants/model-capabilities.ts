@@ -82,6 +82,12 @@ const ADVANCED_TOOL_CALLING_PATTERNS = [
   // OpenAI o1 series - TOP of Enterprise Tool Use (o1: 70.14%, o1-Pro: 67.01%)
   "o1", "o1-pro",
 
+  // OpenAI GPT-5 series - 98.7% Tau2-bench tool calling, leads MCPMark agentic workflows
+  "gpt-5", "gpt-5.2",
+
+  // OpenAI GPT-4o - Strong BFCL performance, resilient multi-turn tool use
+  "gpt-4o",
+
   // xAI Grok 4.1 Fast - BFCL 72%, SOTA tool invocation, halved hallucination rate
   "grok-4.1-fast",
   // xAI Grok Code Fast 1 - Agentic by design, trained for tool calling, SWE-bench 70.8%, 92 tok/s
@@ -126,10 +132,9 @@ const ADVANCED_TOOL_CALLING_PATTERNS = [
  * - Command R+ Enterprise Tool Use: 30.21% (Scale.com)
  */
 const BASIC_TOOL_CALLING_PATTERNS = [
-  // OpenAI models - WORSE than Claude on BFCL (~59%)
-  // GPT-4o and GPT-5 have documented function calling issues
-  // Note: gpt-4o-mini promoted to ADVANCED (user validated)
-  "gpt-4o", "gpt-4-turbo", "gpt-4.1", "gpt-4.5", "gpt-5",
+  // OpenAI models - Older versions with weaker tool calling
+  // Note: gpt-4o, gpt-4o-mini, gpt-5 promoted to ADVANCED
+  "gpt-4-turbo", "gpt-4.1", "gpt-4.5",
   "gpt-3.5",
 
   // OpenAI o-series reasoning models (o3, o4 only - o1/o1-pro promoted to ADVANCED)

@@ -1275,28 +1275,6 @@
       ]
     },
     {
-      "id": "openai/gpt-5-image-mini",
-      "name": "GPT-5 Image Mini",
-      "provider": "OpenAI",
-      "description": "Efficient multimodal model. Superior instruction following, text rendering, and detailed image editing at lower cost.",
-      "contextLength": 128000,
-      "inputCost": 2.75,
-      "outputCost": 11.0,
-      "category": [
-        "vision",
-        "image-generation",
-        "balanced"
-      ],
-      "tier": "balanced",
-      "supportsVision": true,
-      "releaseDate": "2025-12",
-      "recommendedFor": [
-        "Image editing",
-        "Visual QA",
-        "Budget image generation"
-      ]
-    },
-    {
       "id": "qwen/qwen2.5-vl-72b-instruct",
       "name": "Qwen2.5 VL 72B",
       "provider": "Alibaba",
