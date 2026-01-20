@@ -27,6 +27,40 @@ function cleanReferencesForLLM(content: string) {
 }
 
 /**
+ * Extract user-friendly error message from stream error.
+ * Avoids exposing raw JSON or sensitive details.
+ */
+function extractErrorMessage(parsed: { error?: unknown }): string {
+  const err = parsed.error as Record<string, unknown> | string | undefined;
+  if (!err) return "Unknown error occurred";
+
+  // Prefer string message fields
+  if (typeof err === 'string' && err) return err;
+  if (typeof err === 'object') {
+    if (typeof err.message === 'string' && err.message) return err.message;
+
+    // Nested message paths (AI SDK variants)
+    const data = err.data as Record<string, unknown> | undefined;
+    if (data?.error && typeof data.error === 'object') {
+      const nestedErr = data.error as Record<string, unknown>;
+      if (typeof nestedErr.message === 'string') return nestedErr.message;
+    }
+    const innerErr = err.error as Record<string, unknown> | undefined;
+    if (innerErr && typeof innerErr.message === 'string') return innerErr.message;
+
+    // HTTP-style with status code
+    if (err.status && err.statusText) return `HTTP ${err.status}: ${err.statusText}`;
+    if (err.status) return `Request failed with status ${err.status}`;
+
+    // Error code present
+    if (err.code) return `Error code: ${err.code}`;
+  }
+
+  // Safe fallback - no raw JSON stringify
+  return "Stream error occurred - check browser console for details";
+}
+
+/**
  * Generate an optimized image prompt using a text model.
  * This applies the agent's system prompt to create a professional image generation prompt.
  */
@@ -1113,7 +1147,7 @@ export function useChat(chatId: string) {
             // Handle error events gracefully - don't break the stream
             // Tool errors and transient failures should allow the LLM to recover
             if (parsed.type === "error") {
-              const errorMessage = parsed.error?.message || parsed.error?.data?.error?.message || "Stream error occurred";
+              const errorMessage = extractErrorMessage(parsed);
               console.warn("[Chat] Stream error event (continuing):", errorMessage);
 
               // Categorize the error for better user feedback
@@ -1131,8 +1165,15 @@ export function useChat(chatId: string) {
                 errorLabel = "Tool error";
               }
 
+              // Add actionable hint based on error category
+              let actionHint = "";
+              if (errorLabel === "API error") actionHint = " Check your API key in settings.";
+              else if (errorLabel === "Rate limit") actionHint = " Wait a moment and try again.";
+              else if (errorLabel === "Model error") actionHint = " Try selecting a different model.";
+              else if (errorLabel === "Timeout") actionHint = " Try a shorter request.";
+
               // Append error to content so user sees it, but don't break the stream
-              const errorNote = `\n\n⚠️ *${errorLabel}: ${errorMessage}*\n\n`;
+              const errorNote = `\n\n⚠️ *${errorLabel}: ${errorMessage}*${actionHint}\n\n`;
               fullContent += errorNote;
               appendStreamingContent(errorNote);
             }

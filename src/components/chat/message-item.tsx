@@ -4,7 +4,7 @@ import { useState, memo, useMemo } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download, ThumbsUp, ThumbsDown, Volume2, VolumeX, ChevronDown, ChevronRight, Wrench, Loader2, Brain, RefreshCw, Zap } from "lucide-react";
+import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download, ThumbsUp, ThumbsDown, Volume2, VolumeX, ChevronDown, ChevronRight, Wrench, Loader2, Brain, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
@@ -24,7 +24,6 @@ import { ActiveSkillIndicator, SkillBadge } from "@/components/chat/active-skill
 import { MentionRenderer } from "@/components/chat/mention-renderer";
 import { useLiveQuery } from "dexie-react-hooks";
 import { getSkillById } from "@/lib/db/queries";
-import { calculateCacheSavings, formatCacheSavings } from "@/lib/utils/token-counter";
 
 type ToolCallLike = {
   id?: string;
@@ -1095,35 +1094,15 @@ export const MessageItem = memo(function MessageItem({
                     <span>Out: <span className="text-muted-foreground">{message.outputTokens?.toLocaleString() || 0}</span></span>
                     <span className="text-border">•</span>
                     <span className="font-bold opacity-80">Total: <span className="text-muted-foreground">{((message.inputTokens || 0) + (message.outputTokens || 0)).toLocaleString()}</span></span>
-                    {/* Cache hit indicator */}
-                    {message.cachedTokens && message.cachedTokens > 0 && (() => {
-                      const totalTokens = (message.inputTokens || 0) + (message.outputTokens || 0);
-                      const cachePercentage = totalTokens > 0
-                        ? Math.round((message.cachedTokens / totalTokens) * 100)
-                        : 0;
-                      const cacheSavings = message.cacheSavings || 0;
-                      const savingsText = cacheSavings > 0 ? formatCacheSavings(cacheSavings) : "";
-
-                      return (
-                        <>
-                          <span className="text-border">•</span>
-                          <span className="flex items-center gap-1 text-emerald-500/80">
-                            <Zap className="h-3 w-3" />
-                            <span>{message.cachedTokens.toLocaleString()} cached ({cachePercentage}%)</span>
-                          </span>
-                          {savingsText && (
-                            <>
-                              <span className="text-border">•</span>
-                              <span className="text-emerald-500/80 font-semibold">{savingsText}</span>
-                            </>
-                          )}
-                        </>
-                      );
-                    })()}
                   </div>
                   {typeof message.cost === "number" && (
                     <div className="flex items-center gap-1.5 bg-primary/5 px-1.5 py-0.5 rounded border border-primary/10 text-primary/70">
                       <span>${message.cost.toFixed(4)}</span>
+                      {message.cacheSavings && message.cacheSavings > 0 && (
+                        <span className="text-muted-foreground/50 text-[9px]">
+                          (-${message.cacheSavings < 0.001 ? '<0.001' : message.cacheSavings.toFixed(4)})
+                        </span>
+                      )}
                       {message.costIsEstimated && (
                         <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70">
                           est
