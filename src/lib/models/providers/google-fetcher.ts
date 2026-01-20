@@ -11,6 +11,7 @@ const GOOGLE_MODELS = [
     outputCost: 5.0,
     supportsVision: true,
     supportsReasoning: true,
+    supportsThinking: true,
     tier: "flagship",
     description: "Google's most advanced Gemini model with reasoning",
   },

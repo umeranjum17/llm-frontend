@@ -85,6 +85,7 @@ export interface Message {
   inputTokens?: number; // Tokens in the request
   outputTokens?: number; // Tokens in the response
   cachedTokens?: number; // Cached tokens from prompt caching (OpenAI, Anthropic, OpenRouter)
+  thinkingTokens?: number; // Thinking/reasoning tokens (Anthropic, OpenAI, Google, DeepSeek, xAI)
   cacheSavings?: number; // USD saved from caching
   cost?: number; // Cost in USD for this message
   costIsEstimated?: boolean; // True when tokens/cost were locally estimated (provider usage unavailable)

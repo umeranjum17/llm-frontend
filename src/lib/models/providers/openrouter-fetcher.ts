@@ -35,6 +35,7 @@ const OPENROUTER_MODELS = [
     outputCost: 75.0,
     supportsVision: true,
     supportsReasoning: true,
+    supportsThinking: true,
     tier: "flagship",
   },
   {
@@ -67,6 +68,7 @@ const OPENROUTER_MODELS = [
     outputCost: 5.0,
     supportsVision: true,
     supportsReasoning: true,
+    supportsThinking: true,
     tier: "flagship",
   },
   {
@@ -120,6 +122,7 @@ const OPENROUTER_MODELS = [
     inputCost: 5.0,
     outputCost: 15.0,
     supportsReasoning: true,
+    supportsThinking: true,
     supportsVision: true,
     tier: "flagship",
   },

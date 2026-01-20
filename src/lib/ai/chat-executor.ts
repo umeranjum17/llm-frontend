@@ -803,12 +803,104 @@ export async function executeChatStreaming(
   Object.assign(providerOptions, cacheProviderOptions);
 
   // Extended thinking with configurable reasoning level
-  if (capabilities.supportsThinking && isAnthropicProvider) {
-    const budgetTokens = getReasoningBudgetTokens(reasoningLevel);
-    providerOptions.anthropic = {
-      ...providerOptions.anthropic,
-      thinking: { type: 'enabled', budgetTokens }
-    };
+  if (capabilities.supportsThinking) {
+    if (isAnthropicProvider) {
+      // Anthropic: budgetTokens configuration
+      const budgetTokens = getReasoningBudgetTokens(reasoningLevel);
+      providerOptions.anthropic = {
+        ...providerOptions.anthropic,
+        thinking: { type: 'enabled', budgetTokens }
+      };
+    } else if (providerId === 'openai') {
+      // OpenAI o3/o4: reasoningEffort parameter
+      const reasoningEffortMap: Record<string, string> = {
+        low: 'low',
+        medium: 'medium',
+        high: 'high',
+        xhigh: 'high', // Map xhigh to high (OpenAI max)
+      };
+      providerOptions.openai = {
+        ...providerOptions.openai,
+        reasoningEffort: reasoningEffortMap[reasoningLevel || 'medium'] || 'medium'
+      };
+    } else if (providerId === 'google') {
+      // Google Gemini: thinkingLevel for Gemini 3 models
+      const thinkingLevelMap: Record<string, string> = {
+        low: 'low',
+        medium: 'medium',
+        high: 'high',
+        xhigh: 'high', // Map xhigh to high (Gemini max)
+      };
+      providerOptions.google = {
+        ...providerOptions.google,
+        thinkingLevel: thinkingLevelMap[reasoningLevel || 'medium'] || 'medium'
+      };
+    } else if (providerId === 'deepseek') {
+      // DeepSeek: Enable thinking mode
+      providerOptions.deepseek = {
+        ...providerOptions.deepseek,
+        thinking: { type: 'enabled' }
+      };
+    } else if (providerId === 'xai') {
+      // xAI Grok: Use reasoning level (based on API docs)
+      const reasoningLevelMap: Record<string, string> = {
+        low: 'low',
+        medium: 'medium',
+        high: 'high',
+        xhigh: 'high',
+      };
+      providerOptions.xai = {
+        ...providerOptions.xai,
+        reasoningLevel: reasoningLevelMap[reasoningLevel || 'medium'] || 'medium'
+      };
+    } else if (providerId === 'openrouter') {
+      // OpenRouter: Provider-specific routing based on model ID
+      if (modelId.includes('anthropic/')) {
+        const budgetTokens = getReasoningBudgetTokens(reasoningLevel);
+        providerOptions.openrouter = {
+          ...providerOptions.openrouter,
+          reasoning: { max_tokens: budgetTokens }
+        };
+      } else if (modelId.includes('openai/')) {
+        const reasoningEffortMap: Record<string, string> = {
+          low: 'low',
+          medium: 'medium',
+          high: 'high',
+          xhigh: 'high'
+        };
+        providerOptions.openrouter = {
+          ...providerOptions.openrouter,
+          reasoning_effort: reasoningEffortMap[reasoningLevel || 'medium']
+        };
+      } else if (modelId.includes('google/')) {
+        const thinkingLevelMap: Record<string, string> = {
+          low: 'low',
+          medium: 'medium',
+          high: 'high',
+          xhigh: 'high'
+        };
+        providerOptions.openrouter = {
+          ...providerOptions.openrouter,
+          thinking_level: thinkingLevelMap[reasoningLevel || 'medium']
+        };
+      } else if (modelId.includes('deepseek/')) {
+        providerOptions.openrouter = {
+          ...providerOptions.openrouter,
+          thinking: { type: 'enabled' }
+        };
+      } else if (modelId.includes('x-ai/')) {
+        const reasoningLevelMap: Record<string, string> = {
+          low: 'low',
+          medium: 'medium',
+          high: 'high',
+          xhigh: 'high'
+        };
+        providerOptions.openrouter = {
+          ...providerOptions.openrouter,
+          reasoning_level: reasoningLevelMap[reasoningLevel || 'medium']
+        };
+      }
+    }
   }
 
   const maxSteps = options?.maxSteps ?? (hasTools ? getMaxStepsByTier(capabilities.toolCallingTier) : 1);

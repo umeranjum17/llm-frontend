@@ -18,11 +18,13 @@ import { Badge } from "@/components/ui/badge";
 interface ProjectSelectorProps {
   currentProjectId?: string;
   onProjectChange: (projectId: string | undefined) => void;
+  compact?: boolean;
 }
 
 export function ProjectSelector({
   currentProjectId,
   onProjectChange,
+  compact = false,
 }: ProjectSelectorProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState<string | undefined>();
@@ -67,21 +69,21 @@ export function ProjectSelector({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" className="gap-2 h-8 px-2">
+          <Button variant="ghost" size="sm" className={compact ? "gap-1.5 h-7 px-2 text-xs" : "gap-2 h-8 px-2"}>
             {currentProjectId === DEFAULT_PROJECT_ID ? (
-              <User className="h-4 w-4 text-muted-foreground" />
+              <User className={compact ? "h-3.5 w-3.5 text-muted-foreground" : "h-4 w-4 text-muted-foreground"} />
             ) : currentProject?.color ? (
               <div
-                className="h-3 w-3 rounded-full"
+                className={compact ? "h-2.5 w-2.5 rounded-full" : "h-3 w-3 rounded-full"}
                 style={{ backgroundColor: currentProject.color }}
               />
             ) : (
-              <FolderOpen className="h-4 w-4" />
+              <FolderOpen className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
             )}
-            <span className="text-sm truncate max-w-[120px]">
+            <span className={compact ? "text-xs truncate max-w-[80px]" : "text-sm truncate max-w-[120px]"}>
               {currentProject?.name || "Personal"}
             </span>
-            <ChevronDown className="h-3 w-3 text-muted-foreground" />
+            <ChevronDown className={compact ? "h-2.5 w-2.5 text-muted-foreground" : "h-3 w-3 text-muted-foreground"} />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-56">

@@ -70,33 +70,34 @@ export function Sidebar({ onNavigate }: SidebarProps) {
     <div className="flex h-full w-full min-w-0 flex-col border-r bg-background/30 backdrop-blur-xl supports-[backdrop-filter]:bg-background/20 overflow-x-hidden">
       {/* Header */}
       <div className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
-        <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3">
+        <div className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3">
           <h2 className="text-lg font-semibold tracking-tight">Lumina</h2>
+          <div className="flex-1 min-w-0">
+            <ProjectSelector
+              currentProjectId={currentProjectId}
+              onProjectChange={updateCurrentProject}
+              compact
+            />
+          </div>
           <Link href="/settings" prefetch title="Settings" onClick={onNavigate}>
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-8 w-8 shrink-0"
             >
               <Settings className="h-4 w-4" />
             </Button>
           </Link>
         </div>
-        <div className="px-3 sm:px-4 pb-3">
-          <ProjectSelector
-            currentProjectId={currentProjectId}
-            onProjectChange={updateCurrentProject}
-          />
-        </div>
       </div>
 
       {/* Search & New Chat */}
-      <div className="px-3 sm:px-4 py-3">
-        <div className="relative">
+      <div className="flex items-center gap-2 px-3 sm:px-4 py-2.5">
+        <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="search"
-            placeholder="Search chats..."
+            placeholder="Search..."
             className="pl-9 h-9 text-sm bg-muted/50 border-transparent focus:border-border focus:bg-background"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -105,11 +106,12 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         </div>
         <Button
           onClick={handleNewChat}
-          variant="outline"
-          className="w-full mt-2 gap-2 h-9 text-sm font-medium border-dashed border-muted-foreground/30 text-muted-foreground hover:text-foreground hover:border-muted-foreground/50"
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
+          title="New chat"
         >
           <Plus className="h-4 w-4" />
-          New chat
         </Button>
       </div>
 

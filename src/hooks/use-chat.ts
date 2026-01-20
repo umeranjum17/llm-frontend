@@ -940,6 +940,7 @@ export function useChat(chatId: string) {
       let inputTokens = 0; // Accumulated across all steps
       let outputTokens = 0; // Accumulated across all steps
       let cachedTokens = 0; // Accumulated cached tokens from prompt caching
+      let thinkingTokens = 0; // Accumulated thinking/reasoning tokens
       let actualCost = 0; // Accumulated cost from provider (OpenRouter, etc.)
       let hasReceivedUsage = false; // Track if we received any usage data
       let costIsEstimated = false;
@@ -969,7 +970,7 @@ export function useChat(chatId: string) {
           try {
             const parsed = JSON.parse(data);
 
-            const extractUsage = (value: any): { inTok?: number; outTok?: number; cachedTok?: number; cost?: number } => {
+            const extractUsage = (value: any): { inTok?: number; outTok?: number; cachedTok?: number; thinkingTok?: number; cost?: number } => {
               if (!value || typeof value !== "object") return {};
               const usage = (value.usage && typeof value.usage === "object") ? value.usage : value;
 
@@ -994,6 +995,28 @@ export function useChat(chatId: string) {
                 toNum(usage.cachedTokens) ??
                 toNum(usage.cached_tokens);
 
+              // Extract thinking/reasoning tokens from various provider formats:
+              // - AI SDK standard: usage.reasoningTokens
+              // - Anthropic: providerMetadata.anthropic.thinking.tokens
+              // - OpenAI: providerMetadata.openai.reasoning_tokens
+              // - Google: providerMetadata.google.thinkingTokens
+              // - DeepSeek: usage.reasoningTokens (DeepSeek uses standard format)
+              // - xAI: providerMetadata.xai.reasoning_tokens
+              // - OpenRouter: providerMetadata.openrouter.usage.thinkingTokens
+              const anthropicMeta = value.providerMetadata?.anthropic || {};
+              const openaiMeta = value.providerMetadata?.openai || {};
+              const googleMeta = value.providerMetadata?.google || {};
+              const xaiMeta = value.providerMetadata?.xai || {};
+
+              const thinkingTok =
+                toNum(usage.reasoningTokens) ??
+                toNum(usage.reasoning_tokens) ??
+                toNum(anthropicMeta.thinking?.tokens) ??
+                toNum(openaiMeta.reasoning_tokens) ??
+                toNum(googleMeta.thinkingTokens) ??
+                toNum(xaiMeta.reasoning_tokens) ??
+                toNum(providerMeta.usage?.thinkingTokens);
+
               return {
                 inTok:
                   toNum(usage.promptTokens) ??
@@ -1010,6 +1033,7 @@ export function useChat(chatId: string) {
                   toNum(usage.completion_tokens_total) ??
                   toNum(usage.output_tokens_total),
                 cachedTok,
+                thinkingTok,
                 // Actual cost from provider (OpenRouter returns this in providerMetadata)
                 cost:
                   toNum(providerMeta.cost) ??
@@ -1139,6 +1163,10 @@ export function useChat(chatId: string) {
               cachedTokens += u.cachedTok;
               hasReceivedUsage = true;
             }
+            if (typeof u.thinkingTok === "number") {
+              thinkingTokens += u.thinkingTok;
+              hasReceivedUsage = true;
+            }
             if (typeof u.cost === "number") {
               actualCost += u.cost;
               hasReceivedUsage = true;
@@ -1244,6 +1272,7 @@ export function useChat(chatId: string) {
         inputTokens: inputTokens || 0,
         outputTokens: outputTokens || 0,
         cachedTokens: cachedTokens > 0 ? cachedTokens : undefined,
+        thinkingTokens: thinkingTokens > 0 ? thinkingTokens : undefined,
         cacheSavings: cacheSavings > 0 ? cacheSavings : undefined,
         cost,
         costIsEstimated: costIsEstimated || undefined,
@@ -1265,7 +1294,7 @@ export function useChat(chatId: string) {
       // We check if:
       // 1. The chat title is likely the default "New Chat" (we'll check the DB/cache state ideally, but here we can try)
       // 2. We just finished the first real assistant response (history length is small)
-      if (chat.title === "New Chat" && history.length <= 1) { // history is PRE-current-generation, so 0 or 1 items usually
+      if (chat.title === "New Chat" && rawHistory.length <= 1) { // rawHistory is PRE-current-generation, so 0 or 1 items usually
         // We can fire-and-forget this
         (async () => {
           try {

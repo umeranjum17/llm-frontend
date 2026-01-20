@@ -12,6 +12,7 @@ const ANTHROPIC_MODELS = [
     outputCost: 75.0,
     supportsVision: true,
     supportsReasoning: true,
+    supportsThinking: true,
   },
   {
     id: "anthropic/claude-sonnet-4.5",

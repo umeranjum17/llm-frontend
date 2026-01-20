@@ -1092,6 +1092,12 @@ export const MessageItem = memo(function MessageItem({
                     <span>In: <span className="text-muted-foreground">{message.inputTokens?.toLocaleString() || 0}</span></span>
                     <span className="text-border">•</span>
                     <span>Out: <span className="text-muted-foreground">{message.outputTokens?.toLocaleString() || 0}</span></span>
+                    {message.thinkingTokens && message.thinkingTokens > 0 && (
+                      <>
+                        <span className="text-border">•</span>
+                        <span>Think: <span className="text-muted-foreground">{message.thinkingTokens.toLocaleString()}</span></span>
+                      </>
+                    )}
                     <span className="text-border">•</span>
                     <span className="font-bold opacity-80">Total: <span className="text-muted-foreground">{((message.inputTokens || 0) + (message.outputTokens || 0)).toLocaleString()}</span></span>
                   </div>

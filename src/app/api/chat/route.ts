@@ -333,6 +333,9 @@ export async function POST(req: Request) {
           const toolFailures = new Map<string, number>();
           const MAX_TOOL_RETRIES = 1; // After 1 retry, suggest asking user
 
+          // Track thinking tokens for message update
+          let currentThinkingTokens = 0;
+
           try {
             for await (const part of result.fullStream) {
               // Log tool calls and results for debugging
@@ -446,18 +449,68 @@ export async function POST(req: Request) {
                 console.error(`[Chat] Error in stream:`, part.error);
               }
 
-              // Log usage data and cache metrics
+              // Log usage data, cache metrics, and thinking tokens
               if ((part as any).usage) {
                 const usage = (part as any).usage;
                 const cachedTokens = usage.promptTokensDetails?.cachedTokens ?? 0;
                 const promptTokens = usage.inputTokens ?? 0;
-                
+
+                // Extract thinking/reasoning tokens (AI SDK standard)
+                const thinkingTokens = usage.reasoningTokens ?? 0;
+
+                // Log cache metrics
                 if (cachedTokens > 0) {
                   const cacheHitRate = ((cachedTokens / promptTokens) * 100).toFixed(1);
+                  console.log(`[Chat] Cache hit: ${cacheHitRate}% (${cachedTokens}/${promptTokens} tokens)`);
                 }
-                
+
+                // Log thinking tokens
+                if (thinkingTokens > 0) {
+                  console.log(`[Chat] Thinking tokens: ${thinkingTokens}`);
+                  // Store for message update (will be used later)
+                  currentThinkingTokens = thinkingTokens;
+                }
               }
+
+              // Extract provider-specific metadata (fallback for thinking tokens)
               if ((part as any).providerMetadata) {
+                const metadata = (part as any).providerMetadata;
+
+                // Anthropic-specific thinking tokens
+                if (metadata.anthropic?.thinking?.tokens) {
+                  console.log(`[Chat] Anthropic thinking tokens: ${metadata.anthropic.thinking.tokens}`);
+                  currentThinkingTokens = metadata.anthropic.thinking.tokens;
+                }
+
+                // OpenAI-specific reasoning tokens
+                if (metadata.openai?.reasoning_tokens) {
+                  console.log(`[Chat] OpenAI reasoning tokens: ${metadata.openai.reasoning_tokens}`);
+                  currentThinkingTokens = metadata.openai.reasoning_tokens;
+                }
+
+                // Google-specific thinking tokens
+                if (metadata.google?.thinkingTokens) {
+                  console.log(`[Chat] Google thinking tokens: ${metadata.google.thinkingTokens}`);
+                  currentThinkingTokens = metadata.google.thinkingTokens;
+                }
+
+                // DeepSeek-specific reasoning content
+                if (metadata.deepseek?.reasoning_content) {
+                  console.log(`[Chat] DeepSeek reasoning content detected`);
+                  // DeepSeek includes reasoning tokens in usage.reasoningTokens
+                }
+
+                // xAI-specific reasoning tokens
+                if (metadata.xai?.reasoning_tokens) {
+                  console.log(`[Chat] xAI reasoning tokens: ${metadata.xai.reasoning_tokens}`);
+                  currentThinkingTokens = metadata.xai.reasoning_tokens;
+                }
+
+                // OpenRouter proxied metadata
+                if (metadata.openrouter?.usage?.thinkingTokens) {
+                  console.log(`[Chat] OpenRouter thinking tokens: ${metadata.openrouter.usage.thinkingTokens}`);
+                  currentThinkingTokens = metadata.openrouter.usage.thinkingTokens;
+                }
               }
 
               controller.enqueue(

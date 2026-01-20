@@ -10,6 +10,7 @@ const XAI_MODELS = [
     inputCost: 5.0,
     outputCost: 15.0,
     supportsReasoning: true,
+    supportsThinking: true,
     supportsVision: true,
     tier: "flagship",
     description: "xAI's flagship reasoning model with vision capabilities",
