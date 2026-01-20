@@ -121,22 +121,27 @@ export default function Home() {
 
   // Listen for cross-tab chat deletion
   useEffect(() => {
-    const coordinator = getCrossTabCoordinator();
+    try {
+      const coordinator = getCrossTabCoordinator();
 
-    const handleChatDeleted = (data: unknown) => {
-      const { chatId } = data as { chatId: string };
-      const activeChatId = useUIStore.getState().activeChatId;
+      const handleChatDeleted = (data: unknown) => {
+        const { chatId } = data as { chatId: string };
+        const activeChatId = useUIStore.getState().activeChatId;
 
-      if (activeChatId === chatId) {
-        // Active chat was deleted in another tab - switch to most recent
-        getMostRecentChat().then((chat) => {
-          useUIStore.getState().setActiveChatId(chat?.id || null);
-        });
-      }
-    };
+        if (activeChatId === chatId) {
+          // Active chat was deleted in another tab - switch to most recent
+          getMostRecentChat().then((chat) => {
+            useUIStore.getState().setActiveChatId(chat?.id || null);
+          });
+        }
+      };
 
-    const unsubscribe = coordinator.on(CrossTabMessages.CHAT_DELETED, handleChatDeleted);
-    return () => unsubscribe();
+      const unsubscribe = coordinator.on(CrossTabMessages.CHAT_DELETED, handleChatDeleted);
+      return () => unsubscribe();
+    } catch (error) {
+      console.warn("[Page] Failed to setup cross-tab listener:", error);
+      return () => {}; // No-op cleanup
+    }
   }, []);
 
   useEffect(() => {

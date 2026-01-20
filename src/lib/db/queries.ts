@@ -54,11 +54,19 @@ export async function moveChatsToProject(fromProjectId: string, toProjectId: str
 let chatsCache: { data: Chat[], timestamp: number } | null = null;
 const CHATS_CACHE_MAX_AGE = 5000; // 5 seconds
 
-// Initialize cross-tab listener for cache invalidation (browser only)
-if (typeof window !== "undefined") {
-  getCrossTabCoordinator().on(CrossTabMessages.CACHE_INVALIDATED, () => {
-    chatsCache = null;
-  });
+// Initialize cross-tab listener for cache invalidation (browser only, deferred)
+let crossTabListenerInitialized = false;
+function initCrossTabListener() {
+  if (crossTabListenerInitialized || typeof window === "undefined") return;
+  crossTabListenerInitialized = true;
+
+  try {
+    getCrossTabCoordinator().on(CrossTabMessages.CACHE_INVALIDATED, () => {
+      chatsCache = null;
+    });
+  } catch (error) {
+    console.warn("[Queries] Failed to initialize cross-tab listener:", error);
+  }
 }
 
 /**
@@ -67,9 +75,14 @@ if (typeof window !== "undefined") {
  */
 export function invalidateChatsCache() {
   chatsCache = null;
-  // Notify other tabs
+  // Notify other tabs (also ensures listener is initialized)
   if (typeof window !== "undefined") {
-    getCrossTabCoordinator().broadcast(CrossTabMessages.CACHE_INVALIDATED);
+    initCrossTabListener();
+    try {
+      getCrossTabCoordinator().broadcast(CrossTabMessages.CACHE_INVALIDATED);
+    } catch (error) {
+      // Ignore broadcast errors - not critical
+    }
   }
 }
 
@@ -114,6 +127,9 @@ export async function getAllChats() {
  * @param maxAge Maximum age of cache in ms (default 5000ms)
  */
 export async function getAllChatsCached(maxAge = CHATS_CACHE_MAX_AGE): Promise<Chat[]> {
+  // Initialize cross-tab listener on first cache access
+  initCrossTabListener();
+
   // Return cached data if still valid
   if (chatsCache && Date.now() - chatsCache.timestamp < maxAge) {
     return chatsCache.data;
@@ -221,7 +237,11 @@ export async function deleteChat(id: string) {
   invalidateChatsCache();
   // Notify other tabs about the deletion
   if (typeof window !== "undefined") {
-    getCrossTabCoordinator().broadcast(CrossTabMessages.CHAT_DELETED, { chatId: id });
+    try {
+      getCrossTabCoordinator().broadcast(CrossTabMessages.CHAT_DELETED, { chatId: id });
+    } catch (error) {
+      // Ignore broadcast errors - not critical
+    }
   }
 }
 
