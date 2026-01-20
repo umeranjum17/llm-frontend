@@ -35,6 +35,9 @@
     --ring: 270 95% 75%;
 
     --radius: 0.75rem;
+
+    /* Font Family */
+    --default-font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   }
 
   .dark {
@@ -83,6 +86,7 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: var(--default-font-family);
     font-feature-settings: "rlig" 1, "calt" 1;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;

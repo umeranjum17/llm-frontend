@@ -8,6 +8,9 @@ import { TogetherFetcher } from "./providers/together-fetcher";
 import { GroqFetcher } from "./providers/groq-fetcher";
 import { PerplexityFetcher } from "./providers/perplexity-fetcher";
 import { AnyscaleFetcher } from "./providers/anyscale-fetcher";
+import { DeepSeekFetcher } from "./providers/deepseek-fetcher";
+import { MistralFetcher } from "./providers/mistral-fetcher";
+import { XAIFetcher } from "./providers/xai-fetcher";
 import { getRuleEngine } from "./rule-engine";
 
 export interface ModelAggregatorOptions {
@@ -35,6 +38,9 @@ export class ModelAggregator {
       new GroqFetcher(),
       new PerplexityFetcher(),
       new AnyscaleFetcher(),
+      new DeepSeekFetcher(),
+      new MistralFetcher(),
+      new XAIFetcher(),
     ];
 
     for (const fetcher of fetchers) {

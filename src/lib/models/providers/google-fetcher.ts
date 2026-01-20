@@ -1,16 +1,7 @@
 import type { Model } from "@/lib/constants/models";
 import type { ProviderFetcher } from "./base-fetcher";
 
-interface GoogleModel {
-  name: string;
-  displayName: string;
-  description?: string;
-  inputTokenLimit?: number;
-  outputTokenLimit?: number;
-  supportedGenerationMethods?: string[];
-}
-
-// Google Gemini models - curated list since API may not return all
+// Google Gemini curated model list matching featured.json
 const GOOGLE_MODELS = [
   {
     id: "google/gemini-3-pro",
@@ -20,6 +11,18 @@ const GOOGLE_MODELS = [
     outputCost: 5.0,
     supportsVision: true,
     supportsReasoning: true,
+    tier: "flagship",
+    description: "Google's most advanced Gemini model with reasoning",
+  },
+  {
+    id: "google/gemini-3-flash",
+    name: "Gemini 3 Flash",
+    contextLength: 1000000,
+    inputCost: 0.075,
+    outputCost: 0.3,
+    supportsVision: true,
+    tier: "fast",
+    description: "Fast and efficient Gemini 3 for quick responses",
   },
   {
     id: "google/gemini-3-deep-think",
@@ -29,6 +32,40 @@ const GOOGLE_MODELS = [
     outputCost: 5.0,
     supportsVision: true,
     supportsReasoning: true,
+    supportsThinking: true,
+    tier: "flagship",
+    description: "Gemini 3 optimized for deep reasoning tasks",
+  },
+  {
+    id: "google/gemini-2.5-flash-image",
+    name: "Gemini 2.5 Flash Image",
+    contextLength: 1000000,
+    inputCost: 0.075,
+    outputCost: 0.3,
+    supportsVision: true,
+    supportsImageGeneration: true,
+    tier: "balanced",
+    description: "Gemini 2.5 with image understanding and generation",
+  },
+  {
+    id: "google/gemini-2.0-flash",
+    name: "Gemini 2.0 Flash",
+    contextLength: 1000000,
+    inputCost: 0.075,
+    outputCost: 0.3,
+    supportsVision: true,
+    tier: "fast",
+    description: "Fast multimodal Gemini 2.0 model",
+  },
+  {
+    id: "google/gemini-2.0-flash-free",
+    name: "Gemini 2.0 Flash (Free)",
+    contextLength: 1000000,
+    inputCost: 0,
+    outputCost: 0,
+    supportsVision: true,
+    tier: "budget",
+    description: "Free tier of Gemini 2.0 Flash with rate limits",
   },
   {
     id: "google/gemini-2.5-pro",
@@ -37,16 +74,8 @@ const GOOGLE_MODELS = [
     inputCost: 1.25,
     outputCost: 5.0,
     supportsVision: true,
-    supportsReasoning: false,
-  },
-  {
-    id: "google/gemini-2.5-flash",
-    name: "Gemini 2.5 Flash",
-    contextLength: 1000000,
-    inputCost: 0.075,
-    outputCost: 0.3,
-    supportsVision: true,
-    supportsReasoning: false,
+    tier: "balanced",
+    description: "Powerful Gemini 2.5 Pro with multimodal capabilities",
   },
   {
     id: "google/gemini-1.5-pro",
@@ -55,7 +84,17 @@ const GOOGLE_MODELS = [
     inputCost: 1.25,
     outputCost: 5.0,
     supportsVision: true,
-    supportsReasoning: false,
+    tier: "balanced",
+    description: "Proven Gemini 1.5 Pro with long context",
+  },
+  {
+    id: "google/gemma-3-27b",
+    name: "Gemma 3 27B",
+    contextLength: 8192,
+    inputCost: 0.27,
+    outputCost: 0.27,
+    tier: "budget",
+    description: "Google's open-source Gemma model family",
   },
 ];
 
@@ -65,51 +104,15 @@ export class GoogleFetcher implements ProviderFetcher {
   }
 
   async fetchModels(apiKey?: string): Promise<Model[]> {
-    // Try to fetch from Google API if key is provided
-    if (apiKey) {
-      try {
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
-          { cache: "no-store" }
-        );
-
-        if (response.ok) {
-          const json = await response.json();
-          const models = (json.models || []) as GoogleModel[];
-
-          return models
-            .filter((m) => m.name.includes("gemini"))
-            .map((m) => {
-              const modelId = m.name.replace("models/", "");
-              return {
-                id: `google/${modelId}`,
-                name: m.displayName || modelId,
-                provider: "Google",
-                contextLength: m.inputTokenLimit || 1000000,
-                inputCost: 0, // Will be filled from OpenRouter
-                outputCost: 0,
-                category: [],
-                supportsVision: true,
-                supportsReasoning: modelId.includes("deep-think"),
-                description: m.description,
-              } as Model;
-            });
-        }
-      } catch (error) {
-        // Fall through to curated list
-      }
-    }
-
     // Return curated list
     return GOOGLE_MODELS.map((m) => ({
       ...m,
       provider: "Google",
-      category: [],
-      description: `${m.name} by Google`,
+      category: m.supportsImageGeneration
+        ? ["image-generation"]
+        : m.supportsReasoning
+          ? ["reasoning"]
+          : [],
     })) as Model[];
   }
 }
-
-
-
-

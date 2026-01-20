@@ -84,6 +84,16 @@ export const RETRY_CONFIG = {
 };
 
 /**
+ * Provider-specific timeout configuration (in milliseconds)
+ * Based on documented API limits and best practices
+ */
+export const PROVIDER_TIMEOUTS: Record<string, number> = {
+  groq: 20000,       // 20s - Groq has fast inference but strict timeouts
+  deepseek: 60000,   // 60s - DeepSeek allows longer requests
+  default: 120000,   // 2 minutes - default for other providers
+};
+
+/**
  * Generate a cache key from system prompt content for prompt caching.
  * Uses a simple hash of the content to create a stable key.
  */
@@ -155,24 +165,28 @@ export function configurePromptCaching(
     }
   }
   
-  // OpenRouter: Explicit caching for Gemini/Claude models
+  // OpenRouter: Explicit caching for Gemini/Claude/OpenAI models
   else if (providerId === 'openrouter') {
     const isGeminiModel = modelId.toLowerCase().includes('gemini');
     const isClaudeModel = modelId.toLowerCase().includes('claude');
-    
-    if ((isGeminiModel || isClaudeModel) && systemPrompts.length > 0) {
+    const isOpenAIModel = modelId.toLowerCase().includes('openai/') || modelId.toLowerCase().startsWith('gpt-');
+
+    // Enable caching for all supported models (Gemini, Claude, OpenAI)
+    const supportsCaching = isGeminiModel || isClaudeModel || isOpenAIModel;
+
+    if (supportsCaching && systemPrompts.length > 0) {
       const lastSystemIdx = updatedMessages
         .map((m, i) => m.role === 'system' ? i : -1)
         .filter(i => i !== -1)
         .pop();
-      
+
       if (lastSystemIdx !== undefined && lastSystemIdx >= 0) {
         const msg = updatedMessages[lastSystemIdx] as any;
-        
+
         // Change role to 'user' to allow array content with providerOptions
         // AI SDK requires system messages to have string content
         msg.role = 'user';
-        
+
         // Convert string content to array format with providerOptions
         if (typeof msg.content === 'string') {
           msg.content = [
@@ -192,7 +206,7 @@ export function configurePromptCaching(
             .map((p: any, i: number) => p.type === 'text' ? i : -1)
             .filter((i: number) => i !== -1)
             .pop();
-          
+
           if (lastTextPartIdx !== undefined && lastTextPartIdx >= 0) {
             msg.content[lastTextPartIdx].providerOptions = {
               openrouter: {
@@ -201,11 +215,10 @@ export function configurePromptCaching(
             };
           }
         }
-        
+
       }
-    } else {
-      // OpenRouter automatic caching for other models (OpenAI, Groq, etc.)
     }
+    // Note: Groq, DeepSeek, xAI have automatic caching - no explicit config needed
   }
   
   return { messages: updatedMessages, providerOptions };
@@ -229,13 +242,18 @@ export function isRetryableError(error: unknown): boolean {
     return true;
   }
 
+  // Request Timeout
+  if (statusCode === 408) {
+    return true;
+  }
+
   // Rate limiting
   if (statusCode === 429) {
     return true;
   }
 
-  // Server errors (500-503)
-  if (statusCode >= 500 && statusCode <= 503) {
+  // Server errors (500-504)
+  if (statusCode >= 500 && statusCode <= 504) {
     return true;
   }
 
@@ -263,8 +281,11 @@ export async function withRetry<T>(
       lastError = error;
 
       if (attempt < RETRY_CONFIG.maxRetries && isRetryableError(error)) {
+        // Add jitter to prevent thundering herd (0-30% random variance)
+        const jitter = Math.random() * 0.3;
+        const baseDelay = RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt);
         const delay = Math.min(
-          RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt),
+          baseDelay * (1 + jitter),
           RETRY_CONFIG.maxDelayMs
         );
         await new Promise((resolve) => setTimeout(resolve, delay));
@@ -649,14 +670,40 @@ export async function executeChat(
     }
   }
 
-  
+
   // Log prompt cache metrics if available
   if (result.usage) {
-    const cachedTokens = (result.usage as any).promptTokensDetails?.cachedTokens ?? 0;
+    const usage = result.usage as any;
+    const cachedTokens = usage.promptTokensDetails?.cachedTokens ?? 0;
     const promptTokens = result.usage.inputTokens ?? 0;
+
+    // OpenAI/Anthropic cache metrics
     if (cachedTokens > 0) {
       const cacheHitRate = ((cachedTokens / promptTokens) * 100).toFixed(1);
-    } else if (promptTokens >= 1024) {
+      console.log(`[Cache] ${providerId}/${modelId}: ${cacheHitRate}% hit rate (${cachedTokens}/${promptTokens} tokens)`);
+    }
+
+    // Groq cache metrics (usage.cache_* fields)
+    if (usage.cache_creation_input_tokens || usage.cache_read_input_tokens) {
+      const cacheCreated = usage.cache_creation_input_tokens ?? 0;
+      const cacheRead = usage.cache_read_input_tokens ?? 0;
+      console.log(`[Cache] Groq: Created ${cacheCreated} tokens, Read ${cacheRead} tokens (automatic caching)`);
+    }
+
+    // DeepSeek cache metrics (prompt_cache_hit_tokens, prompt_cache_miss_tokens)
+    if (usage.prompt_cache_hit_tokens || usage.prompt_cache_miss_tokens) {
+      const hitTokens = usage.prompt_cache_hit_tokens ?? 0;
+      const missTokens = usage.prompt_cache_miss_tokens ?? 0;
+      const total = hitTokens + missTokens;
+      const hitRate = total > 0 ? ((hitTokens / total) * 100).toFixed(1) : '0.0';
+      console.log(`[Cache] DeepSeek: ${hitRate}% hit rate (${hitTokens}/${total} tokens, 90% cost savings on hits)`);
+    }
+
+    // xAI cache metrics (similar structure expected)
+    if (usage.cache_tokens || usage.cached_tokens) {
+      const cached = usage.cache_tokens ?? usage.cached_tokens ?? 0;
+      const hitRate = promptTokens > 0 ? ((cached / promptTokens) * 100).toFixed(1) : '0.0';
+      console.log(`[Cache] xAI: ${hitRate}% hit rate (${cached}/${promptTokens} tokens, automatic caching)`);
     }
   }
 

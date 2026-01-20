@@ -1,12 +1,36 @@
 import type { Model } from "@/lib/constants/models";
 import type { ProviderFetcher } from "./base-fetcher";
 
-interface AnyscaleModel {
-  id: string;
-  object: string;
-  created: number;
-  owned_by: string;
-}
+// Anyscale curated model list
+const ANYSCALE_MODELS = [
+  {
+    id: "anyscale/llama-3.1-70b",
+    name: "Llama 3.1 70B",
+    contextLength: 128000,
+    inputCost: 0.88,
+    outputCost: 0.88,
+    tier: "balanced",
+    description: "Llama 3.1 70B hosted on Anyscale",
+  },
+  {
+    id: "anyscale/llama-3.1-8b",
+    name: "Llama 3.1 8B",
+    contextLength: 128000,
+    inputCost: 0.15,
+    outputCost: 0.15,
+    tier: "budget",
+    description: "Efficient Llama 3.1 8B on Anyscale infrastructure",
+  },
+  {
+    id: "anyscale/mixtral-8x7b",
+    name: "Mixtral 8x7B",
+    contextLength: 32768,
+    inputCost: 0.5,
+    outputCost: 0.5,
+    tier: "budget",
+    description: "Mixtral MoE model with Anyscale optimizations",
+  },
+];
 
 export class AnyscaleFetcher implements ProviderFetcher {
   getProviderId(): string {
@@ -14,41 +38,11 @@ export class AnyscaleFetcher implements ProviderFetcher {
   }
 
   async fetchModels(apiKey?: string): Promise<Model[]> {
-    if (!apiKey) {
-      return [];
-    }
-
-    const response = await fetch("https://api.endpoints.anyscale.com/v1/models", {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      throw new Error(`Anyscale API error: ${response.status}`);
-    }
-
-    const json = await response.json();
-    const models = (json.data || []) as AnyscaleModel[];
-
-    return models.map((m) => {
-      return {
-        id: `anyscale/${m.id}`,
-        name: m.id.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()),
-        provider: "Anyscale",
-        contextLength: 32768, // Default
-        inputCost: 0.1, // Approximate
-        outputCost: 0.1,
-        category: [],
-        supportsVision: false,
-        supportsReasoning: false,
-        description: `Anyscale ${m.id}`,
-      } as Model;
-    });
+    // Return curated list
+    return ANYSCALE_MODELS.map((m) => ({
+      ...m,
+      provider: "Anyscale",
+      category: [],
+    })) as Model[];
   }
 }
-
-
-
-

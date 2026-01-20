@@ -1,6 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { GeistSans } from "geist/font/sans";
+import { Inconsolata } from "next/font/google";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+
+const inconsolata = Inconsolata({
+  subsets: ["latin"],
+  variable: "--font-inconsolata",
+  display: "swap",
+});
 import { GlobalHooks } from "@/components/providers/global-hooks";
 import { Toaster as SonnerToaster } from "sonner";
 import { CommandPalette } from "@/components/command-palette/command-palette";
@@ -44,7 +50,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${GeistSans.variable} font-sans antialiased`}>
+      <body className={`${inconsolata.variable} font-sans antialiased`}>
         <ErrorBoundary>
           <ThemeProvider
             attribute="class"

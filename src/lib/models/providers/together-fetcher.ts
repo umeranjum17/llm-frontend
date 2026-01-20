@@ -1,12 +1,45 @@
 import type { Model } from "@/lib/constants/models";
-import type { ProviderFetcher, ProviderModelResponse } from "./base-fetcher";
+import type { ProviderFetcher } from "./base-fetcher";
 
-function parseUsdPer1M(value: string | number | undefined) {
-  if (typeof value === "number") return value;
-  const n = Number(value);
-  if (!Number.isFinite(n)) return 0;
-  return n;
-}
+// Together AI curated model list - quality open-source models
+const TOGETHER_MODELS = [
+  {
+    id: "together/llama-3.3-70b",
+    name: "Llama 3.3 70B",
+    contextLength: 128000,
+    inputCost: 0.88,
+    outputCost: 0.88,
+    tier: "balanced",
+    description: "Meta's latest Llama model on Together AI",
+  },
+  {
+    id: "together/qwen-2.5-72b",
+    name: "Qwen 2.5 72B",
+    contextLength: 32768,
+    inputCost: 0.88,
+    outputCost: 0.88,
+    tier: "balanced",
+    description: "Alibaba's powerful multilingual model",
+  },
+  {
+    id: "together/mixtral-8x7b",
+    name: "Mixtral 8x7B",
+    contextLength: 32768,
+    inputCost: 0.6,
+    outputCost: 0.6,
+    tier: "budget",
+    description: "Mistral's efficient MoE architecture",
+  },
+  {
+    id: "together/yi-large",
+    name: "Yi Large",
+    contextLength: 32768,
+    inputCost: 0.8,
+    outputCost: 0.8,
+    tier: "balanced",
+    description: "01.AI's flagship model with strong reasoning",
+  },
+];
 
 export class TogetherFetcher implements ProviderFetcher {
   getProviderId(): string {
@@ -14,48 +47,11 @@ export class TogetherFetcher implements ProviderFetcher {
   }
 
   async fetchModels(apiKey?: string): Promise<Model[]> {
-    if (!apiKey) {
-      return [];
-    }
-
-    const response = await fetch("https://api.together.xyz/v1/models", {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      throw new Error(`Together AI API error: ${response.status}`);
-    }
-
-    const json = await response.json();
-    const models = (json.data || json || []) as ProviderModelResponse[];
-
-    return models
-      .map((m) => {
-        const modelId = m.id || "";
-        const supportsVision = modelId.includes("vision") || modelId.includes("multimodal");
-        const supportsReasoning = modelId.includes("reasoning") || modelId.includes("think");
-
-        return {
-          id: `together/${modelId}`,
-          name: m.name || modelId,
-          provider: "Together AI",
-          contextLength: m.context_length || 4096,
-          inputCost: parseUsdPer1M(m.pricing?.prompt || 0),
-          outputCost: parseUsdPer1M(m.pricing?.completion || 0),
-          category: [],
-          supportsVision,
-          supportsReasoning,
-          description: m.description,
-          maxCompletionTokens: m.max_completion_tokens,
-        } as Model;
-      })
-      .filter((m) => !!m.id);
+    // Return curated list
+    return TOGETHER_MODELS.map((m) => ({
+      ...m,
+      provider: "Together AI",
+      category: [],
+    })) as Model[];
   }
 }
-
-
-
-

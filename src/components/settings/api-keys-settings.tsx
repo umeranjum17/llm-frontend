@@ -31,10 +31,6 @@ const PROVIDERS = [
   { id: "perplexity", name: "Perplexity (OpenAI-compatible)", url: "https://www.perplexity.ai/settings/api", baseUrl: "https://api.perplexity.ai" },
   { id: "anyscale", name: "Anyscale (OpenAI-compatible)", url: "https://app.endpoints.anyscale.com/credentials", baseUrl: "https://api.endpoints.anyscale.com/v1" },
   { id: "custom-openai", name: "Custom (OpenAI-compatible)", url: "https://platform.openai.com/docs/api-reference", needsBaseUrl: true },
-  { id: "tavily", name: "Tavily (Web Search)", url: "https://tavily.com" },
-  { id: "serper", name: "Serper (Google Search API)", url: "https://serper.dev" },
-  { id: "brave", name: "Brave Search API", url: "https://brave.com/search/api/" },
-  { id: "searxng", name: "SearxNG (Self-hosted)", url: "https://docs.searxng.org/" },
   { id: "composio", name: "Composio (Tool Router)", url: "https://platform.composio.dev" },
 ] as const;
 
@@ -155,7 +151,6 @@ export function ApiKeysSettings() {
     return `${key.slice(0, 4)}••••${key.slice(-4)}`;
   };
 
-  const isSearxng = newProvider === "searxng";
   const isCustomOpenAI = newProvider === "custom-openai";
   const selectedProvider = PROVIDERS.find((p) => p.id === newProvider);
   const baseUrlHint = (selectedProvider as any)?.baseUrl as string | undefined;
@@ -353,24 +348,18 @@ export function ApiKeysSettings() {
 
           <div className="space-y-2">
             <Label htmlFor="api-key">
-              {isSearxng ? "Base URL" : apiKeyOptional ? "API Key (Optional)" : "API Key"}
+              {apiKeyOptional ? "API Key (Optional)" : "API Key"}
             </Label>
             <Input
               id="api-key"
-              type={isSearxng ? "text" : "password"}
-              placeholder={
-                isSearxng
-                  ? "https://searx.example.com"
-                  : apiKeyOptional
-                    ? "(optional)"
-                    : "sk-..."
-              }
+              type="password"
+              placeholder={apiKeyOptional ? "(optional)" : "sk-..."}
               value={newKey}
               onChange={(e) => setNewKey(e.target.value)}
             />
           </div>
 
-          {(isCustomOpenAI || !!baseUrlHint) && !isSearxng && (
+          {(isCustomOpenAI || !!baseUrlHint) && (
             <div className="space-y-2">
               <Label htmlFor="base-url">Base URL</Label>
               <Input

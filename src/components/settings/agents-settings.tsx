@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,38 +12,87 @@ import { AgentEditorDialog } from "@/components/agents/agent-editor-dialog";
 import { toast } from "sonner";
 import { getModelById } from "@/lib/constants/models";
 import { BUILTIN_AGENTS } from "@/lib/constants/agents";
+import { useConfirmDialog } from "@/components/ui/confirmation-dialog";
 
 export function AgentsSettings() {
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
 
+  const confirm = useConfirmDialog();
   const agents = useLiveQuery(() => getAllAgents(), []);
+
+  // Debounce search query (300ms delay)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedQuery(query);
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [query]);
 
   const filtered = useMemo(() => {
     const list = agents || [];
     const builtInIds = new Set(BUILTIN_AGENTS.map(a => a.id));
-    
+
     // Filter: only show built-ins that are in BUILTIN_AGENTS, plus all custom agents
     const visibleAgents = list.filter(a => !a.isBuiltIn || builtInIds.has(a.id));
-    
-    const q = query.trim().toLowerCase();
+
+    const q = debouncedQuery.trim().toLowerCase();
     if (!q) return visibleAgents;
-    return visibleAgents.filter(
-      (a) =>
+
+    return visibleAgents.filter((a) => {
+      // Search in name and description
+      if (
         a.name.toLowerCase().includes(q) ||
         (a.description || "").toLowerCase().includes(q)
-    );
-  }, [agents, query]);
+      ) {
+        return true;
+      }
+
+      // Search in system prompt
+      if (a.systemPrompt?.toLowerCase().includes(q)) {
+        return true;
+      }
+
+      // Search in pipeline step names and models
+      if (a.pipeline?.steps) {
+        for (const step of a.pipeline.steps) {
+          if (step.name?.toLowerCase().includes(q)) {
+            return true;
+          }
+          if (step.modelId?.toLowerCase().includes(q)) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    });
+  }, [agents, debouncedQuery]);
 
   const handleDelete = async (agent: Agent) => {
     if (agent.isBuiltIn) {
       toast.error("Built-in agents cannot be deleted");
       return;
     }
-    if (!confirm(`Delete agent "${agent.name}"?`)) return;
-    await deleteAgent(agent.id);
-    toast.success("Agent deleted");
+    const confirmed = await confirm({
+      title: "Delete Agent",
+      description: `Are you sure you want to delete "${agent.name}"?\n\nThis action cannot be undone.`,
+      confirmText: "Delete",
+      cancelText: "Cancel",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+
+    try {
+      await deleteAgent(agent.id);
+      toast.success("Agent deleted");
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Failed to delete agent";
+      toast.error(errorMsg);
+    }
   };
 
   const toggleActive = async (agent: Agent) => {

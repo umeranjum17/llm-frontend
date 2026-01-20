@@ -1,12 +1,130 @@
 import type { Model } from "@/lib/constants/models";
 import type { ProviderFetcher } from "./base-fetcher";
 
-interface OpenAIModel {
-  id: string;
-  object: string;
-  created: number;
-  owned_by: string;
-}
+// OpenAI curated model list matching featured.json
+const OPENAI_MODELS = [
+  {
+    id: "openai/gpt-5.2",
+    name: "GPT-5.2",
+    contextLength: 200000,
+    inputCost: 10.0,
+    outputCost: 30.0,
+    supportsVision: true,
+    supportsReasoning: true,
+    supportsPromptCaching: true,
+    tier: "flagship",
+    description: "OpenAI's most advanced flagship model",
+  },
+  {
+    id: "openai/gpt-5.2-pro",
+    name: "GPT-5.2 Pro",
+    contextLength: 200000,
+    inputCost: 15.0,
+    outputCost: 45.0,
+    supportsVision: true,
+    supportsReasoning: true,
+    supportsPromptCaching: true,
+    tier: "flagship",
+    description: "Enhanced version of GPT-5.2 with extended capabilities",
+  },
+  {
+    id: "openai/gpt-5.2-codex",
+    name: "GPT-5.2 Codex",
+    contextLength: 200000,
+    inputCost: 8.0,
+    outputCost: 24.0,
+    supportsPromptCaching: true,
+    tier: "balanced",
+    description: "Specialized coding model based on GPT-5.2",
+  },
+  {
+    id: "openai/gpt-5",
+    name: "GPT-5",
+    contextLength: 128000,
+    inputCost: 5.0,
+    outputCost: 15.0,
+    supportsVision: true,
+    supportsPromptCaching: true,
+    tier: "balanced",
+    description: "GPT-5 with multimodal capabilities",
+  },
+  {
+    id: "openai/gpt-5-mini",
+    name: "GPT-5 Mini",
+    contextLength: 128000,
+    inputCost: 0.5,
+    outputCost: 1.5,
+    supportsVision: true,
+    supportsPromptCaching: true,
+    tier: "budget",
+    description: "Efficient and affordable GPT-5 variant",
+  },
+  {
+    id: "openai/gpt-5-image",
+    name: "GPT-5 Image",
+    contextLength: 128000,
+    inputCost: 7.5,
+    outputCost: 22.5,
+    supportsVision: true,
+    supportsImageGeneration: true,
+    tier: "balanced",
+    description: "GPT-5 with advanced image understanding and generation",
+  },
+  {
+    id: "openai/o4-mini",
+    name: "o4-mini",
+    contextLength: 128000,
+    inputCost: 1.5,
+    outputCost: 6.0,
+    supportsReasoning: true,
+    supportsThinking: true,
+    tier: "budget",
+    description: "Compact reasoning model with strong performance",
+  },
+  {
+    id: "openai/o3-mini",
+    name: "o3-mini",
+    contextLength: 128000,
+    inputCost: 1.1,
+    outputCost: 4.4,
+    supportsReasoning: true,
+    supportsThinking: true,
+    tier: "budget",
+    description: "Efficient reasoning model for complex problems",
+  },
+  {
+    id: "openai/gpt-4o",
+    name: "GPT-4o",
+    contextLength: 128000,
+    inputCost: 2.5,
+    outputCost: 10.0,
+    supportsVision: true,
+    supportsPromptCaching: true,
+    tier: "balanced",
+    description: "Omni model with vision and audio capabilities",
+  },
+  {
+    id: "openai/gpt-4o-mini",
+    name: "GPT-4o Mini",
+    contextLength: 128000,
+    inputCost: 0.15,
+    outputCost: 0.6,
+    supportsVision: true,
+    supportsPromptCaching: true,
+    tier: "budget",
+    description: "Affordable multimodal model",
+  },
+  {
+    id: "openai/dall-e-3",
+    name: "DALL-E 3",
+    contextLength: 0,
+    inputCost: 40.0,
+    outputCost: 0,
+    supportsImageGeneration: true,
+    tier: "balanced",
+    description: "Advanced image generation model",
+  },
+];
 
 export class OpenAIFetcher implements ProviderFetcher {
   getProviderId(): string {
@@ -14,92 +132,17 @@ export class OpenAIFetcher implements ProviderFetcher {
   }
 
   async fetchModels(apiKey?: string): Promise<Model[]> {
-    if (!apiKey) {
-      return [];
-    }
-
-    const response = await fetch("https://api.openai.com/v1/models", {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status}`);
-    }
-
-    const json = await response.json();
-    const models = (json.data || []) as OpenAIModel[];
-
-    // Filter for chat/completion models and image generation models
-    const chatModels = models.filter(
-      (m) =>
-        m.id.startsWith("gpt-") ||
-        m.id.startsWith("o1") ||
-        m.id.startsWith("o3") ||
-        m.id.includes("chat") ||
-        m.id.startsWith("dall-e")
-    );
-
-    return chatModels.map((m) => {
-      const isVision = m.id.includes("vision") || m.id.includes("4o");
-      const isReasoning = m.id.startsWith("o1") || m.id.startsWith("o3");
-      const isImageGeneration = m.id.startsWith("dall-e");
-
-      // Default pricing (will be overridden by OpenRouter if available)
-      const pricing: Record<string, { input: number; output: number }> = {
-        "gpt-4o": { input: 2.5, output: 10.0 },
-        "gpt-4o-mini": { input: 0.15, output: 0.6 },
-        "gpt-4-turbo": { input: 10.0, output: 30.0 },
-        "gpt-4": { input: 30.0, output: 60.0 },
-        "gpt-3.5-turbo": { input: 0.5, output: 1.5 },
-        "dall-e-3": { input: 40.0, output: 0 }, // ~$0.04 per image
-        "dall-e-2": { input: 20.0, output: 0 }, // ~$0.02 per image
-      };
-
-      let inputCost = 0;
-      let outputCost = 0;
-      let contextLength = isImageGeneration ? 0 : 128000;
-
-      for (const [key, value] of Object.entries(pricing)) {
-        if (m.id.includes(key.replace("gpt-", ""))) {
-          inputCost = value.input;
-          outputCost = value.output;
-          break;
-        }
-      }
-
-      // Context length defaults
-      if (m.id.includes("gpt-4o")) {
-        contextLength = 128000;
-      } else if (m.id.includes("gpt-4")) {
-        contextLength = 128000;
-      } else if (m.id.includes("gpt-3.5")) {
-        contextLength = 16385;
-      }
-
-      // Determine category
-      const category: string[] = isImageGeneration ? ["image-generation"] : [];
-
-      return {
-        id: `openai/${m.id}`,
-        name: m.id.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()),
-        provider: "OpenAI",
-        contextLength,
-        inputCost,
-        outputCost,
-        category,
-        supportsVision: isVision,
-        supportsReasoning: isReasoning,
-        description: isImageGeneration
-          ? `OpenAI image generation model`
-          : `OpenAI ${m.id}`,
-      } as Model;
-    });
+    // Return curated list - OpenAI supports prompt caching (1024+ tokens)
+    return OPENAI_MODELS.map((m) => ({
+      ...m,
+      provider: "OpenAI",
+      category: m.supportsImageGeneration
+        ? ["image-generation"]
+        : m.id.includes("codex")
+          ? ["coding"]
+          : m.supportsReasoning
+            ? ["reasoning"]
+            : [],
+    })) as Model[];
   }
 }
-
-
-
-

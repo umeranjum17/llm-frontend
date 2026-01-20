@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +56,7 @@ import { useSettingsStore } from "@/stores/settings-store";
 import { regenerateAllEmbeddings } from "@/lib/skills/skill-embeddings";
 import { db } from "@/lib/db/schema";
 import { Slider } from "@/components/ui/slider";
+import { useConfirmDialog } from "@/components/ui/confirmation-dialog";
 
 // Embedding models by provider
 const EMBEDDING_MODELS: Record<
@@ -95,12 +96,14 @@ function getSkillIcon(iconName: string, className?: string) {
 
 export function SkillsSettings() {
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [localThreshold, setLocalThreshold] = useState<number | null>(null);
 
+  const confirm = useConfirmDialog();
   const { getKeyForProvider, keys } = useApiKeysStore();
   const {
     embeddingsProvider,
@@ -167,6 +170,15 @@ export function SkillsSettings() {
   const availableModels = useMemo(() => {
     return EMBEDDING_MODELS[selectedProvider] || [];
   }, [selectedProvider]);
+
+  // Debounce search query (300ms delay)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedQuery(query);
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [query]);
 
   // Sync local threshold with store on mount and when it changes
   useEffect(() => {
@@ -251,24 +263,58 @@ export function SkillsSettings() {
 
   const filtered = useMemo(() => {
     const list = skills || [];
-    const q = query.trim().toLowerCase();
+    const q = debouncedQuery.trim().toLowerCase();
     if (!q) return list;
-    return list.filter(
-      (s) =>
+    return list.filter((s) => {
+      // Search in name, description, and category
+      if (
         s.name.toLowerCase().includes(q) ||
         s.description.toLowerCase().includes(q) ||
         s.category.toLowerCase().includes(q)
-    );
-  }, [skills, query]);
+      ) {
+        return true;
+      }
+
+      // Search in trigger phrases (autoApplyQueries)
+      if (s.autoApplyQueries?.some((phrase) => phrase.toLowerCase().includes(q))) {
+        return true;
+      }
+
+      // Search in exclusion queries
+      if (s.exclusionQueries?.some((exclusion) => exclusion.toLowerCase().includes(q))) {
+        return true;
+      }
+
+      // Search in system prompt
+      if (s.systemPrompt?.toLowerCase().includes(q)) {
+        return true;
+      }
+
+      return false;
+    });
+  }, [skills, debouncedQuery]);
 
   const handleDelete = async (skill: Skill) => {
     if (skill.isBuiltIn) {
       toast.error("Built-in skills cannot be deleted");
       return;
     }
-    if (!confirm(`Delete skill "${skill.name}"?`)) return;
-    await deleteSkill(skill.id);
-    toast.success("Skill deleted");
+    const confirmed = await confirm({
+      title: "Delete Skill",
+      description: `Are you sure you want to delete "${skill.name}"?\n\nThis action cannot be undone.`,
+      confirmText: "Delete",
+      cancelText: "Cancel",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+
+    try {
+      await deleteSkill(skill.id);
+      toast.success("Skill deleted");
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Failed to delete skill";
+      toast.error(errorMsg);
+    }
   };
 
   const handleToggleFavorite = async (skill: Skill) => {
@@ -281,11 +327,19 @@ export function SkillsSettings() {
 
   const handleResetToDefaults = async () => {
     const customSkillsCount = skills?.filter(s => !s.isBuiltIn).length || 0;
-    const message = customSkillsCount > 0
-      ? `This will delete ${customSkillsCount} custom skill${customSkillsCount !== 1 ? 's' : ''} and reset all skills to defaults. This cannot be undone.\n\nAre you sure?`
-      : "This will reset all skills to their default settings and clear embeddings. Continue?";
+    const description = customSkillsCount > 0
+      ? `This will delete ${customSkillsCount} custom skill${customSkillsCount !== 1 ? 's' : ''} and reset all skills to defaults.\n\nThis action cannot be undone.`
+      : "This will reset all skills to their default settings and clear embeddings.";
 
-    if (!confirm(message)) return;
+    const confirmed = await confirm({
+      title: "Reset Skills to Defaults",
+      description,
+      confirmText: "Reset",
+      cancelText: "Cancel",
+      variant: "destructive",
+    });
+
+    if (!confirmed) return;
 
     setIsResetting(true);
     try {

@@ -93,9 +93,24 @@ export default {
   		},
   		fontFamily: {
   			sans: [
-  				'var(--font-geist-sans)',
+  				'ui-sans-serif',
   				'system-ui',
-  				'sans-serif'
+  				'sans-serif',
+  				'"Apple Color Emoji"',
+  				'"Segoe UI Emoji"',
+  				'"Segoe UI Symbol"',
+  				'"Noto Color Emoji"'
+  			],
+  			mono: [
+  				'var(--font-inconsolata)',
+  				'ui-monospace',
+  				'SFMono-Regular',
+  				'Menlo',
+  				'Monaco',
+  				'Consolas',
+  				'"Liberation Mono"',
+  				'"Courier New"',
+  				'monospace'
   			]
   		},
   		keyframes: {
