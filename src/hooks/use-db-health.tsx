@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { db } from "@/lib/db/schema";
+import { db, DB_SCHEMA_VERSION } from "@/lib/db/schema";
 import { toast } from "sonner";
 import { RefreshCw, AlertTriangle } from "lucide-react";
 import { useLoadingStore } from "@/stores/loading-store";
@@ -14,6 +14,93 @@ interface DBHealthState {
   isChecking: boolean;
   error: string | null;
   retryCount: number;
+}
+
+interface MigrationInfo {
+  needed: boolean;
+  fromVersion: number;
+  toVersion: number;
+}
+
+/**
+ * Detect if a schema migration is needed by checking the current DB version.
+ * Returns version info to help determine timeout duration.
+ */
+async function detectMigrationNeeded(): Promise<MigrationInfo> {
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open("LuminaDB");
+
+      req.onsuccess = () => {
+        const currentVersion = req.result.version;
+        req.result.close();
+        resolve({
+          needed: currentVersion > 0 && currentVersion < DB_SCHEMA_VERSION,
+          fromVersion: currentVersion,
+          toVersion: DB_SCHEMA_VERSION,
+        });
+      };
+
+      req.onerror = () => {
+        // If we can't open, assume fresh DB (no migration needed)
+        resolve({ needed: false, fromVersion: 0, toVersion: DB_SCHEMA_VERSION });
+      };
+
+      // Timeout in case the open hangs
+      setTimeout(() => {
+        resolve({ needed: false, fromVersion: 0, toVersion: DB_SCHEMA_VERSION });
+      }, 3000);
+    } catch {
+      resolve({ needed: false, fromVersion: 0, toVersion: DB_SCHEMA_VERSION });
+    }
+  });
+}
+
+/**
+ * Estimate database size by counting chats (rough proxy for migration time).
+ * Returns a multiplier for timeout calculation.
+ */
+async function estimateDbSizeFactor(): Promise<number> {
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open("LuminaDB");
+
+      req.onsuccess = () => {
+        const database = req.result;
+
+        // Check if chats store exists
+        if (!database.objectStoreNames.contains("chats")) {
+          database.close();
+          resolve(1);
+          return;
+        }
+
+        const tx = database.transaction("chats", "readonly");
+        const store = tx.objectStore("chats");
+        const countReq = store.count();
+
+        countReq.onsuccess = () => {
+          const count = countReq.result;
+          database.close();
+          // Scale factor: 1x for <100 chats, up to 3x for 500+ chats
+          const factor = Math.min(3, 1 + Math.floor(count / 200));
+          resolve(factor);
+        };
+
+        countReq.onerror = () => {
+          database.close();
+          resolve(1);
+        };
+      };
+
+      req.onerror = () => resolve(1);
+
+      // Timeout in case counting hangs
+      setTimeout(() => resolve(1), 2000);
+    } catch {
+      resolve(1);
+    }
+  });
 }
 
 /**
@@ -149,17 +236,41 @@ export function useDBHealth() {
 
     const checkDBHealth = async () => {
       const currentRetryCount = state.retryCount;
-      
+
       // Exponential backoff for retries
       if (currentRetryCount > 0 && currentRetryCount <= maxRetries) {
         const backoffMs = Math.min(1000 * Math.pow(2, currentRetryCount - 1), 5000);
         console.log(`[DB Health] Retrying in ${backoffMs}ms (attempt ${currentRetryCount + 1}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, backoffMs));
       }
-      
+
       try {
-        setDbInitializing(true, `Initializing database${currentRetryCount > 0 ? ` (retry ${currentRetryCount}/${maxRetries})` : ""}...`);
-        
+        // Detect if migration is needed before opening
+        const migrationInfo = await detectMigrationNeeded();
+        const sizeFactor = migrationInfo.needed ? await estimateDbSizeFactor() : 1;
+
+        // Calculate adaptive timeout:
+        // - Base: 30s for normal init (increased from 5s)
+        // - Migration: 60s * sizeFactor, up to 120s max
+        // - Retries: additional 30s buffer
+        const baseTimeout = migrationInfo.needed
+          ? Math.min(120000, 60000 * sizeFactor)
+          : 30000;
+        const timeoutDuration = baseTimeout + (currentRetryCount > 0 ? 30000 : 0);
+
+        // Set appropriate loading message
+        let loadingMessage = "Initializing database";
+        if (migrationInfo.needed) {
+          loadingMessage = `Migrating database (v${migrationInfo.fromVersion} → v${migrationInfo.toVersion})`;
+          console.log(`[DB Health] Migration detected: v${migrationInfo.fromVersion} → v${migrationInfo.toVersion}, sizeFactor: ${sizeFactor}, timeout: ${timeoutDuration}ms`);
+        }
+        if (currentRetryCount > 0) {
+          loadingMessage += ` (retry ${currentRetryCount}/${maxRetries})`;
+        }
+        loadingMessage += "...";
+
+        setDbInitializing(true, loadingMessage);
+
         // Set up blocked/versionchange listeners before opening
         db.on("blocked", () => {
           if (!isMounted) return;
@@ -183,16 +294,18 @@ export function useDBHealth() {
           );
         });
 
-        // Try to open the database with a timeout
+        // Try to open the database with adaptive timeout
         const openPromise = db.open();
-        const timeoutDuration = currentRetryCount > 0 ? 10000 : 5000; // Longer timeout for retries
-        
+
         timeoutId = setTimeout(() => {
           if (!isMounted) return;
           const canRetry = currentRetryCount < maxRetries;
+          const migrationNote = migrationInfo.needed
+            ? " Schema migration may be taking longer than expected."
+            : "";
           handleRecovery(
             "timeout",
-            `Database open timed out. ${canRetry ? "Retrying..." : "This may indicate a stale cache or corrupted database."}`,
+            `Database initialization timed out.${migrationNote} ${canRetry ? "Retrying..." : "This may indicate a stale cache or corrupted database."}`,
             canRetry
           );
         }, timeoutDuration);

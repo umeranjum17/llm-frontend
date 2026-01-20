@@ -2,9 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useLoadingStore } from "@/stores/loading-store";
-import { withTimeout, withTimeoutSafe } from "@/lib/utils/async-timeout";
-import { operationMutex, LockKeys } from "@/lib/utils/operation-mutex";
-import { broadcastToTabs, CrossTabMessages } from "@/lib/utils/cross-tab";
+import { withTimeoutSafe } from "@/lib/utils/async-timeout";
+import { toast } from "sonner";
 
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[];
@@ -146,23 +145,20 @@ export function usePWA(): UsePWAReturn {
 
     checkForUpdates();
 
-    // Listen for controller change (after update)
+    // Listen for controller change (after update activates)
     let refreshing = false;
     const handleControllerChange = () => {
       if (refreshing) return;
       refreshing = true;
 
-      // Notify other tabs that update is complete
-      broadcastToTabs(CrossTabMessages.PWA_UPDATE_COMPLETE);
-
-      // Show reloading status
+      // Show reloading status briefly then reload
       setPwaUpdating(true, "reloading", "Reloading application");
       setIsUpdating(true);
 
       // Small delay to ensure the overlay is visible
       setTimeout(() => {
         window.location.reload();
-      }, 100);
+      }, 300);
     };
 
     navigator.serviceWorker.addEventListener("controllerchange", handleControllerChange);
@@ -197,82 +193,43 @@ export function usePWA(): UsePWAReturn {
   const update = useCallback(async () => {
     if (!registration?.waiting) return;
 
-    // Acquire mutex to prevent concurrent update operations
-    const release = await operationMutex.acquire(LockKeys.SERVICE_WORKER_UPDATE);
+    // Check if DB is currently initializing to prevent race conditions
+    const { isDbInitializing } = useLoadingStore.getState();
+    if (isDbInitializing) {
+      console.log("[PWA] DB initialization in progress, deferring update");
+      toast.info("Update will apply after database initialization completes.", {
+        duration: 5000,
+      });
+      return;
+    }
 
     try {
       setIsUpdating(true);
+      setPwaUpdating(true, "updating", "Installing update...");
 
-      // Notify other tabs that update is starting
-      broadcastToTabs(CrossTabMessages.PWA_UPDATE_STARTED);
-
-      // Step 1: Clear caches with mutex protection and timeouts
-      setPwaUpdating(true, "clearing-cache", "Clearing old cache");
-
-      if ("caches" in window) {
-        const cacheNames = await withTimeout(
-          caches.keys(),
-          5000,
-          "Get cache names"
-        ).catch(() => [] as string[]);
-
-        // Clear in batches of 3 to avoid overwhelming the system
-        const batchSize = 3;
-        for (let i = 0; i < cacheNames.length; i += batchSize) {
-          const batch = cacheNames.slice(i, i + batchSize);
-          await Promise.all(
-            batch.map(async (cacheName) => {
-              try {
-                await withTimeout(
-                  caches.delete(cacheName),
-                  5000,
-                  `Delete cache ${cacheName}`
-                );
-                console.log("[PWA] Cleared cache:", cacheName);
-              } catch (error) {
-                console.warn(`[PWA] Failed to clear cache ${cacheName}:`, error);
-                // Continue with other caches
-              }
-            })
-          );
-        }
-      }
-
-      // Small delay to show the clearing cache message
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      // Step 2: Send skip waiting message
-      setPwaUpdating(true, "updating", "Installing new version");
+      // Tell the waiting SW to activate
+      // The controllerchange event will trigger the reload
       registration.waiting.postMessage({ type: "SKIP_WAITING" });
 
-      // Set timeout for update process (30 seconds with warning)
+      // Set timeout in case SW doesn't activate
       updateTimeoutRef.current = setTimeout(() => {
         console.warn("[PWA] Update taking longer than expected");
-        setPwaUpdating(true, "updating", "Still updating... please wait");
-
-        // Secondary timeout at 60s - give up and offer manual refresh
-        setTimeout(() => {
-          console.error("[PWA] Update timeout - offering manual refresh");
-          setPwaUpdating(
-            true,
-            "error",
-            "Update is taking too long. Please refresh manually."
-          );
-          setIsUpdating(false);
-          release();
-        }, 30000);
-      }, 30000);
+        setPwaUpdating(
+          true,
+          "error",
+          "Update is taking too long. Please refresh manually."
+        );
+        setIsUpdating(false);
+      }, 10000);
     } catch (error) {
       console.error("[PWA] Update failed:", error);
       setPwaUpdating(
         true,
         "error",
-        "Update failed. Please try refreshing manually."
+        "Update failed. Please refresh manually."
       );
       setIsUpdating(false);
-      release();
 
-      // Auto-hide error after 5 seconds
       setTimeout(() => {
         setPwaUpdating(false);
       }, 5000);

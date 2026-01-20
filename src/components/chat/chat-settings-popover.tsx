@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { SlidersHorizontal, Bot, Brain, DollarSign, Swords, Tag, FileText, Download, FileCode, Copy, ChevronRight } from "lucide-react";
+import { SlidersHorizontal, Bot, Brain, DollarSign, Swords, Thermometer, Hash } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,11 +12,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
-import { getAgentById, getAllTags, getSettings, updateSettings, updateChat, getChatById, getMessages } from "@/lib/db/queries";
-import { getChatForExport, downloadChat, copyChatToClipboard, type ExportFormat } from "@/lib/db/export-chat";
+import { getAgentById, getSettings, updateSettings, updateChat, getChatById, getMessages } from "@/lib/db/queries";
 import { toast } from "sonner";
-import { useChatSummary } from "@/hooks/use-chat-summary";
 import { useSettingsStore } from "@/stores/settings-store";
 
 type ReasoningLevel = "low" | "medium" | "high" | "xhigh";
@@ -50,48 +49,30 @@ export function ChatSettingsPopover({
     [chat?.agentId]
   );
   const settings = useLiveQuery(() => getSettings());
-  const allTags = useLiveQuery(() => getAllTags(), []);
   const messages = useLiveQuery(() => getMessages(chatId), [chatId]);
 
   const memoryEnabled = settings?.memoryEnabled !== false;
   const reasoningLevel = chat?.reasoningLevel || "medium";
-  const selectedTags = chat?.tags || [];
+  const temperature = chat?.temperature ?? 1;
+  const maxTokens = chat?.maxTokens ?? 4096;
   const calculatedCost = messages?.reduce((sum, msg) => sum + (msg.cost || 0), 0) || 0;
 
   const defaultReasoningLevel = (settings?.defaultReasoningLevel as ReasoningLevel) || "medium";
   const updateDefaultReasoningLevel = useSettingsStore((state) => state.updateDefaultReasoningLevel);
 
-  const { generateSummary, isGenerating } = useChatSummary();
-  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [localTemperature, setLocalTemperature] = useState(temperature);
+  const [localMaxTokens, setLocalMaxTokens] = useState(maxTokens);
 
-  const handleExport = async (format: ExportFormat) => {
-    try {
-      const exportData = await getChatForExport(chatId);
-      if (!exportData) {
-        toast.error("Failed to export chat");
-        return;
-      }
-      downloadChat(exportData, format);
-      toast.success(`Chat exported as ${format === "markdown" ? "Markdown" : "JSON"}`);
-    } catch (error) {
-      toast.error("Failed to export chat");
-    }
-    setShowExportMenu(false);
+  const handleTemperatureChange = async (value: number[]) => {
+    const newTemp = value[0];
+    setLocalTemperature(newTemp);
+    await updateChat(chatId, { temperature: newTemp });
   };
 
-  const handleCopyChat = async (format: ExportFormat) => {
-    try {
-      const exportData = await getChatForExport(chatId);
-      if (!exportData) {
-        toast.error("Failed to copy chat");
-        return;
-      }
-      await copyChatToClipboard(exportData, format);
-      toast.success(`Chat copied as ${format === "markdown" ? "Markdown" : "JSON"}`);
-    } catch (error) {
-      toast.error("Failed to copy chat");
-    }
-    setShowExportMenu(false);
+  const handleMaxTokensChange = async (value: number[]) => {
+    const newMax = value[0];
+    setLocalMaxTokens(newMax);
+    await updateChat(chatId, { maxTokens: newMax });
   };
 
   const toggleMemory = async () => {
@@ -107,13 +88,6 @@ export function ChatSettingsPopover({
   const handleSetAsDefault = async () => {
     await updateDefaultReasoningLevel(reasoningLevel);
     toast.success(`${REASONING_LEVELS.find(l => l.value === reasoningLevel)?.label} set as default`);
-  };
-
-  const toggleTag = async (tagId: string) => {
-    const newTags = selectedTags.includes(tagId)
-      ? selectedTags.filter((id) => id !== tagId)
-      : [...selectedTags, tagId];
-    await updateChat(chatId, { tags: newTags });
   };
 
   return (
@@ -217,95 +191,44 @@ export function ChatSettingsPopover({
           <Switch checked={isArenaMode} onCheckedChange={onToggleArena} className="scale-90" />
         </div>
 
-        {/* Tags Section */}
-        {allTags && allTags.length > 0 && (
-          <>
-            <DropdownMenuSeparator />
-            <div className="px-2 py-1.5">
-              <div className="flex items-center gap-2 mb-1.5">
-                <Tag className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm">Tags</span>
-              </div>
-              <div className="flex flex-wrap gap-1 ml-6">
-                {allTags.map((tag) => {
-                  const isSelected = selectedTags.includes(tag.id);
-                  return (
-                    <button
-                      key={tag.id}
-                      onClick={() => toggleTag(tag.id)}
-                      className={cn(
-                        "px-2 py-0.5 text-xs rounded-full border transition-colors",
-                        isSelected
-                          ? "border-transparent"
-                          : "border-border bg-transparent hover:bg-muted"
-                      )}
-                      style={isSelected ? {
-                        backgroundColor: `${tag.color}20`,
-                        borderColor: tag.color,
-                        color: tag.color,
-                      } : undefined}
-                    >
-                      {tag.name}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </>
-        )}
-
         <DropdownMenuSeparator />
 
-        {/* Summarize */}
-        <button
-          onClick={() => generateSummary(chatId, messages || [])}
-          disabled={isGenerating}
-          className="w-full flex items-center justify-between px-2 py-1.5 text-sm hover:bg-accent rounded-sm transition-colors disabled:opacity-50"
-        >
-          <div className="flex items-center gap-2">
-            <FileText className="h-4 w-4 text-muted-foreground" />
-            <span>{isGenerating ? "Summarizing..." : "Summarize Chat"}</span>
-          </div>
-        </button>
-
-        {/* Export */}
-        <div className="relative">
-          <button
-            onClick={() => setShowExportMenu(!showExportMenu)}
-            className="w-full flex items-center justify-between px-2 py-1.5 text-sm hover:bg-accent rounded-sm transition-colors"
-          >
+        {/* Temperature */}
+        <div className="px-2 py-2">
+          <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <Download className="h-4 w-4 text-muted-foreground" />
-              <span>Export Chat</span>
+              <Thermometer className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm">Temperature</span>
             </div>
-            <ChevronRight className={cn("h-4 w-4 text-muted-foreground transition-transform", showExportMenu && "rotate-90")} />
-          </button>
+            <span className="text-xs text-muted-foreground font-mono">{localTemperature.toFixed(2)}</span>
+          </div>
+          <Slider
+            value={[localTemperature]}
+            onValueChange={handleTemperatureChange}
+            min={0}
+            max={2}
+            step={0.01}
+            className="ml-6"
+          />
+        </div>
 
-          {showExportMenu && (
-            <div className="mt-1 ml-6 space-y-1">
-              <button
-                onClick={() => handleExport("markdown")}
-                className="w-full flex items-center gap-2 px-2 py-1 text-xs hover:bg-accent rounded-sm transition-colors"
-              >
-                <FileText className="h-3 w-3" />
-                <span>Download as Markdown</span>
-              </button>
-              <button
-                onClick={() => handleExport("json")}
-                className="w-full flex items-center gap-2 px-2 py-1 text-xs hover:bg-accent rounded-sm transition-colors"
-              >
-                <FileCode className="h-3 w-3" />
-                <span>Download as JSON</span>
-              </button>
-              <button
-                onClick={() => handleCopyChat("markdown")}
-                className="w-full flex items-center gap-2 px-2 py-1 text-xs hover:bg-accent rounded-sm transition-colors"
-              >
-                <Copy className="h-3 w-3" />
-                <span>Copy as Markdown</span>
-              </button>
+        {/* Max Tokens */}
+        <div className="px-2 py-2">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Hash className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm">Max Tokens</span>
             </div>
-          )}
+            <span className="text-xs text-muted-foreground font-mono">{localMaxTokens}</span>
+          </div>
+          <Slider
+            value={[localMaxTokens]}
+            onValueChange={handleMaxTokensChange}
+            min={256}
+            max={32000}
+            step={256}
+            className="ml-6"
+          />
         </div>
       </DropdownMenuContent>
     </DropdownMenu>

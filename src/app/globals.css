@@ -41,37 +41,37 @@
   }
 
   .dark {
-    /* Deep Charcoal Background (#0D0D0F) */
-    --background: 240 10% 5.5%;
-    --foreground: 0 0% 98%;
+    /* Deep Charcoal Background - slightly lighter for reduced contrast */
+    --background: 240 8% 6%;
+    --foreground: 0 0% 96%;
 
-    /* Glassmorphism Cards */
-    --card: 240 10% 7%;
-    /* Slightly lighter overlay */
-    --card-foreground: 0 0% 98%;
+    /* Cards - minimal distinction from background */
+    --card: 240 8% 8%;
+    --card-foreground: 0 0% 96%;
 
-    --popover: 240 10% 7%;
-    --popover-foreground: 0 0% 98%;
+    --popover: 240 8% 9%;
+    --popover-foreground: 0 0% 96%;
 
-    /* Primary Purple Accents */
-    --primary: 270 95% 75%;
+    /* Primary Purple - slightly desaturated for subtlety */
+    --primary: 270 80% 70%;
     --primary-foreground: 240 10% 5.5%;
 
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
+    --secondary: 240 4% 14%;
+    --secondary-foreground: 0 0% 96%;
 
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
+    --muted: 240 4% 14%;
+    --muted-foreground: 240 5% 55%;
 
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
+    --accent: 240 4% 14%;
+    --accent-foreground: 0 0% 96%;
 
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 270 95% 75%;
+    /* Softer borders - more subtle */
+    --border: 240 4% 18%;
+    --input: 240 4% 18%;
+    --ring: 270 60% 60%;
   }
 }
 
@@ -141,11 +141,11 @@
   color: #fff;
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar - ChatGPT style */
 @layer utilities {
   .scrollbar-thin::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
   }
 
   .scrollbar-thin::-webkit-scrollbar-track {
@@ -153,11 +153,41 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    @apply bg-muted-foreground/20 rounded-full transition-colors;
+    @apply bg-muted-foreground/30 transition-colors;
+    border-radius: 100px;
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    @apply bg-muted-foreground/40;
+    @apply bg-muted-foreground/50;
+  }
+
+  /* Sidebar scrollbar - slightly wider and more visible */
+  .scrollbar-sidebar::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .scrollbar-sidebar::-webkit-scrollbar-track {
+    @apply bg-transparent;
+    margin: 4px 0;
+  }
+
+  .scrollbar-sidebar::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/40 transition-colors;
+    border-radius: 100px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .scrollbar-sidebar::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/60;
+  }
+
+  /* Firefox scrollbar support */
+  .scrollbar-thin,
+  .scrollbar-sidebar {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
   }
 
   /* Primary Gradient Text */
@@ -170,9 +200,9 @@
     @apply bg-gradient-to-r from-[#FF6B9D] via-[#C084FC] to-[#60A5FA];
   }
 
-  /* Glassmorphism */
+  /* Glassmorphism - more subtle */
   .glass {
-    @apply bg-white/5 backdrop-blur-xl border border-white/10;
+    @apply bg-white/3 backdrop-blur-sm border border-white/5;
   }
 
   /* Hide scrollbar but keep functionality */
@@ -357,17 +387,17 @@
     @apply text-2xl leading-10 tracking-[-0.02em];
   }
 
-  /* Premium shadows */
+  /* Premium shadows - softer and more subtle */
   .shadow-card {
-    box-shadow: 0 1px 3px 0 hsl(var(--foreground) / 0.08), 0 1px 2px -1px hsl(var(--foreground) / 0.08);
+    box-shadow: 0 1px 2px 0 hsl(var(--foreground) / 0.04), 0 1px 1px -1px hsl(var(--foreground) / 0.04);
   }
 
   .shadow-modal {
-    box-shadow: 0 20px 25px -5px hsl(var(--foreground) / 0.15), 0 8px 10px -6px hsl(var(--foreground) / 0.1), 0 0 0 1px hsl(var(--border) / 0.5);
+    box-shadow: 0 16px 20px -5px hsl(var(--foreground) / 0.08), 0 6px 8px -6px hsl(var(--foreground) / 0.06);
   }
 
   .shadow-dropdown {
-    box-shadow: 0 10px 15px -3px hsl(var(--foreground) / 0.12), 0 4px 6px -4px hsl(var(--foreground) / 0.08), 0 0 0 1px hsl(var(--border) / 0.5);
+    box-shadow: 0 8px 12px -3px hsl(var(--foreground) / 0.06), 0 3px 5px -4px hsl(var(--foreground) / 0.04);
   }
 
   /* Premium transitions */

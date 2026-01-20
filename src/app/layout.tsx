@@ -13,6 +13,7 @@ import { CommandPalette } from "@/components/command-palette/command-palette";
 import { MobileNav } from "@/components/mobile-nav";
 import { InstallPrompt, UpdatePrompt } from "@/components/pwa";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { DbInitOverlay } from "@/components/db/db-init-overlay";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -64,6 +65,7 @@ export default function RootLayout({
             <MobileNav />
             <InstallPrompt />
             <UpdatePrompt />
+            <DbInitOverlay />
             <SonnerToaster richColors closeButton />
           </ThemeProvider>
         </ErrorBoundary>

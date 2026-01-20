@@ -552,7 +552,7 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
             tags={tags || []}
           />
         )}
-        <div ref={scrollParentRef} className="flex-1 min-h-0 min-w-0 overflow-y-auto">
+        <div ref={scrollParentRef} className="flex-1 min-h-0 min-w-0 overflow-y-auto scrollbar-sidebar">
           <div
             className="pb-4 min-w-0"
             style={{

@@ -80,6 +80,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/empty-state";
+import { EmptyStateWelcome } from "@/components/chat/empty-state-welcome";
 import { MessageSquare, Eye, Brain, Wrench, Code, Zap, DollarSign, Sparkles, AlertTriangle, ImageIcon } from "lucide-react";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { formatModelCost } from "@/components/model-picker/model-item";
@@ -157,6 +158,9 @@ export function ChatShell() {
   const [arenaPickerOpen, setArenaPickerOpen] = useState<{ open: boolean, index: number }>({ open: false, index: 0 });
   const [agentPickerOpen, setAgentPickerOpen] = useState(false);
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
+  const [headerExpanded, setHeaderExpanded] = useState(false);
+  const [toolWarningDismissed, setToolWarningDismissed] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Get current chat and agent in a single query to reduce cascading re-renders
   // Use timeout wrapper for critical queries to detect DB stalls
@@ -184,6 +188,15 @@ export function ChatShell() {
       createdAt: new Date(m.createdAt),
     })) as any[];
   }, [messages]);
+
+  // Welcome mode: no messages yet, show centered welcome screen
+  const isWelcomeMode = activeChatId && messages && messages.length === 0;
+
+  // Handle suggestion chip click - populate input and focus
+  const handleSuggestionClick = useCallback((prompt: string) => {
+    // Dispatch event to populate input area
+    window.dispatchEvent(new CustomEvent("lumina:populate-input", { detail: { text: prompt } }));
+  }, []);
 
   // Auto-tagging hook
   useAutoTags(activeChatId || "", aiMessages, chat?.tags, autoTaggingEnabled ?? false);
@@ -363,6 +376,28 @@ export function ChatShell() {
     return () => window.removeEventListener("lumina:open-model-picker", handler);
   }, []); // Empty deps - listener registered once
 
+  // Show tool calling warning as toast (once per chat session)
+  const toolWarningShownRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (!toolCallingWarning || !activeChatId) return;
+    if (toolWarningDismissed) return;
+    if (toolWarningShownRef.current.has(activeChatId)) return;
+
+    toolWarningShownRef.current.add(activeChatId);
+    toast.warning(toolCallingWarning.message, {
+      duration: 8000,
+      action: {
+        label: "Disable Tools",
+        onClick: async () => {
+          if (activeChatId) {
+            await updateChat(activeChatId, { activeMcpServerIds: [] });
+            toast.success("Tools disabled for this chat");
+          }
+        },
+      },
+    });
+  }, [toolCallingWarning, activeChatId, toolWarningDismissed]);
+
   const handleModelChange = async (modelId: string) => {
     if (activeChatId) {
       const updates: { modelId: string; providerId?: string } = { modelId };
@@ -529,36 +564,43 @@ export function ChatShell() {
       <ResizablePanelGroup direction="horizontal" className="h-full">
         <ResizablePanel defaultSize={showArtifacts ? 60 : 100} minSize={30}>
           <div className="flex h-full flex-col">
-            {/* Header - Clean Single Row */}
-            <header className="sticky top-0 z-20 border-b border-border/50 bg-card/80 backdrop-blur-xl supports-[backdrop-filter]:bg-card/60">
-              <div className="flex items-center justify-between px-2 sm:px-4 h-11 sm:h-12">
-                {/* Left: Title (hamburger menu removed - use bottom nav on mobile) */}
-                <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+            {/* Header - Minimal by default, expands on hover */}
+            <header
+              className={cn(
+                "sticky top-0 z-20 border-b bg-background/95 backdrop-blur-sm transition-all duration-200",
+                isWelcomeMode ? "border-transparent" : "border-border/30",
+                headerExpanded && "bg-card/80 backdrop-blur-xl"
+              )}
+              onMouseEnter={() => setHeaderExpanded(true)}
+              onMouseLeave={() => setHeaderExpanded(false)}
+            >
+              <div className="flex items-center justify-between px-3 sm:px-6 h-12">
+                {/* Left: Title (hidden on mobile for cleaner look) */}
+                <div className="hidden sm:flex items-center gap-3 min-w-0 flex-1">
                   <div className="flex flex-col min-w-0">
-                    <h1 className="text-xs sm:text-sm font-medium truncate text-foreground/90 max-w-[120px] sm:max-w-none">{chat?.title || "Chat"}</h1>
-                    {chat?.tags && chat.tags.length > 0 && (
-                      <TagList tagIds={chat.tags} size="sm" className="mt-0.5 hidden sm:flex" />
-                    )}
+                    <h1 className="text-sm font-medium truncate text-foreground max-w-none">{chat?.title || "Chat"}</h1>
                   </div>
-                  <OfflineIndicator className="hidden sm:inline-flex" />
+                  <OfflineIndicator className="inline-flex" />
                 </div>
+                {/* Mobile: spacer for centering */}
+                <div className="sm:hidden flex-1" />
 
-                {/* Right: Agent + Model Selector + Settings + Artifacts */}
+                {/* Right: Model Selector + Settings (Agent selector hidden on mobile) */}
                 <div className="flex items-center gap-1">
-                  {/* Agent Selector - compact on mobile */}
+                  {/* Agent Selector - hidden on mobile for cleaner look */}
                   {!isArenaMode && chat && (
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-8 gap-1.5 px-2 sm:px-3 text-xs font-medium border-border/50"
+                      className="hidden sm:flex h-8 gap-1.5 px-3 text-xs font-medium border-border/50"
                       onClick={() => setAgentPickerOpen(true)}
                     >
                       <div className="flex items-center gap-1.5">
                         {currentAgent ? (
                           <>
                             <span className="text-sm leading-none">{currentAgent.avatar || "🤖"}</span>
-                            <div className="hidden sm:flex flex-col items-start leading-none">
-                              <span className="max-w-[80px] sm:max-w-[120px] truncate font-medium">
+                            <div className="flex flex-col items-start leading-none">
+                              <span className="max-w-[120px] truncate font-medium">
                                 {currentAgent.name}
                               </span>
                               {currentAgent.executionType === "pipeline" && currentAgent.pipeline?.steps?.length ? (
@@ -575,14 +617,14 @@ export function ChatShell() {
                         ) : (
                           <>
                             <Bot className="h-4 w-4 text-muted-foreground" />
-                            <span className="hidden sm:inline text-muted-foreground">Agent</span>
+                            <span className="text-muted-foreground">Agent</span>
                           </>
                         )}
                       </div>
                     </Button>
                   )}
 
-                  {/* Model Selector - hidden for pipeline agents (models are per-step) */}
+                  {/* Model Selector - simplified on mobile */}
                   {!isArenaMode && chat && !(currentAgent?.executionType === "pipeline" && currentAgent.pipeline?.steps?.length) && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -592,7 +634,7 @@ export function ChatShell() {
                           className="h-8 gap-1.5 px-2 sm:px-3 text-xs font-medium border-border/50"
                         >
                           <div className="flex flex-col items-start leading-none">
-                            <span className="max-w-[80px] sm:max-w-[180px] truncate text-[11px] sm:text-xs">
+                            <span className="max-w-[100px] sm:max-w-[180px] truncate text-xs">
                               {modelAliasMap.get(chat.modelId) || currentModel?.name || "Model"}
                             </span>
                             {providerId && (
@@ -868,76 +910,55 @@ export function ChatShell() {
                     onToggleArena={toggleArenaMode}
                   />
 
-                  {/* Desktop only buttons */}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={cn("hidden sm:flex h-8 w-8", isSplitView && "text-primary")}
-                    onClick={toggleSplitView}
-                    title={isSplitView ? "Exit Split View" : "Split View"}
+                  {/* Desktop only buttons - show on hover */}
+                  <div
+                    className={cn(
+                      "hidden sm:flex items-center gap-1 transition-opacity duration-150",
+                      headerExpanded ? "opacity-100" : "opacity-0 pointer-events-none"
+                    )}
                   >
-                    <Columns2 className="h-4 w-4" />
-                  </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={cn("h-8 w-8", isSplitView && "text-primary")}
+                      onClick={toggleSplitView}
+                      title={isSplitView ? "Exit Split View" : "Split View"}
+                    >
+                      <Columns2 className="h-4 w-4" />
+                    </Button>
 
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={cn("hidden sm:flex h-8 w-8", isFocusMode && "text-primary")}
-                    onClick={() => setIsFocusMode(!isFocusMode)}
-                    title={isFocusMode ? "Exit Focus Mode" : "Enter Focus Mode"}
-                  >
-                    {isFocusMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-                  </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={cn("h-8 w-8", isFocusMode && "text-primary")}
+                      onClick={() => setIsFocusMode(!isFocusMode)}
+                      title={isFocusMode ? "Exit Focus Mode" : "Enter Focus Mode"}
+                    >
+                      {isFocusMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                    </Button>
 
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="hidden sm:flex h-8 w-8"
-                    onClick={() => setShowArtifacts(!showArtifacts)}
-                    title={showArtifacts ? "Hide artifacts" : "Show artifacts"}
-                  >
-                    {showArtifacts ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
-                  </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setShowArtifacts(!showArtifacts)}
+                      title={showArtifacts ? "Hide artifacts" : "Show artifacts"}
+                    >
+                      {showArtifacts ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+                    </Button>
+                  </div>
                 </div>
               </div>
             </header>
 
-            {/* Tool Calling Warning Banner */}
-            {toolCallingWarning && (
-              <div className="px-2 sm:px-4 py-2 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800 flex flex-col sm:flex-row items-start sm:items-center gap-2 text-xs sm:text-sm text-amber-800 dark:text-amber-200">
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <AlertTriangle className="h-4 w-4 shrink-0" />
-                  <span className="line-clamp-2 sm:line-clamp-1">{toolCallingWarning.message}</span>
-                </div>
-                <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs flex-1 sm:flex-none border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/50"
-                    onClick={async () => {
-                      if (activeChatId) {
-                        await updateChat(activeChatId, { activeMcpServerIds: [] });
-                        toast.success("Tools disabled for this chat");
-                      }
-                    }}
-                  >
-                    Disable Tools
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs flex-1 sm:flex-none border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/50"
-                    onClick={() => setModelPickerOpen(true)}
-                  >
-                    Switch Model
-                  </Button>
-                </div>
-              </div>
-            )}
-
             {/* Messages Area */}
-            <div className="flex-1 overflow-hidden relative bg-background/20">
-              {isArenaMode && arenaModelIds.length >= 2 ? (
+            <div className="flex-1 overflow-hidden relative">
+              {isWelcomeMode ? (
+                <EmptyStateWelcome
+                  onSuggestionClick={handleSuggestionClick}
+                  modelName={currentModel?.name}
+                />
+              ) : isArenaMode && arenaModelIds.length >= 2 ? (
                 <ResizablePanelGroup direction="horizontal" className="h-full">
                   <ResizablePanel defaultSize={50} minSize={20}>
                     <div className="flex flex-col h-full border-r">
@@ -1003,7 +1024,7 @@ export function ChatShell() {
             </div>
 
             {/* Input */}
-            <div className="border-t border-border/70 bg-card/80 p-2 sm:p-3 backdrop-blur-xl supports-[backdrop-filter]:bg-card/65 shadow-[0_-8px_30px_-24px_rgba(0,0,0,0.6)]">
+            <div className="border-t border-border/40 bg-background p-2 sm:p-4">
               <InputArea chatId={activeChatId} />
             </div>
           </div>

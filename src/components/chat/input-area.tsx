@@ -195,6 +195,7 @@ export function InputArea({ chatId }: InputAreaProps) {
   const [codeSnippets, setCodeSnippets] = useState<CodeSnippet[]>([]);
   const [expandedSnippets, setExpandedSnippets] = useState<Set<string>>(new Set());
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
+  const [inputFocused, setInputFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { sendMessage, isLoading, cancelRequest } = useChat(chatId);
@@ -238,6 +239,26 @@ export function InputArea({ chatId }: InputAreaProps) {
     return () => {
       window.removeEventListener("lumina:send-message", handleExternalSend as EventListener);
     };
+  }, []);
+
+  // Listen for populate-input events (from suggestion chips)
+  useEffect(() => {
+    const handlePopulateInput = (e: any) => {
+      if (e.detail?.text !== undefined) {
+        setInput(e.detail.text);
+        // Focus the textarea and move cursor to end
+        setTimeout(() => {
+          if (textareaRef.current) {
+            textareaRef.current.focus();
+            // Move cursor to the end of the text
+            const length = e.detail.text.length;
+            textareaRef.current.setSelectionRange(length, length);
+          }
+        }, 50);
+      }
+    };
+    window.addEventListener("lumina:populate-input", handlePopulateInput as EventListener);
+    return () => window.removeEventListener("lumina:populate-input", handlePopulateInput as EventListener);
   }, []);
 
   // Focus input when chat changes or new chat is created
@@ -834,12 +855,14 @@ export function InputArea({ chatId }: InputAreaProps) {
         accept="image/*,.txt,.md,.js,.ts,.tsx,.jsx,.json,.csv,.py,.java,.c,.cpp,.h,.css,.html"
       />
 
-      <div className="flex gap-1.5 sm:gap-2 rounded-xl sm:rounded-2xl border border-border/70 bg-card/80 p-1.5 sm:p-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/60 focus-within:border-ring">
+      <div className="flex gap-1.5 sm:gap-2 rounded-xl sm:rounded-2xl border border-border/50 bg-background p-1.5 sm:p-2 focus-within:border-border focus-within:ring-1 focus-within:ring-ring/20 transition-all duration-150">
+        {/* Controls - always visible to prevent layout shift */}
         <Button
           type="button"
           variant="ghost"
           size="icon"
           className="h-9 w-9 sm:h-10 sm:w-10 shrink-0"
+          onMouseDown={(e) => e.preventDefault()} // Prevent textarea blur
           onClick={() => fileInputRef.current?.click()}
           title="Attach images or files"
         >
@@ -852,6 +875,7 @@ export function InputArea({ chatId }: InputAreaProps) {
           variant={voice.isListening ? "default" : "ghost"}
           size="icon"
           className="hidden sm:flex h-9 w-9 sm:h-10 sm:w-10 shrink-0"
+          onMouseDown={(e) => e.preventDefault()} // Prevent textarea blur
           onClick={() => {
             if (!voice.isSupported) {
               toast.error("Speech recognition is not supported in this browser.");
@@ -870,7 +894,10 @@ export function InputArea({ chatId }: InputAreaProps) {
         </Button>
 
         {/* Skill quick select - hidden on mobile */}
-        <div className="hidden sm:block">
+        <div
+          className="hidden sm:block"
+          onMouseDown={(e) => e.preventDefault()} // Prevent textarea blur
+        >
           <SkillQuickSelect
             onSelect={(skill) => {
               setSelectedSkill(skill);
@@ -889,7 +916,9 @@ export function InputArea({ chatId }: InputAreaProps) {
             onEnter={handleMentionTextareaEnter}
             onMentionSelect={handleMentionSelect}
             onPaste={handlePaste}
-            placeholder="Message Lumina… (@ for agents, # for chats)"
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
+            placeholder={inputFocused ? "@ for agents, # for chats, / for skills" : "Message Lumina..."}
             className="w-full resize-none bg-transparent px-2 py-2 pr-10 text-sm leading-6 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 min-h-10 max-h-[200px] disabled:opacity-60"
             rows={1}
             disabled={isLoading}
@@ -961,27 +990,12 @@ export function InputArea({ chatId }: InputAreaProps) {
         </AnimatePresence>
       </div>
 
-      <div className="mt-1.5 sm:mt-2 flex items-center justify-between text-[10px] sm:text-xs text-muted-foreground">
-        <span className="text-[9px] sm:text-xs truncate max-w-[50%] sm:max-w-none">
-          {voice.isListening && voiceDraft
-            ? `Listening: "${voiceDraft}"`
-            : isMobile
-              ? "Tap send to submit"
-              : "↵ Send • ⇧↵ New line"}
-        </span>
-        {chat && (
-          <TokenCalculator
-            chatId={chatId}
-            inputContent={input}
-            modelId={chat.modelId}
-            isPipelineAgent={(() => {
-              if (!chat.agentId || !agents) return false;
-              const agent = agents.find(a => a.id === chat.agentId);
-              return agent?.executionType === "pipeline";
-            })()}
-          />
-        )}
-      </div>
+      {/* Minimal footer - only show hints when relevant */}
+      {(voice.isListening && voiceDraft) && (
+        <div className="mt-1.5 text-xs text-muted-foreground">
+          <span>Listening: "{voiceDraft}"</span>
+        </div>
+      )}
 
       {/* Mobile navigation - integrated below input */}
       <div className="mt-2">

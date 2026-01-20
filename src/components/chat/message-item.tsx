@@ -1159,43 +1159,59 @@ export const MessageItem = memo(function MessageItem({
                 </div>
               )}
 
-              {/* Message Metadata (Tokens/Cost) */}
-              {!isEditing && isAssistant && (message.inputTokens || message.outputTokens) && (
-                <div className="mt-3 flex items-center justify-between text-[10px] text-muted-foreground/60 font-medium border-t border-border/30 pt-2">
-                  <div className="flex items-center gap-3">
-                    <span>In: <span className="text-muted-foreground">{message.inputTokens?.toLocaleString() || 0}</span></span>
-                    <span className="text-border">•</span>
-                    <span>Out: <span className="text-muted-foreground">{message.outputTokens?.toLocaleString() || 0}</span></span>
-                    {message.thinkingTokens && message.thinkingTokens > 0 && (
-                      <>
+              {/* Message Metadata (Tokens/Cost) - Fade in smoothly to prevent layout shift */}
+              <AnimatePresence>
+                {!isEditing && isAssistant && (message.inputTokens || message.outputTokens) && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.3, ease: "easeOut" }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-3 flex items-center justify-between text-[10px] text-muted-foreground/60 font-medium border-t border-border/30 pt-2">
+                      <div className="flex items-center gap-3">
+                        <span>In: <span className="text-muted-foreground">{message.inputTokens?.toLocaleString() || 0}</span></span>
                         <span className="text-border">•</span>
-                        <span>Think: <span className="text-muted-foreground">{message.thinkingTokens.toLocaleString()}</span></span>
-                      </>
-                    )}
-                    <span className="text-border">•</span>
-                    <span className="font-bold opacity-80">Total: <span className="text-muted-foreground">{((message.inputTokens || 0) + (message.outputTokens || 0)).toLocaleString()}</span></span>
-                  </div>
-                  {typeof message.cost === "number" && (
-                    <div className="flex items-center gap-1.5 bg-primary/5 px-1.5 py-0.5 rounded border border-primary/10 text-primary/70">
-                      <span>${message.cost.toFixed(4)}</span>
-                      {message.cacheSavings && message.cacheSavings > 0 && (
-                        <span className="text-muted-foreground/50 text-[9px]">
-                          (-${message.cacheSavings < 0.001 ? '<0.001' : message.cacheSavings.toFixed(4)})
-                        </span>
-                      )}
-                      {message.costIsEstimated && (
-                        <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70">
-                          est
-                        </span>
+                        <span>Out: <span className="text-muted-foreground">{message.outputTokens?.toLocaleString() || 0}</span></span>
+                        {message.thinkingTokens && message.thinkingTokens > 0 && (
+                          <>
+                            <span className="text-border">•</span>
+                            <span>Think: <span className="text-muted-foreground">{message.thinkingTokens.toLocaleString()}</span></span>
+                          </>
+                        )}
+                        <span className="text-border">•</span>
+                        <span className="font-bold opacity-80">Total: <span className="text-muted-foreground">{((message.inputTokens || 0) + (message.outputTokens || 0)).toLocaleString()}</span></span>
+                      </div>
+                      {typeof message.cost === "number" && (
+                        <div className="flex items-center gap-1.5 bg-primary/5 px-1.5 py-0.5 rounded border border-primary/10 text-primary/70">
+                          <span>${message.cost.toFixed(4)}</span>
+                          {message.cacheSavings && message.cacheSavings > 0 && (
+                            <span className="text-muted-foreground/50 text-[9px]">
+                              (-${message.cacheSavings < 0.001 ? '<0.001' : message.cacheSavings.toFixed(4)})
+                            </span>
+                          )}
+                          {message.costIsEstimated && (
+                            <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70">
+                              est
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
-                  )}
-                </div>
-              )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-              {/* Images */}
-              {!isEditing && images.length > 0 && (
-                <>
+              {/* Images - Fade in smoothly */}
+              <AnimatePresence>
+                {!isEditing && images.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.3, ease: "easeOut" }}
+                  >
                   <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
                     {images.map((url) => (
                       <button
@@ -1259,8 +1275,9 @@ export const MessageItem = memo(function MessageItem({
                       ) : null}
                     </DialogContent>
                   </Dialog>
-                </>
-              )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Multi-file project button */}
               {!isEditing && isAssistant && hasMultipleFiles && (

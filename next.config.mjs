@@ -9,8 +9,9 @@ const withPWA = withPWAInit({
   disable: process.env.NODE_ENV === "development",
   workboxOptions: {
     disableDevLogs: true,
-    // Force service worker to claim clients immediately
-    skipWaiting: true,
+    // Don't auto-activate new SW - let user control when to update
+    // skipWaiting is handled manually via postMessage when user clicks "Update"
+    skipWaiting: false,
     clientsClaim: true,
     // Selective precaching - exclude unnecessary files to reduce cache size
     exclude: [
@@ -40,13 +41,29 @@ const withPWA = withPWAInit({
         },
       },
       {
-        // Cache static assets with cache-first strategy
-        urlPattern: /\.(?:js|css|woff2?|png|jpg|jpeg|gif|svg|ico)$/,
+        // JS files: NetworkFirst to ensure fresh code after deployments
+        // This prevents stale JS serving old schema expectations
+        urlPattern: /\.js$/,
+        handler: "NetworkFirst",
+        options: {
+          cacheName: "js-cache",
+          networkTimeoutSeconds: 10, // Fall back to cache after 10s
+          expiration: {
+            maxEntries: 200,
+            maxAgeSeconds: 60 * 60 * 24, // 24 hours (reduced from 30 days)
+            purgeOnQuotaError: true,
+          },
+        },
+      },
+      {
+        // Static assets (CSS, fonts, images): CacheFirst is safe
+        // These don't affect schema or app logic
+        urlPattern: /\.(?:css|woff2?|png|jpg|jpeg|gif|svg|ico)$/,
         handler: "CacheFirst",
         options: {
           cacheName: "static-assets",
           expiration: {
-            maxEntries: 200, // Limit cached assets
+            maxEntries: 200,
             maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
             purgeOnQuotaError: true,
           },

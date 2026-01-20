@@ -511,7 +511,7 @@ export function ModelPickerDialog({
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto scrollbar-thin">
           {/* Quick Picks - Show when not searching */}
           {!isSearching && quickPicks.length > 0 && (
             <div className="px-6 py-5 border-b bg-muted/5">
@@ -774,7 +774,7 @@ export function ModelPickerDialog({
           </button>
 
           {showAdvanced && (
-            <div className="px-4 pb-4 pt-2 space-y-6 animate-in slide-in-from-bottom-2 duration-200 max-h-[300px] overflow-y-auto">
+            <div className="px-4 pb-4 pt-2 space-y-6 animate-in slide-in-from-bottom-2 duration-200 max-h-[300px] overflow-y-auto scrollbar-thin">
               {onSelectProviderId && (
                 <div className="space-y-2">
                   <Label className="text-xs">Provider Routing</Label>

@@ -1,5 +1,9 @@
 import Dexie, { type EntityTable } from "dexie";
 
+// Current schema version - update this when adding new migrations
+// Used by health check to detect migrations and adjust timeouts
+export const DB_SCHEMA_VERSION = 16;
+
 // Type definitions
 export interface Project {
   id: string;
@@ -35,6 +39,8 @@ export interface Chat {
   folderId?: string;
   order?: number; // For manual ordering within folder
   reasoningLevel?: "low" | "medium" | "high" | "xhigh";
+  temperature?: number; // Model temperature (0-2, default 1)
+  maxTokens?: number; // Max tokens to generate (default varies by model)
   enabledTools?: string[];
   activeMcpServerIds?: string[]; // Active MCP servers for this chat (from agent or user selection)
   budgetCap?: number; // Max spend in USD

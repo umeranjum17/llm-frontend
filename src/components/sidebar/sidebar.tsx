@@ -11,7 +11,7 @@ import { ProjectSelector } from "@/components/projects/project-selector";
 import { ChatList } from "./chat-list";
 import { useSidebarKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { getDefaultChatConfig } from "@/lib/ai/default-chat";
-import { createChat } from "@/lib/db/queries";
+import { createChat, getChatWithMessages } from "@/lib/db/queries";
 import { toast } from "sonner";
 
 interface SidebarProps {
@@ -22,6 +22,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const currentProjectId = useSettingsStore((state) => state.currentProjectId);
   const updateCurrentProject = useSettingsStore((state) => state.updateCurrentProject);
+  const activeChatId = useUIStore((state) => state.activeChatId);
   const setActiveChatId = useUIStore((state) => state.setActiveChatId);
 
   // Register sidebar keyboard shortcuts (Cmd+F for search)
@@ -32,6 +33,18 @@ export function Sidebar({ onNavigate }: SidebarProps) {
     onNavigate?.();
 
     try {
+      // Check if current chat is empty - if so, just stay on it instead of creating duplicate
+      if (activeChatId) {
+        const currentChat = await getChatWithMessages(activeChatId);
+        if (currentChat && currentChat.messages.length === 0) {
+          // Already on an empty chat, just focus input
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent("lumina:chat-created", { detail: { chatId: activeChatId } }));
+          }, 100);
+          return;
+        }
+      }
+
       // Ensure settings are loaded before creating chat
       const state = useSettingsStore.getState();
       if (!state.isLoaded) {
@@ -55,7 +68,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
       });
 
       setActiveChatId(newChat.id);
-      
+
       // Dispatch event to focus input after chat is created
       setTimeout(() => {
         window.dispatchEvent(new CustomEvent("lumina:chat-created", { detail: { chatId: newChat.id } }));
@@ -106,9 +119,9 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         </div>
         <Button
           onClick={handleNewChat}
-          variant="ghost"
+          variant="default"
           size="icon"
-          className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
+          className="h-9 w-9 shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground"
           title="New chat"
         >
           <Plus className="h-4 w-4" />
