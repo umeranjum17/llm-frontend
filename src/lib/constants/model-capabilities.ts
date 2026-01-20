@@ -178,7 +178,7 @@ const ADVANCED_FLASH_MODELS = ["gemini-3-flash", "gemini-2.5-flash", "gemini-2.0
 /**
  * Mini/small models that have exceptional tool calling (not downgraded to basic)
  */
-const ADVANCED_MINI_MODELS = ["gpt-4o-mini"];
+const ADVANCED_MINI_MODELS = ["gpt-4o-mini", "gpt-5-mini"];
 
 /**
  * Determine tool calling tier based on model ID

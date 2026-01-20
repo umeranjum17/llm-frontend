@@ -187,6 +187,7 @@ export const USE_CASE_RECOMMENDATIONS: Record<string, { models: string[]; descri
       "moonshotai/kimi-k2",               // Elite tier (200-300 sequential calls)
 
       // Cost-efficient tier (user priority)
+      "openai/gpt-5-mini",                // NEW: $0.50/$2.0, better reasoning than 4o-mini, default for agents
       "openai/gpt-4o-mini",               // PROMOTED: $0.15/$0.60, user validated
       "deepseek/deepseek-v3.2",           // PROMOTED: $0.28/$0.42, thinking mode tools
       "meta-llama/llama-3.3-70b-instruct", // ADDED: 77.3% BFCL, $0.35/$0.40
