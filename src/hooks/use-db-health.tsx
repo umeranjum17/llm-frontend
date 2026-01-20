@@ -5,6 +5,9 @@ import { db } from "@/lib/db/schema";
 import { toast } from "sonner";
 import { RefreshCw, AlertTriangle } from "lucide-react";
 import { useLoadingStore } from "@/stores/loading-store";
+import { withTimeout, withTimeoutFallback } from "@/lib/utils/async-timeout";
+import { operationMutex, LockKeys } from "@/lib/utils/operation-mutex";
+import { broadcastToTabs, CrossTabMessages } from "@/lib/utils/cross-tab";
 
 interface DBHealthState {
   isHealthy: boolean;
@@ -30,38 +33,72 @@ export function useDBHealth() {
   const setDbInitializing = useLoadingStore((state) => state.setDbInitializing);
 
   const clearCacheAndReload = useCallback(async () => {
+    // Acquire mutex to prevent race with PWA update
+    const release = await operationMutex.acquire(LockKeys.CACHE_CLEAR);
+
     try {
-      // Clear all caches
+      // Clear all caches with timeouts
       if ("caches" in window) {
-        const cacheNames = await caches.keys();
-        await Promise.all(cacheNames.map((name) => caches.delete(name)));
+        const cacheNames = await withTimeoutFallback(
+          caches.keys(),
+          5000,
+          [] as string[],
+          "Get cache names"
+        );
+
+        await Promise.all(
+          cacheNames.map((name) =>
+            withTimeout(caches.delete(name), 5000, `Delete cache ${name}`).catch(
+              (err) => console.warn(`[DB Health] Cache delete failed:`, err)
+            )
+          )
+        );
       }
 
-      // Unregister service worker
+      // Unregister service workers with timeouts
       if ("serviceWorker" in navigator) {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(registrations.map((reg) => reg.unregister()));
+        const registrations = await withTimeoutFallback(
+          navigator.serviceWorker.getRegistrations(),
+          5000,
+          [] as ServiceWorkerRegistration[],
+          "Get SW registrations"
+        );
+
+        await Promise.all(
+          registrations.map((reg) =>
+            withTimeout(reg.unregister(), 5000, "Unregister SW").catch((err) =>
+              console.warn("[DB Health] Unregister failed:", err)
+            )
+          )
+        );
       }
 
-      // Delete IndexedDB
+      // Delete IndexedDB with timeout
       if (db.isOpen()) {
         await db.close();
       }
-      const deleteReq = indexedDB.deleteDatabase("LuminaDB");
-      await new Promise<void>((resolve, reject) => {
-        deleteReq.onsuccess = () => resolve();
-        deleteReq.onerror = () => reject(deleteReq.error);
-        deleteReq.onblocked = () => {
-          // If blocked, wait a bit and try again
-          setTimeout(() => resolve(), 1000);
-        };
-      });
+
+      await withTimeout(
+        new Promise<void>((resolve, reject) => {
+          const deleteReq = indexedDB.deleteDatabase("LuminaDB");
+          deleteReq.onsuccess = () => resolve();
+          deleteReq.onerror = () => reject(deleteReq.error);
+          deleteReq.onblocked = () => {
+            console.warn("[DB Health] Delete blocked, waiting...");
+            setTimeout(() => resolve(), 2000);
+          };
+        }),
+        10000,
+        "Delete IndexedDB"
+      );
 
       // Reload the page
       window.location.reload();
     } catch (error) {
       console.error("[DB Health] Failed to clear cache:", error);
       toast.error("Failed to clear cache. Please manually refresh the page.");
+    } finally {
+      release();
     }
   }, []);
 
@@ -134,6 +171,12 @@ export function useDBHealth() {
 
         db.on("versionchange", () => {
           if (!isMounted) return;
+
+          // Notify other tabs about version change
+          broadcastToTabs(CrossTabMessages.DB_VERSION_CHANGED, {
+            timestamp: Date.now(),
+          });
+
           handleRecovery(
             "versionchange",
             "Database schema changed. Please refresh to update."

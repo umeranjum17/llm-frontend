@@ -1,5 +1,6 @@
 import { db, type Chat, type Message, type Project, type ProjectFile, type ModelFavorite, type ApiKey, type UserSettings, type Agent, type Prompt, type Skill, type ModelAlias, type McpServer, type Folder, type Tag } from "./schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
+import { getCrossTabCoordinator, CrossTabMessages } from "@/lib/utils/cross-tab";
 
 // Re-export db for direct access when needed (e.g., batch operations)
 export { db };
@@ -53,11 +54,23 @@ export async function moveChatsToProject(fromProjectId: string, toProjectId: str
 let chatsCache: { data: Chat[], timestamp: number } | null = null;
 const CHATS_CACHE_MAX_AGE = 5000; // 5 seconds
 
+// Initialize cross-tab listener for cache invalidation (browser only)
+if (typeof window !== "undefined") {
+  getCrossTabCoordinator().on(CrossTabMessages.CACHE_INVALIDATED, () => {
+    chatsCache = null;
+  });
+}
+
 /**
  * Invalidate the chats cache. Call this after any chat mutation.
+ * Also notifies other tabs to invalidate their caches.
  */
 export function invalidateChatsCache() {
   chatsCache = null;
+  // Notify other tabs
+  if (typeof window !== "undefined") {
+    getCrossTabCoordinator().broadcast(CrossTabMessages.CACHE_INVALIDATED);
+  }
 }
 
 /**
@@ -206,6 +219,10 @@ export async function deleteChat(id: string) {
   // Delete the chat
   await db.chats.delete(id);
   invalidateChatsCache();
+  // Notify other tabs about the deletion
+  if (typeof window !== "undefined") {
+    getCrossTabCoordinator().broadcast(CrossTabMessages.CHAT_DELETED, { chatId: id });
+  }
 }
 
 export async function deleteAllChats() {
