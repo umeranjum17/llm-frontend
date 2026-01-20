@@ -19,6 +19,7 @@ import { addAgent, updateAgent, getAllMcpServers, getAllAgents, resetAgentToDefa
 import { toast } from "sonner";
 import { useUIStore } from "@/stores/ui-store";
 import { Server, Loader2, AlertCircle, Search, Check, Plus, Trash2, GripVertical, MessageSquare, ImageIcon, Bot, Settings2, LayoutGrid, List, ChevronDown, ChevronRight, RotateCcw, Wrench } from "lucide-react";
+import { validatePipelineSteps as validatePipelineStepsShared, PREFILL_CLEAR_DELAY_MS, STEP_ID_PREFIX, generateUniqueStepName, generateUniqueOutputVariable, type PipelineValidationError } from "@/lib/validation/agent-validation";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { isImageGenerationModel } from "@/lib/constants/model-capabilities";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -35,62 +36,6 @@ interface AgentEditorDialogProps {
   onReset?: (agentId: string, newModelId: string | undefined) => void;
 }
 
-interface PipelineValidationError {
-  stepIndex: number;
-  stepName: string;
-  message: string;
-}
-
-/**
- * Validate pipeline steps - mirrors backend validation
- */
-function validatePipelineSteps(steps: PipelineStep[]): PipelineValidationError[] {
-  const errors: PipelineValidationError[] = [];
-  const definedVariables = new Set(["userInput", "userImages", "chatId"]);
-  const outputVariables = new Set<string>();
-
-  for (let i = 0; i < steps.length; i++) {
-    const step = steps[i];
-
-    // Check for duplicate output variables
-    if (outputVariables.has(step.outputVariable)) {
-      errors.push({
-        stepIndex: i,
-        stepName: step.name || `Step ${i + 1}`,
-        message: `Duplicate output variable "${step.outputVariable}"`,
-      });
-    }
-    outputVariables.add(step.outputVariable);
-
-    if (step.type === "subagent") {
-      if (!step.agentId || step.agentId.trim() === "") {
-        errors.push({
-          stepIndex: i,
-          stepName: step.name || `Step ${i + 1}`,
-          message: "Agent step requires an agent to be selected",
-        });
-      }
-    }
-
-    // Check for unresolved variable references in inputTemplate
-    const varRefs = step.inputTemplate.match(/\{\{(\w+)\}\}/g) || [];
-    for (const ref of varRefs) {
-      const varName = ref.slice(2, -2);
-      if (!definedVariables.has(varName)) {
-        errors.push({
-          stepIndex: i,
-          stepName: step.name || `Step ${i + 1}`,
-          message: `References undefined variable "{{${varName}}}"`,
-        });
-      }
-    }
-
-    // Add this step's output variable for subsequent steps
-    definedVariables.add(step.outputVariable);
-  }
-
-  return errors;
-}
 
 export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset }: AgentEditorDialogProps) {
   const agentEditorTargetId = useUIStore((state) => state.agentEditorTargetId);
@@ -126,6 +71,8 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
   // Initialize form when dialog opens
   useEffect(() => {
     if (!open) return;
+
+    let isMounted = true;
     loadModels().catch(() => {});
 
     // Read prefilled data directly from store
@@ -136,6 +83,8 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
     const loadExistingAgent = async () => {
       if (targetId && !agent && prefilledData) {
         const existingAgent = await getAgentById(targetId);
+        if (!isMounted) return; // Component unmounted, abort
+
         if (existingAgent) {
           // Merge prefilled data over existing agent (prefill takes precedence)
           const merged = { ...existingAgent, ...prefilledData };
@@ -143,7 +92,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
           setDescription(merged.description || "");
           setAvatar(merged.avatar || "");
           setIsActive(merged.isActive ?? true);
-          
+
           const existingSteps = merged.pipeline?.steps || [];
           const stepsWithDefaults = existingSteps.map((step) => ({
             ...step,
@@ -154,14 +103,14 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
           return;
         }
       }
-      
+
       // Priority: existing agent > prefilled data > defaults
       const source = agent || prefilledData;
       setName(source?.name || "");
       setDescription(source?.description || "");
       setAvatar(source?.avatar || "");
       setIsActive(source?.isActive ?? true);
-      
+
       // Pipeline state - ensure steps have default providerId values
       const existingSteps = source?.pipeline?.steps || [];
       const stepsWithDefaults = existingSteps.map((step) => ({
@@ -173,7 +122,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
       // For new agents, create a default first LLM step
       if (!source && stepsWithDefaults.length === 0) {
         const defaultStep: PipelineStep = {
-          id: `step_${Date.now()}`,
+          id: `${STEP_ID_PREFIX}${Date.now()}`,
           name: "Step 1",
           type: "llm",
           providerId: "openrouter",
@@ -189,22 +138,55 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
     loadExistingAgent().catch(console.error);
 
     // Clear prefilled data after a short delay to ensure state is applied
+    // Use proper cleanup to prevent memory leaks
     if (prefilledData && !agent) {
-      setTimeout(() => {
-        clearAgentEditorData();
-      }, 100);
+      const timeoutId = setTimeout(() => {
+        if (isMounted) {
+          clearAgentEditorData();
+        }
+      }, PREFILL_CLEAR_DELAY_MS);
+
+      return () => {
+        isMounted = false;
+        clearTimeout(timeoutId);
+      };
     }
+
+    return () => {
+      isMounted = false;
+    };
   }, [open, agent, loadModels, clearAgentEditorData]);
 
   const modelOptions = useMemo(() => (models.length > 0 ? models : MODELS), [models]);
 
-  // Validate pipeline steps
-  const pipelineValidationErrors = useMemo(() => {
+  // Validate pipeline steps with async validation for circular dependencies
+  const [pipelineValidationErrors, setPipelineValidationErrors] = useState<PipelineValidationError[]>([]);
+
+  useEffect(() => {
     if (pipelineSteps.length === 0) {
-      return [];
+      setPipelineValidationErrors([]);
+      return;
     }
-    return validatePipelineSteps(pipelineSteps);
-  }, [pipelineSteps]);
+
+    let isMounted = true;
+
+    validatePipelineStepsShared(pipelineSteps, agent?.id || agentEditorTargetId || undefined, allAgents)
+      .then((errors) => {
+        if (isMounted) {
+          setPipelineValidationErrors(errors);
+        }
+      })
+      .catch((err) => {
+        if (isMounted) {
+          console.error("Pipeline validation error:", err);
+          setPipelineValidationErrors([]);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [pipelineSteps, agent?.id, agentEditorTargetId, allAgents]);
 
   const hasPipelineErrors = pipelineValidationErrors.length > 0;
 
@@ -519,12 +501,12 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
                       size="sm"
                       onClick={() => {
                         const newStep: PipelineStep = {
-                          id: `step_${Date.now()}`,
-                          name: `Step ${pipelineSteps.length + 1}`,
+                          id: `${STEP_ID_PREFIX}${Date.now()}`,
+                          name: generateUniqueStepName(pipelineSteps),
                           type: "llm",
                           providerId: "openrouter",
                           inputTemplate: "{{userInput}}",
-                          outputVariable: `step${pipelineSteps.length + 1}Output`,
+                          outputVariable: generateUniqueOutputVariable(pipelineSteps),
                         };
                         setPipelineSteps([...pipelineSteps, newStep]);
                       }}

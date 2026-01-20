@@ -7,7 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, X } from "lucide-react";
+import { Plus, X, Info } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -25,6 +31,8 @@ import { useUIStore } from "@/stores/ui-store";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { generateSkillEmbedding } from "@/lib/skills/skill-embeddings";
+import { PREFILL_CLEAR_DELAY_MS, MAX_TRIGGER_PHRASES_IN_DESCRIPTION } from "@/lib/validation/agent-validation";
+import { classifyError, ErrorSeverity, formatErrorMessage } from "@/lib/utils/error-handling";
 
 const CATEGORIES = ["creation", "visualization", "coding", "analysis", "writing", "search"] as const;
 
@@ -68,6 +76,7 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
   const [autoTrigger, setAutoTrigger] = useState(true);
   const [requireApproval, setRequireApproval] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [embeddingProgress, setEmbeddingProgress] = useState<string | null>(null);
 
   // Get prefilled data from UI store (for "Convert to Skill" feature)
   // Use getState() to avoid stale closure issues with lazy-loaded components
@@ -75,6 +84,8 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
 
   useEffect(() => {
     if (!open) return;
+
+    let isMounted = true;
 
     // Read prefilled data directly from store to avoid stale closures
     const prefilledData = useUIStore.getState().skillEditorPrefilledData;
@@ -84,6 +95,8 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
     const loadExistingSkill = async () => {
       if (targetId && !skill && prefilledData) {
         const existingSkill = await getSkillById(targetId);
+        if (!isMounted) return; // Component unmounted, abort
+
         if (existingSkill) {
           // Merge prefilled data over existing skill (prefill takes precedence)
           const merged = { ...existingSkill, ...prefilledData };
@@ -130,17 +143,29 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
       setActiveLabel(source?.ui?.activeLabel || "");
       setAutoTrigger(source?.trigger?.type ? source.trigger.type === "auto" : true);
       setRequireApproval(source?.requireApproval || false);
-
-      // Clear prefilled data after a short delay to ensure state is applied
-      if (prefilledData && !skill) {
-        setTimeout(() => {
-          clearSkillEditorData();
-        }, 100);
-      }
     };
 
     // Call the async function
-    loadExistingSkill();
+    loadExistingSkill().catch(console.error);
+
+    // Clear prefilled data after a short delay to ensure state is applied
+    // Use proper cleanup to prevent memory leaks
+    if (prefilledData && !skill) {
+      const timeoutId = setTimeout(() => {
+        if (isMounted) {
+          clearSkillEditorData();
+        }
+      }, PREFILL_CLEAR_DELAY_MS);
+
+      return () => {
+        isMounted = false;
+        clearTimeout(timeoutId);
+      };
+    }
+
+    return () => {
+      isMounted = false;
+    };
   }, [open, skill, clearSkillEditorData]);
 
   const variables = useMemo(
@@ -188,7 +213,7 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
     if (!systemPrompt.trim()) return toast.error("System prompt is required");
 
     // Auto-generate description from trigger phrases (for display and backward compat)
-    const description = triggerPhrases.slice(0, 5).join(", ");
+    const description = triggerPhrases.slice(0, MAX_TRIGGER_PHRASES_IN_DESCRIPTION).join(", ");
 
     setSaving(true);
     try {
@@ -264,39 +289,94 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
             // Import and use the query embedding function
             const { setSkillAutoApplyQueries, setSkillExclusionQueries } = await import("@/lib/db/queries");
 
-            // Generate trigger phrase embeddings
-            await setSkillAutoApplyQueries(
-              savedSkill.id,
-              triggerPhrases,
-              apiKeyObj.key,
-              embeddingsProvider,
-              embeddingsModelId
-            );
+            let triggerSuccess: { success: boolean; error?: unknown; failedCount?: number } = { success: true, failedCount: 0 };
+            let exclusionSuccess: { success: boolean; error?: unknown; failedCount?: number } = { success: true, failedCount: 0 };
+            let descriptionSuccess = true;
 
-            // Generate exclusion embeddings if any
-            if (exclusionKeywords.length > 0) {
-              await setSkillExclusionQueries(
+            const totalSteps = 2 + (exclusionKeywords.length > 0 ? 1 : 0);
+            let currentStep = 0;
+
+            // Generate trigger phrase embeddings
+            try {
+              currentStep++;
+              setEmbeddingProgress(`Generating trigger embeddings (${currentStep}/${totalSteps})...`);
+              triggerSuccess = await setSkillAutoApplyQueries(
                 savedSkill.id,
-                exclusionKeywords,
+                triggerPhrases,
                 apiKeyObj.key,
                 embeddingsProvider,
                 embeddingsModelId
               );
+            } catch (triggerError) {
+              const classified = classifyError(triggerError, "Trigger embedding generation");
+              console.error("Failed to generate trigger embeddings:", classified);
+              toast.error(formatErrorMessage(classified));
+              triggerSuccess = { success: false, failedCount: triggerPhrases.length };
+            }
+
+            // Generate exclusion embeddings if any
+            if (exclusionKeywords.length > 0) {
+              try {
+                currentStep++;
+                setEmbeddingProgress(`Generating exclusion embeddings (${currentStep}/${totalSteps})...`);
+                exclusionSuccess = await setSkillExclusionQueries(
+                  savedSkill.id,
+                  exclusionKeywords,
+                  apiKeyObj.key,
+                  embeddingsProvider,
+                  embeddingsModelId
+                );
+              } catch (exclusionError) {
+                const classified = classifyError(exclusionError, "Exclusion embedding generation");
+                console.error("Failed to generate exclusion embeddings:", classified);
+                toast.warning(formatErrorMessage(classified));
+                exclusionSuccess = { success: false, failedCount: exclusionKeywords.length };
+              }
             }
 
             // Also generate description embedding for backward compat
-            await generateSkillEmbedding(
-              savedSkill,
-              apiKeyObj.key,
-              embeddingsProvider,
-              embeddingsModelId
-            );
+            try {
+              currentStep++;
+              setEmbeddingProgress(`Finalizing (${currentStep}/${totalSteps})...`);
+              await generateSkillEmbedding(
+                savedSkill,
+                apiKeyObj.key,
+                embeddingsProvider,
+                embeddingsModelId
+              );
+            } catch (descError) {
+              const classified = classifyError(descError, "Description embedding generation");
+              console.error("Failed to generate description embedding:", classified);
+              descriptionSuccess = false;
+            }
 
-            toast.success("Skill embeddings generated");
+            setEmbeddingProgress(null);
+
+            // Show appropriate success/warning message
+            const totalFailed = (triggerSuccess.failedCount || 0) + (exclusionSuccess.failedCount || 0);
+            const totalAttempted = triggerPhrases.length + exclusionKeywords.length;
+
+            if (!triggerSuccess.success && !exclusionSuccess.success && !descriptionSuccess) {
+              toast.error(
+                "Skill saved, but all embeddings failed to generate. Check your API key in Settings > API Keys."
+              );
+            } else if (totalFailed > 0) {
+              toast.warning(
+                `Skill saved. ${totalFailed} of ${totalAttempted} embeddings failed. Auto-trigger may not work correctly.`
+              );
+            } else {
+              toast.success("Skill and embeddings generated successfully");
+            }
           } catch (embError) {
-            console.error("Failed to generate embeddings:", embError);
-            toast.warning("Skill saved, but embedding generation failed. Regenerate from Settings > Skills.");
+            setEmbeddingProgress(null);
+            const classified = classifyError(embError, "Embedding generation");
+            console.error("Failed to generate embeddings:", classified);
+            toast.error(formatErrorMessage(classified));
           }
+        } else {
+          toast.warning(
+            "Skill saved without embeddings. Configure API key in Settings > API Keys to enable auto-trigger."
+          );
         }
       }
 
@@ -404,9 +484,24 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
           {/* Exclusion Queries (Negative Examples) - only show for auto-trigger skills */}
           {autoTrigger && (
             <div className="space-y-2">
-              <Label>
-                Exclusion Queries <span className="text-muted-foreground text-xs">(negative examples)</span>
-              </Label>
+              <div className="flex items-center gap-1.5">
+                <Label>
+                  Exclusion Queries <span className="text-muted-foreground text-xs">(negative examples)</span>
+                </Label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p className="text-xs">
+                        Exclusion queries reduce the match score by applying a penalty to prevent false positives.
+                        Use these to specify queries that should NOT trigger this skill.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
 
               {exclusionKeywords.length > 0 && (
                 <div className="flex flex-wrap gap-2 p-2 rounded-lg border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30">
@@ -566,13 +661,23 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
             </div>
           </div>
 
+          {/* Embedding Progress Indicator */}
+          {embeddingProgress && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 p-3">
+              <div className="flex items-center gap-2">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+                <span className="text-sm text-blue-700 dark:text-blue-300">{embeddingProgress}</span>
+              </div>
+            </div>
+          )}
+
           {/* Actions */}
           <div className="flex justify-end gap-2 pt-4">
-            <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>
+            <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving || !!embeddingProgress}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? "Saving..." : "Save"}
+            <Button onClick={handleSave} disabled={saving || !!embeddingProgress}>
+              {saving ? "Saving..." : embeddingProgress ? embeddingProgress : "Save"}
             </Button>
           </div>
         </div>
