@@ -52,6 +52,49 @@ function validateExternalUrl(urlString: string): string | null {
   }
 }
 
+/**
+ * Categorizes error types based on HTTP status code
+ */
+function categorizeError(statusCode: number): {
+  errorType: string;
+  suggestion: string;
+} {
+  if (statusCode === 401 || statusCode === 403) {
+    return {
+      errorType: "auth_error",
+      suggestion: "Please check that your API key is valid and active",
+    };
+  }
+  if (statusCode === 429) {
+    return {
+      errorType: "rate_limit",
+      suggestion: "Please wait a moment and try again",
+    };
+  }
+  if (statusCode >= 500) {
+    return {
+      errorType: "provider_error",
+      suggestion: "The provider's servers are experiencing issues. Please try again in a few moments",
+    };
+  }
+  return {
+    errorType: "unknown_error",
+    suggestion: "Please check your API key and try again",
+  };
+}
+
+/**
+ * Gets the provider display name for user-facing messages
+ */
+function getProviderName(providerId: string): string {
+  const names: Record<string, string> = {
+    anthropic: "Anthropic",
+    openrouter: "OpenRouter",
+    openai: "OpenAI",
+  };
+  return names[providerId] || providerId;
+}
+
 export async function POST(req: Request) {
   const json = await req.json().catch(() => null);
   const parsed = BodySchema.safeParse(json);
@@ -71,13 +114,28 @@ export async function POST(req: Request) {
     });
   }
 
+  const startTime = Date.now();
+  const providerName = getProviderName(providerId);
+
+  // Create AbortController with 10 second timeout
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => abortController.abort(), 10000);
+
   try {
     if (resolved.kind === "anthropic") {
       if (resolved.apiKeyRequired && !apiKey) {
-        return new Response(JSON.stringify({ error: "Missing API key" }), {
-          status: 401,
-          headers: { "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: "Missing API key",
+            errorType: "missing_key",
+            suggestion: "Please provide your Anthropic API key",
+          }),
+          {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
       }
 
       const upstream = await fetch("https://api.anthropic.com/v1/models", {
@@ -87,19 +145,43 @@ export async function POST(req: Request) {
           "anthropic-version": "2023-06-01",
           ...(apiKey ? { "x-api-key": apiKey } : {}),
         },
+        signal: abortController.signal,
       });
+
+      clearTimeout(timeoutId);
+      const responseTime = Date.now() - startTime;
 
       if (!upstream.ok) {
         const details = await upstream.text().catch(() => "");
+        const { errorType, suggestion } = categorizeError(upstream.status);
+
         return new Response(
-          JSON.stringify({ error: "Anthropic request failed", status: upstream.status, details }),
+          JSON.stringify({
+            ok: false,
+            error: `Authentication failed`,
+            errorType,
+            statusCode: upstream.status,
+            details,
+            suggestion,
+            provider: providerId,
+            providerName,
+          }),
           { status: 502, headers: { "Content-Type": "application/json" } }
         );
       }
 
-      return new Response(JSON.stringify({ ok: true }), {
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          provider: providerId,
+          providerName,
+          responseTime,
+          testedAt: new Date().toISOString(),
+        }),
+        {
+          headers: { "Content-Type": "application/json" },
+        }
+      );
     }
 
     const effectiveBaseUrl =
@@ -129,22 +211,71 @@ export async function POST(req: Request) {
         "Content-Type": "application/json",
         ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
       },
+      signal: abortController.signal,
     });
+
+    clearTimeout(timeoutId);
+    const responseTime = Date.now() - startTime;
 
     if (!upstream.ok) {
       const details = await upstream.text().catch(() => "");
+      const { errorType, suggestion } = categorizeError(upstream.status);
+
       return new Response(
-        JSON.stringify({ error: "Provider request failed", status: upstream.status, details }),
+        JSON.stringify({
+          ok: false,
+          error: `Authentication failed`,
+          errorType,
+          statusCode: upstream.status,
+          details,
+          suggestion,
+          provider: providerId,
+          providerName,
+        }),
         { status: 502, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    return new Response(JSON.stringify({ ok: true }), {
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch (e) {
     return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Request failed" }),
+      JSON.stringify({
+        ok: true,
+        provider: providerId,
+        providerName,
+        responseTime,
+        testedAt: new Date().toISOString(),
+      }),
+      {
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  } catch (e) {
+    clearTimeout(timeoutId);
+
+    // Handle abort/timeout
+    if (e instanceof Error && e.name === "AbortError") {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: "Request timeout",
+          errorType: "timeout",
+          suggestion: `Couldn't reach ${providerName}'s servers within 10 seconds. Please check your connection and try again`,
+          provider: providerId,
+          providerName,
+        }),
+        { status: 504, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Handle network errors
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        error: e instanceof Error ? e.message : "Request failed",
+        errorType: "network_error",
+        suggestion: `Couldn't connect to ${providerName}'s servers. Please check your internet connection and try again`,
+        provider: providerId,
+        providerName,
+      }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }

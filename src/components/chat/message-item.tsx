@@ -1388,170 +1388,98 @@ export const MessageItem = memo(function MessageItem({
 
           {/* Desktop Actions - Outside bubble */}
           {!isEditing && (
-            <motion.div
-              className="hidden sm:flex shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex-col gap-1"
-              initial={{ opacity: 0, x: 10 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              transition={{ staggerChildren: 0.03, delayChildren: 0.05 }}
-            >
-              <motion.div
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                transition={{ type: "spring", stiffness: 400, damping: 25 }}
+            <div className="hidden sm:flex shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex-col gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={handleCopy}
+                title="Copy message"
               >
+                {copied ? (
+                  <Check className="h-4 w-4 text-green-500" />
+                ) : (
+                  <Copy className="h-4 w-4" />
+                )}
+              </Button>
+              {isAssistant && (
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 ripple-button"
-                  onClick={handleCopy}
-                  title="Copy message"
+                  className={cn("h-8 w-8 text-muted-foreground", isPlaying && "text-primary")}
+                  onClick={() => isPlaying ? stop() : speak(textContent)}
+                  title={isPlaying ? "Stop" : "Read aloud"}
                 >
-                  <AnimatePresence mode="wait">
-                    {copied ? (
-                      <motion.span
-                        key="check"
-                        initial={{ scale: 0.8, rotate: -180 }}
-                        animate={{ scale: 1, rotate: 0 }}
-                        exit={{ scale: 0.8, rotate: 180 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        <Check className="h-4 w-4 text-green-500" />
-                      </motion.span>
-                    ) : (
-                      <motion.span
-                        key="copy"
-                        initial={{ scale: 0.8 }}
-                        animate={{ scale: 1 }}
-                        exit={{ scale: 0.8 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        <Copy className="h-4 w-4" />
-                      </motion.span>
-                    )}
-                  </AnimatePresence>
+                  {isPlaying ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
                 </Button>
-              </motion.div>
-              {isAssistant && (
-                <motion.div
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                  animate={isPlaying ? { scale: [1, 1.1, 1] } : {}}
-                >
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={cn("h-8 w-8 text-muted-foreground", isPlaying && "text-primary")}
-                    onClick={() => isPlaying ? stop() : speak(textContent)}
-                    title={isPlaying ? "Stop" : "Read aloud"}
-                  >
-                    {isPlaying ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-                  </Button>
-                </motion.div>
               )}
               {canFork && (
-                <motion.div
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => onFork?.(message.id)}
+                  title="Fork from here"
                 >
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => onFork?.(message.id)}
-                    title="Fork from here"
-                  >
-                    <GitBranch className="h-4 w-4" />
-                  </Button>
-                </motion.div>
+                  <GitBranch className="h-4 w-4" />
+                </Button>
               )}
               {canRegenerate && (
-                <motion.div
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => onRegenerate?.(message.id)}
+                  title="Regenerate (new branch)"
                 >
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => onRegenerate?.(message.id)}
-                    title="Regenerate (new branch)"
-                  >
-                    <RotateCcw className="h-4 w-4" />
-                  </Button>
-                </motion.div>
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
               )}
               {canResend && (
-                <motion.div
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => onResend?.(message.id)}
+                  title="Resend message"
                 >
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => onResend?.(message.id)}
-                    title="Resend message"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                  </Button>
-                </motion.div>
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
               )}
               {canEdit && (
-                <motion.div
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setIsEditing(true)}
+                  title="Edit message"
                 >
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => setIsEditing(true)}
-                    title="Edit message"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                </motion.div>
+                  <Pencil className="h-4 w-4" />
+                </Button>
               )}
               {isAssistant && (
                 <>
-                  <motion.div
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ rotate: 360, transition: { duration: 0.3 } }}
-                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => handleRate("up")}
+                    title="Good response"
                   >
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => handleRate("up")}
-                      title="Good response"
-                    >
-                      <ThumbsUp className={cn("h-4 w-4", message.rating === "up" && "fill-current text-green-500")} />
-                    </Button>
-                  </motion.div>
-                  <motion.div
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ rotate: -360, transition: { duration: 0.3 } }}
-                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                    <ThumbsUp className={cn("h-4 w-4", message.rating === "up" && "fill-current text-green-500")} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => handleRate("down")}
+                    title="Bad response"
                   >
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => handleRate("down")}
-                      title="Bad response"
-                    >
-                      <ThumbsDown className={cn("h-4 w-4", message.rating === "down" && "fill-current text-red-500")} />
-                    </Button>
-                  </motion.div>
+                    <ThumbsDown className={cn("h-4 w-4", message.rating === "down" && "fill-current text-red-500")} />
+                  </Button>
                 </>
               )}
-            </motion.div>
+            </div>
           )}
         </div>
       </div>

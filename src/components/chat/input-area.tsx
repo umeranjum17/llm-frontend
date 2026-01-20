@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { countMessagesTokens, countTokens } from "@/lib/utils/token-counter";
 import { getModelById } from "@/lib/constants/models";
 import { BUILTIN_AGENTS } from "@/lib/constants/agents";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import type { MessageContentPart, Skill } from "@/lib/db/schema";
 import { MentionTextarea } from "@/components/chat/mention-textarea";
 import { MentionItem } from "@/lib/mentions/types";
@@ -200,6 +201,21 @@ export function InputArea({ chatId }: InputAreaProps) {
   const voice = useVoiceInput();
   const [voiceDraft, setVoiceDraft] = useState("");
   const wasListeningRef = useRef(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Detect mobile device - on mobile, Enter creates new line instead of sending
+  useEffect(() => {
+    const checkMobile = () => {
+      // Check for touch capability and small screen width (typical mobile breakpoint)
+      const hasTouchScreen = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      const isSmallScreen = window.matchMedia('(max-width: 640px)').matches;
+      setIsMobile(hasTouchScreen && isSmallScreen);
+    };
+
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const chat = useLiveQuery(() => getChatById(chatId), [chatId]);
   const agents = useLiveQuery(() => getAllAgents(), []);
@@ -615,10 +631,16 @@ export function InputArea({ chatId }: InputAreaProps) {
   };
 
   const handleMentionTextareaEnter = (e: React.KeyboardEvent) => {
+    // On mobile: Enter = new line (default behavior), use send button to submit
+    // On desktop: Enter = send, Shift+Enter = new line
+    if (isMobile) {
+      // Let the default behavior happen (insert new line)
+      return;
+    }
+
+    // Desktop behavior: Enter sends, Shift+Enter adds new line
     if (!e.shiftKey) {
       e.preventDefault();
-      // We can call handleSubmit but we need to pass a synthetic event or just call logics.
-      // handleSubmit takes React.FormEvent.
       const syntheticEvent = { preventDefault: () => { } } as React.FormEvent;
       handleSubmit(syntheticEvent);
     }
@@ -684,10 +706,10 @@ export function InputArea({ chatId }: InputAreaProps) {
                   <motion.div
                     key={`${img.dataUrl}-${i}`}
                     layout
-                    initial={{ scale: 0.8, opacity: 0, y: -20 }}
-                    animate={{ scale: 1, opacity: 1, y: 0 }}
-                    exit={{ scale: 0.8, opacity: 0, rotate: 15 }}
-                    transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
                     className="relative overflow-hidden rounded-md border bg-background"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -697,16 +719,14 @@ export function InputArea({ chatId }: InputAreaProps) {
                       className="h-16 w-16 object-cover"
                       loading="lazy"
                     />
-                    <motion.button
+                    <button
                       type="button"
                       onClick={() => removeImageAttachment(i)}
-                      className="absolute right-1 top-1 rounded bg-background/80 p-0.5 text-muted-foreground hover:text-foreground"
+                      className="absolute right-1 top-1 rounded bg-background/80 p-0.5 text-muted-foreground hover:text-foreground transition-colors"
                       title="Remove image"
-                      whileHover={{ scale: 1.2 }}
-                      whileTap={{ scale: 0.9 }}
                     >
                       <X className="h-3 w-3" />
-                    </motion.button>
+                    </button>
                   </motion.div>
                 ))}
 
@@ -714,24 +734,22 @@ export function InputArea({ chatId }: InputAreaProps) {
                   <motion.div
                     key={`${file.name}-${i}`}
                     layout
-                    initial={{ scale: 0.8, opacity: 0, y: -20 }}
-                    animate={{ scale: 1, opacity: 1, y: 0 }}
-                    exit={{ scale: 0.8, opacity: 0, x: 20 }}
-                    transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
                     className="flex items-center gap-1 bg-background border rounded-md px-2 py-1 text-xs"
                   >
                     <FileText className="h-3 w-3 text-muted-foreground" />
                     <span className="max-w-[150px] truncate">{file.name}</span>
-                    <motion.button
+                    <button
                       type="button"
                       onClick={() => removeAttachment(i)}
-                      className="text-muted-foreground hover:text-foreground"
+                      className="text-muted-foreground hover:text-foreground transition-colors"
                       title="Remove file"
-                      whileHover={{ scale: 1.2 }}
-                      whileTap={{ scale: 0.9 }}
                     >
                       <X className="h-3 w-3" />
-                    </motion.button>
+                    </button>
                   </motion.div>
                 ))}
               </AnimatePresence>
@@ -765,32 +783,23 @@ export function InputArea({ chatId }: InputAreaProps) {
                     </div>
                     <div className="flex items-center gap-1">
                       {hasMore && (
-                        <motion.button
+                        <button
                           type="button"
                           onClick={() => toggleSnippetExpanded(snippet.id)}
                           className="p-1 text-zinc-500 hover:text-zinc-300 transition-colors"
                           title={isExpanded ? "Collapse" : "Expand"}
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.9 }}
                         >
-                          <motion.span
-                            animate={{ rotate: isExpanded ? 180 : 0 }}
-                            transition={{ duration: 0.2 }}
-                          >
-                            <ChevronDown className="h-3.5 w-3.5" />
-                          </motion.span>
-                        </motion.button>
+                          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", isExpanded && "rotate-180")} />
+                        </button>
                       )}
-                      <motion.button
+                      <button
                         type="button"
                         onClick={() => removeCodeSnippet(snippet.id)}
                         className="p-1 text-zinc-500 hover:text-zinc-300 transition-colors"
                         title="Remove snippet"
-                        whileHover={{ scale: 1.1 }}
-                        whileTap={{ scale: 0.9 }}
                       >
                         <X className="h-3.5 w-3.5" />
-                      </motion.button>
+                      </button>
                     </div>
                   </div>
 
@@ -914,10 +923,10 @@ export function InputArea({ chatId }: InputAreaProps) {
           {isLoading ? (
             <motion.div
               key="stop"
-              initial={{ scale: 0.8, rotate: -90 }}
-              animate={{ scale: 1, rotate: 0 }}
-              exit={{ scale: 0.8, rotate: 90 }}
-              transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
             >
               <Button
                 type="button"
@@ -933,12 +942,10 @@ export function InputArea({ chatId }: InputAreaProps) {
           ) : (
             <motion.div
               key="send"
-              initial={{ scale: 0.8, rotate: 90 }}
-              animate={{ scale: 1, rotate: 0 }}
-              exit={{ scale: 0.8, rotate: -90 }}
-              transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
             >
               <Button
                 type="submit"
@@ -958,7 +965,9 @@ export function InputArea({ chatId }: InputAreaProps) {
         <span className="text-[9px] sm:text-xs truncate max-w-[50%] sm:max-w-none">
           {voice.isListening && voiceDraft
             ? `Listening: "${voiceDraft}"`
-            : "↵ Send • ⇧↵ New line"}
+            : isMobile
+              ? "Tap send to submit"
+              : "↵ Send • ⇧↵ New line"}
         </span>
         {chat && (
           <TokenCalculator

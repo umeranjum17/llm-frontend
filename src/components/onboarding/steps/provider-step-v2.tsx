@@ -4,12 +4,14 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ProviderTile } from "../provider-tile";
 import { SecretInput } from "../secret-input";
 import { TrustPanel } from "../trust-panel";
+import { ValidationStatus, type ValidationPhase } from "../validation-status";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { toast } from "sonner";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Info } from "lucide-react";
 
 const PROVIDERS = [
   {
@@ -43,18 +45,28 @@ export function ProviderStepV2({ onComplete }: ProviderStepV2Props) {
   const { addKey } = useApiKeysStore();
   const [selectedProvider, setSelectedProvider] = useState("openrouter");
   const [apiKey, setApiKey] = useState("");
-  const [validationState, setValidationState] = useState<
-    "success" | "error" | "validating" | null
-  >(null);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [validationPhase, setValidationPhase] = useState<ValidationPhase>("idle");
+  const [validationDetails, setValidationDetails] = useState<{
+    responseTime?: number;
+    errorType?: string;
+    errorMessage?: string;
+    suggestion?: string;
+  }>({});
 
   const provider = PROVIDERS.find((p) => p.id === selectedProvider)!;
 
   const validateAndSave = async () => {
     if (!apiKey.trim()) return;
 
-    setValidationState("validating");
-    setErrorMessage("");
+    // Phase 1: Connecting
+    setValidationPhase("connecting");
+    setValidationDetails({});
+
+    // Small delay to show connecting state
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    // Phase 2: Verifying
+    setValidationPhase("verifying");
 
     try {
       const response = await fetch("/api/providers/test", {
@@ -69,34 +81,51 @@ export function ProviderStepV2({ onComplete }: ProviderStepV2Props) {
       const data = await response.json();
 
       if (response.ok && data.ok) {
-        setValidationState("success");
+        // Phase 3: Success
+        setValidationPhase("success");
+        setValidationDetails({
+          responseTime: data.responseTime,
+        });
         await addKey(selectedProvider, apiKey.trim(), provider.name);
         toast.success(`Connected to ${provider.name}`);
 
-        // Auto-advance after 500ms
+        // Auto-advance after 1 second to show success state
         setTimeout(() => {
           onComplete(selectedProvider);
-        }, 500);
+        }, 1000);
       } else {
-        setValidationState("error");
-        setErrorMessage(
-          data.error || data.details || "Invalid API key. Please check and try again."
-        );
+        // Phase 3: Error
+        setValidationPhase("error");
+        setValidationDetails({
+          errorType: data.errorType,
+          errorMessage: data.error,
+          suggestion: data.suggestion,
+        });
       }
     } catch (error) {
-      setValidationState("error");
-      setErrorMessage("Network error. Please check your connection and try again.");
+      setValidationPhase("error");
+      setValidationDetails({
+        errorType: "network_error",
+        errorMessage: "Network error",
+        suggestion: "Please check your internet connection and try again",
+      });
     }
   };
 
   // Reset validation state when API key changes
   useEffect(() => {
-    setValidationState(null);
-    setErrorMessage("");
+    setValidationPhase("idle");
+    setValidationDetails({});
   }, [apiKey]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && apiKey.trim() && validationState !== "validating") {
+    if (
+      e.key === "Enter" &&
+      apiKey.trim() &&
+      validationPhase !== "connecting" &&
+      validationPhase !== "verifying" &&
+      validationPhase !== "success"
+    ) {
       validateAndSave();
     }
   };
@@ -155,11 +184,30 @@ export function ProviderStepV2({ onComplete }: ProviderStepV2Props) {
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
           onKeyDown={handleKeyDown}
-          validationState={validationState}
-          errorMessage={errorMessage}
+          validationPhase={validationPhase}
+          providerName={provider.name}
           autoFocus
         />
+
+        {/* Validation Status */}
+        <ValidationStatus
+          phase={validationPhase}
+          provider={provider.name}
+          responseTime={validationDetails.responseTime}
+          errorMessage={validationDetails.errorMessage}
+          errorType={validationDetails.errorType}
+          suggestion={validationDetails.suggestion}
+        />
       </div>
+
+      {/* Info Panel */}
+      <Alert className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30">
+        <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+        <AlertDescription className="text-sm text-blue-900 dark:text-blue-100">
+          We&apos;ll verify your API key by making a test call to {provider.name}&apos;s servers.
+          This confirms your key is valid and active.
+        </AlertDescription>
+      </Alert>
 
       {/* Trust Panel */}
       <TrustPanel />
@@ -169,17 +217,22 @@ export function ProviderStepV2({ onComplete }: ProviderStepV2Props) {
         onClick={validateAndSave}
         disabled={
           !apiKey.trim() ||
-          validationState === "validating" ||
-          validationState === "success"
+          validationPhase === "connecting" ||
+          validationPhase === "verifying" ||
+          validationPhase === "success"
         }
         className="w-full h-11"
         size="lg"
       >
-        {validationState === "validating"
-          ? "Testing key..."
-          : validationState === "success"
-          ? "Connected!"
-          : "Test & Continue"}
+        {validationPhase === "connecting"
+          ? `Connecting to ${provider.name}...`
+          : validationPhase === "verifying"
+          ? `Verifying with ${provider.name}...`
+          : validationPhase === "success"
+          ? "✓ Verified!"
+          : validationPhase === "error"
+          ? "Try Again"
+          : `Verify with ${provider.name}`}
       </Button>
     </motion.div>
   );

@@ -640,10 +640,12 @@ export function useChat(chatId: string) {
         clearTimeout(pipelineClearTimeoutRef.current);
         pipelineClearTimeoutRef.current = null;
       }
-      // Clear streaming state immediately when switching chats
-      clearStreaming();
+      // NOTE: Do NOT clear streaming state when switching chats
+      // This allows requests to complete in the background
+      // The streaming state will be cleared naturally when the response completes
+      // and the data will be persisted to the DB for when user returns
     };
-  }, [chatId, clearStreaming]);
+  }, [chatId]);
 
   const generateResponse = useCallback(async (
     messageContent: MessageContent,
