@@ -117,7 +117,7 @@ export function SkillQuickSelect({ onSelect, selectedSkill }: SkillQuickSelectPr
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-80">
+      <DropdownMenuContent align="start" className="w-80 max-h-[400px]">
         <DropdownMenuLabel className="flex items-center justify-between">
           <span>Skills</span>
           <span className="text-xs font-normal text-muted-foreground">
@@ -126,7 +126,7 @@ export function SkillQuickSelect({ onSelect, selectedSkill }: SkillQuickSelectPr
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
 
-        <div className="max-h-[400px] overflow-y-auto py-1">
+        <div className="py-1">
           {/* Clear Selection */}
           {selectedSkill && (
             <>

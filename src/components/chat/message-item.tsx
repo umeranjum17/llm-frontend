@@ -421,15 +421,22 @@ function ThinkingSection({
   const [isExpanded, setIsExpanded] = useState(false);
   const prefersReducedMotion = usePrefersReducedMotion();
 
+  // Auto-expand when streaming starts
+  useEffect(() => {
+    if (isStreaming) {
+      setIsExpanded(true);
+    }
+  }, [isStreaming]);
+
   if (!reasoning) return null;
 
   return (
-    <div className="mb-3 border rounded-lg bg-purple-500/5 border-purple-500/20 overflow-hidden">
+    <div className="mb-3 border rounded-lg bg-muted/20 border-border/30 overflow-hidden">
       {/* Collapsed header */}
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-purple-600 dark:text-purple-400 hover:bg-purple-500/10 transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-muted/30 transition-colors"
       >
         <motion.span
           animate={{ rotate: isExpanded ? 90 : 0 }}
@@ -437,14 +444,7 @@ function ThinkingSection({
         >
           <ChevronRight className="h-4 w-4" />
         </motion.span>
-        <motion.span
-          animate={isStreaming && !prefersReducedMotion ? {
-            rotate: [0, 5, -5, 0],
-          } : {}}
-          transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
-        >
-          <Brain className="h-3.5 w-3.5" />
-        </motion.span>
+        <Brain className="h-3.5 w-3.5" />
         <span className="font-medium">Thinking</span>
         {isStreaming && (
           <span className="flex items-center gap-1 text-xs opacity-70">
@@ -463,11 +463,11 @@ function ThinkingSection({
           exit={{ height: 0, opacity: 0 }}
           transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
         >
-        <div className="px-3 pb-3 border-t border-purple-500/20">
+        <div className="px-3 pb-3 border-t border-border/30">
           <div className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap font-mono text-xs leading-relaxed max-h-96 overflow-y-auto">
             {reasoning}
             {isStreaming && (
-              <span className="inline-block w-1.5 h-3 ml-0.5 bg-purple-500/70 cursor-breathing" />
+              <span className="inline-block w-1.5 h-3 ml-0.5 bg-foreground/50 cursor-breathing" />
             )}
           </div>
         </div>
@@ -906,8 +906,8 @@ export const MessageItem = memo(function MessageItem({
     ? streamingReasoning
     : message.reasoning || "";
 
-  // Track if we're actively streaming reasoning (reasoning is appearing but response hasn't started)
-  const isStreamingReasoning = isStreaming && !!streamingReasoning && !streamingContent;
+  // Track if we're actively streaming reasoning
+  const isStreamingReasoning = isStreaming && !!streamingReasoning;
 
   const artifactFiles = useMemo(() => isAssistant ? parseArtifactFences(textContent) : [], [isAssistant, textContent]);
   const hasMultipleFiles = artifactFiles.length > 0;
@@ -1141,8 +1141,8 @@ export const MessageItem = memo(function MessageItem({
                 /* Message content */
                 <div
                   className={cn(
-                    "prose prose-sm dark:prose-invert max-w-none break-words",
-                    isAssistant && isStreaming && "streaming-shimmer"
+                    "prose prose-sm dark:prose-invert max-w-none break-words transition-opacity duration-300",
+                    isAssistant && isStreaming && "opacity-70"
                   )}
                   style={{ overflowWrap: 'anywhere' }}
                 >
@@ -1159,17 +1159,16 @@ export const MessageItem = memo(function MessageItem({
                 </div>
               )}
 
-              {/* Message Metadata (Tokens/Cost) - Fade in smoothly to prevent layout shift */}
-              <AnimatePresence>
+              {/* Message Metadata (Tokens/Cost) - Reserve space and fade in smoothly */}
+              <AnimatePresence mode="wait">
                 {!isEditing && isAssistant && (message.inputTokens || message.outputTokens) && (
                   <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.3, ease: "easeOut" }}
-                    className="overflow-hidden"
+                    initial={{ opacity: 0, marginTop: 0 }}
+                    animate={{ opacity: 1, marginTop: 12 }}
+                    exit={{ opacity: 0, marginTop: 0 }}
+                    transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
                   >
-                    <div className="mt-3 flex items-center justify-between text-[10px] text-muted-foreground/60 font-medium border-t border-border/30 pt-2">
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 font-medium border-t border-border/30 pt-2">
                       <div className="flex items-center gap-3">
                         <span>In: <span className="text-muted-foreground">{message.inputTokens?.toLocaleString() || 0}</span></span>
                         <span className="text-border">•</span>

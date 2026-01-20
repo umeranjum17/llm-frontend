@@ -646,7 +646,7 @@ export function ChatShell() {
                           <ChevronDown className="h-3 w-3 opacity-60" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-96 max-h-[70vh] overflow-y-auto">
+                      <DropdownMenuContent align="end" className="w-96 max-h-[70vh]">
                         {/* Provider Section */}
                         {providerId && (() => {
                           const compatibleProviders = llmProviderIds
