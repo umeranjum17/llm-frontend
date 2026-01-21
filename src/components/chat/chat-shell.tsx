@@ -929,13 +929,8 @@ export function ChatShell() {
                     onToggleArena={toggleArenaMode}
                   />
 
-                  {/* Desktop only buttons - show on hover */}
-                  <div
-                    className={cn(
-                      "hidden sm:flex items-center gap-1 transition-opacity duration-150",
-                      headerExpanded ? "opacity-100" : "opacity-0 pointer-events-none"
-                    )}
-                  >
+                  {/* Desktop only buttons - always visible */}
+                  <div className="hidden sm:flex items-center gap-1">
                     <Button
                       variant="ghost"
                       size="icon"

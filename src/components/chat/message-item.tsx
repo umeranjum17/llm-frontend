@@ -416,17 +416,10 @@ function ThinkingSection({
   const [isExpanded, setIsExpanded] = useState(false);
   const prefersReducedMotion = usePrefersReducedMotion();
 
-  // Auto-expand when streaming starts
-  useEffect(() => {
-    if (isStreaming) {
-      setIsExpanded(true);
-    }
-  }, [isStreaming]);
-
   if (!reasoning) return null;
 
   return (
-    <div className="mb-3 border rounded-lg bg-muted/20 border-border/30 overflow-hidden contain-layout">
+    <div className="mb-3 border rounded-lg bg-muted/20 border-border overflow-hidden contain-layout">
       {/* Collapsed header */}
       <button
         type="button"
@@ -445,10 +438,7 @@ function ThinkingSection({
         <Brain className="h-3.5 w-3.5" />
         <span className="font-medium">Thinking</span>
         {isStreaming && (
-          <span className="flex items-center gap-1 text-xs opacity-70">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            thinking...
-          </span>
+          <Loader2 className="h-3 w-3 animate-spin ml-1" />
         )}
       </button>
 
@@ -458,7 +448,7 @@ function ThinkingSection({
         style={{ gridTemplateRows: isExpanded ? '1fr' : '0fr' }}
       >
         <div className="overflow-hidden">
-          <div className="px-3 pb-3 border-t border-border/30">
+          <div className="px-3 pb-3 border-t border-border">
             <div className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap font-mono text-xs leading-relaxed max-h-96 overflow-y-auto">
               {reasoning}
               {isStreaming && (
@@ -1063,7 +1053,7 @@ export const MessageItem = memo(function MessageItem({
                 "rounded-xl sm:rounded-2xl border p-2.5 sm:p-4 overflow-hidden",
                 isUser
                   ? "bg-primary/10 border-primary/20"
-                  : "bg-card/40 backdrop-blur-sm border-border/50"
+                  : "bg-card border-border"
               )}
             >
               <div className="mb-1.5 sm:mb-2 flex items-center gap-1.5 sm:gap-2 flex-wrap">
@@ -1158,12 +1148,13 @@ export const MessageItem = memo(function MessageItem({
                   {/* Multi-stop gradient fade on last few lines during streaming
                       Creates a natural reading experience by progressively fading content
                       as new text appears, drawing focus to the cursor position
-                      Last line fades to nearly invisible (99% opacity) for ultra-smooth experience */}
-                  {isAssistant && isStreaming && (
+                      Extended height (h-48) covers ~6 lines giving markdown time to render
+                      Only show when there's actual content to fade */}
+                  {isAssistant && isStreaming && textContent.length > 0 && (
                     <div
-                      className="absolute bottom-0 left-0 right-0 h-32 pointer-events-none"
+                      className="absolute bottom-0 left-0 right-0 h-48 pointer-events-none"
                       style={{
-                        background: 'linear-gradient(to bottom, transparent 0%, hsl(var(--card) / 0.15) 25%, hsl(var(--card) / 0.4) 45%, hsl(var(--card) / 0.7) 65%, hsl(var(--card) / 0.88) 82%, hsl(var(--card) / 0.99) 100%)',
+                        background: 'linear-gradient(to bottom, transparent 0%, hsl(var(--card) / 0.1) 15%, hsl(var(--card) / 0.25) 30%, hsl(var(--card) / 0.45) 45%, hsl(var(--card) / 0.65) 60%, hsl(var(--card) / 0.82) 75%, hsl(var(--card) / 0.94) 88%, hsl(var(--card) / 0.99) 100%)',
                       } as React.CSSProperties}
                     />
                   )}

@@ -68,9 +68,9 @@
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
 
-    /* Softer borders - more subtle */
-    --border: 240 4% 18%;
-    --input: 240 4% 18%;
+    /* Very subtle borders - close to black */
+    --border: 240 4% 12%;
+    --input: 240 4% 12%;
     --ring: 270 60% 60%;
   }
 }
@@ -143,6 +143,13 @@
 
 /* Custom scrollbar - ChatGPT style */
 @layer utilities {
+  /* Remove scrollbar arrows/buttons globally */
+  ::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
   .scrollbar-thin::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -161,10 +168,10 @@
     @apply bg-muted-foreground/50;
   }
 
-  /* Sidebar scrollbar - slightly wider and more visible */
+  /* Sidebar scrollbar - thin and subtle like ChatGPT */
   .scrollbar-sidebar::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 6px;
+    height: 6px;
   }
 
   .scrollbar-sidebar::-webkit-scrollbar-track {
@@ -173,14 +180,12 @@
   }
 
   .scrollbar-sidebar::-webkit-scrollbar-thumb {
-    @apply bg-muted-foreground/40 transition-colors;
+    @apply bg-muted-foreground/20 transition-colors;
     border-radius: 100px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
   }
 
   .scrollbar-sidebar::-webkit-scrollbar-thumb:hover {
-    @apply bg-muted-foreground/60;
+    @apply bg-muted-foreground/40;
   }
 
   /* Firefox scrollbar support */

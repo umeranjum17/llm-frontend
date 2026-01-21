@@ -819,6 +819,25 @@ export function useChat(chatId: string) {
       incrementSkillUsage(activeSkill.id).catch(() => { });
     }
 
+    // Add empty assistant message IMMEDIATELY to show loading state
+    // This happens before any context building, memory, or embedding calls
+    const assistantMessage = await addMessage({
+      chatId,
+      role: "assistant",
+      content: "",
+      modelId,
+      isArena: !!overrideModelId,
+      parentId: parentUserMessageId,
+      skillId: activeSkill?.id,
+    });
+
+    // Update activeBranchLeafId immediately so the UI shows the new message
+    await updateChat(chatId, { activeBranchLeafId: assistantMessage.id });
+
+    // Set streaming message immediately - this shows the assistant loading state
+    // BEFORE any memory, embedding, or context building calls
+    setStreamingMessage(chatId, assistantMessage.id);
+
     const contextMessages = await buildContextMessages(
       getTextFromMessageContent(messageContent),
       chatId,
@@ -884,25 +903,6 @@ export function useChat(chatId: string) {
       ...attachmentMessages,
       ...truncatedHistory,
     ];
-
-    // Add empty assistant message that we'll update during streaming
-    const assistantMessage = await addMessage({
-      chatId,
-      role: "assistant",
-      content: "",
-      modelId,
-      isArena: !!overrideModelId,
-      parentId: parentUserMessageId,
-      skillId: activeSkill?.id, // Store which skill was active
-    });
-
-    // Update activeBranchLeafId immediately so the UI shows the new message
-    // and subsequent operations have the correct parent reference
-    await updateChat(chatId, { activeBranchLeafId: assistantMessage.id });
-
-    // Set streaming message immediately - this shows the assistant loading state
-    // All processing (embedding, memory, etc.) is part of the assistant's response
-    setStreamingMessage(chatId, assistantMessage.id);
 
     // Create abort controller for this request
     abortControllerRef.current = new AbortController();

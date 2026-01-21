@@ -441,15 +441,14 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
           );
         }}
         followOutput={(isAtBottom) => {
-          // Smart scroll management during streaming
+          // Disable auto-scroll during streaming so user can read at their own pace
           if (streamingMessageId) {
-            // During streaming: smooth scroll if at bottom, otherwise let user read
-            return isAtBottom ? 'smooth' : false;
+            return false;
           }
-          // Not streaming: auto-scroll if at bottom
+          // Not streaming: auto-scroll if at bottom (for new messages)
           return isAtBottom ? 'auto' : false;
         }}
-        alignToBottom={!streamingMessageId}
+        alignToBottom={true}
         atBottomThreshold={100}
         atBottomStateChange={handleAtBottomChange}
         className="scrollbar-thin scroll-anchor-auto"

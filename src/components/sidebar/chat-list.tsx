@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLiveQueryWithTimeout } from "@/hooks/use-live-query-with-timeout";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { MessageSquare, Pin, Star, Trash2, Folder, ChevronDown, ChevronRight, FolderPlus, MoreVertical, Edit2, RefreshCw, Zap } from "lucide-react";
+import { MessageSquare, Pin, Star, Trash2, Folder, ChevronRight, FolderPlus, MoreHorizontal, Edit2, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getAllChatsCached, deleteChat, updateChat, getAllFolders, createFolder, moveChatToFolder, updateFolder, deleteFolder, getLastMessagesForChats, getAllTags, db } from "@/lib/db/queries";
+import { deleteChat, updateChat, createFolder, moveChatToFolder, updateFolder, deleteFolder, getLastMessagesForChats, db } from "@/lib/db/queries";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { useUIStore } from "@/stores/ui-store";
 import { useStreamingStore } from "@/stores/streaming-store";
@@ -73,7 +73,6 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
       return EMPTY_STREAMING_IDS;
     }
   }, [chatStreams]);
-  const [isActiveExpanded, setIsActiveExpanded] = useState(true);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [editingFolder, setEditingFolder] = useState<FolderType | null>(null);
@@ -156,21 +155,6 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
     if (!currentProjectId) return allChats;
     return allChats.filter((chat: Chat) => chat.projectId === currentProjectId);
   }, [allChats, currentProjectId]);
-
-  // Compute active chats: streaming chats + currently viewed chats (deduped)
-  const activeChats = useMemo(() => {
-    if (!allChats) return [];
-    const activeChatIdSet = new Set<string>(streamingChatIds);
-    if (activeChatId) activeChatIdSet.add(activeChatId);
-    if (secondaryChatId && isSplitView) activeChatIdSet.add(secondaryChatId);
-
-    // Filter to only chats that exist and match current project
-    return allChats.filter((chat: Chat) => {
-      if (!activeChatIdSet.has(chat.id)) return false;
-      if (currentProjectId && chat.projectId !== currentProjectId) return false;
-      return true;
-    });
-  }, [allChats, streamingChatIds, activeChatId, secondaryChatId, isSplitView, currentProjectId]);
 
   const filteredFolders = useMemo(() => {
     if (!folders) return undefined;
@@ -422,7 +406,7 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
   const rowVirtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => scrollParentRef.current,
-    estimateSize: (index) => (items[index]?.type === "folder" ? 40 : 64),
+    estimateSize: (index) => (items[index]?.type === "folder" ? 32 : 40),
     overscan: 6,
   });
 
@@ -565,11 +549,8 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
   return (
     <>
       <div className="flex h-full min-w-0 flex-col overflow-x-hidden">
-        <div className="px-4 py-1.5 flex justify-between items-center">
-          <span className="text-[10px] font-medium text-muted-foreground/70">Chats</span>
-          <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground/70 hover:text-muted-foreground" onClick={handleCreateFolder} title="New Folder">
-            <FolderPlus className="h-3 w-3" />
-          </Button>
+        <div className="px-3 pt-3 pb-2">
+          <span className="text-xs text-muted-foreground/50">Your chats</span>
         </div>
         {selectedChats.size > 0 && (
           <BulkActions
@@ -586,61 +567,6 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
           />
         )}
 
-        {/* Active Section - shows streaming and currently viewed chats */}
-        {activeChats.length > 0 && !searchQuery && (
-          <div className="border-b border-border/50 mb-1">
-            <button
-              onClick={() => setIsActiveExpanded(!isActiveExpanded)}
-              className="w-full px-4 py-1.5 flex items-center gap-1.5 text-[10px] font-medium text-primary/80 hover:text-primary transition-colors"
-            >
-              {isActiveExpanded ? (
-                <ChevronDown className="h-3 w-3" />
-              ) : (
-                <ChevronRight className="h-3 w-3" />
-              )}
-              <Zap className="h-3 w-3" />
-              <span>Active</span>
-              <span className="text-muted-foreground ml-auto">{activeChats.length}</span>
-            </button>
-            <AnimatePresence initial={false}>
-              {isActiveExpanded && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="overflow-hidden"
-                >
-                  <div className="pb-2">
-                    {activeChats.map((chat) => {
-                      const isStreaming = streamingChatIds.includes(chat.id);
-                      const chatIndex = chatIndexById.get(chat.id) ?? 0;
-                      return (
-                        <ChatItem
-                          key={`active-${chat.id}`}
-                          chat={chat}
-                          lastMessage={lastMessagesMap.get(chat.id)}
-                          isActive={chat.id === activeChatId}
-                          isSecondary={isSplitView && chat.id === secondaryChatId}
-                          isSelected={selectedChats.has(chat.id)}
-                          isNested={false}
-                          isStreaming={isStreaming}
-                          isInActiveSection={true}
-                          onClick={(e) => handleChatClick(chat.id, chatIndex, e)}
-                          onTogglePin={(e) => handleTogglePin(e, chat)}
-                          onToggleFavorite={(e) => handleToggleFavorite(e, chat)}
-                          onDelete={(e) => handleDelete(e, chat.id)}
-                          folders={folders || []}
-                          onMoveToFolder={(folderId) => moveChatToFolder(chat.id, folderId)}
-                        />
-                      );
-                    })}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
 
         <div ref={scrollParentRef} className="flex-1 min-h-0 min-w-0 overflow-y-auto scrollbar-sidebar">
           <div
@@ -703,6 +629,7 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
                     isSelected={selectedChats.has(item.chat.id)}
                     isNested={!!item.chat.folderId}
                     isStreaming={streamingChatIds.includes(item.chat.id)}
+                    isSplitView={isSplitView}
                     onClick={(e) => handleChatClick(item.chat.id, chatIndex, e)}
                     onTogglePin={(e) => handleTogglePin(e, item.chat)}
                     onToggleFavorite={(e) => handleToggleFavorite(e, item.chat)}
@@ -775,16 +702,13 @@ function FolderItem({ folder, isExpanded, onToggle, chatCount = 0, onEdit, onDel
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <motion.div
+    <div
       className={cn(
-        "flex max-w-full min-w-0 items-center gap-2 overflow-hidden px-3 py-1.5 mx-2 my-0.5 cursor-pointer hover:bg-accent/50 group rounded-lg transition-colors select-none",
+        "flex max-w-full min-w-0 items-center gap-2 overflow-hidden px-3 py-1.5 cursor-pointer hover:bg-accent/20 group rounded-md transition-colors select-none",
       )}
       onClick={onToggle}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      whileHover={{ scale: 1.01 }}
-      whileTap={{ scale: 0.99 }}
-      transition={{ type: "spring", stiffness: 400, damping: 30 }}
     >
       <motion.span
         animate={{ rotate: isExpanded ? 90 : 0 }}
@@ -809,8 +733,8 @@ function FolderItem({ folder, isExpanded, onToggle, chatCount = 0, onEdit, onDel
           >
             <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
               <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                <Button variant="ghost" size="icon" className="h-5 w-5">
-                  <MoreVertical className="h-3 w-3" />
+                <Button variant="ghost" size="icon" className="h-5 w-5 hover:bg-accent/50">
+                  <MoreHorizontal className="h-3.5 w-3.5" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -827,7 +751,7 @@ function FolderItem({ folder, isExpanded, onToggle, chatCount = 0, onEdit, onDel
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   );
 }
 
@@ -841,6 +765,7 @@ interface SortableChatItemProps {
   isNested?: boolean;
   isStreaming?: boolean;
   isInActiveSection?: boolean;
+  isSplitView?: boolean;
   onClick: (e: React.MouseEvent) => void;
   onTogglePin: (e: React.MouseEvent) => void;
   onToggleFavorite: (e: React.MouseEvent) => void;
@@ -859,6 +784,7 @@ function ChatItem({
   isNested,
   isStreaming = false,
   isInActiveSection = false,
+  isSplitView = false,
   onClick,
   onTogglePin,
   onToggleFavorite,
@@ -896,65 +822,59 @@ function ChatItem({
     <TooltipProvider>
       <motion.div
         className={cn(
-          "group relative cursor-pointer px-2.5 py-2 mx-2 my-0.5 rounded-lg transition-colors hover:bg-accent/60 select-none max-w-full min-w-0 overflow-hidden",
-          isActive && !isInActiveSection && "bg-accent",
-          isSecondary && "bg-accent/40 ring-1 ring-primary/30",
-          isSelected && "bg-accent/60 ring-1 ring-primary/40",
-          isNested && "ml-6",
-          // Active section styling - distinct look with border and tinted background
-          isInActiveSection && "bg-primary/10 border border-primary/30 ring-1 ring-primary/10",
-          isInActiveSection && isStreaming && "bg-primary/15 border-primary/50 ring-primary/20",
-          isInActiveSection && isActive && "bg-primary/20 border-primary/40",
+          "group relative cursor-pointer px-3 py-1.5 rounded-md transition-colors select-none max-w-full min-w-0 overflow-hidden",
+          "hover:bg-accent/20",
+          (isActive || isStreaming) && "bg-accent/20",
+          isSecondary && "bg-accent/15",
+          isSelected && "bg-accent/30",
+          isNested && "ml-4",
         )}
         {...longPressHandlers}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        whileHover={{ scale: 1.01 }}
-        whileTap={{ scale: 0.99 }}
-        transition={{ type: "spring", stiffness: 400, damping: 30 }}
       >
-        <div className="flex items-center gap-1 min-w-0 w-full max-w-full overflow-hidden">
+        {/* Curved pill accent bar for streaming or active in workspace */}
+        {(isStreaming || (isActive && isSplitView)) && (
+          <motion.div
+            className="absolute left-0 top-1 bottom-1 w-1 bg-primary rounded-full"
+            initial={{ scaleY: 0, opacity: 0 }}
+            animate={{ scaleY: 1, opacity: 1 }}
+            exit={{ scaleY: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 400, damping: 25 }}
+          />
+        )}
+        <div className="flex items-center gap-2 min-w-0 w-full max-w-full overflow-hidden">
           <Tooltip delayDuration={500}>
             <TooltipTrigger asChild>
-              <div className="flex-1 min-w-0 w-0 overflow-hidden">
-                <div className="flex items-center gap-1 min-w-0">
+              <div className="flex-1 min-w-0 overflow-hidden">
+                <div className="flex items-center gap-1.5 min-w-0">
                   <AnimatePresence>
                     {chat.pinned && (
                       <motion.span
-                        initial={{ scale: 0, rotate: -180 }}
-                        animate={{ scale: 1, rotate: 0 }}
-                        exit={{ scale: 0, rotate: 180 }}
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        exit={{ scale: 0 }}
                         transition={{ type: "spring", stiffness: 400, damping: 20 }}
                       >
-                        <Pin className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
+                        <Pin className="h-3 w-3 text-muted-foreground/60 shrink-0" />
                       </motion.span>
                     )}
                   </AnimatePresence>
                   <AnimatePresence>
                     {chat.favorite && (
                       <motion.span
-                        initial={{ scale: 0, rotate: -180 }}
-                        animate={{ scale: 1, rotate: 0 }}
-                        exit={{ scale: 0, rotate: 180 }}
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        exit={{ scale: 0 }}
                         transition={{ type: "spring", stiffness: 400, damping: 20 }}
                       >
-                        <Star className="h-2.5 w-2.5 text-yellow-500/70 shrink-0" />
+                        <Star className="h-3 w-3 text-yellow-500/60 shrink-0" />
                       </motion.span>
                     )}
                   </AnimatePresence>
-                  <h3 className="text-xs font-medium truncate flex-1 min-w-0" title={chat.title}>
+                  <span className="text-xs truncate flex-1 min-w-0 text-muted-foreground" title={chat.title}>
                     {chat.title}
-                  </h3>
-                  {isStreaming && (
-                    <motion.span
-                      className="h-2 w-2 rounded-full bg-primary shrink-0"
-                      animate={{ scale: [1, 1.2, 1], opacity: [1, 0.7, 1] }}
-                      transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
-                    />
-                  )}
-                </div>
-                <div className="text-[10px] text-muted-foreground/70 leading-tight truncate">
-                  {previewText || `Updated ${formatDistanceToNow(new Date(chat.updatedAt), { addSuffix: true })}`}
+                  </span>
                 </div>
               </div>
             </TooltipTrigger>
@@ -965,27 +885,25 @@ function ChatItem({
             )}
           </Tooltip>
 
-          {/* Three-dot menu (shown on hover or when menu is open) */}
-          <AnimatePresence>
-            {(isHovered || isActive || menuOpen) && (
-              <motion.div
-                className="flex items-center shrink-0"
-                initial={{ opacity: 0, x: 5 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 5 }}
-                transition={{ duration: 0.15 }}
-              >
-                <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 hover:bg-accent"
-                    >
-                      <MoreVertical className="h-3.5 w-3.5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
+          {/* Right side: menu */}
+          <div className="flex items-center gap-1 shrink-0">
+            <div
+              className={cn(
+                "transition-opacity duration-150",
+                (isHovered || isActive || menuOpen) ? "opacity-100" : "opacity-0"
+              )}
+          >
+            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 hover:bg-accent/50"
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="right" sideOffset={8} className="w-48">
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1046,9 +964,8 @@ function ChatItem({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-              </motion.div>
-            )}
-          </AnimatePresence>
+            </div>
+          </div>
         </div>
       </motion.div>
     </TooltipProvider>

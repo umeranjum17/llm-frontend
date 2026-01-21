@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { Plus, Search, Settings } from "lucide-react";
+import { SquarePen, Search, Settings, FolderPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useUIStore } from "@/stores/ui-store";
@@ -11,8 +11,9 @@ import { ProjectSelector } from "@/components/projects/project-selector";
 import { ChatList } from "./chat-list";
 import { useSidebarKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { getDefaultChatConfig } from "@/lib/ai/default-chat";
-import { createChat, getChatWithMessages } from "@/lib/db/queries";
+import { createChat, getChatWithMessages, createFolder } from "@/lib/db/queries";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface SidebarProps {
   onNavigate?: () => void;
@@ -81,53 +82,100 @@ export function Sidebar({ onNavigate }: SidebarProps) {
     }
   };
 
-  return (
-    <div className="flex h-full w-full min-w-0 flex-col border-r bg-background/30 backdrop-blur-xl supports-[backdrop-filter]:bg-background/20 overflow-x-hidden">
-      {/* Header */}
-      <div className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
-        <div className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3">
-          <h2 className="text-lg font-semibold tracking-tight">Lumina</h2>
-          <div className="flex-1 min-w-0">
-            <ProjectSelector
-              currentProjectId={currentProjectId}
-              onProjectChange={updateCurrentProject}
-              compact
-            />
-          </div>
-          <Link href="/settings" prefetch title="Settings" onClick={onNavigate}>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 shrink-0"
-            >
-              <Settings className="h-4 w-4" />
-            </Button>
-          </Link>
-        </div>
-      </div>
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
-      {/* Search & New Chat */}
-      <div className="flex items-center gap-2 px-3 sm:px-4 py-2.5">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Search..."
-            className="pl-9 h-9 text-sm bg-muted/50 border-transparent focus:border-border focus:bg-background"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            data-search-input
+  // Focus search input when opened
+  useEffect(() => {
+    if (isSearchOpen && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [isSearchOpen]);
+
+  // Close search when query is cleared and input loses focus
+  const handleSearchBlur = () => {
+    if (!searchQuery.trim()) {
+      setIsSearchOpen(false);
+    }
+  };
+
+  return (
+    <div className="flex h-full w-full min-w-0 flex-col border-r border-border/50 bg-background overflow-x-hidden">
+      {/* Header - minimal like ChatGPT */}
+      <div className="flex items-center justify-between px-3 py-3">
+        <div className="flex items-center gap-2">
+          <img src="/icons/icon.svg" alt="Lumina" className="h-8 w-8 dark:hidden" />
+          <img src="/icons/icon-dark.svg" alt="Lumina" className="h-8 w-8 hidden dark:block" />
+          <ProjectSelector
+            currentProjectId={currentProjectId}
+            onProjectChange={updateCurrentProject}
+            compact
           />
         </div>
-        <Button
+        <Link href="/settings" prefetch title="Settings" onClick={onNavigate}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 text-muted-foreground/60 hover:text-foreground"
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+        </Link>
+      </div>
+
+      {/* Action List (ChatGPT style) */}
+      <div className="px-3 pt-4 pb-4">
+        {/* New Chat */}
+        <button
           onClick={handleNewChat}
-          variant="default"
-          size="icon"
-          className="h-9 w-9 shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground"
-          title="New chat"
+          className="flex w-full items-center gap-4 py-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          <Plus className="h-4 w-4" />
-        </Button>
+          <SquarePen className="h-5 w-5" />
+          <span>New chat</span>
+        </button>
+
+        {/* Search */}
+        {isSearchOpen ? (
+          <div className="relative py-1">
+            <Search className="absolute left-0 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground/60" />
+            <Input
+              ref={searchInputRef}
+              type="search"
+              placeholder="Search chats..."
+              className="pl-9 h-9 text-sm bg-transparent border-border/50 focus:border-border"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onBlur={handleSearchBlur}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setSearchQuery("");
+                  setIsSearchOpen(false);
+                }
+              }}
+              data-search-input
+            />
+          </div>
+        ) : (
+          <button
+            onClick={() => setIsSearchOpen(true)}
+            className="flex w-full items-center gap-4 py-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Search className="h-5 w-5" />
+            <span>Search chats</span>
+          </button>
+        )}
+
+        {/* New Folder */}
+        <button
+          onClick={async () => {
+            await createFolder("New Folder", undefined, currentProjectId);
+            toast.success("Folder created");
+          }}
+          className="flex w-full items-center gap-4 py-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <FolderPlus className="h-5 w-5" />
+          <span>New folder</span>
+        </button>
       </div>
 
       {/* Chat List */}
