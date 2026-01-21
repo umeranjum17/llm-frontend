@@ -1159,12 +1159,13 @@ export const MessageItem = memo(function MessageItem({
                   </div>
                   {/* Multi-stop gradient fade on last few lines during streaming
                       Creates a natural reading experience by progressively fading content
-                      as new text appears, drawing focus to the cursor position */}
+                      as new text appears, drawing focus to the cursor position
+                      Last few lines fade to nearly invisible (95% opacity) */}
                   {isAssistant && isStreaming && (
                     <div
                       className="absolute bottom-0 left-0 right-0 h-32 pointer-events-none"
                       style={{
-                        background: 'linear-gradient(to bottom, transparent 0%, hsl(var(--card) / 0.15) 35%, hsl(var(--card) / 0.35) 55%, hsl(var(--card) / 0.55) 75%, hsl(var(--card) / 0.8) 100%)',
+                        background: 'linear-gradient(to bottom, transparent 0%, hsl(var(--card) / 0.2) 30%, hsl(var(--card) / 0.5) 50%, hsl(var(--card) / 0.75) 70%, hsl(var(--card) / 0.95) 100%)',
                       } as React.CSSProperties}
                     />
                   )}
