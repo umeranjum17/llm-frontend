@@ -61,16 +61,18 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
   const secondaryChatId = useUIStore((state) => state.secondaryChatId);
   const isSplitView = useUIStore((state) => state.isSplitView);
 
-  // Get streaming chat IDs for the Active section
-  // Defensive: handle state structure mismatch from cached files
-  // Use stable empty array to avoid creating new references on each render
-  const streamingChatIds = useStreamingStore((state) => {
+  // Get chatStreams directly, then derive streaming IDs in useMemo to avoid infinite re-renders
+  // Calling getStreamingChatIds() inside selector creates new array each render
+  const chatStreams = useStreamingStore((state) => state.chatStreams) ?? {};
+  const streamingChatIds = useMemo(() => {
     try {
-      return state.getStreamingChatIds?.() ?? EMPTY_STREAMING_IDS;
+      return Object.entries(chatStreams)
+        .filter(([, stream]) => stream?.streamingMessageId !== null)
+        .map(([chatId]) => chatId);
     } catch {
       return EMPTY_STREAMING_IDS;
     }
-  });
+  }, [chatStreams]);
   const [isActiveExpanded, setIsActiveExpanded] = useState(true);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);

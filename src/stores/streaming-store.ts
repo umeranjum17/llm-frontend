@@ -1,5 +1,8 @@
 import { create } from "zustand";
 
+// Stable empty array to prevent infinite re-renders when returned from selectors
+const EMPTY_STRING_ARRAY: string[] = [];
+
 export interface PipelineToolCall {
   toolName: string;
   args: any;
@@ -90,7 +93,25 @@ const createDefaultChatState = (): ChatStreamingState => ({
   imageGenerationProgress: null,
 });
 
+// Stable default state to avoid creating new objects in selectors (prevents infinite re-renders)
+const DEFAULT_CHAT_STATE: ChatStreamingState = Object.freeze({
+  streamingMessageId: null,
+  streamingContent: "",
+  streamingReasoning: "",
+  streamingToolCalls: [],
+  streamingToolResults: [],
+  streamingVersion: 0,
+  pipelineExecution: null,
+  optimisticMessage: null,
+  activeSkill: null,
+  pendingSkillApproval: null,
+  imageGenerationProgress: null,
+}) as ChatStreamingState;
+
 interface StreamingState {
+  // State version for migration
+  _version: number;
+
   // Per-chat streaming state map
   chatStreams: Record<string, ChatStreamingState>;
 
@@ -161,29 +182,87 @@ const updateChatState = (
   };
 };
 
-export const useStreamingStore = create<StreamingState>((set, get) => ({
-  chatStreams: {},
+// Current state version - increment this when making breaking changes
+const STATE_VERSION = 2;
 
-  // Selectors
-  getChatStream: (chatId: string) => {
-    return getOrCreateChatState(get().chatStreams, chatId);
+export const useStreamingStore = create<StreamingState>((set, get) => {
+  // Check if we need to reset state due to version mismatch
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem('streaming-store-state');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        // If old structure (no _version or wrong version), clear it
+        if (!parsed._version || parsed._version < STATE_VERSION || !parsed.chatStreams) {
+          console.log('[StreamingStore] Clearing old state structure (version mismatch)');
+          localStorage.removeItem('streaming-store-state');
+          // Also clear any Zustand persist keys
+          Object.keys(localStorage).forEach(key => {
+            if (key.includes('streaming')) {
+              localStorage.removeItem(key);
+            }
+          });
+        }
+      }
+    } catch (error) {
+      console.error('[StreamingStore] Error checking state version:', error);
+      localStorage.removeItem('streaming-store-state');
+    }
+  }
+
+  return {
+    _version: STATE_VERSION,
+    chatStreams: {},
+
+    // Selectors
+    getChatStream: (chatId: string) => {
+    try {
+      const state = get();
+      // Safety check: ensure chatStreams exists and is an object
+      const chatStreams = state.chatStreams && typeof state.chatStreams === 'object' ? state.chatStreams : {};
+      // Return existing state or stable default (NOT a new object) to prevent infinite re-renders
+      return chatStreams[chatId] || DEFAULT_CHAT_STATE;
+    } catch (error) {
+      console.error('[StreamingStore] Error in getChatStream:', error);
+      return DEFAULT_CHAT_STATE;
+    }
   },
 
   isAnyStreaming: () => {
-    const { chatStreams } = get();
-    return Object.values(chatStreams).some((stream) => stream.streamingMessageId !== null);
+    try {
+      const state = get();
+      const chatStreams = state.chatStreams && typeof state.chatStreams === 'object' ? state.chatStreams : {};
+      return Object.values(chatStreams).some((stream) => stream?.streamingMessageId !== null);
+    } catch (error) {
+      console.error('[StreamingStore] Error in isAnyStreaming:', error);
+      return false;
+    }
   },
 
   getActiveStreamCount: () => {
-    const { chatStreams } = get();
-    return Object.values(chatStreams).filter((stream) => stream.streamingMessageId !== null).length;
+    try {
+      const state = get();
+      const chatStreams = state.chatStreams && typeof state.chatStreams === 'object' ? state.chatStreams : {};
+      return Object.values(chatStreams).filter((stream) => stream?.streamingMessageId !== null).length;
+    } catch (error) {
+      console.error('[StreamingStore] Error in getActiveStreamCount:', error);
+      return 0;
+    }
   },
 
   getStreamingChatIds: () => {
-    const { chatStreams } = get();
-    return Object.entries(chatStreams)
-      .filter(([, stream]) => stream.streamingMessageId !== null)
-      .map(([chatId]) => chatId);
+    try {
+      const state = get();
+      const chatStreams = state.chatStreams && typeof state.chatStreams === 'object' ? state.chatStreams : {};
+      const ids = Object.entries(chatStreams)
+        .filter(([, stream]) => stream?.streamingMessageId !== null)
+        .map(([chatId]) => chatId);
+      // Return stable empty array if no streaming chats
+      return ids.length > 0 ? ids : EMPTY_STRING_ARRAY;
+    } catch (error) {
+      console.error('[StreamingStore] Error in getStreamingChatIds:', error);
+      return EMPTY_STRING_ARRAY;
+    }
   },
 
   // Actions
@@ -476,4 +555,5 @@ export const useStreamingStore = create<StreamingState>((set, get) => ({
         pipelineExecution: null,
       }),
     })),
-}));
+  };
+});
