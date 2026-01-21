@@ -116,7 +116,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 shrink-0 text-muted-foreground/60 hover:text-foreground"
+            className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
           >
             <Settings className="h-4 w-4" />
           </Button>
@@ -137,7 +137,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         {/* Search */}
         {isSearchOpen ? (
           <div className="relative py-1">
-            <Search className="absolute left-0 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground/60" />
+            <Search className="absolute left-0 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
             <Input
               ref={searchInputRef}
               type="search"

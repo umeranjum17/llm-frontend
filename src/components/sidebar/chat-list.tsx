@@ -550,7 +550,7 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
     <>
       <div className="flex h-full min-w-0 flex-col overflow-x-hidden">
         <div className="px-3 pt-3 pb-2">
-          <span className="text-xs text-muted-foreground/50">Your chats</span>
+          <span className="text-xs text-muted-foreground/70">Your chats</span>
         </div>
         {selectedChats.size > 0 && (
           <BulkActions
@@ -719,7 +719,7 @@ function FolderItem({ folder, isExpanded, onToggle, chatCount = 0, onEdit, onDel
       <Folder className="h-3.5 w-3.5" style={folder.color ? { color: folder.color } : undefined} />
       <span className="text-xs font-medium truncate flex-1 min-w-0">{folder.name}</span>
       {chatCount > 0 && (
-        <span className="text-[10px] text-muted-foreground/60">
+        <span className="text-[10px] text-muted-foreground/80">
           {chatCount}
         </span>
       )}

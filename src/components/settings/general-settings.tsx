@@ -14,10 +14,11 @@ import {
 import { useSettingsStore } from "@/stores/settings-store";
 import { MODELS } from "@/lib/constants/models";
 import { toast } from "sonner";
-import { GraduationCap } from "lucide-react";
+import { GraduationCap, Download, Share, Check } from "lucide-react";
 import { BackgroundModelsCard } from "./background-models-card";
 import { ModelSelector } from "@/components/model-picker/model-selector";
 import { useAvailableModels } from "@/hooks/use-available-models";
+import { usePWA } from "@/hooks/use-pwa";
 
 export function GeneralSettings() {
   const router = useRouter();
@@ -27,6 +28,8 @@ export function GeneralSettings() {
     defaultModelIdsByProvider: savedDefaultModelIdsByProvider,
     updateDefaultChatDefaults,
   } = useSettingsStore();
+
+  const { isInstalled, isIOSSafari, install } = usePWA();
 
   const [defaultProviderId, setDefaultProviderId] = useState(
     savedDefaultProviderId || "openrouter"
@@ -155,6 +158,46 @@ export function GeneralSettings() {
           <GraduationCap className="h-4 w-4" />
           Take Feature Tour
         </Button>
+      </div>
+
+      {/* Install App */}
+      <div className="space-y-4 border-t pt-6">
+        <div>
+          <h3 className="text-lg font-medium">Install App</h3>
+          <p className="text-sm text-muted-foreground">
+            {isInstalled
+              ? "Lumina is installed on your device"
+              : isIOSSafari
+                ? "Add Lumina to your home screen for quick access"
+                : "Install Lumina as an app for quick access and offline support"
+            }
+          </p>
+        </div>
+        {isInstalled ? (
+          <Button variant="outline" disabled className="gap-2">
+            <Check className="h-4 w-4" />
+            Already Installed
+          </Button>
+        ) : isIOSSafari ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Share className="h-4 w-4" />
+            <span>Tap the Share button in Safari, then &quot;Add to Home Screen&quot;</span>
+          </div>
+        ) : (
+          <Button
+            variant="outline"
+            onClick={async () => {
+              const success = await install();
+              if (success) {
+                toast.success("App installed successfully!");
+              }
+            }}
+            className="gap-2"
+          >
+            <Download className="h-4 w-4" />
+            Install App
+          </Button>
+        )}
       </div>
     </div>
   );
