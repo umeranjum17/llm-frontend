@@ -509,3 +509,17 @@
 .scroll-anchor-none {
   overflow-anchor: none;
 }
+
+/* Mobile keyboard handling - ensure input stays visible */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Use dynamic viewport units for mobile keyboard support */
+@supports (height: 100dvh) {
+  .h-dvh {
+    height: 100dvh;
+  }
+}

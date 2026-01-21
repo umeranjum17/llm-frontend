@@ -31,9 +31,21 @@ const MENTION_COLORS: Record<string, string> = {
 };
 
 export const MentionTextarea = forwardRef<HTMLTextAreaElement, MentionTextareaProps>(
-    ({ className, mentionItems, value, onChange, onKeyDown, onEnter, onMentionSelect, ...props }, ref) => {
+    ({ className, mentionItems, value, onChange, onKeyDown, onEnter, onMentionSelect, onFocus, ...props }, ref) => {
         const textareaRef = useRef<HTMLTextAreaElement>(null);
         useImperativeHandle(ref, () => textareaRef.current!);
+
+        // Scroll input into view when focused on mobile (fixes keyboard hiding input)
+        const handleFocus = (e: React.FocusEvent<HTMLTextAreaElement>) => {
+            onFocus?.(e);
+            // Only on mobile/touch devices
+            if (window.matchMedia("(max-width: 768px)").matches || "ontouchstart" in window) {
+                // Wait for keyboard to open
+                setTimeout(() => {
+                    e.target.scrollIntoView({ behavior: "smooth", block: "center" });
+                }, 300);
+            }
+        };
 
         const {
             isOpen,
@@ -221,6 +233,7 @@ export const MentionTextarea = forwardRef<HTMLTextAreaElement, MentionTextareaPr
                     )}
                     onChange={handleChange}
                     onKeyDown={handleKeyDownInternal}
+                    onFocus={handleFocus}
                     value={value}
                     style={{
                         // Ensure caret is visible
