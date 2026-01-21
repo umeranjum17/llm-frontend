@@ -1,45 +1,105 @@
-<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-  <!-- Lumina Robot Face - Dark Mode -->
-
-  <!-- Robot head - main structure with depth -->
-  <rect x="32" y="38" width="36" height="32" rx="8" fill="#1E1B4B" opacity="0.5"/>
-  <rect x="30" y="35" width="40" height="35" rx="8" fill="#1E1E2E"/>
-  <rect x="30" y="35" width="40" height="35" rx="8" fill="none" stroke="#818CF8" stroke-width="2.5"/>
-
-  <!-- Inner screen/face panel with gradient effect -->
-  <rect x="35" y="40" width="30" height="25" rx="4" fill="#312E81"/>
-  <rect x="35" y="40" width="30" height="25" rx="4" fill="url(#screenGlowDark)"/>
-
-  <!-- Eyes - glowing AI indicators (asymmetric for personality) -->
-  <rect x="40" y="48" width="6" height="10" rx="1" fill="#A78BFA">
-    <animate attributeName="opacity" values="1;0.7;1" dur="2s" repeatCount="indefinite"/>
-  </rect>
-  <rect x="54" y="48" width="6" height="10" rx="1" fill="#818CF8">
-    <animate attributeName="opacity" values="1;0.75;1" dur="2.3s" repeatCount="indefinite"/>
-  </rect>
-
-  <!-- Visor highlight -->
-  <rect x="36" y="41" width="12" height="3" rx="1.5" fill="#818CF8" opacity="0.4"/>
-
-  <!-- Connection ports (multiple AI providers) -->
-  <circle cx="25" cy="52" r="3" fill="#818CF8" opacity="0.3"/>
-  <circle cx="75" cy="52" r="3" fill="#818CF8" opacity="0.3"/>
-  <circle cx="25" cy="52" r="1.5" fill="#A78BFA"/>
-  <circle cx="75" cy="52" r="1.5" fill="#A78BFA"/>
-
-  <!-- Antenna array (MCP connections) -->
-  <line x1="45" y1="35" x2="45" y2="28" stroke="#818CF8" stroke-width="2" stroke-linecap="round"/>
-  <line x1="55" y1="35" x2="55" y2="25" stroke="#A78BFA" stroke-width="2" stroke-linecap="round"/>
-  <circle cx="45" cy="26" r="2.5" fill="#A78BFA"/>
-  <circle cx="55" cy="23" r="2.5" fill="#C4B5FD">
-    <animate attributeName="opacity" values="0.6;1;0.6" dur="1.5s" repeatCount="indefinite"/>
-  </circle>
-
-  <!-- Gradient definitions -->
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Lumina Robot - Dark Mode Premium -->
   <defs>
-    <linearGradient id="screenGlowDark" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#818CF8;stop-opacity:0.2" />
-      <stop offset="100%" style="stop-color:#A78BFA;stop-opacity:0.1" />
+    <!-- Head gradient - dark -->
+    <linearGradient id="headGradientDark" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2D2A45"/>
+      <stop offset="100%" stop-color="#1E1B35"/>
     </linearGradient>
+
+    <!-- Screen gradient - dark -->
+    <linearGradient id="screenGradientDark" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#312E54"/>
+      <stop offset="100%" stop-color="#252242"/>
+    </linearGradient>
+
+    <!-- Eye glow gradient - brighter for dark mode -->
+    <radialGradient id="eyeGlowLeftDark" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#C4B5FD"/>
+      <stop offset="100%" stop-color="#A78BFA"/>
+    </radialGradient>
+
+    <radialGradient id="eyeGlowRightDark" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#A5B4FC"/>
+      <stop offset="100%" stop-color="#818CF8"/>
+    </radialGradient>
+
+    <!-- Antenna glow - brighter -->
+    <radialGradient id="antennaGlowDark" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#DDD6FE"/>
+      <stop offset="70%" stop-color="#C4B5FD"/>
+      <stop offset="100%" stop-color="#A78BFA"/>
+    </radialGradient>
+
+    <!-- Drop shadow filter -->
+    <filter id="dropShadowDark" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="12" flood-color="#A78BFA" flood-opacity="0.25"/>
+    </filter>
+
+    <!-- Stronger glow for eyes in dark mode -->
+    <filter id="eyeGlowDark" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Antenna pulse glow -->
+    <filter id="pulseGlowDark" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
   </defs>
+
+  <!-- Main head shape with glow shadow -->
+  <g filter="url(#dropShadowDark)">
+    <rect x="136" y="168" width="240" height="210" rx="48" fill="url(#headGradientDark)"/>
+    <rect x="136" y="168" width="240" height="210" rx="48" fill="none" stroke="#818CF8" stroke-width="6"/>
+  </g>
+
+  <!-- Inner screen/visor -->
+  <rect x="160" y="200" width="192" height="150" rx="24" fill="url(#screenGradientDark)"/>
+  <rect x="160" y="200" width="192" height="150" rx="24" fill="none" stroke="#4C4880" stroke-width="2"/>
+
+  <!-- Visor highlight reflection -->
+  <rect x="172" y="212" width="80" height="16" rx="8" fill="#818CF8" opacity="0.2"/>
+
+  <!-- Eyes with enhanced glow effect -->
+  <g filter="url(#eyeGlowDark)">
+    <!-- Left eye -->
+    <rect x="192" y="248" width="40" height="64" rx="8" fill="url(#eyeGlowLeftDark)"/>
+    <!-- Right eye -->
+    <rect x="280" y="248" width="40" height="64" rx="8" fill="url(#eyeGlowRightDark)"/>
+  </g>
+
+  <!-- Eye highlights -->
+  <rect x="198" y="254" width="12" height="20" rx="4" fill="white" opacity="0.4"/>
+  <rect x="286" y="254" width="12" height="20" rx="4" fill="white" opacity="0.4"/>
+
+  <!-- Connection ports -->
+  <circle cx="112" cy="273" r="16" fill="#2D2A45" stroke="#6366F1" stroke-width="3"/>
+  <circle cx="112" cy="273" r="6" fill="#A78BFA"/>
+  <circle cx="400" cy="273" r="16" fill="#2D2A45" stroke="#6366F1" stroke-width="3"/>
+  <circle cx="400" cy="273" r="6" fill="#A78BFA"/>
+
+  <!-- Antenna array with glow -->
+  <g filter="url(#pulseGlowDark)">
+    <!-- Left antenna -->
+    <line x1="220" y1="168" x2="220" y2="120" stroke="#818CF8" stroke-width="8" stroke-linecap="round"/>
+    <circle cx="220" cy="108" r="16" fill="url(#antennaGlowDark)"/>
+
+    <!-- Right antenna (taller) -->
+    <line x1="292" y1="168" x2="292" y2="96" stroke="#A78BFA" stroke-width="8" stroke-linecap="round"/>
+    <circle cx="292" cy="84" r="18" fill="url(#antennaGlowDark)">
+      <animate attributeName="opacity" values="0.7;1;0.7" dur="2s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <!-- Antenna highlights -->
+  <circle cx="220" cy="104" r="5" fill="white" opacity="0.5"/>
+  <circle cx="292" cy="80" r="6" fill="white" opacity="0.5"/>
 </svg>

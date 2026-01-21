@@ -33,9 +33,18 @@ import { getAllSkills, incrementSkillUsage } from "@/lib/db/queries";
 import type { Skill } from "@/lib/db/schema";
 import { SKILL_COLORS, SKILL_CATEGORY_CONFIG } from "@/lib/constants/skills";
 
+// SelectedSkill can be either a full Skill or an ActiveSkill from the streaming store
+interface SelectedSkillDisplay {
+  id: string;
+  name: string;
+  icon?: string;
+  color?: string;
+  ui?: { icon: string; color: string };
+}
+
 interface SkillQuickSelectProps {
-  onSelect: (skill: Skill) => void;
-  selectedSkill?: Skill | null;
+  onSelect: (skill: Skill | null) => void;
+  selectedSkill?: SelectedSkillDisplay | null;
 }
 
 // Map icon names to Lucide icons
@@ -109,8 +118,8 @@ export function SkillQuickSelect({ onSelect, selectedSkill }: SkillQuickSelectPr
           title={selectedSkill ? `Skill: ${selectedSkill.name}` : "Select a skill"}
         >
           {selectedSkill ? (
-            <div className={cn("rounded p-1", SKILL_COLORS[selectedSkill.ui.color])}>
-              {getSkillIcon(selectedSkill.ui.icon)}
+            <div className={cn("rounded p-1", SKILL_COLORS[selectedSkill.ui?.color || selectedSkill.color || "blue"])}>
+              {getSkillIcon(selectedSkill.ui?.icon || selectedSkill.icon || "sparkles")}
             </div>
           ) : (
             <Wand2 className="h-5 w-5 text-muted-foreground" />
@@ -132,7 +141,7 @@ export function SkillQuickSelect({ onSelect, selectedSkill }: SkillQuickSelectPr
             <>
               <button
                 type="button"
-                onClick={() => onSelect(null as any)}
+                onClick={() => onSelect(null)}
                 className="w-full flex items-center gap-2 px-2 py-2 hover:bg-accent rounded-sm transition-colors text-left text-muted-foreground"
               >
                 <span className="text-sm">Clear skill selection</span>

@@ -16,6 +16,7 @@ import { BUILTIN_AGENTS } from "@/lib/constants/agents";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { MessageContentPart, Skill } from "@/lib/db/schema";
+import { useStreamingStore } from "@/stores/streaming-store";
 import { MentionTextarea } from "@/components/chat/mention-textarea";
 import { MentionItem } from "@/lib/mentions/types";
 import { useVoiceInput } from "@/hooks/use-voice-input";
@@ -194,8 +195,27 @@ export function InputArea({ chatId }: InputAreaProps) {
   const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>([]);
   const [codeSnippets, setCodeSnippets] = useState<CodeSnippet[]>([]);
   const [expandedSnippets, setExpandedSnippets] = useState<Set<string>>(new Set());
-  const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
   const [inputFocused, setInputFocused] = useState(false);
+
+  // Get active skill from streaming store (persists per chat)
+  const activeSkillFromStore = useStreamingStore((state) => state.chatStreams[chatId]?.activeSkill ?? null);
+  const setActiveSkillInStore = useStreamingStore((state) => state.setActiveSkill);
+
+  // Convert store's ActiveSkill to Skill-like object for the component
+  const selectedSkill = activeSkillFromStore;
+  const setSelectedSkill = useCallback((skill: Skill | null) => {
+    if (skill) {
+      setActiveSkillInStore(chatId, {
+        id: skill.id,
+        name: skill.name,
+        icon: skill.ui?.icon || "sparkles",
+        color: skill.ui?.color || "blue",
+        activeLabel: skill.ui?.activeLabel || skill.name,
+      });
+    } else {
+      setActiveSkillInStore(chatId, null);
+    }
+  }, [chatId, setActiveSkillInStore]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { sendMessage, isLoading, cancelRequest } = useChat(chatId);
@@ -395,14 +415,15 @@ export function InputArea({ chatId }: InputAreaProps) {
       const currentAttachments = [...attachments]; // Capture current state
       const currentImages = [...imageAttachments];
 
-      const currentSkill = selectedSkill;
+      // Look up full skill from skills array if we have an active skill ID
+      const currentSkill = selectedSkill ? skills?.find(s => s.id === selectedSkill.id) || null : null;
 
       setInput("");
       setAttachments([]); // Clear state immediately
       setImageAttachments([]);
       setCodeSnippets([]);
       setExpandedSnippets(new Set());
-      setSelectedSkill(null); // Clear skill after sending
+      // Don't clear skill - it stays selected until user removes it
 
       const contentParts: MessageContentPart[] = [
         ...(message ? [{ type: "text" as const, text: message }] : []),
@@ -589,14 +610,16 @@ export function InputArea({ chatId }: InputAreaProps) {
 
     const currentAttachments = [...attachments];
     const currentImages = [...imageAttachments];
-    const currentSkill = selectedSkill;
+
+    // Look up full skill from skills array if we have an active skill ID
+    const currentSkill = selectedSkill ? skills?.find(s => s.id === selectedSkill.id) || null : null;
 
     setInput("");
     setAttachments([]);
     setImageAttachments([]);
     setCodeSnippets([]);
     setExpandedSnippets(new Set());
-    setSelectedSkill(null); // Clear skill after sending
+    // Don't clear skill - it stays selected until user removes it
 
     const contentParts: MessageContentPart[] = [
       ...(message ? [{ type: "text" as const, text: message }] : []),
