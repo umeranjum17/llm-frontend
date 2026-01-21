@@ -1140,21 +1140,32 @@ export const MessageItem = memo(function MessageItem({
               ) : (
                 /* Message content */
                 <div
-                  className={cn(
-                    "prose prose-sm dark:prose-invert max-w-none break-words transition-opacity duration-300",
-                    isAssistant && isStreaming && "opacity-70"
-                  )}
-                  style={{ overflowWrap: 'anywhere' }}
+                  className="relative"
                 >
-                  {isAssistant ? (
-                    <>
-                      <MarkdownRenderer content={textContent} isStreaming={isStreaming} />
-                      {isStreaming && (
-                        <span className="inline-block w-2 h-4 ml-0.5 bg-primary/70 cursor-breathing" />
-                      )}
-                    </>
-                  ) : (
-                    <MentionRenderer text={textContent} />
+                  <div
+                    className="prose prose-sm dark:prose-invert max-w-none break-words"
+                    style={{ overflowWrap: 'anywhere' }}
+                  >
+                    {isAssistant ? (
+                      <>
+                        <MarkdownRenderer content={textContent} isStreaming={isStreaming} />
+                        {isStreaming && (
+                          <span className="inline-block w-2 h-4 ml-0.5 bg-primary/70 cursor-breathing" />
+                        )}
+                      </>
+                    ) : (
+                      <MentionRenderer text={textContent} />
+                    )}
+                  </div>
+                  {/* Gradient fade on last few lines during streaming */}
+                  {isAssistant && isStreaming && (
+                    <div
+                      className="absolute bottom-0 left-0 right-0 h-24 pointer-events-none"
+                      style={{
+                        background: 'linear-gradient(to bottom, transparent 0%, var(--streaming-fade) 100%)',
+                        '--streaming-fade': 'color-mix(in srgb, hsl(var(--card) / 0.4) 70%, transparent)'
+                      } as React.CSSProperties}
+                    />
                   )}
                 </div>
               )}
