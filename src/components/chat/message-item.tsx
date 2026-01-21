@@ -1161,28 +1161,28 @@ export const MessageItem = memo(function MessageItem({
                   {/* Multi-stop gradient fade on last few lines during streaming
                       Creates a natural reading experience by progressively fading content
                       as new text appears, drawing focus to the cursor position
-                      Last few lines fade to nearly invisible (95% opacity) */}
+                      Last line fades to nearly invisible (99% opacity) for ultra-smooth experience */}
                   {isAssistant && isStreaming && (
                     <div
                       className="absolute bottom-0 left-0 right-0 h-32 pointer-events-none"
                       style={{
-                        background: 'linear-gradient(to bottom, transparent 0%, hsl(var(--card) / 0.2) 30%, hsl(var(--card) / 0.5) 50%, hsl(var(--card) / 0.75) 70%, hsl(var(--card) / 0.95) 100%)',
+                        background: 'linear-gradient(to bottom, transparent 0%, hsl(var(--card) / 0.15) 25%, hsl(var(--card) / 0.4) 45%, hsl(var(--card) / 0.7) 65%, hsl(var(--card) / 0.88) 82%, hsl(var(--card) / 0.99) 100%)',
                       } as React.CSSProperties}
                     />
                   )}
                 </div>
               )}
 
-              {/* Message Metadata (Tokens/Cost) - Reserve space and fade in smoothly */}
-              <AnimatePresence mode="wait">
-                {!isEditing && isAssistant && (message.inputTokens || message.outputTokens) && (
-                  <motion.div
-                    initial={{ opacity: 0, marginTop: 0 }}
-                    animate={{ opacity: 1, marginTop: 12 }}
-                    exit={{ opacity: 0, marginTop: 0 }}
-                    transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-                  >
-                    <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 font-medium border-t border-border/30 pt-2">
+              {/* Message Metadata (Tokens/Cost) - Reserve space to prevent layout shift */}
+              {!isEditing && isAssistant && (
+                <div className="mt-3" style={{ minHeight: '24px' }}>
+                  {(message.inputTokens || message.outputTokens) && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                    >
+                      <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 font-medium border-t border-border/30 pt-2">
                       <div className="flex items-center gap-3">
                         <span>In: <span className="text-muted-foreground">{message.inputTokens?.toLocaleString() || 0}</span></span>
                         <span className="text-border">•</span>
@@ -1227,10 +1227,11 @@ export const MessageItem = memo(function MessageItem({
                           )}
                         </div>
                       )}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
+              )}
 
               {/* Images - Fade in smoothly */}
               <AnimatePresence>
