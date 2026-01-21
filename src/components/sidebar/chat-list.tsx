@@ -625,6 +625,7 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
                           isSelected={selectedChats.has(chat.id)}
                           isNested={false}
                           isStreaming={isStreaming}
+                          isInActiveSection={true}
                           onClick={(e) => handleChatClick(chat.id, chatIndex, e)}
                           onTogglePin={(e) => handleTogglePin(e, chat)}
                           onToggleFavorite={(e) => handleToggleFavorite(e, chat)}
@@ -839,6 +840,7 @@ interface SortableChatItemProps {
   isSelected?: boolean;
   isNested?: boolean;
   isStreaming?: boolean;
+  isInActiveSection?: boolean;
   onClick: (e: React.MouseEvent) => void;
   onTogglePin: (e: React.MouseEvent) => void;
   onToggleFavorite: (e: React.MouseEvent) => void;
@@ -856,6 +858,7 @@ function ChatItem({
   isSelected = false,
   isNested,
   isStreaming = false,
+  isInActiveSection = false,
   onClick,
   onTogglePin,
   onToggleFavorite,
@@ -894,10 +897,14 @@ function ChatItem({
       <motion.div
         className={cn(
           "group relative cursor-pointer px-2.5 py-2 mx-2 my-0.5 rounded-lg transition-colors hover:bg-accent/60 select-none max-w-full min-w-0 overflow-hidden",
-          isActive && "bg-accent",
+          isActive && !isInActiveSection && "bg-accent",
           isSecondary && "bg-accent/40 ring-1 ring-primary/30",
           isSelected && "bg-accent/60 ring-1 ring-primary/40",
           isNested && "ml-6",
+          // Active section styling - distinct look with border and tinted background
+          isInActiveSection && "bg-primary/10 border border-primary/30 ring-1 ring-primary/10",
+          isInActiveSection && isStreaming && "bg-primary/15 border-primary/50 ring-primary/20",
+          isInActiveSection && isActive && "bg-primary/20 border-primary/40",
         )}
         {...longPressHandlers}
         onMouseEnter={() => setIsHovered(true)}

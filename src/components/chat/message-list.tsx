@@ -420,29 +420,40 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
           const siblingInfo = siblingInfoMap.get(message.id) || { siblings: [], index: -1 };
           const isMessageStreaming = message.id === context.streamingMessageId;
           return (
-            <MessageRow
-              message={message}
-              onContinue={continueResponse}
-              onEdit={editMessage}
-              onFork={handleFork}
-              onRegenerate={regenerateAssistant}
-              onResend={resendMessage}
-              isContinuing={continuingMessageId === message.id}
-              siblings={siblingInfo.siblings}
-              siblingIndex={siblingInfo.index}
-              onSwitchSibling={switchSibling}
-              showBranchNav={!arenaModelId}
-              isStreaming={isMessageStreaming}
-              streamingContent={isMessageStreaming ? context.streamingContent : undefined}
-              streamingVersion={isMessageStreaming ? context.streamingVersion : undefined}
-            />
+            <div data-message-id={message.id}>
+              <MessageRow
+                message={message}
+                onContinue={continueResponse}
+                onEdit={editMessage}
+                onFork={handleFork}
+                onRegenerate={regenerateAssistant}
+                onResend={resendMessage}
+                isContinuing={continuingMessageId === message.id}
+                siblings={siblingInfo.siblings}
+                siblingIndex={siblingInfo.index}
+                onSwitchSibling={switchSibling}
+                showBranchNav={!arenaModelId}
+                isStreaming={isMessageStreaming}
+                streamingContent={isMessageStreaming ? context.streamingContent : undefined}
+                streamingVersion={isMessageStreaming ? context.streamingVersion : undefined}
+              />
+            </div>
           );
         }}
-        followOutput={isAtBottom && !streamingMessageId ? "auto" : false}
-        alignToBottom={true}
+        followOutput={(isAtBottom) => {
+          // Smart scroll management during streaming
+          if (streamingMessageId) {
+            // During streaming: smooth scroll if at bottom, otherwise let user read
+            return isAtBottom ? 'smooth' : false;
+          }
+          // Not streaming: auto-scroll if at bottom
+          return isAtBottom ? 'auto' : false;
+        }}
+        alignToBottom={!streamingMessageId}
         atBottomThreshold={100}
         atBottomStateChange={handleAtBottomChange}
-        className="scrollbar-thin"
+        className="scrollbar-thin scroll-anchor-auto"
+        style={{ overflowAnchor: 'auto' }}
         components={{
           Footer: () => (
             <div className="mx-auto max-w-3xl px-4 pb-4">

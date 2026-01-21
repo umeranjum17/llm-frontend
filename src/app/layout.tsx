@@ -51,6 +51,38 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Synchronous cache clear - runs BEFORE React hydrates to prevent crashes from stale state */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var VERSION = '2.1.0';
+                  var stored = localStorage.getItem('lumina-app-version');
+                  if (stored !== VERSION) {
+                    console.log('[Boot] Version mismatch, clearing caches...');
+                    var keysToRemove = [];
+                    for (var i = 0; i < localStorage.length; i++) {
+                      var key = localStorage.key(i);
+                      if (key && (key.includes('streaming') || key.includes('zustand') || key === 'streaming-store-state')) {
+                        keysToRemove.push(key);
+                      }
+                    }
+                    keysToRemove.forEach(function(key) {
+                      localStorage.removeItem(key);
+                    });
+                    localStorage.setItem('lumina-app-version', VERSION);
+                    console.log('[Boot] Cleared ' + keysToRemove.length + ' keys');
+                  }
+                } catch (e) {
+                  console.error('[Boot] Cache clear failed:', e);
+                }
+              })();
+            `,
+          }}
+        />
+      </head>
       <body className={`${inconsolata.variable} font-sans antialiased`}>
         <ErrorBoundary>
           <ThemeProvider

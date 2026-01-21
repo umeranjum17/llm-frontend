@@ -269,20 +269,19 @@ function ToolCallsSection({
     : `${toolSummary.slice(0, 2).join(", ")} +${toolSummary.length - 2} more`;
 
   return (
-    <div className="mt-3 border rounded-lg bg-muted/30 overflow-hidden">
+    <div className="mt-3 border rounded-lg bg-muted/30 overflow-hidden contain-layout">
       {/* Collapsed header */}
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
         className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
       >
-        <motion.span
-          animate={{ rotate: isExpanded ? 90 : 0 }}
-          transition={{ duration: 0.2 }}
-          className="shrink-0"
+        <span
+          className="shrink-0 transition-transform duration-200"
+          style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}
         >
           <ChevronRight className="h-4 w-4" />
-        </motion.span>
+        </span>
         <Wrench className="h-3.5 w-3.5 shrink-0" />
         <span className="font-medium truncate">
           {summaryText}
@@ -300,15 +299,12 @@ function ToolCallsSection({
         </span>
       </button>
 
-      {/* Expanded content */}
-      <AnimatePresence initial={false}>
-      {isExpanded && (
-        <motion.div
-          initial={{ height: 0, opacity: 0 }}
-          animate={{ height: "auto", opacity: 1 }}
-          exit={{ height: 0, opacity: 0 }}
-          transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
-        >
+      {/* Expanded content - CSS Grid transition for smooth, layout-stable animation */}
+      <div
+        className="grid transition-[grid-template-rows] duration-200 ease-out"
+        style={{ gridTemplateRows: isExpanded ? '1fr' : '0fr' }}
+      >
+        <div className="overflow-hidden">
         <div className="px-3 pb-3 space-y-2 border-t border-border/50">
           {toolEvents.map((toolEvent) => {
             const displayName = getToolDisplayName(toolEvent.name);
@@ -403,9 +399,8 @@ function ToolCallsSection({
             );
           })}
         </div>
-        </motion.div>
-      )}
-      </AnimatePresence>
+        </div>
+      </div>
     </div>
   );
 }
@@ -431,19 +426,22 @@ function ThinkingSection({
   if (!reasoning) return null;
 
   return (
-    <div className="mb-3 border rounded-lg bg-muted/20 border-border/30 overflow-hidden">
+    <div className="mb-3 border rounded-lg bg-muted/20 border-border/30 overflow-hidden contain-layout">
       {/* Collapsed header */}
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
         className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-muted/30 transition-colors"
       >
-        <motion.span
-          animate={{ rotate: isExpanded ? 90 : 0 }}
-          transition={{ duration: prefersReducedMotion ? 0 : 0.2 }}
+        <span
+          className="transition-transform duration-200"
+          style={{
+            transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+            transitionDuration: prefersReducedMotion ? '0ms' : '200ms'
+          }}
         >
           <ChevronRight className="h-4 w-4" />
-        </motion.span>
+        </span>
         <Brain className="h-3.5 w-3.5" />
         <span className="font-medium">Thinking</span>
         {isStreaming && (
@@ -454,26 +452,22 @@ function ThinkingSection({
         )}
       </button>
 
-      {/* Expanded content */}
-      <AnimatePresence initial={false}>
-      {isExpanded && (
-        <motion.div
-          initial={prefersReducedMotion ? false : { height: 0, opacity: 0 }}
-          animate={{ height: "auto", opacity: 1 }}
-          exit={{ height: 0, opacity: 0 }}
-          transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
-        >
-        <div className="px-3 pb-3 border-t border-border/30">
-          <div className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap font-mono text-xs leading-relaxed max-h-96 overflow-y-auto">
-            {reasoning}
-            {isStreaming && (
-              <span className="inline-block w-1.5 h-3 ml-0.5 bg-foreground/50 cursor-breathing" />
-            )}
+      {/* Expanded content - CSS Grid transition for smooth, layout-stable animation */}
+      <div
+        className="grid transition-[grid-template-rows] duration-200 ease-out"
+        style={{ gridTemplateRows: isExpanded ? '1fr' : '0fr' }}
+      >
+        <div className="overflow-hidden">
+          <div className="px-3 pb-3 border-t border-border/30">
+            <div className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap font-mono text-xs leading-relaxed max-h-96 overflow-y-auto">
+              {reasoning}
+              {isStreaming && (
+                <span className="inline-block w-1.5 h-3 ml-0.5 bg-foreground/50 cursor-breathing" />
+              )}
+            </div>
           </div>
         </div>
-        </motion.div>
-      )}
-      </AnimatePresence>
+      </div>
     </div>
   );
 }
@@ -1041,7 +1035,10 @@ export const MessageItem = memo(function MessageItem({
   return (
     <div
       className={cn(
-        "group relative px-2 sm:px-4 py-3 sm:py-6"
+        "group relative px-2 sm:px-4 py-3 sm:py-6",
+        // Streaming messages should not be scroll anchor points
+        // This allows the browser to anchor to content the user is reading instead
+        isStreaming && "scroll-anchor-none"
       )}
       onClick={() => {
         // Toggle mobile actions on tap (only on touch devices)

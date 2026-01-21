@@ -15,7 +15,7 @@ export function useKeyboardShortcuts() {
   useHotkeys("mod+n", async (e) => {
     e.preventDefault();
     try {
-      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultMcpServerIds, defaultReasoningLevel } =
+      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultMcpServerIds, defaultReasoningLevel, defaultTemperature, defaultMaxTokens } =
         useSettingsStore.getState();
       const { providerId, modelId } = getDefaultChatConfig({
         defaultProviderId,
@@ -28,6 +28,8 @@ export function useKeyboardShortcuts() {
         providerId: providerId || undefined,
         activeMcpServerIds: defaultMcpServerIds,
         reasoningLevel: (defaultReasoningLevel as "low" | "medium" | "high" | "xhigh") || "medium",
+        temperature: defaultTemperature,
+        maxTokens: defaultMaxTokens,
       });
       setActiveChatId(newChat.id);
       toast.success("New chat created");

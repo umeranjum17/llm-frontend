@@ -14,7 +14,7 @@ import { Sidebar } from "@/components/sidebar/sidebar";
 import { ChatShell } from "@/components/chat/chat-shell";
 import { ensureBuiltIns } from "@/lib/db/seed";
 import { useModelsStore } from "@/stores/models-store";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
 import { getMostRecentChat, createChat, getChatById } from "@/lib/db/queries";
@@ -140,7 +140,7 @@ export default function Home() {
           await state.loadSettings();
         }
 
-        const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, currentProjectId, defaultReasoningLevel } =
+        const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, currentProjectId, defaultReasoningLevel, defaultMcpServerIds, defaultTemperature, defaultMaxTokens } =
           useSettingsStore.getState();
         const { providerId, modelId } = getDefaultChatConfig({
           defaultProviderId,
@@ -148,7 +148,6 @@ export default function Home() {
           defaultModelIdsByProvider,
         });
 
-        const { defaultMcpServerIds } = useSettingsStore.getState();
         const newChat = await createChat({
           title: "New Chat",
           modelId,
@@ -156,6 +155,8 @@ export default function Home() {
           projectId: currentProjectId,
           activeMcpServerIds: defaultMcpServerIds,
           reasoningLevel: (defaultReasoningLevel as "low" | "medium" | "high" | "xhigh") || "medium",
+          temperature: defaultTemperature,
+          maxTokens: defaultMaxTokens,
         });
 
         useUIStore.getState().setActiveChatId(newChat.id);
@@ -223,11 +224,12 @@ export default function Home() {
         )}
       </div>
 
-      <Dialog open={sidebarOpen} onOpenChange={setSidebarOpen}>
-        <DialogContent className="left-0 top-0 h-[100dvh] w-[100vw] max-w-none translate-x-0 translate-y-0 rounded-none p-0 sm:left-[50%] sm:top-[50%] sm:h-[90vh] sm:w-[92vw] sm:max-w-[360px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl">
-          <Sidebar />
-        </DialogContent>
-      </Dialog>
+      {/* Mobile sidebar - matches hamburger menu Sheet style */}
+      <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+        <SheetContent side="left" className="p-0 border-r border-border bg-background/80 backdrop-blur-xl w-[300px] [&>button]:hidden">
+          <Sidebar onNavigate={() => setSidebarOpen(false)} />
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

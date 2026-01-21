@@ -32,22 +32,51 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
   handleClearCacheAndReload = async () => {
     try {
-      // Clear all caches
+      console.log("[Error Boundary] Starting comprehensive cache clear...");
+
+      // 1. Clear all browser caches
       if ("caches" in window) {
         const cacheNames = await caches.keys();
+        console.log("[Error Boundary] Deleting caches:", cacheNames);
         await Promise.all(cacheNames.map((name) => caches.delete(name)));
       }
 
-      // Unregister service workers
+      // 2. Unregister all service workers
       if ("serviceWorker" in navigator) {
         const registrations = await navigator.serviceWorker.getRegistrations();
+        console.log("[Error Boundary] Unregistering service workers:", registrations.length);
         await Promise.all(registrations.map((reg) => reg.unregister()));
       }
 
-      // Clear sessionStorage and localStorage (optional, but helpful)
+      // 3. Clear all storage (but preserve critical keys)
       sessionStorage.clear();
-      
-      // Reload the page
+
+      // Clear localStorage except IndexedDB-related keys
+      const keysToPreserve: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith("fireproof") || key.startsWith("idb"))) {
+          keysToPreserve.push(key);
+        }
+      }
+
+      const preservedData = keysToPreserve.map(key => ({
+        key,
+        value: localStorage.getItem(key)
+      }));
+
+      localStorage.clear();
+
+      // Restore preserved keys
+      preservedData.forEach(({ key, value }) => {
+        if (value) localStorage.setItem(key, value);
+      });
+
+      console.log("[Error Boundary] Cleared storage (preserved IndexedDB-related keys)");
+
+      console.log("[Error Boundary] Cache clear complete, reloading...");
+
+      // 4. Force reload with cache bypass
       window.location.reload();
     } catch (error) {
       console.error("[Error Boundary] Failed to clear cache:", error);
@@ -83,20 +112,31 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
               <div className="space-y-2">
                 <h1 className="text-2xl font-bold">Something went wrong</h1>
                 <p className="text-muted-foreground">
-                  Lumina encountered an unexpected error. This is usually caused by a corrupted cache or outdated files.
+                  Lumina encountered an unexpected error. This is usually caused by cached files from a previous version.
+                </p>
+                <p className="text-sm font-medium text-primary">
+                  Click &ldquo;Clear All Data & Reload&rdquo; below to fix this issue.
                 </p>
               </div>
             </div>
 
-            {process.env.NODE_ENV === "development" && this.state.error && (
+            {this.state.error && (
               <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 space-y-2">
                 <p className="text-sm font-medium text-destructive">
-                  Error Details (Development Only):
+                  Error Details:
                 </p>
-                <pre className="text-xs text-muted-foreground overflow-auto max-h-40">
+                <pre className="text-xs text-muted-foreground overflow-auto max-h-40 whitespace-pre-wrap break-all">
                   {this.state.error.toString()}
-                  {this.state.errorInfo?.componentStack}
+                  {this.state.error.message && `\n\nMessage: ${this.state.error.message}`}
+                  {(this.state.error as any).digest && `\n\nDigest: ${(this.state.error as any).digest}`}
                 </pre>
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Stack trace</summary>
+                  <pre className="mt-2 text-muted-foreground overflow-auto max-h-32 whitespace-pre-wrap break-all">
+                    {this.state.error.stack}
+                    {this.state.errorInfo?.componentStack}
+                  </pre>
+                </details>
               </div>
             )}
 
@@ -105,10 +145,15 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
                 onClick={this.handleClearCacheAndReload}
                 className="w-full"
                 size="lg"
+                variant="default"
               >
                 <RefreshCw className="mr-2 h-4 w-4" />
-                Clear Cache & Reload
+                Clear All Data & Reload (Recommended)
               </Button>
+
+              <p className="text-xs text-center text-muted-foreground px-2">
+                This will clear caches and storage. Your chats are safe in IndexedDB.
+              </p>
               
               <div className="flex gap-2">
                 <Button

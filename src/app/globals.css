@@ -494,3 +494,13 @@
 .prose > *:last-child {
   margin-bottom: 0;
 }
+
+/* Scroll anchoring utilities to prevent layout shifts during streaming */
+.scroll-anchor-auto {
+  overflow-anchor: auto;
+}
+
+/* The streaming message should not be an anchor point itself */
+.scroll-anchor-none {
+  overflow-anchor: none;
+}

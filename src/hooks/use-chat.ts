@@ -532,6 +532,7 @@ export function useChat(chatId: string) {
   const [error, setError] = useState<string | null>(null);
   const [continuingMessageId, setContinuingMessageId] = useState<string | null>(null);
   const { keys, getKeyForProvider } = useApiKeysStore();
+
   const { isArenaMode, arenaModelIds } = useUIStore();
   const {
     setStreamingMessage,
@@ -557,6 +558,17 @@ export function useChat(chatId: string) {
     clearImageGenerationProgress,
     getChatStream,
   } = useStreamingStore();
+
+  // Sync loading state with streaming store when chatId changes
+  // This prevents blocking input when switching to a non-streaming chat
+  useEffect(() => {
+    const chatStream = getChatStream(chatId);
+    const isCurrentlyStreaming = chatStream.streamingMessageId !== null;
+    setIsLoading(isCurrentlyStreaming);
+    setError(null);
+    setContinuingMessageId(null);
+  }, [chatId, getChatStream]);
+
   const extractionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const dbUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);

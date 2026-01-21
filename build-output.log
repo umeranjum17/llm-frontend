@@ -1,0 +1,124 @@
+
+> lumina@0.1.0 build
+> next build
+
+   ▲ Next.js 15.5.9
+   - Experiments (use with caution):
+     ⨯ reactCompiler
+
+   Creating an optimized production build ...
+ ✓ (pwa) Compiling for server...
+ ✓ (pwa) Compiling for server...
+ ✓ (pwa) Compiling for client (static)...
+ ○ (pwa) Service worker: /home/umer/Documents/Github/llm-frontend/public/sw.js
+ ○ (pwa)   URL: /sw.js
+ ○ (pwa)   Scope: /
+ ○ (pwa) Custom runtimeCaching array found, using it instead of the default one.
+ ⚠ Compiled with warnings in 14.4s
+
+/_next/static/chunks/4494-5262b40b5108a26b.js is 2.55 MB, and won't be precached. Configure maximumFileSizeToCacheInBytes to change this limit.
+
+./node_modules/e2b/dist/index.mjs
+Critical dependency: the request of a dependency is an expression
+
+Import trace for requested module:
+./node_modules/e2b/dist/index.mjs
+./node_modules/@e2b/code-interpreter/dist/index.mjs
+./src/app/api/sandbox/execute/route.ts
+
+   Linting and checking validity of types ...
+
+./src/components/agents/agent-editor-dialog.tsx
+69:9  Warning: The 'allAgents' logical expression could make the dependencies of useEffect Hook (at line 189) change on every render. To fix this, wrap the initialization of 'allAgents' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+
+./src/components/agents/pipeline/node-config-panel.tsx
+59:9  Warning: The 'enabledMcpServerIds' logical expression could make the dependencies of useMemo Hook (at line 65) change on every render. To fix this, wrap the initialization of 'enabledMcpServerIds' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+
+./src/components/artifacts/e2b-executor.tsx
+110:6  Warning: React Hook useEffect has a missing dependency: 'runCode'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/components/chat/input-area.tsx
+242:6  Warning: React Hook useEffect has a missing dependency: 'handleSubmit'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/components/chat/tool-quick-toggle.tsx
+49:9  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+156:41  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/components/settings/composio-apps-section.tsx
+38:5  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/components/settings/memory-settings.tsx
+59:8  Warning: React Hook useEffect has a missing dependency: 'settings'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/components/settings/skills-settings.tsx
+124:9  Warning: The 'skillIdsWithEmbeddings' logical expression could make the dependencies of useMemo Hook (at line 131) change on every render. To fix this, wrap the initialization of 'skillIdsWithEmbeddings' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+
+./src/components/sidebar/chat-list.tsx
+397:6  Warning: React Hook useMemo has a missing dependency: 'buildItemsList'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/hooks/use-auto-tags.ts
+38:8  Warning: React Hook useEffect has a missing dependency: 'messages'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/hooks/use-chat-summary.ts
+92:8  Warning: React Hook useEffect has a missing dependency: 'messages'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/hooks/use-chat.ts
+1510:6  Warning: React Hook useCallback has unnecessary dependencies: 'clearOptimisticMessage', 'setOptimisticMessage', and 'setPendingSkillApproval'. Either exclude them or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/hooks/use-db-health.tsx
+400:38  Warning: The ref value 'retryTimeoutRef.current' will likely have changed by the time this effect cleanup function runs. If this ref points to a node rendered by React, copy 'retryTimeoutRef.current' to a variable inside the effect, and use that variable in the cleanup function.  react-hooks/exhaustive-deps
+
+./src/hooks/use-suggested-responses.ts
+78:8  Warning: React Hook useEffect has a missing dependency: 'messages'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/api-reference/config/eslint#disabling-rules
+   Collecting page data ...
+ ⚠ Using edge runtime on a page currently disables static generation for that page
+   Generating static pages (0/25) ...
+   Generating static pages (6/25) 
+   Generating static pages (12/25) 
+   Generating static pages (18/25) 
+ ✓ Generating static pages (25/25)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                 Size  First Load JS
+┌ ○ /                                    1.81 MB        2.21 MB
+├ ○ /_not-found                             1 kB         111 kB
+├ ƒ /api/agent-context                     191 B         110 kB
+├ ƒ /api/agents/pipeline                   191 B         110 kB
+├ ƒ /api/agents/run                        191 B         110 kB
+├ ƒ /api/chat                              191 B         110 kB
+├ ƒ /api/chat/prompt-optimizer             191 B         110 kB
+├ ƒ /api/chat/suggested                    191 B         110 kB
+├ ƒ /api/chat/summarize                    191 B         110 kB
+├ ƒ /api/chat/title                        191 B         110 kB
+├ ƒ /api/composio/authorize                191 B         110 kB
+├ ƒ /api/composio/available-toolkits       191 B         110 kB
+├ ƒ /api/composio/session                  191 B         110 kB
+├ ƒ /api/composio/toolkits                 191 B         110 kB
+├ ƒ /api/embeddings                        191 B         110 kB
+├ ƒ /api/images                            191 B         110 kB
+├ ƒ /api/integrations/test                 191 B         110 kB
+├ ƒ /api/mcp/execute-tool                  191 B         110 kB
+├ ƒ /api/mcp/test                          191 B         110 kB
+├ ƒ /api/memory                            191 B         110 kB
+├ ƒ /api/memory/extract                    191 B         110 kB
+├ ƒ /api/models                            191 B         110 kB
+├ ƒ /api/providers/test                    191 B         110 kB
+├ ƒ /api/sandbox/execute                   191 B         110 kB
+├ ƒ /api/tags/generate                     191 B         110 kB
+├ ○ /onboarding                          10.4 kB         216 kB
+├ ○ /settings                            23.6 kB         246 kB
+└ ○ /share-target                        1.29 kB         111 kB
++ First Load JS shared by all             110 kB
+  ├ chunks/4696-423084661ed1b0cf.js        48 kB
+  ├ chunks/4bd1b696-100b9d70ed4e49c1.js  54.2 kB
+  └ other shared chunks (total)          7.68 kB
+
+
+ƒ Middleware                             33.7 kB
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

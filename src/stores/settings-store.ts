@@ -25,6 +25,8 @@ interface SettingsState extends Partial<UserSettings> {
   updateSkillMatchThreshold: (threshold: number) => Promise<void>;
   updateDefaultReasoningLevel: (level: "low" | "medium" | "high" | "xhigh") => Promise<void>;
   updateLastProviderForModel: (modelId: string, providerId: string) => Promise<void>;
+  updateDefaultTemperature: (temperature: number) => Promise<void>;
+  updateDefaultMaxTokens: (maxTokens: number) => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -37,6 +39,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   autoTaggingEnabled: false,
   defaultReasoningLevel: "medium",
   lastProviderIdByModel: {},
+  defaultTemperature: 1,
+  defaultMaxTokens: 4096,
 
   loadSettings: async () => {
     const maxRetries = 3;
@@ -86,6 +90,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
             autoTaggingEnabled: false,
             defaultReasoningLevel: "medium",
             lastProviderIdByModel: {},
+            defaultTemperature: 1,
+            defaultMaxTokens: 4096,
             isLoaded: true, // Mark as loaded to prevent UI hang
           });
         } else {
@@ -179,5 +185,15 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const updated = { ...current, [modelId]: providerId };
     await updateSettings({ lastProviderIdByModel: updated });
     set({ lastProviderIdByModel: updated });
+  },
+
+  updateDefaultTemperature: async (temperature: number) => {
+    await updateSettings({ defaultTemperature: temperature });
+    set({ defaultTemperature: temperature });
+  },
+
+  updateDefaultMaxTokens: async (maxTokens: number) => {
+    await updateSettings({ defaultMaxTokens: maxTokens });
+    set({ defaultMaxTokens: maxTokens });
   },
 }));

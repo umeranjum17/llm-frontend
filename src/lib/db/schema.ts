@@ -148,6 +148,9 @@ export interface UserSettings {
   // Default MCP server settings
   defaultMcpServerIds?: string[];    // Default MCP servers to enable for new chats
   lastProviderIdByModel?: Record<string, string>;  // modelId -> providerId (remembered provider per model)
+  // Default generation settings
+  defaultTemperature?: number;       // Default temperature for new chats (0-2, default: 1)
+  defaultMaxTokens?: number;         // Default max tokens for new chats (default: 4096)
 }
 
 export interface ModelFavorite {

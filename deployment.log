@@ -1,0 +1,138 @@
+Vercel CLI 50.3.0
+Retrieving project…
+Deploying umeranjum17s-projects/llm-frontend
+Uploading [--------------------] (0.0B/67.1KB)
+Uploading [=========-----------] (32.0KB/67.1KB)
+Uploading [===========---------] (39.8KB/67.1KB)
+Uploading [==================--] (63.3KB/67.1KB)
+Uploading [====================] (67.1KB/67.1KB)
+Inspect: https://vercel.com/umeranjum17s-projects/llm-frontend/Dn5aM7AizVsSc1Lx7dcZXHNvjgYg [3s]
+Production: https://llm-frontend-9jg1ezlel-umeranjum17s-projects.vercel.app [3s]
+https://llm-frontend-9jg1ezlel-umeranjum17s-projects.vercel.appBuilding...
+Building...
+Building: Running build in Washington, D.C., USA (East) – iad1
+Building: Build machine configuration: 2 cores, 8 GB
+Building: Retrieving list of deployment files...
+Building: Downloading 401 deployment files...
+Building: Restored build cache from previous deployment (26yseq7mS9DeR1xSyRPYHa7iEuhD)
+Building: Warning: Detected "engines": { "node": ">=20" } in your `package.json` that will automatically upgrade when a new major Node.js Version is released. Learn More: https://vercel.link/node-version
+Building: Running "vercel build"
+Building: Vercel CLI 50.4.8
+Building: Warning: Detected "engines": { "node": ">=20" } in your `package.json` that will automatically upgrade when a new major Node.js Version is released. Learn More: https://vercel.link/node-version
+Building: Installing dependencies...
+Building: up to date in 2s
+Building: 389 packages are looking for funding
+Building: run `npm fund` for details
+Building: Detected Next.js version: 15.5.9
+Building: Running "npm run build"
+Building: > lumina@0.1.0 build
+Building: > next build
+Building: ▲ Next.js 15.5.9
+Building: - Experiments (use with caution):
+Building: ⨯ reactCompiler
+Building: Creating an optimized production build ...
+Building: ✓ (pwa) Compiling for server...
+Building: ✓ (pwa) Compiling for server...
+Building: ✓ (pwa) Compiling for client (static)...
+Building: ○ (pwa) Service worker: /vercel/path0/public/sw.js
+Building: ○ (pwa)   URL: /sw.js
+Building: ○ (pwa)   Scope: /
+Building: ○ (pwa) Custom runtimeCaching array found, using it instead of the default one.
+Building: ⚠ Compiled with warnings in 34.3s
+Building: /_next/static/chunks/4494-7e6c426b005b1d1f.js is 2.55 MB, and won't be precached. Configure maximumFileSizeToCacheInBytes to change this limit.
+Building: ./node_modules/e2b/dist/index.mjs
+Building: Critical dependency: the request of a dependency is an expression
+Building: Import trace for requested module:
+Building: ./node_modules/e2b/dist/index.mjs
+Building: ./node_modules/@e2b/code-interpreter/dist/index.mjs
+Building: ./src/app/api/sandbox/execute/route.ts
+Building: Linting and checking validity of types ...
+Building: ./src/components/agents/agent-editor-dialog.tsx
+Building: 69:9  Warning: The 'allAgents' logical expression could make the dependencies of useEffect Hook (at line 189) change on every render. To fix this, wrap the initialization of 'allAgents' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+Building: ./src/components/agents/pipeline/node-config-panel.tsx
+Building: 59:9  Warning: The 'enabledMcpServerIds' logical expression could make the dependencies of useMemo Hook (at line 65) change on every render. To fix this, wrap the initialization of 'enabledMcpServerIds' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+Building: ./src/components/artifacts/e2b-executor.tsx
+Building: 110:6  Warning: React Hook useEffect has a missing dependency: 'runCode'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+Building: ./src/components/chat/input-area.tsx
+Building: 242:6  Warning: React Hook useEffect has a missing dependency: 'handleSubmit'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+Building: ./src/components/chat/tool-quick-toggle.tsx
+Building: 49:9  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+Building: 156:41  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+Building: ./src/components/settings/composio-apps-section.tsx
+Building: 38:5  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+Building: ./src/components/settings/memory-settings.tsx
+Building: 59:8  Warning: React Hook useEffect has a missing dependency: 'settings'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+Building: ./src/components/settings/skills-settings.tsx
+Building: 124:9  Warning: The 'skillIdsWithEmbeddings' logical expression could make the dependencies of useMemo Hook (at line 131) change on every render. To fix this, wrap the initialization of 'skillIdsWithEmbeddings' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+Building: ./src/components/sidebar/chat-list.tsx
+Building: 397:6  Warning: React Hook useMemo has a missing dependency: 'buildItemsList'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+Building: ./src/hooks/use-auto-tags.ts
+Building: 38:8  Warning: React Hook useEffect has a missing dependency: 'messages'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+Building: ./src/hooks/use-chat-summary.ts
+Building: 92:8  Warning: React Hook useEffect has a missing dependency: 'messages'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+Building: ./src/hooks/use-chat.ts
+Building: 1510:6  Warning: React Hook useCallback has unnecessary dependencies: 'clearOptimisticMessage', 'setOptimisticMessage', and 'setPendingSkillApproval'. Either exclude them or remove the dependency array.  react-hooks/exhaustive-deps
+Building: ./src/hooks/use-db-health.tsx
+Building: 400:38  Warning: The ref value 'retryTimeoutRef.current' will likely have changed by the time this effect cleanup function runs. If this ref points to a node rendered by React, copy 'retryTimeoutRef.current' to a variable inside the effect, and use that variable in the cleanup function.  react-hooks/exhaustive-deps
+Building: ./src/hooks/use-suggested-responses.ts
+Building: 78:8  Warning: React Hook useEffect has a missing dependency: 'messages'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+Building: info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/api-reference/config/eslint#disabling-rules
+Building: Collecting page data ...
+Building: ⚠ Using edge runtime on a page currently disables static generation for that page
+Building: Generating static pages (0/25) ...
+Building: Generating static pages (6/25)
+Building: Generating static pages (12/25)
+Building: Generating static pages (18/25)
+Building: ✓ Generating static pages (25/25)
+Building: Finalizing page optimization ...
+Building: Collecting build traces ...
+Building: Route (app)                                 Size  First Load JS
+Building: ┌ ○ /                                    1.81 MB        2.21 MB
+Building: ├ ○ /_not-found                             1 kB         111 kB
+Building: ├ ƒ /api/agent-context                     191 B         110 kB
+Building: ├ ƒ /api/agents/pipeline                   191 B         110 kB
+Building: ├ ƒ /api/agents/run                        191 B         110 kB
+Building: ├ ƒ /api/chat                              191 B         110 kB
+Building: ├ ƒ /api/chat/prompt-optimizer             191 B         110 kB
+Building: ├ ƒ /api/chat/suggested                    191 B         110 kB
+Building: ├ ƒ /api/chat/summarize                    191 B         110 kB
+Building: ├ ƒ /api/chat/title                        191 B         110 kB
+Building: ├ ƒ /api/composio/authorize                191 B         110 kB
+Building: ├ ƒ /api/composio/available-toolkits       191 B         110 kB
+Building: ├ ƒ /api/composio/session                  191 B         110 kB
+Building: ├ ƒ /api/composio/toolkits                 191 B         110 kB
+Building: ├ ƒ /api/embeddings                        191 B         110 kB
+Building: ├ ƒ /api/images                            191 B         110 kB
+Building: ├ ƒ /api/integrations/test                 191 B         110 kB
+Building: ├ ƒ /api/mcp/execute-tool                  191 B         110 kB
+Building: ├ ƒ /api/mcp/test                          191 B         110 kB
+Building: ├ ƒ /api/memory                            191 B         110 kB
+Building: ├ ƒ /api/memory/extract                    191 B         110 kB
+Building: ├ ƒ /api/models                            191 B         110 kB
+Building: ├ ƒ /api/providers/test                    191 B         110 kB
+Building: ├ ƒ /api/sandbox/execute                   191 B         110 kB
+Building: ├ ƒ /api/tags/generate                     191 B         110 kB
+Building: ├ ○ /onboarding                          10.4 kB         216 kB
+Building: ├ ○ /settings                            23.6 kB         246 kB
+Building: └ ○ /share-target                        1.29 kB         111 kB
+Building: + First Load JS shared by all             110 kB
+Building: ├ chunks/4696-423084661ed1b0cf.js        48 kB
+Building: ├ chunks/4bd1b696-100b9d70ed4e49c1.js  54.2 kB
+Building: └ other shared chunks (total)          7.68 kB
+Building: ƒ Middleware                             33.7 kB
+Building: ○  (Static)   prerendered as static content
+Building: ƒ  (Dynamic)  server-rendered on demand
+Building: Traced Next.js server files in: 68.373ms
+Building: Created all serverless functions in: 1.072s
+Building: Collected static files (public/, static/, .next/static): 36ms
+Building: Build Completed in /vercel/output [2m]
+Building: Deploying outputs...
+Building: Deployment completed
+Building: Creating build cache...
+[2K[1A[2K[GProduction: https://llm-frontend-9jg1ezlel-umeranjum17s-projects.vercel.app [2m]
+Completing...
+Aliased: https://llm-frontend-sandy.vercel.app [2m]
+
+Common next commands:
+- `vercel inspect llm-frontend-9jg1ezlel-umeranjum17s-projects.vercel.app --logs`
+- `vercel redeploy llm-frontend-9jg1ezlel-umeranjum17s-projects.vercel.app`

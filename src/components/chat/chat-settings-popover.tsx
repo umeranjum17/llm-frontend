@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { SlidersHorizontal, Bot, Brain, DollarSign, Swords, Thermometer, Hash } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -53,15 +53,28 @@ export function ChatSettingsPopover({
 
   const memoryEnabled = settings?.memoryEnabled !== false;
   const reasoningLevel = chat?.reasoningLevel || "medium";
-  const temperature = chat?.temperature ?? 1;
-  const maxTokens = chat?.maxTokens ?? 4096;
+  const defaultTemperature = settings?.defaultTemperature ?? 1;
+  const defaultMaxTokens = settings?.defaultMaxTokens ?? 4096;
+  const temperature = chat?.temperature ?? defaultTemperature;
+  const maxTokens = chat?.maxTokens ?? defaultMaxTokens;
   const calculatedCost = messages?.reduce((sum, msg) => sum + (msg.cost || 0), 0) || 0;
 
   const defaultReasoningLevel = (settings?.defaultReasoningLevel as ReasoningLevel) || "medium";
   const updateDefaultReasoningLevel = useSettingsStore((state) => state.updateDefaultReasoningLevel);
+  const updateDefaultTemperature = useSettingsStore((state) => state.updateDefaultTemperature);
+  const updateDefaultMaxTokens = useSettingsStore((state) => state.updateDefaultMaxTokens);
 
   const [localTemperature, setLocalTemperature] = useState(temperature);
   const [localMaxTokens, setLocalMaxTokens] = useState(maxTokens);
+
+  // Sync local state when chat changes or DB values update
+  useEffect(() => {
+    setLocalTemperature(temperature);
+  }, [temperature]);
+
+  useEffect(() => {
+    setLocalMaxTokens(maxTokens);
+  }, [maxTokens]);
 
   const handleTemperatureChange = async (value: number[]) => {
     const newTemp = value[0];
@@ -200,7 +213,20 @@ export function ChatSettingsPopover({
               <Thermometer className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm">Temperature</span>
             </div>
-            <span className="text-xs text-muted-foreground font-mono">{localTemperature.toFixed(2)}</span>
+            <div className="flex items-center gap-2">
+              {localTemperature !== defaultTemperature && (
+                <button
+                  onClick={async () => {
+                    await updateDefaultTemperature(localTemperature);
+                    toast.success(`Temperature ${localTemperature.toFixed(2)} set as default`);
+                  }}
+                  className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Set as default
+                </button>
+              )}
+              <span className="text-xs text-muted-foreground font-mono">{localTemperature.toFixed(2)}</span>
+            </div>
           </div>
           <Slider
             value={[localTemperature]}
@@ -219,7 +245,20 @@ export function ChatSettingsPopover({
               <Hash className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm">Max Tokens</span>
             </div>
-            <span className="text-xs text-muted-foreground font-mono">{localMaxTokens}</span>
+            <div className="flex items-center gap-2">
+              {localMaxTokens !== defaultMaxTokens && (
+                <button
+                  onClick={async () => {
+                    await updateDefaultMaxTokens(localMaxTokens);
+                    toast.success(`Max tokens ${localMaxTokens} set as default`);
+                  }}
+                  className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Set as default
+                </button>
+              )}
+              <span className="text-xs text-muted-foreground font-mono">{localMaxTokens}</span>
+            </div>
           </div>
           <Slider
             value={[localMaxTokens]}

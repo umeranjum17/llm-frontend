@@ -50,7 +50,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
       if (!state.isLoaded) {
         await state.loadSettings();
       }
-      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultMcpServerIds, defaultReasoningLevel } =
+      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultMcpServerIds, defaultReasoningLevel, defaultTemperature, defaultMaxTokens } =
         useSettingsStore.getState();
       const { providerId, modelId } = getDefaultChatConfig({
         defaultProviderId,
@@ -65,6 +65,8 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         projectId: currentProjectId,
         activeMcpServerIds: defaultMcpServerIds,
         reasoningLevel: (defaultReasoningLevel as "low" | "medium" | "high" | "xhigh") || "medium",
+        temperature: defaultTemperature,
+        maxTokens: defaultMaxTokens,
       });
 
       setActiveChatId(newChat.id);

@@ -13,6 +13,7 @@ const ANTHROPIC_MODELS = [
     supportsVision: true,
     supportsReasoning: true,
     supportsThinking: true,
+    supportsPromptCaching: true,
   },
   {
     id: "anthropic/claude-sonnet-4.5",
@@ -21,7 +22,9 @@ const ANTHROPIC_MODELS = [
     inputCost: 3.0,
     outputCost: 15.0,
     supportsVision: true,
-    supportsReasoning: false,
+    supportsReasoning: true,
+    supportsThinking: true,
+    supportsPromptCaching: true,
   },
   {
     id: "anthropic/claude-haiku-4.5",
@@ -31,6 +34,7 @@ const ANTHROPIC_MODELS = [
     outputCost: 1.25,
     supportsVision: true,
     supportsReasoning: false,
+    supportsPromptCaching: true,
   },
   {
     id: "anthropic/claude-3.5-sonnet",

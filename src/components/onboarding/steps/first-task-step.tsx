@@ -30,7 +30,7 @@ export function FirstTaskStep({
   onComplete,
 }: FirstTaskStepProps) {
   const { getKeyForProvider } = useApiKeysStore();
-  const { defaultModelId } = useSettingsStore();
+  const { defaultModelId, defaultTemperature, defaultMaxTokens } = useSettingsStore();
   const [prompt, setPrompt] = useState(
     PROMPTS_BY_USE_CASE[useCase] || PROMPTS_BY_USE_CASE.chat
   );
@@ -42,7 +42,7 @@ export function FirstTaskStep({
   const apiKey = getKeyForProvider(providerId);
 
   const runTask = async () => {
-    if (!prompt.trim() || !apiKey) return;
+    if (!prompt.trim() || !apiKey?.key) return;
 
     setIsRunning(true);
     setError(null);
@@ -57,6 +57,8 @@ export function FirstTaskStep({
         title: "First Task",
         projectId: "personal",
         modelId,
+        temperature: defaultTemperature,
+        maxTokens: defaultMaxTokens,
       });
       setChatId(chat.id);
 
@@ -70,7 +72,10 @@ export function FirstTaskStep({
       // Stream response from chat API
       const res = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": apiKey?.key || "",
+        },
         body: JSON.stringify({
           providerId,
           modelId,
@@ -102,11 +107,17 @@ export function FirstTaskStep({
           const lines = chunk.split("\n");
 
           for (const line of lines) {
-            if (line.startsWith("0:")) {
-              const text = line.slice(2).trim();
-              if (text) {
-                accumulatedText += text;
-                setResponse(accumulatedText);
+            if (line.startsWith("data: ")) {
+              const data = line.slice(6);
+              if (data === "[DONE]") continue;
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.type === "text-delta" && parsed.textDelta) {
+                  accumulatedText += parsed.textDelta;
+                  setResponse(accumulatedText);
+                }
+              } catch {
+                // Ignore malformed JSON lines
               }
             }
           }
