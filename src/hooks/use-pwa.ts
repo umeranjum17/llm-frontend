@@ -20,6 +20,7 @@ interface PWAState {
   isOnline: boolean;
   isUpdateAvailable: boolean;
   isUpdating: boolean;
+  isIOSSafari: boolean;
 }
 
 interface UsePWAReturn extends PWAState {
@@ -36,12 +37,13 @@ export function usePWA(): UsePWAReturn {
   const [isOnline, setIsOnline] = useState(true);
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isIOSSafari, setIsIOSSafari] = useState(false);
   const [registration, setRegistration] =
     useState<ServiceWorkerRegistration | null>(null);
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const setPwaUpdating = useLoadingStore((state) => state.setPwaUpdating);
 
-  // Check if already installed (standalone mode)
+  // Check if already installed (standalone mode) and detect iOS Safari
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -52,6 +54,17 @@ export function usePWA(): UsePWAReturn {
 
     setIsInstalled(isStandalone);
     setIsOnline(navigator.onLine);
+
+    // Detect iOS Safari (doesn't support beforeinstallprompt)
+    const ua = navigator.userAgent;
+    const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+    setIsIOSSafari(isIOS && isSafari && !isStandalone);
+
+    // For iOS Safari, set installable to true so prompt shows
+    if (isIOS && isSafari && !isStandalone) {
+      setIsInstallable(true);
+    }
   }, []);
 
   // Listen for install prompt
@@ -239,21 +252,31 @@ export function usePWA(): UsePWAReturn {
   const dismissInstall = useCallback(() => {
     setIsInstallable(false);
     setDeferredPrompt(null);
-    // Store dismissal in localStorage to avoid showing again this session
+    // Store dismissal timestamp - will show again after 1 hour
     if (typeof window !== "undefined") {
-      sessionStorage.setItem("pwa-install-dismissed", "true");
+      localStorage.setItem("pwa-install-dismissed-at", Date.now().toString());
     }
+  }, []);
+
+  // Check if install prompt was dismissed within the last hour
+  const isDismissedRecently = useCallback(() => {
+    if (typeof window === "undefined") return false;
+    const dismissedAt = localStorage.getItem("pwa-install-dismissed-at");
+    if (!dismissedAt) return false;
+    const oneHour = 60 * 60 * 1000; // 1 hour in ms
+    return Date.now() - parseInt(dismissedAt, 10) < oneHour;
   }, []);
 
   return {
     isInstallable:
       isInstallable &&
-      !sessionStorage?.getItem?.("pwa-install-dismissed") &&
+      !isDismissedRecently() &&
       !isInstalled,
     isInstalled,
     isOnline,
     isUpdateAvailable,
     isUpdating,
+    isIOSSafari,
     install,
     update,
     dismissInstall,

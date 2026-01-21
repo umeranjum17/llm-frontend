@@ -1,12 +1,12 @@
 "use client";
 
-import { Download, X } from "lucide-react";
+import { Download, X, Share } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePWA } from "@/hooks/use-pwa";
 import { cn } from "@/lib/utils";
 
 export function InstallPrompt() {
-  const { isInstallable, install, dismissInstall } = usePWA();
+  const { isInstallable, isIOSSafari, install, dismissInstall } = usePWA();
 
   if (!isInstallable) return null;
 
@@ -19,18 +19,27 @@ export function InstallPrompt() {
     >
       <div className="flex items-center gap-3 rounded-lg border bg-background/95 p-4 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
-          <Download className="h-5 w-5 text-primary" />
+          {isIOSSafari ? (
+            <Share className="h-5 w-5 text-primary" />
+          ) : (
+            <Download className="h-5 w-5 text-primary" />
+          )}
         </div>
         <div className="flex-1 space-y-1">
           <p className="text-sm font-medium">Install Lumina</p>
           <p className="text-xs text-muted-foreground">
-            Add to your home screen for quick access
+            {isIOSSafari
+              ? "Tap Share, then 'Add to Home Screen'"
+              : "Add to your home screen for quick access"
+            }
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={install}>
-            Install
-          </Button>
+          {!isIOSSafari && (
+            <Button size="sm" onClick={install}>
+              Install
+            </Button>
+          )}
           <Button
             size="icon"
             variant="ghost"
