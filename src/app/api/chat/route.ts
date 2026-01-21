@@ -336,8 +336,23 @@ export async function POST(req: Request) {
           // Track thinking tokens for message update
           let currentThinkingTokens = 0;
 
+          // Track if request was aborted
+          let aborted = false;
+          // Store handler reference for cleanup (prevents memory leak)
+          const abortHandler = () => {
+            aborted = true;
+            console.log('[Chat] Request aborted by client');
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'abort', message: 'Request cancelled' })}\n\n`));
+          };
+          req.signal?.addEventListener('abort', abortHandler);
+
           try {
             for await (const part of result.fullStream) {
+              // Check if aborted and break early
+              if (aborted) {
+                console.log('[Chat] Breaking stream loop due to abort');
+                break;
+              }
               // Log tool calls and results for debugging
               if (part.type === 'tool-call') {
                 // Check for MULTI_EXECUTE_TOOL with empty/missing input (common failure)
@@ -527,6 +542,8 @@ export async function POST(req: Request) {
               encoder.encode(`data: ${JSON.stringify({ type: "error", error: { message: errorMessage } })}\n\n`)
             );
           } finally {
+            // Clean up abort listener to prevent memory leak
+            req.signal?.removeEventListener('abort', abortHandler);
             controller.enqueue(encoder.encode("data: [DONE]\n\n"));
             controller.close();
           }

@@ -902,40 +902,121 @@ export function useChat(chatId: string) {
     const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     const timeoutMs = isMobile ? 60000 : 30000; // 60s for mobile, 30s for desktop
 
-    const connectionTimeoutId = setTimeout(() => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
+    // Retry configuration
+    const MAX_RETRIES = 2;
+    const RETRY_DELAY_MS = 1000;
+
+    let response: Response | null = null;
+    let retryCount = 0;
+    let connectionTimeoutId: NodeJS.Timeout | null = null;
+
+    // Retry loop for transient failures
+    while (retryCount <= MAX_RETRIES) {
+      try {
+        // Set connection timeout
+        connectionTimeoutId = setTimeout(() => {
+          if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+          }
+        }, timeoutMs);
+
+        // Call API route for streaming
+        response = await fetch("/api/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(apiKey?.key ? { "X-API-Key": apiKey.key } : {}),
+          },
+          body: JSON.stringify({
+            providerId,
+            providerBaseUrl: apiKey?.baseUrl,
+            modelId,
+            messages: llmMessages,
+            enabledTools,
+            mcpServers: await getActiveMcpServersForChat(chat.activeMcpServerIds),
+            reasoningLevel: chat.reasoningLevel, // Pass reasoning level to backend
+          }),
+          signal: abortControllerRef.current.signal,
+        });
+
+        // Clear connection timeout once response is received
+        if (connectionTimeoutId) {
+          clearTimeout(connectionTimeoutId);
+          connectionTimeoutId = null;
+        }
+
+        // Check if response is retryable
+        const status = response.status;
+        if (!response.ok) {
+          // Retry on server errors (5xx) or rate limits (429)
+          if ((status >= 500 && status <= 504) || status === 429) {
+            retryCount++;
+            if (retryCount <= MAX_RETRIES) {
+              console.log(`[Retry] Attempt ${retryCount}/${MAX_RETRIES} after ${status} error`);
+              // Exponential backoff: 1s, 2s, 4s (not linear 1s, 2s, 3s)
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * Math.pow(2, retryCount)));
+              continue;
+            }
+          }
+
+          // Non-retryable error or max retries exceeded
+          const errorData = await response.json().catch(() => ({}));
+          const errorMessage = (errorData as any)?.error || (errorData as any)?.message || response.statusText;
+          throw new Error(errorMessage);
+        }
+
+        // Success - break retry loop
+        break;
+      } catch (error) {
+        // Clear timeout on error
+        if (connectionTimeoutId) {
+          clearTimeout(connectionTimeoutId);
+          connectionTimeoutId = null;
+        }
+
+        // Check if error is retryable (abort, network errors, DNS failures)
+        const isRetryableError = (err: unknown): boolean => {
+          if (!(err instanceof Error)) return false;
+          // Abort/timeout errors
+          if (err.name === 'AbortError') return true;
+          // Network errors
+          const msg = err.message.toLowerCase();
+          return (
+            msg.includes('econnreset') ||
+            msg.includes('etimedout') ||
+            msg.includes('enotfound') ||
+            msg.includes('fetch failed') ||
+            msg.includes('network') ||
+            msg.includes('socket hang up') ||
+            msg.includes('connection refused')
+          );
+        };
+
+        // Handle retryable errors (abort, network issues)
+        if (isRetryableError(error)) {
+          retryCount++;
+          if (retryCount <= MAX_RETRIES) {
+            const errorType = error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'network error';
+            console.log(`[Retry] Attempt ${retryCount}/${MAX_RETRIES} after ${errorType}`);
+            // Create new abort controller for retry
+            abortControllerRef.current = new AbortController();
+            // Exponential backoff: 1s, 2s, 4s (not linear 1s, 2s, 3s)
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * Math.pow(2, retryCount)));
+            continue;
+          }
+        }
+
+        // Re-throw non-retryable errors or max retries exceeded
+        throw error;
       }
-    }, timeoutMs);
+    }
+
+    // Ensure we have a valid response
+    if (!response) {
+      throw new Error('Failed to get response after retries');
+    }
 
     try {
-      // Call API route for streaming
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(apiKey?.key ? { "X-API-Key": apiKey.key } : {}),
-        },
-        body: JSON.stringify({
-          providerId,
-          providerBaseUrl: apiKey?.baseUrl,
-          modelId,
-          messages: llmMessages,
-          enabledTools,
-          mcpServers: await getActiveMcpServersForChat(chat.activeMcpServerIds),
-          reasoningLevel: chat.reasoningLevel, // Pass reasoning level to backend
-        }),
-        signal: abortControllerRef.current.signal,
-      });
-
-      // Clear connection timeout once response is received
-      clearTimeout(connectionTimeoutId);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMessage = (errorData as any)?.error || (errorData as any)?.message || response.statusText;
-        throw new Error(errorMessage);
-      }
 
       // Handle streaming response with real-time updates
       const reader = response.body?.getReader();
@@ -990,13 +1071,16 @@ export function useChat(chatId: string) {
               // Extract cached tokens from various provider formats:
               // - OpenAI: usage.promptTokensDetails?.cachedTokens or usage.prompt_tokens_details?.cached_tokens
               // - Anthropic: usage.cacheReadInputTokens or usage.cache_read_input_tokens
+              // - Google: providerMetadata.google.usageMetadata.cachedContentTokenCount
               // - OpenRouter: same as underlying provider
               const promptDetails = usage.promptTokensDetails ?? usage.prompt_tokens_details ?? {};
+              const googleUsageMeta = value.providerMetadata?.google?.usageMetadata ?? {};
               const cachedTok =
                 toNum(promptDetails.cachedTokens) ??
                 toNum(promptDetails.cached_tokens) ??
                 toNum(usage.cacheReadInputTokens) ??
                 toNum(usage.cache_read_input_tokens) ??
+                toNum(googleUsageMeta.cachedContentTokenCount) ??
                 toNum(usage.cachedTokens) ??
                 toNum(usage.cached_tokens);
 
@@ -1377,7 +1461,9 @@ export function useChat(chatId: string) {
       }
     } catch (error) {
       // Clear connection timeout on error
-      clearTimeout(connectionTimeoutId);
+      if (connectionTimeoutId) {
+        clearTimeout(connectionTimeoutId);
+      }
 
       // Handle abort gracefully - don't show as error
       if (error instanceof Error && error.name === "AbortError") {
@@ -1703,12 +1789,43 @@ export function useChat(chatId: string) {
     toast.error(errorMessage);
   };
 
-  const cancelRequest = useCallback(() => {
+  const cancelRequest = useCallback(async () => {
     if (abortControllerRef.current) {
+      // IMPORTANT: Capture state snapshot atomically BEFORE any async operations
+      // This prevents race conditions where state could change during the async DB call
+      const snapshot = useStreamingStore.getState();
+      const { streamingContent, streamingMessageId, streamingReasoning, streamingToolCalls } = snapshot;
+
+      // Signal abort immediately
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
       setIsLoading(false);
+
+      // Clear streaming state BEFORE async operations to prevent stale reads
+      // This ensures no other code path can see inconsistent state
       clearStreaming();
+
+      // Save partial content to DB using the captured snapshot (not live state)
+      if (streamingMessageId && streamingContent && streamingContent.trim().length > 0) {
+        try {
+          await updateMessage(streamingMessageId, {
+            content: streamingContent + '\n\n*[Response cancelled by user]*',
+            reasoning: streamingReasoning || undefined,
+            isIncomplete: true,
+            canContinue: true, // Allow continuing from where it stopped
+            // Preserve any tool calls that were in progress
+            toolCalls: streamingToolCalls && streamingToolCalls.length > 0
+              ? streamingToolCalls.map(tc => ({
+                  toolName: tc.toolName,
+                  args: tc.args || tc.input,
+                  result: undefined, // Tool was interrupted
+                }))
+              : undefined,
+          });
+        } catch (error) {
+          console.error('[Cancel] Failed to save partial content:', error);
+        }
+      }
     }
   }, [clearStreaming]);
 

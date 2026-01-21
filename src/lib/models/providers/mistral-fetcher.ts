@@ -23,6 +23,30 @@ const MISTRAL_MODELS = [
     description: "Balanced performance at affordable pricing",
   },
   {
+    id: "mistralai/magistral-medium",
+    name: "Magistral Medium",
+    contextLength: 128000,
+    inputCost: 0.6,
+    outputCost: 1.8,
+    supportsThinking: true,
+    supportsVision: false, // Reasoning-focused model, no vision
+    supportsTools: true, // Supports function calling
+    tier: "balanced",
+    description: "Reasoning model with step-by-step problem solving (June 2025)",
+  },
+  {
+    id: "mistralai/magistral-small",
+    name: "Magistral Small",
+    contextLength: 128000,
+    inputCost: 0.3,
+    outputCost: 0.9,
+    supportsThinking: true,
+    supportsVision: false, // Reasoning-focused model, no vision
+    supportsTools: true, // Supports function calling
+    tier: "budget",
+    description: "Compact reasoning model, 24B parameters, Apache 2.0 license",
+  },
+  {
     id: "mistralai/codestral-latest",
     name: "Codestral",
     contextLength: 32000,

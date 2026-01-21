@@ -13,6 +13,7 @@
 import { streamText, generateText, generateObject, stepCountIs, type ModelMessage } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { normalizeModelIdForProviderId } from "@/lib/ai/provider-routing";
 import { isCustomOpenAIProvider, resolveProvider } from "@/lib/providers";
@@ -134,14 +135,15 @@ export function configurePromptCaching(
   messages: ModelMessage[],
   providerId: string,
   modelId: string,
-  capabilities: ReturnType<typeof getModelCapabilities>
+  capabilities: ReturnType<typeof getModelCapabilities>,
+  options?: { cacheTTL?: '5m' | '1h' }
 ): { messages: ModelMessage[]; providerOptions: Record<string, any> } {
   const providerOptions: Record<string, any> = {};
   const updatedMessages = [...messages];
-  
+
   const systemPrompts = updatedMessages.filter(m => m.role === 'system');
   const systemTokens = getSystemPromptTokens(systemPrompts);
-  
+
   // OpenAI: Explicit prompt caching for supported models with 1024+ token prompts
   // Note: All gpt-4o+ models cache automatically. Only gpt-4o, gpt-4o-mini accept
   // the explicit prompt_cache_retention parameter per Vercel AI SDK v3.0.12.
@@ -157,17 +159,63 @@ export function configurePromptCaching(
     }
     // Else: OpenAI handles caching automatically (no parameter needed)
   }
-  
-  // Anthropic: Direct provider prompt caching
+
+  // Anthropic: Direct provider prompt caching with multiple breakpoints
+  // Breakpoint strategy: Cache tools, system prompt, and recent conversation
+  // IMPORTANT: Anthropic requires minimum 1,024 tokens per cache breakpoint
   else if (providerId === 'anthropic' && capabilities.supportsPromptCaching && systemPrompts.length > 0) {
+    const ANTHROPIC_MIN_CACHE_TOKENS = 1024;
+    const cacheTTL = options?.cacheTTL ?? '5m';
+    const cacheControl = {
+      type: 'ephemeral' as const,
+      ...(cacheTTL !== '5m' && { ttl: cacheTTL })
+    };
+
+    // Helper to check if a message meets minimum token requirement for caching
+    const meetsMinTokens = (msg: ModelMessage): boolean => {
+      const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+      return countTokens(content) >= ANTHROPIC_MIN_CACHE_TOKENS;
+    };
+
+    // Breakpoint 1: Cache tool-related system messages (if present and large enough)
+    // Heuristic: system messages containing tool-related keywords
+    const toolSystemIdx = updatedMessages.findIndex(
+      m => m.role === 'system' &&
+      typeof m.content === 'string' &&
+      (m.content.toLowerCase().includes('tool') ||
+       m.content.toLowerCase().includes('function') ||
+       m.content.toLowerCase().includes('mcp'))
+    );
+
+    if (toolSystemIdx >= 0 && meetsMinTokens(updatedMessages[toolSystemIdx])) {
+      (updatedMessages[toolSystemIdx] as any).providerOptions = {
+        anthropic: { cacheControl }
+      };
+    }
+
+    // Breakpoint 2: Cache last system message (main system prompt) if large enough
     const lastSystemIdx = updatedMessages
       .map((m, i) => m.role === 'system' ? i : -1)
+      .filter(i => i !== -1 && i !== toolSystemIdx) // Exclude already cached
+      .pop();
+
+    if (lastSystemIdx !== undefined && lastSystemIdx >= 0 && meetsMinTokens(updatedMessages[lastSystemIdx])) {
+      (updatedMessages[lastSystemIdx] as any).providerOptions = {
+        anthropic: { cacheControl }
+      };
+    }
+
+    // Breakpoint 3: Cache recent conversation (second-to-last user/assistant pair)
+    // This allows the entire conversation history to be cached for multi-turn chats
+    // Only cache if the message meets minimum token requirement
+    const lastAssistantIdx = updatedMessages
+      .map((m, i) => m.role === 'assistant' ? i : -1)
       .filter(i => i !== -1)
       .pop();
-    
-    if (lastSystemIdx !== undefined && lastSystemIdx >= 0) {
-      (updatedMessages[lastSystemIdx] as any).providerOptions = {
-        anthropic: { cacheControl: { type: 'ephemeral' } }
+
+    if (lastAssistantIdx !== undefined && lastAssistantIdx >= 0 && meetsMinTokens(updatedMessages[lastAssistantIdx])) {
+      (updatedMessages[lastAssistantIdx] as any).providerOptions = {
+        anthropic: { cacheControl }
       };
     }
   }
@@ -227,7 +275,17 @@ export function configurePromptCaching(
     }
     // Note: Groq, DeepSeek, xAI have automatic caching - no explicit config needed
   }
-  
+
+  // Google: Implicit caching for Gemini 2.5+ (automatic, 75-90% discount)
+  // No explicit configuration needed - just ensure system messages are at the beginning
+  // Cache metrics available via providerMetadata.google.usageMetadata.cachedContentTokenCount
+  else if (providerId === 'google') {
+    // Gemini 2.5+ automatically caches prompts >=1024 tokens (2.5 Flash) or >=2048 tokens (2.5 Pro)
+    // No explicit configuration needed - caching happens automatically
+    // Cache savings: 90% on Gemini 2.5 models, 75% on Gemini 2.0 models
+    console.log('[Cache] Google: Using implicit caching (75-90% savings on 2.5+ models)');
+  }
+
   return { messages: updatedMessages, providerOptions };
 }
 
@@ -412,11 +470,19 @@ export function createModel(config: {
 
   const normalizedModelId = normalizeModelIdForProviderId(resolved.id, modelId);
   const isAnthropicProvider = resolved.kind === "anthropic";
+  const isGoogleProvider = resolved.kind === "google-genai";
 
   // Use dedicated Anthropic provider
   if (isAnthropicProvider) {
     const anthropic = createAnthropic({ apiKey });
     return anthropic(normalizedModelId);
+  }
+
+  // Use dedicated Google provider for Gemini models
+  // Supports implicit caching (75-90% discount on Gemini 2.5+)
+  if (isGoogleProvider || providerId === "google") {
+    const google = createGoogleGenerativeAI({ apiKey });
+    return google(normalizedModelId);
   }
 
   // Use stable OpenRouter provider (v1.5.4) which uses Chat Completions API
@@ -811,6 +877,20 @@ export async function executeChatStreaming(
         ...providerOptions.anthropic,
         thinking: { type: 'enabled', budgetTokens }
       };
+
+      // Interleaved thinking (beta): Enable thinking during tool use for Claude 4+ models
+      // Requires beta header for Claude 4 models when using tools
+      const isClaude4 = modelId.toLowerCase().includes('claude-4') || modelId.toLowerCase().includes('claude-opus-4') || modelId.toLowerCase().includes('claude-sonnet-4');
+      const hasTools = Object.keys(tools).length > 0;
+      if (isClaude4 && hasTools) {
+        providerOptions.anthropic = {
+          ...providerOptions.anthropic,
+          headers: {
+            ...providerOptions.anthropic?.headers,
+            'anthropic-beta': 'interleaved-thinking-2025-05-14'
+          }
+        };
+      }
     } else if (providerId === 'openai') {
       // OpenAI o3/o4: reasoningEffort parameter
       const reasoningEffortMap: Record<string, string> = {
@@ -824,35 +904,76 @@ export async function executeChatStreaming(
         reasoningEffort: reasoningEffortMap[reasoningLevel || 'medium'] || 'medium'
       };
     } else if (providerId === 'google') {
-      // Google Gemini: thinkingLevel for Gemini 3 models
-      const thinkingLevelMap: Record<string, string> = {
-        low: 'low',
-        medium: 'medium',
-        high: 'high',
-        xhigh: 'high', // Map xhigh to high (Gemini max)
-      };
-      providerOptions.google = {
-        ...providerOptions.google,
-        thinkingLevel: thinkingLevelMap[reasoningLevel || 'medium'] || 'medium'
-      };
+      // Google Gemini: thinking configuration depends on model version
+      // Gemini 3+: Use thinking_level (low/medium/high/max)
+      // Gemini 2.5: Use thinking_budget (token-based, 0-32768)
+      const isGemini3 = modelId.toLowerCase().includes('gemini-3') || modelId.toLowerCase().includes('gemini-flash-3');
+      const isGemini25 = modelId.toLowerCase().includes('gemini-2.5') || modelId.toLowerCase().includes('gemini-flash-2.5');
+
+      if (isGemini3) {
+        // Gemini 3: Use thinking_level
+        const thinkingLevelMap: Record<string, string> = {
+          low: 'low',
+          medium: 'medium',
+          high: 'high',
+          xhigh: 'max', // Gemini 3 supports 'max' level
+        };
+        providerOptions.google = {
+          ...providerOptions.google,
+          thinkingLevel: thinkingLevelMap[reasoningLevel || 'medium'] || 'medium'
+        };
+      } else if (isGemini25) {
+        // Gemini 2.5: Use thinking_budget (token-based)
+        const budgetTokens = getReasoningBudgetTokens(reasoningLevel);
+        providerOptions.google = {
+          ...providerOptions.google,
+          thinkingBudget: budgetTokens
+        };
+      } else {
+        // Fallback: Use thinking_level for unknown versions
+        const thinkingLevelMap: Record<string, string> = {
+          low: 'low',
+          medium: 'medium',
+          high: 'high',
+          xhigh: 'high',
+        };
+        providerOptions.google = {
+          ...providerOptions.google,
+          thinkingLevel: thinkingLevelMap[reasoningLevel || 'medium'] || 'medium'
+        };
+      }
     } else if (providerId === 'deepseek') {
       // DeepSeek: Enable thinking mode
       providerOptions.deepseek = {
         ...providerOptions.deepseek,
         thinking: { type: 'enabled' }
       };
+    } else if (providerId === 'mistral') {
+      // Mistral Magistral: Reasoning enabled automatically for magistral models
+      // Output format: <think>...</think> tags (older -2506) or tokenized chunks (newer -2507/2509)
+      // No explicit configuration needed - models auto-enable reasoning
+      console.log('[Thinking] Mistral Magistral: Reasoning enabled automatically');
     } else if (providerId === 'xai') {
-      // xAI Grok: Use reasoning level (based on API docs)
-      const reasoningLevelMap: Record<string, string> = {
-        low: 'low',
-        medium: 'medium',
-        high: 'high',
-        xhigh: 'high',
-      };
-      providerOptions.xai = {
-        ...providerOptions.xai,
-        reasoningLevel: reasoningLevelMap[reasoningLevel || 'medium'] || 'medium'
-      };
+      // xAI Grok: reasoning_effort only supported on grok-3-mini
+      // grok-4-fast-reasoning has built-in reasoning (no parameter)
+      // grok-4-fast-non-reasoning has no reasoning capability
+      const isGrok3Mini = modelId.toLowerCase().includes('grok-3-mini');
+
+      if (isGrok3Mini) {
+        // grok-3-mini: Use reasoning_effort (low or high)
+        const reasoningEffortMap: Record<string, string> = {
+          low: 'low',
+          medium: 'high', // Map medium to high (only low/high supported)
+          high: 'high',
+          xhigh: 'high',
+        };
+        providerOptions.xai = {
+          ...providerOptions.xai,
+          reasoningEffort: reasoningEffortMap[reasoningLevel || 'high'] || 'high'
+        };
+      }
+      // For grok-4-fast-reasoning: no parameter needed (built-in)
+      // For grok-4-fast-non-reasoning: model doesn't support thinking
     } else if (providerId === 'openrouter') {
       // OpenRouter: Provider-specific routing based on model ID
       if (modelId.includes('anthropic/')) {
