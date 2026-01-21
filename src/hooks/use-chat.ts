@@ -707,7 +707,10 @@ export function useChat(chatId: string) {
     const modelCaps = getModelCapabilities(modelId);
 
     if (images.length > 0 && !modelCaps.supportsVision) {
-      throw new Error(`Selected model (${modelId}) does not support images.`);
+      throw new Error(
+        `Selected model (${modelId}) does not support images. ` +
+        `Try a vision-capable model like Claude Sonnet 4.5, GPT-5, or Gemini 3 Flash.`
+      );
     }
 
     // Check if this is a pipeline agent
@@ -1455,7 +1458,10 @@ export function useChat(chatId: string) {
         const modelId = chat.modelId;
         const caps = getModelCapabilities(modelId);
         if (!caps.supportsVision) {
-          throw new Error(`Current model (${modelId}) does not support images.`);
+          throw new Error(
+            `Selected model (${modelId}) does not support images. ` +
+            `Try a vision-capable model like Claude Sonnet 4.5, GPT-5, or Gemini 3 Flash.`
+          );
         }
       }
 

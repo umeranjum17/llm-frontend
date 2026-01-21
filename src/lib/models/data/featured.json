@@ -96,11 +96,12 @@
       "outputCost": 10.0,
       "category": [
         "coding",
-        "reasoning"
+        "reasoning",
+        "vision"
       ],
       "tier": "balanced",
       "supportsReasoning": true,
-      "supportsVision": false,
+      "supportsVision": true,
       "supportsPromptCaching": true,
       "supportsExplicitCacheParameter": false,
       "releaseDate": "2025-12",
@@ -407,6 +408,7 @@
       ],
       "tier": "budget",
       "supportsReasoning": false,
+      "supportsVision": false,
       "supportsPromptCaching": true,
       "releaseDate": "2025-12",
       "recommendedFor": [
@@ -430,6 +432,7 @@
       ],
       "tier": "budget",
       "supportsReasoning": true,
+      "supportsVision": false,
       "supportsThinking": true,
       "supportsPromptCaching": true,
       "releaseDate": "2025-12",
@@ -539,9 +542,11 @@
       "outputCost": 15.0,
       "category": [
         "research",
-        "balanced"
+        "balanced",
+        "vision"
       ],
       "tier": "balanced",
+      "supportsVision": true,
       "releaseDate": "2025-01",
       "recommendedFor": [
         "Research",
@@ -559,10 +564,12 @@
       "outputCost": 15.0,
       "category": [
         "balanced",
-        "reasoning"
+        "reasoning",
+        "vision"
       ],
       "tier": "balanced",
       "supportsReasoning": true,
+      "supportsVision": true,
       "releaseDate": "2025-02",
       "recommendedFor": [
         "Real-time info",
@@ -583,6 +590,7 @@
         "fast"
       ],
       "tier": "fast",
+      "supportsVision": false,
       "releaseDate": "2026-01",
       "recommendedFor": [
         "Fast coding",
@@ -606,6 +614,7 @@
       ],
       "tier": "balanced",
       "supportsReasoning": true,
+      "supportsVision": false,
       "releaseDate": "2025-07",
       "recommendedFor": [
         "Tool calling",
@@ -629,6 +638,7 @@
       ],
       "tier": "balanced",
       "supportsReasoning": true,
+      "supportsVision": false,
       "supportsThinking": true,
       "releaseDate": "2025-07",
       "recommendedFor": [
@@ -653,6 +663,7 @@
       ],
       "tier": "balanced",
       "supportsReasoning": true,
+      "supportsVision": false,
       "releaseDate": "2025-03",
       "recommendedFor": [
         "Enterprise tool calling",
@@ -676,7 +687,7 @@
       ],
       "tier": "balanced",
       "supportsReasoning": true,
-      "supportsVision": true,
+      "supportsVision": false,
       "releaseDate": "2025-01",
       "recommendedFor": [
         "Complex reasoning",
@@ -700,6 +711,7 @@
       ],
       "tier": "flagship",
       "supportsReasoning": true,
+      "supportsVision": false,
       "releaseDate": "2025-12",
       "recommendedFor": [
         "Complex reasoning",
@@ -723,6 +735,7 @@
         "open-source"
       ],
       "tier": "fast",
+      "supportsVision": false,
       "releaseDate": "2026-01",
       "recommendedFor": [
         "High-speed tool calling",
@@ -746,6 +759,7 @@
       ],
       "tier": "balanced",
       "supportsReasoning": true,
+      "supportsVision": false,
       "releaseDate": "2025-06",
       "recommendedFor": [
         "Tool calling",
@@ -769,6 +783,7 @@
       ],
       "tier": "flagship",
       "supportsReasoning": true,
+      "supportsVision": false,
       "releaseDate": "2025-11",
       "recommendedFor": [
         "Tool calling",
@@ -790,6 +805,7 @@
       ],
       "tier": "budget",
       "supportsReasoning": true,
+      "supportsVision": false,
       "supportsThinking": true,
       "releaseDate": "2025-01",
       "recommendedFor": [
@@ -811,6 +827,7 @@
         "cheap"
       ],
       "tier": "budget",
+      "supportsVision": false,
       "releaseDate": "2025-03",
       "recommendedFor": [
         "Code generation",
@@ -832,6 +849,7 @@
       ],
       "tier": "budget",
       "supportsReasoning": true,
+      "supportsVision": false,
       "releaseDate": "2024-09",
       "recommendedFor": [
         "Fast tasks",
@@ -854,6 +872,7 @@
       ],
       "tier": "budget",
       "supportsReasoning": true,
+      "supportsVision": false,
       "releaseDate": "2025-06",
       "recommendedFor": [
         "Agentic tasks",
@@ -874,6 +893,7 @@
         "agents"
       ],
       "tier": "balanced",
+      "supportsVision": false,
       "releaseDate": "2025-07",
       "recommendedFor": [
         "Code generation",
@@ -1173,6 +1193,7 @@
         "coding"
       ],
       "tier": "budget",
+      "supportsVision": false,
       "releaseDate": "2025-06",
       "recommendedFor": [
         "General tasks",
@@ -1193,6 +1214,7 @@
         "fast"
       ],
       "tier": "fast",
+      "supportsVision": false,
       "releaseDate": "2024-05",
       "recommendedFor": [
         "Code generation",

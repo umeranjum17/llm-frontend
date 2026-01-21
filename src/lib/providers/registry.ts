@@ -35,7 +35,7 @@ export const PROVIDERS: ProviderConfig[] = [
     baseUrl: "https://api.groq.com/openai/v1",
     apiKeyRequired: true,
     priority: 30,
-    features: { streaming: true, vision: false, tools: true, reasoning: false },
+    features: { streaming: true, vision: true, tools: true, reasoning: false },
   },
   {
     id: "together",
@@ -53,7 +53,7 @@ export const PROVIDERS: ProviderConfig[] = [
     baseUrl: "https://api.perplexity.ai",
     apiKeyRequired: true,
     priority: 35,
-    features: { streaming: true, vision: false, tools: false, reasoning: false },
+    features: { streaming: true, vision: true, tools: false, reasoning: false },
   },
   {
     id: "anyscale",
@@ -79,7 +79,7 @@ export const PROVIDERS: ProviderConfig[] = [
     baseUrl: "https://api.deepseek.com",
     apiKeyRequired: true,
     priority: 15,
-    features: { streaming: true, vision: false, tools: true, reasoning: true },
+    features: { streaming: true, vision: true, tools: true, reasoning: true },
   },
   {
     id: "mistral",
@@ -97,7 +97,7 @@ export const PROVIDERS: ProviderConfig[] = [
     baseUrl: "https://api.x.ai/v1",
     apiKeyRequired: true,
     priority: 25,
-    features: { streaming: true, vision: false, tools: true, reasoning: true },
+    features: { streaming: true, vision: true, tools: true, reasoning: true },
   },
 ];
 
