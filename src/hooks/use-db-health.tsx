@@ -116,6 +116,7 @@ export function useDBHealth() {
   });
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isValidatingConnectionRef = useRef(false);
+  const retryCountRef = useRef(0);
   const maxRetries = 3;
   const setDbInitializing = useLoadingStore((state) => state.setDbInitializing);
 
@@ -212,12 +213,13 @@ export function useDBHealth() {
           ? {
               label: "Retry",
               onClick: () => {
+                retryCountRef.current += 1;
                 setState((prev) => ({
                   ...prev,
                   isHealthy: true,
                   isChecking: true,
                   error: null,
-                  retryCount: prev.retryCount + 1,
+                  retryCount: retryCountRef.current,
                 }));
               },
             }
@@ -235,7 +237,7 @@ export function useDBHealth() {
     let isMounted = true;
 
     const checkDBHealth = async () => {
-      const currentRetryCount = state.retryCount;
+      const currentRetryCount = retryCountRef.current;
 
       // Exponential backoff for retries
       if (currentRetryCount > 0 && currentRetryCount <= maxRetries) {
@@ -338,11 +340,12 @@ export function useDBHealth() {
         }
 
         if (isMounted) {
+          retryCountRef.current = 0; // Reset on success
           setState({
             isHealthy: true,
             isChecking: false,
             error: null,
-            retryCount: 0, // Reset on success
+            retryCount: 0,
           });
           setDbInitializing(false);
         }
@@ -400,7 +403,7 @@ export function useDBHealth() {
         clearTimeout(retryTimeoutRef.current);
       }
     };
-  }, [handleRecovery, state.retryCount, setDbInitializing]);
+  }, [handleRecovery, setDbInitializing]);
 
   // Focus-based DB connection validation to handle multi-tab scenarios
   useEffect(() => {

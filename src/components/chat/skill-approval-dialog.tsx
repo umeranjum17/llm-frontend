@@ -15,14 +15,22 @@ function getIconComponent(iconName: string): React.ComponentType<{ className?: s
 }
 
 export function SkillApprovalDialog() {
-  const { chatStreams, approveSkill, rejectSkill } = useStreamingStore();
+  const { approveSkill, rejectSkill } = useStreamingStore();
+
+  // Defensive: handle state structure mismatch from cached files
+  // Use nullish coalescing outside selector to avoid creating new objects on each render
+  const chatStreams = useStreamingStore((state) => state.chatStreams) ?? {};
 
   // Find which chat has a pending skill approval
   const pendingApprovalInfo = useMemo(() => {
-    for (const [chatId, stream] of Object.entries(chatStreams)) {
-      if (stream.pendingSkillApproval) {
-        return { chatId, pendingSkillApproval: stream.pendingSkillApproval };
+    try {
+      for (const [chatId, stream] of Object.entries(chatStreams)) {
+        if (stream?.pendingSkillApproval) {
+          return { chatId, pendingSkillApproval: stream.pendingSkillApproval };
+        }
       }
+    } catch {
+      return null;
     }
     return null;
   }, [chatStreams]);

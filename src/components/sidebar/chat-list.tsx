@@ -50,6 +50,9 @@ interface ChatListProps {
   currentProjectId?: string;
 }
 
+// Stable empty array to avoid creating new references in selectors
+const EMPTY_STREAMING_IDS: string[] = [];
+
 type ListItem = { type: "folder"; folder: FolderType } | { type: "chat"; chat: Chat };
 
 export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatListProps) {
@@ -59,7 +62,15 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
   const isSplitView = useUIStore((state) => state.isSplitView);
 
   // Get streaming chat IDs for the Active section
-  const streamingChatIds = useStreamingStore((state) => state.getStreamingChatIds());
+  // Defensive: handle state structure mismatch from cached files
+  // Use stable empty array to avoid creating new references on each render
+  const streamingChatIds = useStreamingStore((state) => {
+    try {
+      return state.getStreamingChatIds?.() ?? EMPTY_STREAMING_IDS;
+    } catch {
+      return EMPTY_STREAMING_IDS;
+    }
+  });
   const [isActiveExpanded, setIsActiveExpanded] = useState(true);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
