@@ -555,6 +555,7 @@ export function useChat(chatId: string) {
     setPendingSkillApproval,
     setImageGenerationProgress,
     clearImageGenerationProgress,
+    getChatStream,
   } = useStreamingStore();
   const extractionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const dbUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -739,14 +740,14 @@ export function useChat(chatId: string) {
           parentUserMessageId,
           abortControllerRef.current.signal,
           {
-            startPipeline,
-            setStepRunning,
-            setStepComplete,
-            setStepError,
-            setStepRetrying,
-            completePipeline,
-            failPipeline,
-            clearPipeline,
+            startPipeline: (steps) => startPipeline(chatId, steps),
+            setStepRunning: (stepIndex, input) => setStepRunning(chatId, stepIndex, input),
+            setStepComplete: (stepIndex, output, toolCalls) => setStepComplete(chatId, stepIndex, output, toolCalls),
+            setStepError: (stepIndex, error) => setStepError(chatId, stepIndex, error),
+            setStepRetrying: (stepIndex, retryCount, maxRetries, error) => setStepRetrying(chatId, stepIndex, retryCount, maxRetries, error),
+            completePipeline: (finalResult) => completePipeline(chatId, finalResult),
+            failPipeline: (error) => failPipeline(chatId, error),
+            clearPipeline: () => clearPipeline(chatId),
           },
           mcpServers
         );
@@ -755,13 +756,13 @@ export function useChat(chatId: string) {
           clearTimeout(pipelineClearTimeoutRef.current);
         }
         pipelineClearTimeoutRef.current = setTimeout(() => {
-          clearPipeline();
+          clearPipeline(chatId);
           pipelineClearTimeoutRef.current = null;
         }, 1000);
         return;
       } catch (error) {
         // Clear pipeline state immediately on error
-        clearPipeline();
+        clearPipeline(chatId);
         throw error;
       } finally {
         abortControllerRef.current = null;
@@ -785,17 +786,17 @@ export function useChat(chatId: string) {
           parentUserMessageId,
           abortControllerRef.current.signal,
           agent?.systemPrompt, // Pass agent's system prompt for prompt optimization
-          (stage, messageId) => setImageGenerationProgress(messageId, stage)
+          (stage, messageId) => setImageGenerationProgress(chatId, messageId, stage)
         );
       } finally {
         abortControllerRef.current = null;
-        clearImageGenerationProgress();
+        clearImageGenerationProgress(chatId);
       }
     }
 
     // Set active skill in streaming store if provided (for UI indicator)
     if (activeSkill) {
-      setActiveSkill({
+      setActiveSkill(chatId, {
         id: activeSkill.id,
         name: activeSkill.name,
         icon: activeSkill.ui.icon,
@@ -889,7 +890,7 @@ export function useChat(chatId: string) {
 
     // Set streaming message immediately - this shows the assistant loading state
     // All processing (embedding, memory, etc.) is part of the assistant's response
-    setStreamingMessage(assistantMessage.id);
+    setStreamingMessage(chatId, assistantMessage.id);
 
     // Create abort controller for this request
     abortControllerRef.current = new AbortController();
@@ -1140,7 +1141,7 @@ export function useChat(chatId: string) {
               fullContent += textDelta;
 
               // Real-time update: Update streaming store immediately for instant UI feedback
-              appendStreamingContent(textDelta);
+              appendStreamingContent(chatId, textDelta);
 
               // Batch database updates (debounce to reduce write frequency)
               if (dbUpdateTimeoutRef.current) {
@@ -1158,7 +1159,7 @@ export function useChat(chatId: string) {
             const reasoningDelta = parsed.text ?? parsed.delta ?? parsed.textDelta;
             if ((parsed.type === "reasoning" || parsed.type === "reasoning-delta") && typeof reasoningDelta === "string") {
               fullReasoning += reasoningDelta;
-              appendStreamingReasoning(reasoningDelta);
+              appendStreamingReasoning(chatId, reasoningDelta);
             }
 
             if (parsed.type === "tool-call") {
@@ -1173,7 +1174,7 @@ export function useChat(chatId: string) {
                 startTime: now, // Add start time
               });
               // Update streaming store for real-time UI
-              setStreamingToolCalls([...toolCalls]);
+              setStreamingToolCalls(chatId, [...toolCalls]);
               await updateMessage(assistantMessage.id, {
                 toolCalls: [...toolCalls],
               });
@@ -1206,7 +1207,7 @@ export function useChat(chatId: string) {
                 isError: isToolError,
               });
               // Update streaming store for real-time UI
-              setStreamingToolResults([...toolResults]);
+              setStreamingToolResults(chatId, [...toolResults]);
               await updateMessage(assistantMessage.id, {
                 toolResults: [...toolResults],
               });
@@ -1232,7 +1233,7 @@ export function useChat(chatId: string) {
                 if (currentFailures >= 2) {
                   const hintNote = `\n\n💡 *Note: ${parsed.toolName} has failed ${currentFailures} times. The error suggests: "${errorMsg}". Consider using a different approach or tool.*\n\n`;
                   fullContent += hintNote;
-                  appendStreamingContent(hintNote);
+                  appendStreamingContent(chatId, hintNote);
                 }
               }
             }
@@ -1292,14 +1293,14 @@ export function useChat(chatId: string) {
               // Append error to content so user sees it, but don't break the stream
               const errorNote = `\n\n⚠️ *${errorLabel}: ${errorMessage}*${actionHint}\n\n`;
               fullContent += errorNote;
-              appendStreamingContent(errorNote);
+              appendStreamingContent(chatId, errorNote);
             }
 
             // Handle tool-retry-exhausted events (tool failed after retries)
             if (parsed.type === "tool-retry-exhausted") {
               const failureNote = `\n\n⚠️ *${parsed.toolName} failed after ${parsed.failCount} attempts. ${parsed.suggestion || ""}*\n\n`;
               fullContent += failureNote;
-              appendStreamingContent(failureNote);
+              appendStreamingContent(chatId, failureNote);
             }
           } catch (e) {
             // Only log parse errors, don't break the stream
@@ -1498,7 +1499,7 @@ export function useChat(chatId: string) {
         clearTimeout(streamingClearTimeoutRef.current);
       }
       streamingClearTimeoutRef.current = setTimeout(() => {
-        clearStreaming();
+        clearStreaming(chatId);
         streamingClearTimeoutRef.current = null;
       }, 150);
 
@@ -1506,7 +1507,7 @@ export function useChat(chatId: string) {
       // This keeps memories fresh without blocking the current response
       refreshCacheInBackground(userMessageText);
     }
-  }, [chatId, getKeyForProvider, keys, scheduleMemoryExtraction, setStreamingMessage, appendStreamingContent, appendStreamingReasoning, setStreamingToolCalls, setStreamingToolResults, clearStreaming, startPipeline, setStepRunning, setStepComplete, setStepError, completePipeline, failPipeline, clearPipeline, setActiveSkill, setImageGenerationProgress, clearImageGenerationProgress]);
+  }, [chatId, getKeyForProvider, keys, scheduleMemoryExtraction, setStreamingMessage, appendStreamingContent, appendStreamingReasoning, setStreamingToolCalls, setStreamingToolResults, clearStreaming, startPipeline, setStepRunning, setStepComplete, setStepError, setStepRetrying, completePipeline, failPipeline, clearPipeline, setActiveSkill, setImageGenerationProgress, clearImageGenerationProgress, setOptimisticMessage, clearOptimisticMessage, setPendingSkillApproval]);
 
   const sendMessage = async (content: MessageContent, attachments?: Array<{ name: string; content: string }>, selectedSkill?: Skill | null) => {
     setIsLoading(true);
@@ -1562,7 +1563,7 @@ export function useChat(chatId: string) {
       });
 
       // Clear optimistic message immediately - user message is now in DB and will appear via live query
-      clearOptimisticMessage();
+      clearOptimisticMessage(chatId);
 
       // Update chat's updatedAt timestamp
       await updateChat(chatId, { activeBranchLeafId: userMessage.id });
@@ -1607,7 +1608,7 @@ export function useChat(chatId: string) {
                 if (matchResult.skill.requireApproval) {
                   // Show approval dialog and wait for user decision
                   const approved = await new Promise<boolean>((resolve) => {
-                    setPendingSkillApproval({
+                    setPendingSkillApproval(chatId, {
                       skill: {
                         id: matchResult.skill.id,
                         name: matchResult.skill.name,
@@ -1661,9 +1662,9 @@ export function useChat(chatId: string) {
     } catch (err) {
       handleError(err);
       // Ensure all state is cleared on error
-      clearStreaming();
-      clearPipeline();
-      clearOptimisticMessage();
+      clearStreaming(chatId);
+      clearPipeline(chatId);
+      clearOptimisticMessage(chatId);
     } finally {
       setIsLoading(false);
     }
@@ -1696,8 +1697,8 @@ export function useChat(chatId: string) {
 
     } catch (err) {
       handleError(err);
-      clearStreaming();
-      clearPipeline();
+      clearStreaming(chatId);
+      clearPipeline(chatId);
     } finally {
       setIsLoading(false);
     }
@@ -1726,8 +1727,8 @@ export function useChat(chatId: string) {
 
     } catch (err) {
       handleError(err);
-      clearStreaming();
-      clearPipeline();
+      clearStreaming(chatId);
+      clearPipeline(chatId);
     } finally {
       setIsLoading(false);
       setContinuingMessageId(null);
@@ -1754,8 +1755,8 @@ export function useChat(chatId: string) {
       await generateResponse(parentUser.content, undefined, undefined, parentUser.id);
     } catch (err) {
       handleError(err);
-      clearStreaming();
-      clearPipeline();
+      clearStreaming(chatId);
+      clearPipeline(chatId);
     } finally {
       setIsLoading(false);
     }
@@ -1774,8 +1775,8 @@ export function useChat(chatId: string) {
       await generateResponse(userMessage.content, undefined, undefined, userMessageId);
     } catch (err) {
       handleError(err);
-      clearStreaming();
-      clearPipeline();
+      clearStreaming(chatId);
+      clearPipeline(chatId);
     } finally {
       setIsLoading(false);
     }
@@ -1793,8 +1794,8 @@ export function useChat(chatId: string) {
     if (abortControllerRef.current) {
       // IMPORTANT: Capture state snapshot atomically BEFORE any async operations
       // This prevents race conditions where state could change during the async DB call
-      const snapshot = useStreamingStore.getState();
-      const { streamingContent, streamingMessageId, streamingReasoning, streamingToolCalls } = snapshot;
+      const chatState = getChatStream(chatId);
+      const { streamingContent, streamingMessageId, streamingReasoning, streamingToolCalls } = chatState;
 
       // Signal abort immediately
       abortControllerRef.current.abort();
@@ -1803,7 +1804,7 @@ export function useChat(chatId: string) {
 
       // Clear streaming state BEFORE async operations to prevent stale reads
       // This ensures no other code path can see inconsistent state
-      clearStreaming();
+      clearStreaming(chatId);
 
       // Save partial content to DB using the captured snapshot (not live state)
       if (streamingMessageId && streamingContent && streamingContent.trim().length > 0) {
@@ -1827,7 +1828,7 @@ export function useChat(chatId: string) {
         }
       }
     }
-  }, [clearStreaming]);
+  }, [chatId, getChatStream, clearStreaming]);
 
   return {
     sendMessage,

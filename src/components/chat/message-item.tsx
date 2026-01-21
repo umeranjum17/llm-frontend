@@ -878,9 +878,10 @@ export const MessageItem = memo(function MessageItem({
   const { speak, stop, isPlaying } = useVoiceOutput();
   const { setActiveArtifact, setShowArtifacts } = useUIStore();
 
-  // Get streaming state for real-time updates
+  // Get streaming state for THIS chat for real-time updates
   // Include streamingVersion to ensure re-renders on each content update
-  const { streamingMessageId, streamingContent, streamingReasoning, streamingToolCalls, streamingToolResults, streamingVersion, pipelineExecution, activeSkill, imageGenerationProgress } = useStreamingStore();
+  const chatStreamingState = useStreamingStore((state) => state.getChatStream(message.chatId));
+  const { streamingMessageId, streamingContent, streamingReasoning, streamingToolCalls, streamingToolResults, streamingVersion, pipelineExecution, activeSkill, imageGenerationProgress } = chatStreamingState;
   const isStreaming = message.id === streamingMessageId;
   const isImageGenerating = imageGenerationProgress?.messageId === message.id && imageGenerationProgress?.isActive;
 

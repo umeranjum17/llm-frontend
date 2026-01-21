@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLiveQueryWithTimeout } from "@/hooks/use-live-query-with-timeout";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { MessageSquare, Pin, Star, Trash2, Folder, ChevronDown, ChevronRight, FolderPlus, MoreVertical, Edit2, RefreshCw } from "lucide-react";
+import { MessageSquare, Pin, Star, Trash2, Folder, ChevronDown, ChevronRight, FolderPlus, MoreVertical, Edit2, RefreshCw, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getAllChatsCached, deleteChat, updateChat, getAllFolders, createFolder, moveChatToFolder, updateFolder, deleteFolder, getLastMessagesForChats, getAllTags, db } from "@/lib/db/queries";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { useUIStore } from "@/stores/ui-store";
+import { useStreamingStore } from "@/stores/streaming-store";
 import { useChatSearch } from "@/hooks/use-search";
 import { useLongPress } from "@/hooks/use-long-press";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,10 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
   const setActiveChatId = useUIStore((state) => state.setActiveChatId);
   const secondaryChatId = useUIStore((state) => state.secondaryChatId);
   const isSplitView = useUIStore((state) => state.isSplitView);
+
+  // Get streaming chat IDs for the Active section
+  const streamingChatIds = useStreamingStore((state) => state.getStreamingChatIds());
+  const [isActiveExpanded, setIsActiveExpanded] = useState(true);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [editingFolder, setEditingFolder] = useState<FolderType | null>(null);
@@ -138,6 +143,21 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
     if (!currentProjectId) return allChats;
     return allChats.filter((chat: Chat) => chat.projectId === currentProjectId);
   }, [allChats, currentProjectId]);
+
+  // Compute active chats: streaming chats + currently viewed chats (deduped)
+  const activeChats = useMemo(() => {
+    if (!allChats) return [];
+    const activeChatIdSet = new Set<string>(streamingChatIds);
+    if (activeChatId) activeChatIdSet.add(activeChatId);
+    if (secondaryChatId && isSplitView) activeChatIdSet.add(secondaryChatId);
+
+    // Filter to only chats that exist and match current project
+    return allChats.filter((chat: Chat) => {
+      if (!activeChatIdSet.has(chat.id)) return false;
+      if (currentProjectId && chat.projectId !== currentProjectId) return false;
+      return true;
+    });
+  }, [allChats, streamingChatIds, activeChatId, secondaryChatId, isSplitView, currentProjectId]);
 
   const filteredFolders = useMemo(() => {
     if (!folders) return undefined;
@@ -552,6 +572,62 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
             tags={tags || []}
           />
         )}
+
+        {/* Active Section - shows streaming and currently viewed chats */}
+        {activeChats.length > 0 && !searchQuery && (
+          <div className="border-b border-border/50 mb-1">
+            <button
+              onClick={() => setIsActiveExpanded(!isActiveExpanded)}
+              className="w-full px-4 py-1.5 flex items-center gap-1.5 text-[10px] font-medium text-primary/80 hover:text-primary transition-colors"
+            >
+              {isActiveExpanded ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+              <Zap className="h-3 w-3" />
+              <span>Active</span>
+              <span className="text-muted-foreground ml-auto">{activeChats.length}</span>
+            </button>
+            <AnimatePresence initial={false}>
+              {isActiveExpanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className="pb-2">
+                    {activeChats.map((chat) => {
+                      const isStreaming = streamingChatIds.includes(chat.id);
+                      const chatIndex = chatIndexById.get(chat.id) ?? 0;
+                      return (
+                        <ChatItem
+                          key={`active-${chat.id}`}
+                          chat={chat}
+                          lastMessage={lastMessagesMap.get(chat.id)}
+                          isActive={chat.id === activeChatId}
+                          isSecondary={isSplitView && chat.id === secondaryChatId}
+                          isSelected={selectedChats.has(chat.id)}
+                          isNested={false}
+                          isStreaming={isStreaming}
+                          onClick={(e) => handleChatClick(chat.id, chatIndex, e)}
+                          onTogglePin={(e) => handleTogglePin(e, chat)}
+                          onToggleFavorite={(e) => handleToggleFavorite(e, chat)}
+                          onDelete={(e) => handleDelete(e, chat.id)}
+                          folders={folders || []}
+                          onMoveToFolder={(folderId) => moveChatToFolder(chat.id, folderId)}
+                        />
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
+
         <div ref={scrollParentRef} className="flex-1 min-h-0 min-w-0 overflow-y-auto scrollbar-sidebar">
           <div
             className="pb-4 min-w-0"
@@ -612,6 +688,7 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
                     isSecondary={isSplitView && item.chat.id === secondaryChatId}
                     isSelected={selectedChats.has(item.chat.id)}
                     isNested={!!item.chat.folderId}
+                    isStreaming={streamingChatIds.includes(item.chat.id)}
                     onClick={(e) => handleChatClick(item.chat.id, chatIndex, e)}
                     onTogglePin={(e) => handleTogglePin(e, item.chat)}
                     onToggleFavorite={(e) => handleToggleFavorite(e, item.chat)}
@@ -748,6 +825,7 @@ interface SortableChatItemProps {
   isSecondary?: boolean;
   isSelected?: boolean;
   isNested?: boolean;
+  isStreaming?: boolean;
   onClick: (e: React.MouseEvent) => void;
   onTogglePin: (e: React.MouseEvent) => void;
   onToggleFavorite: (e: React.MouseEvent) => void;
@@ -764,6 +842,7 @@ function ChatItem({
   isSecondary = false,
   isSelected = false,
   isNested,
+  isStreaming = false,
   onClick,
   onTogglePin,
   onToggleFavorite,
@@ -846,6 +925,13 @@ function ChatItem({
                   <h3 className="text-xs font-medium truncate flex-1 min-w-0" title={chat.title}>
                     {chat.title}
                   </h3>
+                  {isStreaming && (
+                    <motion.span
+                      className="h-2 w-2 rounded-full bg-primary shrink-0"
+                      animate={{ scale: [1, 1.2, 1], opacity: [1, 0.7, 1] }}
+                      transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+                    />
+                  )}
                 </div>
                 <div className="text-[10px] text-muted-foreground/70 leading-tight truncate">
                   {previewText || `Updated ${formatDistanceToNow(new Date(chat.updatedAt), { addSuffix: true })}`}

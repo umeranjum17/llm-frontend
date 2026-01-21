@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useStreamingStore } from "@/stores/streaming-store";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -14,9 +15,21 @@ function getIconComponent(iconName: string): React.ComponentType<{ className?: s
 }
 
 export function SkillApprovalDialog() {
-  const { pendingSkillApproval, approveSkill, rejectSkill } = useStreamingStore();
+  const { chatStreams, approveSkill, rejectSkill } = useStreamingStore();
 
-  if (!pendingSkillApproval) return null;
+  // Find which chat has a pending skill approval
+  const pendingApprovalInfo = useMemo(() => {
+    for (const [chatId, stream] of Object.entries(chatStreams)) {
+      if (stream.pendingSkillApproval) {
+        return { chatId, pendingSkillApproval: stream.pendingSkillApproval };
+      }
+    }
+    return null;
+  }, [chatStreams]);
+
+  if (!pendingApprovalInfo) return null;
+
+  const { chatId, pendingSkillApproval } = pendingApprovalInfo;
 
   const { skill } = pendingSkillApproval;
   const IconComponent = getIconComponent(skill.icon);
@@ -50,14 +63,14 @@ export function SkillApprovalDialog() {
         <div className="flex gap-3 justify-end">
           <Button
             variant="outline"
-            onClick={rejectSkill}
+            onClick={() => rejectSkill(chatId)}
             className="gap-2"
           >
             <X className="h-4 w-4" />
             No, proceed without
           </Button>
           <Button
-            onClick={approveSkill}
+            onClick={() => approveSkill(chatId)}
             className="gap-2"
           >
             <Check className="h-4 w-4" />

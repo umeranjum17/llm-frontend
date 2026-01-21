@@ -60,68 +60,23 @@ export interface ImageGenerationProgress {
   messageId: string;
 }
 
-interface StreamingState {
-  // The ID of the message currently being streamed
+// Per-chat streaming state
+export interface ChatStreamingState {
   streamingMessageId: string | null;
-  // The current content being streamed (for real-time display)
   streamingContent: string;
-  // The current reasoning/thinking being streamed
   streamingReasoning: string;
-  // Tool calls in progress
   streamingToolCalls: any[];
-  // Tool results received
   streamingToolResults: any[];
-  // Version counter to force re-renders on each update
   streamingVersion: number;
-  // Pipeline execution state
   pipelineExecution: PipelineExecution | null;
-  // Optimistic user message (shown immediately before DB save)
   optimisticMessage: OptimisticMessage | null;
-  // Active skill during generation
   activeSkill: ActiveSkill | null;
-  // Pending skill approval (when requireApproval is true)
   pendingSkillApproval: PendingSkillApproval | null;
-  // Image generation progress
   imageGenerationProgress: ImageGenerationProgress | null;
-
-  // Actions
-  setStreamingMessage: (messageId: string | null) => void;
-  setStreamingContent: (content: string) => void;
-  appendStreamingContent: (delta: string) => void;
-  setStreamingReasoning: (reasoning: string) => void;
-  appendStreamingReasoning: (delta: string) => void;
-  setStreamingToolCalls: (toolCalls: any[]) => void;
-  setStreamingToolResults: (toolResults: any[]) => void;
-  clearStreaming: () => void;
-  // Optimistic message actions
-  setOptimisticMessage: (message: OptimisticMessage | null) => void;
-  clearOptimisticMessage: () => void;
-
-  // Active skill actions
-  setActiveSkill: (skill: ActiveSkill | null) => void;
-  clearActiveSkill: () => void;
-
-  // Pending skill approval actions
-  setPendingSkillApproval: (approval: PendingSkillApproval | null) => void;
-  approveSkill: () => void;
-  rejectSkill: () => void;
-
-  // Image generation progress actions
-  setImageGenerationProgress: (messageId: string, stage: ImageGenerationStage) => void;
-  clearImageGenerationProgress: () => void;
-
-  // Pipeline actions
-  startPipeline: (steps: Array<{ id: string; name: string; type: "llm" | "image" | "tool" | "subagent" }>) => void;
-  setStepRunning: (stepIndex: number, input?: string) => void;
-  setStepComplete: (stepIndex: number, output: any, toolCalls?: PipelineToolCall[]) => void;
-  setStepError: (stepIndex: number, error: string) => void;
-  setStepRetrying: (stepIndex: number, retryCount: number, maxRetries: number, error: string) => void;
-  completePipeline: (finalResult: any) => void;
-  failPipeline: (error: string) => void;
-  clearPipeline: () => void;
 }
 
-export const useStreamingStore = create<StreamingState>((set, get) => ({
+// Default state for a new chat
+const createDefaultChatState = (): ChatStreamingState => ({
   streamingMessageId: null,
   streamingContent: "",
   streamingReasoning: "",
@@ -133,236 +88,392 @@ export const useStreamingStore = create<StreamingState>((set, get) => ({
   activeSkill: null,
   pendingSkillApproval: null,
   imageGenerationProgress: null,
+});
 
-  setStreamingMessage: (messageId) => set({
-    streamingMessageId: messageId,
-    streamingContent: "",
-    streamingReasoning: "",
-    streamingToolCalls: [],
-    streamingToolResults: [],
-    streamingVersion: 0,
-  }),
+interface StreamingState {
+  // Per-chat streaming state map
+  chatStreams: Record<string, ChatStreamingState>;
 
-  setStreamingContent: (content) => set((state) => ({
-    streamingContent: content,
-    streamingVersion: state.streamingVersion + 1,
-  })),
+  // Selectors
+  getChatStream: (chatId: string) => ChatStreamingState;
+  isAnyStreaming: () => boolean;
+  getActiveStreamCount: () => number;
+  getStreamingChatIds: () => string[];
 
-  appendStreamingContent: (delta) => set((state) => ({
-    streamingContent: state.streamingContent + delta,
-    streamingVersion: state.streamingVersion + 1,
-  })),
+  // Actions - all now take chatId as first parameter
+  setStreamingMessage: (chatId: string, messageId: string | null) => void;
+  setStreamingContent: (chatId: string, content: string) => void;
+  appendStreamingContent: (chatId: string, delta: string) => void;
+  setStreamingReasoning: (chatId: string, reasoning: string) => void;
+  appendStreamingReasoning: (chatId: string, delta: string) => void;
+  setStreamingToolCalls: (chatId: string, toolCalls: any[]) => void;
+  setStreamingToolResults: (chatId: string, toolResults: any[]) => void;
+  clearStreaming: (chatId: string) => void;
+  clearAllStreaming: () => void;
 
-  setStreamingReasoning: (reasoning) => set((state) => ({
-    streamingReasoning: reasoning,
-    streamingVersion: state.streamingVersion + 1,
-  })),
-
-  appendStreamingReasoning: (delta) => set((state) => ({
-    streamingReasoning: state.streamingReasoning + delta,
-    streamingVersion: state.streamingVersion + 1,
-  })),
-
-  setStreamingToolCalls: (toolCalls) => set((state) => ({
-    streamingToolCalls: toolCalls,
-    streamingVersion: state.streamingVersion + 1,
-  })),
-
-  setStreamingToolResults: (toolResults) => set((state) => ({
-    streamingToolResults: toolResults,
-    streamingVersion: state.streamingVersion + 1,
-  })),
-
-  clearStreaming: () => set({
-    streamingMessageId: null,
-    streamingContent: "",
-    streamingReasoning: "",
-    streamingToolCalls: [],
-    streamingToolResults: [],
-    streamingVersion: 0,
-    pipelineExecution: null,
-    optimisticMessage: null,
-    activeSkill: null,
-    pendingSkillApproval: null,
-    imageGenerationProgress: null,
-  }),
-
-  setOptimisticMessage: (message) => set((state) => ({
-    optimisticMessage: message,
-    streamingVersion: state.streamingVersion + 1,
-  })),
-
-  clearOptimisticMessage: () => set((state) => ({
-    optimisticMessage: null,
-    streamingVersion: state.streamingVersion + 1,
-  })),
+  // Optimistic message actions
+  setOptimisticMessage: (chatId: string, message: OptimisticMessage | null) => void;
+  clearOptimisticMessage: (chatId: string) => void;
 
   // Active skill actions
-  setActiveSkill: (skill) => set((state) => ({
-    activeSkill: skill,
-    streamingVersion: state.streamingVersion + 1,
-  })),
-
-  clearActiveSkill: () => set((state) => ({
-    activeSkill: null,
-    streamingVersion: state.streamingVersion + 1,
-  })),
+  setActiveSkill: (chatId: string, skill: ActiveSkill | null) => void;
+  clearActiveSkill: (chatId: string) => void;
 
   // Pending skill approval actions
-  setPendingSkillApproval: (approval) => set((state) => ({
-    pendingSkillApproval: approval,
-    streamingVersion: state.streamingVersion + 1,
-  })),
+  setPendingSkillApproval: (chatId: string, approval: PendingSkillApproval | null) => void;
+  approveSkill: (chatId: string) => void;
+  rejectSkill: (chatId: string) => void;
 
-  approveSkill: () => {
-    const { pendingSkillApproval } = get();
-    if (pendingSkillApproval) {
-      pendingSkillApproval.resolve(true);
+  // Image generation progress actions
+  setImageGenerationProgress: (chatId: string, messageId: string, stage: ImageGenerationStage) => void;
+  clearImageGenerationProgress: (chatId: string) => void;
+
+  // Pipeline actions
+  startPipeline: (chatId: string, steps: Array<{ id: string; name: string; type: "llm" | "image" | "tool" | "subagent" }>) => void;
+  setStepRunning: (chatId: string, stepIndex: number, input?: string) => void;
+  setStepComplete: (chatId: string, stepIndex: number, output: any, toolCalls?: PipelineToolCall[]) => void;
+  setStepError: (chatId: string, stepIndex: number, error: string) => void;
+  setStepRetrying: (chatId: string, stepIndex: number, retryCount: number, maxRetries: number, error: string) => void;
+  completePipeline: (chatId: string, finalResult: any) => void;
+  failPipeline: (chatId: string, error: string) => void;
+  clearPipeline: (chatId: string) => void;
+}
+
+// Helper to get or create chat state
+const getOrCreateChatState = (chatStreams: Record<string, ChatStreamingState>, chatId: string): ChatStreamingState => {
+  return chatStreams[chatId] || createDefaultChatState();
+};
+
+// Helper to update a specific chat's state
+const updateChatState = (
+  chatStreams: Record<string, ChatStreamingState>,
+  chatId: string,
+  updates: Partial<ChatStreamingState>
+): Record<string, ChatStreamingState> => {
+  const currentState = getOrCreateChatState(chatStreams, chatId);
+  return {
+    ...chatStreams,
+    [chatId]: {
+      ...currentState,
+      ...updates,
+      streamingVersion: currentState.streamingVersion + 1,
+    },
+  };
+};
+
+export const useStreamingStore = create<StreamingState>((set, get) => ({
+  chatStreams: {},
+
+  // Selectors
+  getChatStream: (chatId: string) => {
+    return getOrCreateChatState(get().chatStreams, chatId);
+  },
+
+  isAnyStreaming: () => {
+    const { chatStreams } = get();
+    return Object.values(chatStreams).some((stream) => stream.streamingMessageId !== null);
+  },
+
+  getActiveStreamCount: () => {
+    const { chatStreams } = get();
+    return Object.values(chatStreams).filter((stream) => stream.streamingMessageId !== null).length;
+  },
+
+  getStreamingChatIds: () => {
+    const { chatStreams } = get();
+    return Object.entries(chatStreams)
+      .filter(([, stream]) => stream.streamingMessageId !== null)
+      .map(([chatId]) => chatId);
+  },
+
+  // Actions
+  setStreamingMessage: (chatId, messageId) =>
+    set((state) => ({
+      chatStreams: updateChatState(state.chatStreams, chatId, {
+        streamingMessageId: messageId,
+        streamingContent: "",
+        streamingReasoning: "",
+        streamingToolCalls: [],
+        streamingToolResults: [],
+        streamingVersion: 0,
+      }),
+    })),
+
+  setStreamingContent: (chatId, content) =>
+    set((state) => ({
+      chatStreams: updateChatState(state.chatStreams, chatId, {
+        streamingContent: content,
+      }),
+    })),
+
+  appendStreamingContent: (chatId, delta) =>
+    set((state) => {
+      const currentState = getOrCreateChatState(state.chatStreams, chatId);
+      return {
+        chatStreams: updateChatState(state.chatStreams, chatId, {
+          streamingContent: currentState.streamingContent + delta,
+        }),
+      };
+    }),
+
+  setStreamingReasoning: (chatId, reasoning) =>
+    set((state) => ({
+      chatStreams: updateChatState(state.chatStreams, chatId, {
+        streamingReasoning: reasoning,
+      }),
+    })),
+
+  appendStreamingReasoning: (chatId, delta) =>
+    set((state) => {
+      const currentState = getOrCreateChatState(state.chatStreams, chatId);
+      return {
+        chatStreams: updateChatState(state.chatStreams, chatId, {
+          streamingReasoning: currentState.streamingReasoning + delta,
+        }),
+      };
+    }),
+
+  setStreamingToolCalls: (chatId, toolCalls) =>
+    set((state) => ({
+      chatStreams: updateChatState(state.chatStreams, chatId, {
+        streamingToolCalls: toolCalls,
+      }),
+    })),
+
+  setStreamingToolResults: (chatId, toolResults) =>
+    set((state) => ({
+      chatStreams: updateChatState(state.chatStreams, chatId, {
+        streamingToolResults: toolResults,
+      }),
+    })),
+
+  clearStreaming: (chatId) =>
+    set((state) => {
+      const { [chatId]: _, ...rest } = state.chatStreams;
+      return { chatStreams: rest };
+    }),
+
+  clearAllStreaming: () => set({ chatStreams: {} }),
+
+  // Optimistic message actions
+  setOptimisticMessage: (chatId, message) =>
+    set((state) => ({
+      chatStreams: updateChatState(state.chatStreams, chatId, {
+        optimisticMessage: message,
+      }),
+    })),
+
+  clearOptimisticMessage: (chatId) =>
+    set((state) => ({
+      chatStreams: updateChatState(state.chatStreams, chatId, {
+        optimisticMessage: null,
+      }),
+    })),
+
+  // Active skill actions
+  setActiveSkill: (chatId, skill) =>
+    set((state) => ({
+      chatStreams: updateChatState(state.chatStreams, chatId, {
+        activeSkill: skill,
+      }),
+    })),
+
+  clearActiveSkill: (chatId) =>
+    set((state) => ({
+      chatStreams: updateChatState(state.chatStreams, chatId, {
+        activeSkill: null,
+      }),
+    })),
+
+  // Pending skill approval actions
+  setPendingSkillApproval: (chatId, approval) =>
+    set((state) => ({
+      chatStreams: updateChatState(state.chatStreams, chatId, {
+        pendingSkillApproval: approval,
+      }),
+    })),
+
+  approveSkill: (chatId) => {
+    const chatState = getOrCreateChatState(get().chatStreams, chatId);
+    if (chatState.pendingSkillApproval) {
+      chatState.pendingSkillApproval.resolve(true);
       set((state) => ({
-        pendingSkillApproval: null,
-        streamingVersion: state.streamingVersion + 1,
+        chatStreams: updateChatState(state.chatStreams, chatId, {
+          pendingSkillApproval: null,
+        }),
       }));
     }
   },
 
-  rejectSkill: () => {
-    const { pendingSkillApproval } = get();
-    if (pendingSkillApproval) {
-      pendingSkillApproval.resolve(false);
+  rejectSkill: (chatId) => {
+    const chatState = getOrCreateChatState(get().chatStreams, chatId);
+    if (chatState.pendingSkillApproval) {
+      chatState.pendingSkillApproval.resolve(false);
       set((state) => ({
-        pendingSkillApproval: null,
-        streamingVersion: state.streamingVersion + 1,
+        chatStreams: updateChatState(state.chatStreams, chatId, {
+          pendingSkillApproval: null,
+        }),
       }));
     }
   },
 
   // Image generation progress actions
-  setImageGenerationProgress: (messageId, stage) => set((state) => ({
-    imageGenerationProgress: {
-      isActive: true,
-      stage,
-      messageId,
-    },
-    streamingVersion: state.streamingVersion + 1,
-  })),
+  setImageGenerationProgress: (chatId, messageId, stage) =>
+    set((state) => ({
+      chatStreams: updateChatState(state.chatStreams, chatId, {
+        imageGenerationProgress: {
+          isActive: true,
+          stage,
+          messageId,
+        },
+      }),
+    })),
 
-  clearImageGenerationProgress: () => set((state) => ({
-    imageGenerationProgress: null,
-    streamingVersion: state.streamingVersion + 1,
-  })),
+  clearImageGenerationProgress: (chatId) =>
+    set((state) => ({
+      chatStreams: updateChatState(state.chatStreams, chatId, {
+        imageGenerationProgress: null,
+      }),
+    })),
 
   // Pipeline actions
-  startPipeline: (steps) => set((state) => ({
-    pipelineExecution: {
-      isActive: true,
-      currentStepIndex: 0,
-      totalSteps: steps.length,
-      steps: steps.map((step) => ({
-        id: step.id,
-        name: step.name,
-        type: step.type,
-        status: "pending" as const,
-      })),
-    },
-    streamingVersion: state.streamingVersion + 1,
-  })),
+  startPipeline: (chatId, steps) =>
+    set((state) => ({
+      chatStreams: updateChatState(state.chatStreams, chatId, {
+        pipelineExecution: {
+          isActive: true,
+          currentStepIndex: 0,
+          totalSteps: steps.length,
+          steps: steps.map((step) => ({
+            id: step.id,
+            name: step.name,
+            type: step.type,
+            status: "pending" as const,
+          })),
+        },
+      }),
+    })),
 
-  setStepRunning: (stepIndex, input) => set((state) => {
-    if (!state.pipelineExecution) return state;
-    const steps = [...state.pipelineExecution.steps];
-    if (steps[stepIndex]) {
-      steps[stepIndex] = { ...steps[stepIndex], status: "running", input };
-    }
-    return {
-      pipelineExecution: {
-        ...state.pipelineExecution,
-        currentStepIndex: stepIndex,
-        steps,
-      },
-      streamingVersion: state.streamingVersion + 1,
-    };
-  }),
-
-  setStepComplete: (stepIndex, output, toolCalls) => set((state) => {
-    if (!state.pipelineExecution) return state;
-    const steps = [...state.pipelineExecution.steps];
-    if (steps[stepIndex]) {
-      steps[stepIndex] = {
-        ...steps[stepIndex],
-        status: "complete",
-        output,
-        ...(toolCalls && toolCalls.length > 0 ? { toolCalls } : {}),
+  setStepRunning: (chatId, stepIndex, input) =>
+    set((state) => {
+      const chatState = getOrCreateChatState(state.chatStreams, chatId);
+      if (!chatState.pipelineExecution) return state;
+      const steps = [...chatState.pipelineExecution.steps];
+      if (steps[stepIndex]) {
+        steps[stepIndex] = { ...steps[stepIndex], status: "running", input };
+      }
+      return {
+        chatStreams: updateChatState(state.chatStreams, chatId, {
+          pipelineExecution: {
+            ...chatState.pipelineExecution,
+            currentStepIndex: stepIndex,
+            steps,
+          },
+        }),
       };
-    }
-    return {
-      pipelineExecution: {
-        ...state.pipelineExecution,
-        steps,
-      },
-      streamingVersion: state.streamingVersion + 1,
-    };
-  }),
+    }),
 
-  setStepError: (stepIndex, error) => set((state) => {
-    if (!state.pipelineExecution) return state;
-    const steps = [...state.pipelineExecution.steps];
-    if (steps[stepIndex]) {
-      steps[stepIndex] = { ...steps[stepIndex], status: "error", error };
-    }
-    return {
-      pipelineExecution: {
-        ...state.pipelineExecution,
-        steps,
-      },
-      streamingVersion: state.streamingVersion + 1,
-    };
-  }),
-
-  setStepRetrying: (stepIndex, retryCount, maxRetries, error) => set((state) => {
-    if (!state.pipelineExecution) return state;
-    const steps = [...state.pipelineExecution.steps];
-    if (steps[stepIndex]) {
-      steps[stepIndex] = {
-        ...steps[stepIndex],
-        status: "retrying",
-        retryCount,
-        maxRetries,
-        error,
+  setStepComplete: (chatId, stepIndex, output, toolCalls) =>
+    set((state) => {
+      const chatState = getOrCreateChatState(state.chatStreams, chatId);
+      if (!chatState.pipelineExecution) return state;
+      const steps = [...chatState.pipelineExecution.steps];
+      if (steps[stepIndex]) {
+        steps[stepIndex] = {
+          ...steps[stepIndex],
+          status: "complete",
+          output,
+          ...(toolCalls && toolCalls.length > 0 ? { toolCalls } : {}),
+        };
+      }
+      return {
+        chatStreams: updateChatState(state.chatStreams, chatId, {
+          pipelineExecution: {
+            ...chatState.pipelineExecution,
+            steps,
+          },
+        }),
       };
-    }
-    return {
-      pipelineExecution: {
-        ...state.pipelineExecution,
-        steps,
-      },
-      streamingVersion: state.streamingVersion + 1,
-    };
-  }),
+    }),
 
-  completePipeline: (finalResult) => set((state) => ({
-    pipelineExecution: state.pipelineExecution
-      ? {
-          ...state.pipelineExecution,
-          isActive: false,
-          finalResult,
-        }
-      : null,
-    streamingVersion: state.streamingVersion + 1,
-  })),
+  setStepError: (chatId, stepIndex, error) =>
+    set((state) => {
+      const chatState = getOrCreateChatState(state.chatStreams, chatId);
+      if (!chatState.pipelineExecution) return state;
+      const steps = [...chatState.pipelineExecution.steps];
+      if (steps[stepIndex]) {
+        steps[stepIndex] = { ...steps[stepIndex], status: "error", error };
+      }
+      return {
+        chatStreams: updateChatState(state.chatStreams, chatId, {
+          pipelineExecution: {
+            ...chatState.pipelineExecution,
+            steps,
+          },
+        }),
+      };
+    }),
 
-  failPipeline: (error) => set((state) => ({
-    pipelineExecution: state.pipelineExecution
-      ? {
-          ...state.pipelineExecution,
-          isActive: false,
+  setStepRetrying: (chatId, stepIndex, retryCount, maxRetries, error) =>
+    set((state) => {
+      const chatState = getOrCreateChatState(state.chatStreams, chatId);
+      if (!chatState.pipelineExecution) return state;
+      const steps = [...chatState.pipelineExecution.steps];
+      if (steps[stepIndex]) {
+        steps[stepIndex] = {
+          ...steps[stepIndex],
+          status: "retrying",
+          retryCount,
+          maxRetries,
           error,
-        }
-      : null,
-    streamingVersion: state.streamingVersion + 1,
-  })),
+        };
+      }
+      return {
+        chatStreams: updateChatState(state.chatStreams, chatId, {
+          pipelineExecution: {
+            ...chatState.pipelineExecution,
+            steps,
+          },
+        }),
+      };
+    }),
 
-  clearPipeline: () => set((state) => ({
-    pipelineExecution: null,
-    streamingVersion: state.streamingVersion + 1,
-  })),
+  completePipeline: (chatId, finalResult) =>
+    set((state) => {
+      const chatState = getOrCreateChatState(state.chatStreams, chatId);
+      return {
+        chatStreams: updateChatState(state.chatStreams, chatId, {
+          pipelineExecution: chatState.pipelineExecution
+            ? {
+                ...chatState.pipelineExecution,
+                isActive: false,
+                finalResult,
+              }
+            : null,
+        }),
+      };
+    }),
+
+  failPipeline: (chatId, error) =>
+    set((state) => {
+      const chatState = getOrCreateChatState(state.chatStreams, chatId);
+      return {
+        chatStreams: updateChatState(state.chatStreams, chatId, {
+          pipelineExecution: chatState.pipelineExecution
+            ? {
+                ...chatState.pipelineExecution,
+                isActive: false,
+                error,
+              }
+            : null,
+        }),
+      };
+    }),
+
+  clearPipeline: (chatId) =>
+    set((state) => ({
+      chatStreams: updateChatState(state.chatStreams, chatId, {
+        pipelineExecution: null,
+      }),
+    })),
 }));

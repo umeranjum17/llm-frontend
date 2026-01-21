@@ -148,7 +148,7 @@ const MessageRow = memo(function MessageRow({
 });
 
 // Component to show pipeline execution progress
-function PipelineProgressIndicator({ execution }: { execution: NonNullable<ReturnType<typeof useStreamingStore.getState>['pipelineExecution']> }) {
+function PipelineProgressIndicator({ execution }: { execution: NonNullable<import("@/stores/streaming-store").ChatStreamingState['pipelineExecution']> }) {
   const currentStep = execution.steps[execution.currentStepIndex];
   const completedSteps = execution.steps.filter(s => s.status === "complete").length;
   const progress = ((completedSteps + 0.5) / execution.totalSteps) * 100;
@@ -226,8 +226,9 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
   const [showNewMessagesButton, setShowNewMessagesButton] = useState(false);
   const previousMessageCount = useRef(0);
 
-  // Get streaming state to pass to MessageRow for proper re-renders
-  const { streamingMessageId, streamingContent, streamingVersion, pipelineExecution } = useStreamingStore();
+  // Get streaming state for THIS chat to pass to MessageRow for proper re-renders
+  const chatStreamingState = useStreamingStore((state) => state.getChatStream(chatId));
+  const { streamingMessageId, streamingContent, streamingVersion, pipelineExecution } = chatStreamingState;
 
   // Use combined query to fetch chat and messages in one transaction
   const { data: chatData, isTimedOut, retry: handleRetry } = useLiveQueryWithTimeout(

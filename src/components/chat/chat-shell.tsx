@@ -67,6 +67,7 @@ import { ArtifactShell } from "@/components/artifacts/artifact-shell";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useModelsStore } from "@/stores/models-store";
+import { useStreamingStore } from "@/stores/streaming-store";
 import { getDefaultChatConfig } from "@/lib/ai/default-chat";
 import { isModelIdCompatibleWithProviderId, pickBestProviderId, providerLabel } from "@/lib/ai/provider-routing";
 import {
@@ -159,6 +160,9 @@ export function ChatShell() {
   const [agentPickerOpen, setAgentPickerOpen] = useState(false);
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
   const [headerExpanded, setHeaderExpanded] = useState(false);
+
+  // Get streaming count for mobile active chats indicator
+  const activeStreamCount = useStreamingStore((state) => state.getActiveStreamCount());
   const [toolWarningDismissed, setToolWarningDismissed] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -582,8 +586,21 @@ export function ChatShell() {
                   </div>
                   <OfflineIndicator className="inline-flex" />
                 </div>
-                {/* Mobile: spacer for centering */}
-                <div className="sm:hidden flex-1" />
+                {/* Mobile: Active chats indicator (opens sidebar) */}
+                <div className="sm:hidden flex-1 flex items-center">
+                  {activeStreamCount > 0 && (
+                    <button
+                      onClick={() => window.dispatchEvent(new CustomEvent("lumina:open-sidebar"))}
+                      className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-primary/10 hover:bg-primary/20 transition-colors text-xs font-medium text-primary"
+                    >
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                      </span>
+                      {activeStreamCount} active
+                    </button>
+                  )}
+                </div>
 
                 {/* Right: Model Selector + Settings (Agent selector hidden on mobile) */}
                 <div className="flex items-center gap-1">
