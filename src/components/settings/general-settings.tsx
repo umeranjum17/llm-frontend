@@ -29,7 +29,7 @@ export function GeneralSettings() {
     updateDefaultChatDefaults,
   } = useSettingsStore();
 
-  const { isInstalled, isIOSSafari, install } = usePWA();
+  const { isInstallable, isInstalled, isIOSSafari, install } = usePWA();
 
   const [defaultProviderId, setDefaultProviderId] = useState(
     savedDefaultProviderId || "openrouter"
@@ -183,13 +183,15 @@ export function GeneralSettings() {
             <Share className="h-4 w-4" />
             <span>Tap the Share button in Safari, then &quot;Add to Home Screen&quot;</span>
           </div>
-        ) : (
+        ) : isInstallable ? (
           <Button
             variant="outline"
             onClick={async () => {
               const success = await install();
               if (success) {
                 toast.success("App installed successfully!");
+              } else {
+                toast.error("Installation cancelled or not available");
               }
             }}
             className="gap-2"
@@ -197,6 +199,10 @@ export function GeneralSettings() {
             <Download className="h-4 w-4" />
             Install App
           </Button>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Installation not available. Open in Chrome or another supported browser to install.
+          </p>
         )}
       </div>
     </div>
