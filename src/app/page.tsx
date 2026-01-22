@@ -34,13 +34,26 @@ export default function Home() {
   useKeyboardShortcuts();
 
   useEffect(() => {
-    // Load settings and API keys on mount
-    if (!settingsLoaded) {
-      loadSettings();
-    }
-    if (!keysLoaded) {
-      loadKeys();
-    }
+    // Initialize device secret first (migrate from localStorage to IndexedDB if needed)
+    // This ensures the encryption key is in IndexedDB before loading encrypted API keys
+    const initAndLoad = async () => {
+      try {
+        const { initializeDeviceSecret } = await import("@/lib/crypto/api-key-crypto");
+        await initializeDeviceSecret();
+      } catch (error) {
+        console.warn("[Page] Error initializing device secret:", error);
+      }
+
+      // Load settings and API keys on mount
+      if (!settingsLoaded) {
+        loadSettings();
+      }
+      if (!keysLoaded) {
+        loadKeys();
+      }
+    };
+
+    initAndLoad();
   }, [loadSettings, loadKeys, settingsLoaded, keysLoaded]);
 
   useEffect(() => {
@@ -84,6 +97,15 @@ export default function Home() {
 
       // Wait briefly for DB health hook to validate/reopen connection
       await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Re-initialize device secret on PWA resume to ensure it's migrated to IndexedDB
+      // This helps prevent "cannot decrypt" errors after PWA backgrounding
+      try {
+        const { initializeDeviceSecret } = await import("@/lib/crypto/api-key-crypto");
+        await initializeDeviceSecret();
+      } catch (error) {
+        console.warn("[Page] Error initializing device secret on resume:", error);
+      }
 
       const activeChatId = useUIStore.getState().activeChatId;
       if (activeChatId) {

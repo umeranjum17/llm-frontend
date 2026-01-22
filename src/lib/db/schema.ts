@@ -2,7 +2,7 @@ import Dexie, { type EntityTable } from "dexie";
 
 // Current schema version - update this when adding new migrations
 // Used by health check to detect migrations and adjust timeouts
-export const DB_SCHEMA_VERSION = 16;
+export const DB_SCHEMA_VERSION = 17;
 
 // Type definitions
 export interface Project {
@@ -50,6 +50,7 @@ export interface Chat {
   hasBranches?: boolean; // Quick indicator for sidebar/UI
   summary?: string; // AI-generated summary of the conversation
   memoryDisabled?: boolean; // Per-chat toggle to disable memory injection
+  incognitoMode?: boolean; // Disables memory, tools, auto-extraction for privacy
 }
 
 export type MessageContentPart =
@@ -451,6 +452,12 @@ export interface ModelAlias {
   updatedAt: number;
 }
 
+export interface DeviceSecret {
+  id: string; // Always 'device_secret'
+  secret: string;
+  createdAt: number;
+}
+
 // Database class
 export class LuminaDB extends Dexie {
   projects!: EntityTable<Project, "id">;
@@ -473,6 +480,7 @@ export class LuminaDB extends Dexie {
   workflows!: EntityTable<Workflow, "id">;
   modelAliases!: EntityTable<ModelAlias, "id">;
   mcpServers!: EntityTable<McpServer, "id">;
+  deviceSecrets!: EntityTable<DeviceSecret, "id">;
 
   constructor() {
     super("LuminaDB");
@@ -800,6 +808,34 @@ export class LuminaDB extends Dexie {
       workflows: "id, name, createdAt, updatedAt",
       modelAliases: "id, alias, updatedAt",
       mcpServers: "id, enabled, createdAt",
+    });
+
+    // Version 17: Add deviceSecrets table for PWA persistence
+    // Stores encryption key in IndexedDB alongside encrypted API keys
+    // to ensure they are evicted together (fixes PWA key decryption issue)
+    this.version(17).stores({
+      projects: "id, name, createdAt, updatedAt",
+      projectFiles: "id, projectId, name, createdAt",
+      chats:
+        "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order, [projectId+updatedAt]",
+      messages: "id, chatId, role, createdAt, parentId, rating, skillId, [chatId+createdAt]",
+      apiKeys: "id, provider, createdAt, baseUrl",
+      settings: "id",
+      modelFavorites: "id, category, pinnedOrder, lastUsed",
+      userMemories: "id, category, source, createdAt, isActive",
+      folders: "id, projectId, name, createdAt, order",
+      tags: "id, name, createdAt, usageCount",
+      tagRules: "id, tagId, enabled, createdAt",
+      parameterPresets: "id, name, createdAt, isDefault",
+      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
+      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
+      skills: "id, name, category, isBuiltIn, isEnabled, isFavorite, usageCount, updatedAt",
+      skillEmbeddings: "skillId, modelId",
+      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
+      workflows: "id, name, createdAt, updatedAt",
+      modelAliases: "id, alias, updatedAt",
+      mcpServers: "id, enabled, createdAt",
+      deviceSecrets: "id",
     });
   }
 }

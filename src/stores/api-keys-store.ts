@@ -42,6 +42,8 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
         const decryptedKeys: ApiKey[] = [];
         const failedDecryptionKeys: string[] = [];
 
+        const keysToDelete: string[] = [];
+
         for (const storedKey of encryptedKeys) {
           try {
             const decryptedKeyValue = await decryptApiKey(storedKey.key);
@@ -60,14 +62,14 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
             const errorObj = error as Error;
             const errorMessage = errorObj?.message || "Unknown error";
 
-            // If it's an encrypted key and decryption failed, mark as unusable
+            // If it's an encrypted key and decryption failed, mark for deletion
             if (isEncryptedKey(storedKey.key)) {
               console.warn(
-                `[API Keys] Decryption failed for ${storedKey.provider}:`,
+                `[API Keys] Decryption failed for ${storedKey.provider}, will delete orphaned key:`,
                 errorMessage
               );
               failedDecryptionKeys.push(storedKey.provider);
-              // Don't include unusable keys - they need to be re-entered
+              keysToDelete.push(storedKey.id);
               continue;
             }
 
@@ -81,11 +83,23 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
           }
         }
 
-        // Show toast if any keys failed decryption
+        // Delete orphaned keys that can't be decrypted
+        if (keysToDelete.length > 0) {
+          console.log(`[API Keys] Cleaning up ${keysToDelete.length} orphaned keys...`);
+          for (const id of keysToDelete) {
+            try {
+              await dbDeleteApiKey(id);
+            } catch (e) {
+              console.warn(`[API Keys] Failed to delete orphaned key ${id}:`, e);
+            }
+          }
+        }
+
+        // Show toast if any keys were cleaned up
         if (failedDecryptionKeys.length > 0) {
-          toast.error("API Keys Need Re-entry", {
-            description: `The following API keys could not be decrypted (likely due to device secret change): ${failedDecryptionKeys.join(", ")}. Please re-enter them in Settings.`,
-            duration: 10000,
+          toast.info("Cleaned Up Orphaned API Keys", {
+            description: `Removed ${failedDecryptionKeys.length} API key(s) that could not be decrypted (device secret changed). Your working keys are unaffected.`,
+            duration: 5000,
           });
         }
 

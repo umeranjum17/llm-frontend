@@ -1,35 +1,92 @@
 /**
  * API Key encryption at rest using Web Crypto API
  * Uses a device-specific key derived from a persistent secret
+ *
+ * The device secret is stored in IndexedDB alongside the encrypted API keys
+ * to ensure they are evicted together in PWA scenarios.
  */
 
+import { db } from "@/lib/db/schema";
+
 const DEVICE_SECRET_KEY = "lumina_device_secret";
+const DEVICE_SECRET_ID = "device_secret";
 const IV_LENGTH = 12;
+
+// Cache the secret in memory to avoid repeated DB reads
+let cachedSecret: string | null = null;
 
 /**
  * Gets or creates a device-specific secret for encryption
- * This secret is stored in localStorage and unique per browser/device
+ * Stores in IndexedDB to ensure it persists with the API keys (fixes PWA issue)
+ * Also syncs to localStorage as a fallback
  */
-function getDeviceSecret(): string {
+async function getDeviceSecret(): Promise<string> {
   if (typeof window === "undefined") {
     throw new Error("API key encryption is only available in browser");
   }
 
-  let secret = localStorage.getItem(DEVICE_SECRET_KEY);
-  if (!secret) {
-    // Generate a new random secret (32 bytes = 256 bits)
-    const randomBytes = crypto.getRandomValues(new Uint8Array(32));
-    secret = arrayToBase64(randomBytes);
-    localStorage.setItem(DEVICE_SECRET_KEY, secret);
+  // Return cached secret if available
+  if (cachedSecret) {
+    return cachedSecret;
   }
-  return secret;
+
+  try {
+    // Try to get from IndexedDB first (primary storage)
+    const record = await db.deviceSecrets.get(DEVICE_SECRET_ID);
+    if (record?.secret) {
+      cachedSecret = record.secret;
+      // Sync to localStorage as backup
+      localStorage.setItem(DEVICE_SECRET_KEY, record.secret);
+      return record.secret;
+    }
+
+    // Check localStorage for migration (existing users)
+    const localStorageSecret = localStorage.getItem(DEVICE_SECRET_KEY);
+    if (localStorageSecret) {
+      // Migrate to IndexedDB
+      await db.deviceSecrets.put({
+        id: DEVICE_SECRET_ID,
+        secret: localStorageSecret,
+        createdAt: Date.now(),
+      });
+      cachedSecret = localStorageSecret;
+      return localStorageSecret;
+    }
+
+    // Generate new secret if none exists
+    const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+    const newSecret = arrayToBase64(randomBytes);
+
+    // Store in both IndexedDB and localStorage
+    await db.deviceSecrets.put({
+      id: DEVICE_SECRET_ID,
+      secret: newSecret,
+      createdAt: Date.now(),
+    });
+    localStorage.setItem(DEVICE_SECRET_KEY, newSecret);
+
+    cachedSecret = newSecret;
+    return newSecret;
+  } catch (error) {
+    // Fallback to localStorage-only if IndexedDB fails
+    console.warn("[API Key Crypto] IndexedDB access failed, using localStorage fallback:", error);
+
+    let secret = localStorage.getItem(DEVICE_SECRET_KEY);
+    if (!secret) {
+      const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+      secret = arrayToBase64(randomBytes);
+      localStorage.setItem(DEVICE_SECRET_KEY, secret);
+    }
+    cachedSecret = secret;
+    return secret;
+  }
 }
 
 /**
  * Derives an AES-GCM key from the device secret
  */
 async function deriveKey(): Promise<CryptoKey> {
-  const secret = getDeviceSecret();
+  const secret = await getDeviceSecret();
   const encoder = new TextEncoder();
 
   const keyMaterial = await crypto.subtle.importKey(
@@ -163,4 +220,12 @@ export async function migrateToEncrypted(plainKey: string): Promise<string> {
     return plainKey; // Already encrypted
   }
   return encryptApiKey(plainKey);
+}
+
+/**
+ * Ensures the device secret is initialized and migrated from localStorage if needed
+ * Call this early in app initialization to ensure the secret is available
+ */
+export async function initializeDeviceSecret(): Promise<void> {
+  await getDeviceSecret();
 }

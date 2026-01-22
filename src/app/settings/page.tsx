@@ -40,8 +40,20 @@ export default function SettingsPage() {
   const { loadSettings, isLoaded: settingsLoaded } = useSettingsStore();
 
   useEffect(() => {
-    if (!settingsLoaded) loadSettings();
-    if (!keysLoaded) loadKeys();
+    const initAndLoad = async () => {
+      // Initialize device secret first (ensures encryption key is in IndexedDB)
+      try {
+        const { initializeDeviceSecret } = await import("@/lib/crypto/api-key-crypto");
+        await initializeDeviceSecret();
+      } catch (error) {
+        console.warn("[Settings] Error initializing device secret:", error);
+      }
+
+      if (!settingsLoaded) loadSettings();
+      if (!keysLoaded) loadKeys();
+    };
+
+    initAndLoad();
   }, [settingsLoaded, keysLoaded, loadSettings, loadKeys]);
 
   useEffect(() => {
