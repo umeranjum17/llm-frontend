@@ -1172,40 +1172,39 @@ export const MessageItem = memo(function MessageItem({
                     >
                       <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 font-medium border-t border-border/30 pt-2">
                       <div className="flex items-center gap-3">
-                        <span>In: <span className="text-muted-foreground">{message.inputTokens?.toLocaleString() || 0}</span></span>
+                        <span className="flex items-center gap-0.5">
+                          In: <span className="text-muted-foreground">{message.inputTokens?.toLocaleString() || 0}</span>
+                          {/* Subtle bolt icon when tokens were served from cache */}
+                          {message.cachedTokens && message.cachedTokens > 0 && (
+                            <span
+                              className="text-amber-500 dark:text-amber-400 ml-0.5 cursor-help"
+                              title={`${((message.cachedTokens / (message.inputTokens || 1)) * 100).toFixed(0)}% cached (${message.cachedTokens.toLocaleString()} tokens)`}
+                            >
+                              ⚡
+                            </span>
+                          )}
+                        </span>
                         <span className="text-border">•</span>
                         <span>Out: <span className="text-muted-foreground">{message.outputTokens?.toLocaleString() || 0}</span></span>
                         {message.thinkingTokens && message.thinkingTokens > 0 && (
                           <>
                             <span className="text-border">•</span>
-                            <span>Think: <span className="text-muted-foreground">{message.thinkingTokens.toLocaleString()}</span></span>
-                          </>
-                        )}
-                        {/* Cache hit percentage: cachedTokens is always a subset of inputTokens
-                            across all providers (OpenAI, Anthropic, Google, DeepSeek).
-                            Formula: (cached / total_input) * 100 = percentage served from cache */}
-                        {message.cachedTokens && message.cachedTokens > 0 && (
-                          <>
-                            <span className="text-border">•</span>
-                            <span className="text-green-600 dark:text-green-400">
-                              Cache: <span className="font-medium">
-                                {((message.cachedTokens / (message.inputTokens || 1)) * 100).toFixed(0)}%
-                              </span>
-                              <span className="text-muted-foreground/50 ml-1 text-[9px]">
-                                ({message.cachedTokens.toLocaleString()})
-                              </span>
+                            <span className="flex items-center gap-0.5">
+                              Think: <span className="text-muted-foreground">{message.thinkingTokens.toLocaleString()}</span>
+                              <span className="text-purple-500 dark:text-purple-400">💭</span>
                             </span>
                           </>
                         )}
-                        <span className="text-border">•</span>
-                        <span className="font-bold opacity-80">Total: <span className="text-muted-foreground">{((message.inputTokens || 0) + (message.outputTokens || 0)).toLocaleString()}</span></span>
                       </div>
                       {typeof message.cost === "number" && (
                         <div className="flex items-center gap-1.5 bg-primary/5 px-1.5 py-0.5 rounded border border-primary/10 text-primary/70">
                           <span>${message.cost.toFixed(4)}</span>
                           {message.cacheSavings && message.cacheSavings > 0 && (
-                            <span className="text-muted-foreground/50 text-[9px]">
-                              (-${message.cacheSavings < 0.001 ? '<0.001' : message.cacheSavings.toFixed(4)})
+                            <span
+                              className="text-green-600 dark:text-green-400 text-[9px] cursor-help"
+                              title={`Saved $${message.cacheSavings < 0.001 ? '<0.001' : message.cacheSavings.toFixed(4)} from cache`}
+                            >
+                              ↓
                             </span>
                           )}
                           {message.costIsEstimated && (
