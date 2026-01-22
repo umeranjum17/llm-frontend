@@ -3,11 +3,11 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { getAllChats, getMessages, updateMessage, updateChat } from "@/lib/db/queries";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { TrendingUp, DollarSign, MessageSquare, BarChart3, Download, PieChart as PieChartIcon, RefreshCw } from "lucide-react";
+import { TrendingUp, DollarSign, MessageSquare, BarChart3, Download, PieChart as PieChartIcon, RefreshCw, Zap } from "lucide-react";
 import { format, subDays, isSameDay } from "date-fns";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { estimateCost } from "@/lib/utils/token-counter";
+import { estimateCost, calculateCacheSavings } from "@/lib/utils/token-counter";
 import { toast } from "sonner";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -30,8 +30,14 @@ export function UsageAnalytics() {
     if (!chats || !allMessages) return null;
 
     const totalCost = chats.reduce((sum, chat) => sum + (chat.totalCost || 0), 0);
+    const totalCacheSavings = chats.reduce((sum, chat) => sum + ((chat as any).totalCacheSavings || 0), 0);
     const totalMessages = allMessages.length;
     const totalChats = chats.length;
+
+    // Calculate cache efficiency
+    const totalInputTokens = allMessages.reduce((sum, msg) => sum + ((msg as any).inputTokens || 0), 0);
+    const totalCachedTokens = allMessages.reduce((sum, msg) => sum + ((msg as any).cachedTokens || 0), 0);
+    const cacheHitRate = totalInputTokens > 0 ? (totalCachedTokens / totalInputTokens) * 100 : 0;
 
     // Cost by model
     const costByModel = new Map<string, number>();
@@ -70,6 +76,9 @@ export function UsageAnalytics() {
 
     return {
       totalCost,
+      totalCacheSavings,
+      totalCachedTokens,
+      cacheHitRate,
       totalMessages,
       totalChats,
       costData,
@@ -89,32 +98,57 @@ export function UsageAnalytics() {
       for (const chat of chats) {
         const chatMessages = allMessages.filter(m => m.chatId === chat.id);
         let chatTotalCost = 0;
+        let chatTotalCacheSavings = 0;
 
         for (const message of chatMessages) {
           // Only recalculate assistant messages that have token counts
-          if (message.role === "assistant" && (message.inputTokens || message.outputTokens)) {
+          if (message.role === "assistant" && ((message as any).inputTokens || (message as any).outputTokens)) {
             const newCost = estimateCost(
-              message.inputTokens || 0,
-              message.outputTokens || 0,
-              message.modelId || chat.modelId,
+              (message as any).inputTokens || 0,
+              (message as any).outputTokens || 0,
+              (message as any).modelId || chat.modelId,
               undefined
             );
 
-            // Update if cost changed
-            if (newCost !== (message.cost || 0)) {
-              await updateMessage(message.id, { cost: newCost, costIsEstimated: true });
+            // Calculate cache savings for messages with cached tokens
+            const cachedTokens = (message as any).cachedTokens || 0;
+            let newCacheSavings = 0;
+            if (cachedTokens > 0) {
+              newCacheSavings = calculateCacheSavings(
+                cachedTokens,
+                (message as any).modelId || chat.modelId,
+                undefined
+              );
+            }
+
+            // Update if cost or cache savings changed
+            const existingCost = (message as any).cost || 0;
+            const existingCacheSavings = (message as any).cacheSavings || 0;
+            if (newCost !== existingCost || newCacheSavings !== existingCacheSavings) {
+              await updateMessage(message.id, {
+                cost: newCost,
+                costIsEstimated: true,
+                cacheSavings: newCacheSavings
+              } as any);
               updatedCount++;
             }
 
             chatTotalCost += newCost;
-          } else if (message.cost) {
-            chatTotalCost += message.cost;
+            chatTotalCacheSavings += newCacheSavings;
+          } else if ((message as any).cost) {
+            chatTotalCost += (message as any).cost;
+            chatTotalCacheSavings += (message as any).cacheSavings || 0;
           }
         }
 
-        // Update chat total cost
-        if (chatTotalCost !== (chat.totalCost || 0)) {
-          await updateChat(chat.id, { totalCost: chatTotalCost });
+        // Update chat total cost and cache savings
+        const existingTotalCost = chat.totalCost || 0;
+        const existingTotalCacheSavings = (chat as any).totalCacheSavings || 0;
+        if (chatTotalCost !== existingTotalCost || chatTotalCacheSavings !== existingTotalCacheSavings) {
+          await updateChat(chat.id, {
+            totalCost: chatTotalCost,
+            totalCacheSavings: chatTotalCacheSavings
+          } as any);
           totalRecalculated++;
         }
       }
@@ -141,6 +175,9 @@ export function UsageAnalytics() {
   const handleExport = () => {
     const data = {
       totalCost: stats.totalCost,
+      totalCacheSavings: stats.totalCacheSavings,
+      totalCachedTokens: stats.totalCachedTokens,
+      cacheHitRate: stats.cacheHitRate,
       totalMessages: stats.totalMessages,
       totalChats: stats.totalChats,
       costData: stats.costData,
@@ -184,7 +221,7 @@ export function UsageAnalytics() {
       </div>
 
       {/* Overview Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-3 px-4 pt-4">
             <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
@@ -196,6 +233,23 @@ export function UsageAnalytics() {
             <div className="text-2xl font-bold">${stats.totalCost.toFixed(4)}</div>
             <p className="text-[10px] text-muted-foreground mt-1">
               Across all conversations
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3 px-4 pt-4">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <Zap className="h-3 w-3" />
+              Cache Savings
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+              ${stats.totalCacheSavings.toFixed(4)}
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              {stats.cacheHitRate.toFixed(1)}% cache hit rate
             </p>
           </CardContent>
         </Card>

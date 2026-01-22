@@ -301,7 +301,23 @@ export async function POST(req: Request) {
           thinking: { type: 'enabled', budgetTokens }
         };
       }
-      // Note: OpenAI o1/o3 models handle reasoning automatically, but we could add temperature/other params here if needed
+      // OpenAI o3/o4: Configure reasoning effort and summary
+      const isOpenAIProvider = resolved.id === 'openai';
+      if (isOpenAIProvider) {
+        const reasoningEffortMap: Record<string, string> = {
+          low: 'low',
+          medium: 'medium',
+          high: 'high',
+          xhigh: 'high', // Map xhigh to high (OpenAI max)
+        };
+        providerOptions.openai = {
+          ...providerOptions.openai,
+          reasoningEffort: reasoningEffortMap[reasoningLevel || 'medium'] || 'medium',
+          // NOTE: reasoningSummary: 'detailed' requires verified OpenAI organization
+          // See: https://platform.openai.com/settings/organization/general
+          // Without it, reasoning happens internally but content isn't streamed
+        };
+      }
     }
 
     // Calculate maxSteps based on model's tool calling tier
@@ -353,6 +369,30 @@ export async function POST(req: Request) {
                 console.log('[Chat] Breaking stream loop due to abort');
                 break;
               }
+
+              // DEBUG: Log non-text-delta events to identify provider-specific formats
+              // Uncomment to debug reasoning streaming for specific providers:
+              // if (part.type !== 'text-delta') {
+              //   console.log(`[Stream Event] type=${part.type}`, JSON.stringify(part).slice(0, 300));
+              // }
+
+              // Normalize reasoning events from various provider formats
+              // Providers may emit reasoning in different formats:
+              // - AI SDK: 'reasoning', 'reasoning-delta', 'reasoning-signature' with text/textDelta/delta
+              // - Provider-specific: May use different property names
+              let transformedPart: any = part;
+              const partType = (part as any).type;
+
+              // Handle reasoning events (type check as string for provider compatibility)
+              if (partType === 'reasoning' || partType === 'reasoning-delta') {
+                // Extract text from various possible properties
+                const text = (part as any).text ?? (part as any).textDelta ?? (part as any).delta;
+                if (typeof text === 'string') {
+                  // Normalize to consistent format expected by use-chat.ts
+                  transformedPart = { type: 'reasoning', text };
+                }
+              }
+
               // Log tool calls and results for debugging
               if (part.type === 'tool-call') {
                 // Check for MULTI_EXECUTE_TOOL with empty/missing input (common failure)
@@ -529,7 +569,7 @@ export async function POST(req: Request) {
               }
 
               controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify(part)}\n\n`)
+                encoder.encode(`data: ${JSON.stringify(transformedPart)}\n\n`)
               );
             }
           } catch (error) {

@@ -23,6 +23,7 @@ import {
   Search,
 } from "lucide-react";
 import { useComposioApps, type ComposioToolkit } from "@/hooks/use-composio-apps";
+import { useSettingsStore } from "@/stores/settings-store";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -146,6 +147,23 @@ export function ComposioAppsSection() {
     resetMcpServers,
   } = useComposioApps();
 
+  // Settings store for master toggle
+  const defaultMcpServerIds = useSettingsStore((s) => s.defaultMcpServerIds) ?? [];
+  const updateDefaultMcpServerIds = useSettingsStore((s) => s.updateDefaultMcpServerIds);
+
+  // Check if Composio is enabled (in default server IDs)
+  const isComposioEnabled = defaultMcpServerIds.includes("composio-consolidated");
+
+  // Handler for master toggle
+  const handleMasterToggle = useCallback(async () => {
+    const newServerIds = isComposioEnabled
+      ? defaultMcpServerIds.filter(id => id !== "composio-consolidated")
+      : [...defaultMcpServerIds, "composio-consolidated"];
+
+    await updateDefaultMcpServerIds(newServerIds);
+    toast.success(isComposioEnabled ? "Composio disabled" : "Composio enabled");
+  }, [isComposioEnabled, defaultMcpServerIds, updateDefaultMcpServerIds]);
+
   const [inputApiKey, setInputApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -250,16 +268,24 @@ export function ComposioAppsSection() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Zap className="h-5 w-5 text-primary" />
-          Composio Tool Router
-          {mcpUrl && (
-            <Badge variant="secondary" className="text-xs ml-2">
-              <CheckCircle2 className="h-3 w-3 mr-1" />
-              Connected
-            </Badge>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Zap className="h-5 w-5 text-primary" />
+            Composio Tools
+            {hasApiKey && (
+              <Badge variant={isComposioEnabled ? "secondary" : "outline"} className="text-xs ml-2">
+                {isComposioEnabled ? "Enabled" : "Disabled"}
+              </Badge>
+            )}
+          </CardTitle>
+          {hasApiKey && (
+            <Switch
+              checked={isComposioEnabled}
+              onCheckedChange={handleMasterToggle}
+              className="scale-90"
+            />
           )}
-        </CardTitle>
+        </div>
         <CardDescription>
           Connect 150+ apps and services through Composio&apos;s unified API
         </CardDescription>

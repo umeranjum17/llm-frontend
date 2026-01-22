@@ -788,11 +788,10 @@ export function InputArea({ chatId }: InputAreaProps) {
     const queuedMsg = messageQueue.find(m => m.id === queuedMsgId);
     if (!queuedMsg) return;
 
-    // Remove from queue
+    // Remove only this message from queue (keep others)
     removeQueuedMessage(chatId, queuedMsgId);
 
-    // Cancel current stream and send
-    clearQueue(chatId);
+    // Cancel current stream and send this message
     cancelRequest();
 
     // Get the skill if any

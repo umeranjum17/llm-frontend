@@ -1509,6 +1509,15 @@ Then call the returned tools using parameters from tool_schemas.
 **Quick Decision:** Can I answer from training? Yes → answer directly. Need recent data or user requested search? → Use tools.
 
 After tool use, synthesize results into natural language.
+
+**Displaying Images:**
+When tool results contain image URLs, display them inline using this format:
+\`[View Image](IMAGE_URL)\`
+
+Example: \`[View Image](https://i.imgur.com/abc123.jpg)\`
+
+This renders images directly in chat. Use for search thumbnails, image results, product images, etc.
+For multiple images, put each on its own line.
 `;
 
     return instructions;
