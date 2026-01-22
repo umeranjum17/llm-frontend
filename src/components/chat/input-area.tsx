@@ -1006,7 +1006,7 @@ export function InputArea({ chatId }: InputAreaProps) {
         </div>
 
         <AnimatePresence mode="wait">
-          {isLoading ? (
+          {streamingMessageId ? (
             <motion.div
               key="stop"
               initial={{ opacity: 0 }}
