@@ -93,8 +93,7 @@ export const PROVIDERS: ProviderConfig[] = [
   {
     id: "xai",
     name: "xAI",
-    kind: "openai-compatible",
-    baseUrl: "https://api.x.ai/v1",
+    kind: "xai",  // Dedicated @ai-sdk/xai provider - no baseUrl needed
     apiKeyRequired: true,
     priority: 25,
     features: { streaming: true, vision: true, tools: true, reasoning: true },
