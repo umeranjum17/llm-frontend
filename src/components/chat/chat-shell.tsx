@@ -110,6 +110,7 @@ export function ChatShell() {
     setSkillEditorOpen,
     agentEditorOpen,
     setAgentEditorOpen,
+    draftChatConfig,
   } = useUIStore(
     useShallow((state) => ({
       activeChatId: state.activeChatId,
@@ -130,6 +131,7 @@ export function ChatShell() {
       setSkillEditorOpen: state.setSkillEditorOpen,
       agentEditorOpen: state.agentEditorOpen,
       setAgentEditorOpen: state.setAgentEditorOpen,
+      draftChatConfig: state.draftChatConfig,
     }))
   );
 
@@ -174,15 +176,36 @@ export function ChatShell() {
     { timeoutMs: 5000 }
   );
   const chatData = chatDataQuery.data;
-  const chat = chatData?.chat;
+  const chatFromDb = chatData?.chat;
   const currentAgent = chatData?.agent;
+
+  // Draft mode: no activeChatId but draftChatConfig exists
+  const isDraftMode = !activeChatId && draftChatConfig !== null;
+
+  // Create virtual chat for draft mode or use DB chat
+  const chat = isDraftMode && draftChatConfig ? {
+    id: "draft",
+    title: "New Chat",
+    modelId: draftChatConfig.modelId,
+    providerId: draftChatConfig.providerId,
+    projectId: draftChatConfig.projectId || "",
+    activeMcpServerIds: draftChatConfig.activeMcpServerIds || [],
+    reasoningLevel: draftChatConfig.reasoningLevel || "medium",
+    temperature: draftChatConfig.temperature,
+    maxTokens: draftChatConfig.maxTokens,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  } as any : chatFromDb;
 
   const messagesQuery = useLiveQueryWithTimeout(
     () => (activeChatId ? getMessages(activeChatId) : undefined),
     [activeChatId],
     { timeoutMs: 5000, defaultValue: [] }
   );
-  const messages = messagesQuery.data;
+  const messagesFromDb = messagesQuery.data;
+
+  // In draft mode, there are no messages yet
+  const messages = isDraftMode ? [] : messagesFromDb;
 
   // Map messages to match ai SDK Message type (createdAt as Date)
   const aiMessages = useMemo(() => {
@@ -194,7 +217,7 @@ export function ChatShell() {
   }, [messages]);
 
   // Welcome mode: no messages yet, show centered welcome screen
-  const isWelcomeMode = activeChatId && messages && messages.length === 0;
+  const isWelcomeMode = (activeChatId || isDraftMode) && messages && messages.length === 0;
 
   // Handle suggestion chip click - populate input and focus
   const handleSuggestionClick = useCallback((prompt: string) => {
@@ -403,7 +426,13 @@ export function ChatShell() {
   }, [toolCallingWarning, activeChatId, toolWarningDismissed]);
 
   const handleModelChange = async (modelId: string) => {
-    if (activeChatId) {
+    if (isDraftMode && draftChatConfig) {
+      // Update draft config instead of DB
+      useUIStore.getState().setDraftChatConfig({
+        ...draftChatConfig,
+        modelId,
+      });
+    } else if (activeChatId) {
       const updates: { modelId: string; providerId?: string } = { modelId };
 
       // If the chat is pinned to an incompatible provider, switch to a compatible one.
@@ -422,7 +451,18 @@ export function ChatShell() {
   };
 
   const handleQuickModelChange = async (modelId: string) => {
-    if (!activeChatId || chat?.modelId === modelId) return;
+    if (chat?.modelId === modelId) return;
+
+    if (isDraftMode && draftChatConfig) {
+      // Update draft config instead of DB
+      useUIStore.getState().setDraftChatConfig({
+        ...draftChatConfig,
+        modelId,
+      });
+      return;
+    }
+
+    if (!activeChatId) return;
     await updateModelLastUsed(modelId);
 
     const updates: { modelId: string; providerId?: string } = { modelId };
@@ -546,7 +586,7 @@ export function ChatShell() {
     );
   }
 
-  if (!activeChatId) {
+  if (!activeChatId && !isDraftMode) {
     return (
       <EmptyState
         icon={MessageSquare}
@@ -919,10 +959,10 @@ export function ChatShell() {
                   )}
 
                   {/* Tool toggle - visible on all screen sizes */}
-                  <ToolQuickToggle chatId={activeChatId} />
+                  <ToolQuickToggle chatId={activeChatId || undefined} />
 
                   <ChatSettingsPopover
-                    chatId={activeChatId}
+                    chatId={activeChatId || undefined}
                     onOpenAgentPicker={() => setAgentPickerOpen(true)}
                     onOpenBudgetDialog={() => setBudgetDialogOpen(true)}
                     isArenaMode={isArenaMode}
@@ -1092,7 +1132,7 @@ export function ChatShell() {
 
       {/* Budget Settings Dialog */}
       <BudgetSettingsDialog
-        chatId={activeChatId}
+        chatId={activeChatId || undefined}
         open={budgetDialogOpen}
         onOpenChange={setBudgetDialogOpen}
       />

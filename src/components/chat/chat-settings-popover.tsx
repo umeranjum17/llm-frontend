@@ -30,7 +30,7 @@ const REASONING_LEVELS: { value: ReasoningLevel; label: string }[] = [
 
 
 interface ChatSettingsPopoverProps {
-  chatId: string;
+  chatId: string | undefined;
   onOpenAgentPicker: () => void;
   onOpenBudgetDialog: () => void;
   isArenaMode: boolean;
@@ -44,13 +44,13 @@ export function ChatSettingsPopover({
   isArenaMode,
   onToggleArena,
 }: ChatSettingsPopoverProps) {
-  const chat = useLiveQuery(() => getChatById(chatId), [chatId]);
+  const chat = useLiveQuery(() => chatId ? getChatById(chatId) : undefined, [chatId]);
   const currentAgent = useLiveQuery(
     () => (chat?.agentId ? getAgentById(chat.agentId) : undefined),
     [chat?.agentId]
   );
   const settings = useLiveQuery(() => getSettings());
-  const messages = useLiveQuery(() => getMessages(chatId), [chatId]);
+  const messages = useLiveQuery(() => chatId ? getMessages(chatId) : undefined, [chatId]);
   const mem0ApiKey = useLiveQuery(() => db.apiKeys.get("mem0"), []);
 
   const hasMem0ApiKey = !!mem0ApiKey?.key;
@@ -83,19 +83,25 @@ export function ChatSettingsPopover({
   const handleTemperatureChange = async (value: number[]) => {
     const newTemp = value[0];
     setLocalTemperature(newTemp);
-    await updateChat(chatId, { temperature: newTemp });
+    if (chatId) {
+      await updateChat(chatId, { temperature: newTemp });
+    }
   };
 
   const handleMaxTokensChange = async (value: number[]) => {
     const newMax = value[0];
     setLocalMaxTokens(newMax);
-    await updateChat(chatId, { maxTokens: newMax });
+    if (chatId) {
+      await updateChat(chatId, { maxTokens: newMax });
+    }
   };
 
   const toggleIncognito = async () => {
     const newStatus = !incognitoMode;
-    await updateChat(chatId, { incognitoMode: newStatus });
-    toast.success(newStatus ? "Incognito mode enabled - Memory & tools disabled" : "Incognito mode disabled");
+    if (chatId) {
+      await updateChat(chatId, { incognitoMode: newStatus });
+      toast.success(newStatus ? "Incognito mode enabled - Memory & tools disabled" : "Incognito mode disabled");
+    }
   };
 
   const toggleMemory = async () => {
@@ -105,7 +111,9 @@ export function ChatSettingsPopover({
   };
 
   const setReasoningLevel = async (level: ReasoningLevel) => {
-    await updateChat(chatId, { reasoningLevel: level });
+    if (chatId) {
+      await updateChat(chatId, { reasoningLevel: level });
+    }
   };
 
   const handleSetAsDefault = async () => {

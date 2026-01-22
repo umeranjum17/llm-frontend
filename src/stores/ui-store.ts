@@ -12,6 +12,17 @@ export interface Artifact {
   entry?: string; // e.g. '/App.tsx'
 }
 
+export interface DraftChatConfig {
+  modelId: string;
+  providerId?: string;
+  agentId?: string;
+  activeMcpServerIds?: string[];
+  reasoningLevel?: string;
+  temperature?: number;
+  maxTokens?: number;
+  projectId?: string;
+}
+
 interface UIState {
   sidebarCollapsed: boolean;
   activeChatId: string | null;
@@ -33,6 +44,7 @@ interface UIState {
   agentEditorOpen: boolean;
   agentEditorPrefilledData: Partial<Agent> | null;
   agentEditorTargetId: string | null; // ID of agent to edit (for edit flows)
+  draftChatConfig: DraftChatConfig | null; // Config for draft chat (when activeChatId is null)
 
   // Actions
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -57,6 +69,8 @@ interface UIState {
   setAgentEditorOpen: (open: boolean) => void;
   openAgentEditorWithData: (data: Partial<Agent>, targetId?: string | null) => void;
   clearAgentEditorData: () => void;
+  setDraftChatConfig: (config: DraftChatConfig | null) => void;
+  clearDraftChatConfig: () => void;
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
@@ -80,6 +94,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   agentEditorOpen: false,
   agentEditorPrefilledData: null,
   agentEditorTargetId: null,
+  draftChatConfig: null,
 
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   setActiveChatId: (chatId) => set({ activeChatId: chatId }),
@@ -149,4 +164,6 @@ export const useUIStore = create<UIState>((set, get) => ({
     });
   },
   clearAgentEditorData: () => set({ agentEditorPrefilledData: null, agentEditorTargetId: null }),
+  setDraftChatConfig: (config) => set({ draftChatConfig: config }),
+  clearDraftChatConfig: () => set({ draftChatConfig: null }),
 }));

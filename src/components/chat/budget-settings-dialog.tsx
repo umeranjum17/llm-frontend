@@ -21,7 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 interface BudgetSettingsDialogProps {
-  chatId: string;
+  chatId: string | undefined;
   children?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -38,8 +38,8 @@ export function BudgetSettingsDialog({
   const setOpen = onOpenChange ?? setInternalOpen;
   const [budgetInput, setBudgetInput] = useState("");
 
-  const chat = useLiveQuery(() => getChatById(chatId), [chatId]);
-  const messages = useLiveQuery(() => getMessages(chatId), [chatId]);
+  const chat = useLiveQuery(() => chatId ? getChatById(chatId) : undefined, [chatId]);
+  const messages = useLiveQuery(() => chatId ? getMessages(chatId) : undefined, [chatId]);
 
   const currentBudget = chat?.budgetCap;
   const currentCost = chat?.totalCost || 0;
@@ -50,7 +50,7 @@ export function BudgetSettingsDialog({
 
   const handleSetBudget = async () => {
     const budget = parseFloat(budgetInput);
-    if (!isNaN(budget) && budget > 0) {
+    if (!isNaN(budget) && budget > 0 && chatId) {
       await updateChat(chatId, { budgetCap: budget });
       setOpen(false);
       setBudgetInput("");
@@ -58,8 +58,10 @@ export function BudgetSettingsDialog({
   };
 
   const handleRemoveBudget = async () => {
-    await updateChat(chatId, { budgetCap: undefined });
-    setOpen(false);
+    if (chatId) {
+      await updateChat(chatId, { budgetCap: undefined });
+      setOpen(false);
+    }
   };
 
   const percentUsed = currentBudget

@@ -156,7 +156,7 @@ export default function Home() {
   useEffect(() => {
     const handleNewChat = async () => {
       try {
-        // Ensure settings are loaded before creating chat (needed for defaultMcpServerIds on mobile)
+        // Ensure settings are loaded before setting up draft (needed for defaultMcpServerIds on mobile)
         const state = useSettingsStore.getState();
         if (!state.isLoaded) {
           await state.loadSettings();
@@ -170,8 +170,8 @@ export default function Home() {
           defaultModelIdsByProvider,
         });
 
-        const newChat = await createChat({
-          title: "New Chat",
+        // Set draft mode - don't create chat yet
+        useUIStore.getState().setDraftChatConfig({
           modelId,
           providerId: providerId || undefined,
           projectId: currentProjectId,
@@ -180,16 +180,15 @@ export default function Home() {
           temperature: defaultTemperature,
           maxTokens: defaultMaxTokens,
         });
+        useUIStore.getState().setActiveChatId(null);
 
-        useUIStore.getState().setActiveChatId(newChat.id);
-        
-        // Dispatch event to focus input after chat is created
+        // Dispatch event to focus input
         setTimeout(() => {
-          window.dispatchEvent(new CustomEvent("lumina:chat-created", { detail: { chatId: newChat.id } }));
+          window.dispatchEvent(new CustomEvent("lumina:chat-created", { detail: { chatId: null } }));
         }, 100);
       } catch (error) {
-        console.error("Failed to create new chat:", error);
-        toast.error("Failed to create new chat. Please try again.");
+        console.error("Failed to set up new chat:", error);
+        toast.error("Failed to set up new chat. Please try again.");
       }
     };
 

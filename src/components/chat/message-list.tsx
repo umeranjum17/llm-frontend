@@ -18,7 +18,7 @@ import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { cn } from "@/lib/utils";
 
 interface MessageListProps {
-  chatId: string;
+  chatId: string | null;
   arenaModelId?: string; // Optional filter for Arena Mode
   onSendMessage?: (content: string) => void;
 }
@@ -227,12 +227,12 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
   const previousMessageCount = useRef(0);
 
   // Get streaming state for THIS chat to pass to MessageRow for proper re-renders
-  const chatStreamingState = useStreamingStore((state) => state.getChatStream(chatId));
-  const { streamingMessageId, streamingContent, streamingVersion, pipelineExecution } = chatStreamingState;
+  const chatStreamingState = useStreamingStore((state) => chatId ? state.getChatStream(chatId) : null);
+  const { streamingMessageId, streamingContent, streamingVersion, pipelineExecution } = chatStreamingState || {};
 
   // Use combined query to fetch chat and messages in one transaction
   const { data: chatData, isTimedOut, retry: handleRetry } = useLiveQueryWithTimeout(
-    () => getChatWithMessages(chatId),
+    () => chatId ? getChatWithMessages(chatId) : undefined,
     [chatId],
     { timeoutMs: 5000 }
   );
@@ -247,7 +247,7 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
   }, [allMessages]);
 
   const { suggestions, isLoading: suggestionsLoading, setSuggestions } = useSuggestedResponses(
-    chatId,
+    chatId || undefined,
     allMessages || [],
     !arenaModelId // Suggestions only in normal mode for now
   );
@@ -302,6 +302,11 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
 
     if (!hasNewMessages) return;
 
+    // Don't auto-scroll during streaming - let user read at their own pace
+    if (streamingMessageId) {
+      return;
+    }
+
     if (isAtBottom) {
       // User is at bottom, auto-scroll
       virtuosoRef.current?.scrollToIndex({
@@ -312,7 +317,7 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
       // User has scrolled up, show "new messages" button
       setShowNewMessagesButton(true);
     }
-  }, [messageCount, isAtBottom]);
+  }, [messageCount, isAtBottom, streamingMessageId]);
 
 
   const scrollToBottom = useCallback(() => {
@@ -335,7 +340,9 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
     const nextIndex = (currentIndex + direction + siblings.length) % siblings.length;
     const siblingId = siblings[nextIndex].id;
     const newLeaf = getLatestLeafFrom(siblingId, childrenByParent);
-    await updateChat(chatId, { activeBranchLeafId: newLeaf, hasBranches: true });
+    if (chatId) {
+      await updateChat(chatId, { activeBranchLeafId: newLeaf, hasBranches: true });
+    }
   }, [allMessages, chatId, childrenByParent]);
 
   const handleFork = useCallback(async (messageId: string) => {
@@ -345,10 +352,12 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
 
     // Update chat to point to this message as the active leaf
     // This effectively creates a new branch from this point
-    await updateChat(chatId, {
-      activeBranchLeafId: messageId,
-      hasBranches: true
-    });
+    if (chatId) {
+      await updateChat(chatId, {
+        activeBranchLeafId: messageId,
+        hasBranches: true
+      });
+    }
   }, [chatId, byId]);
 
   const handleAtBottomChange = useCallback((atBottom: boolean) => {
