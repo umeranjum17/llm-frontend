@@ -347,6 +347,24 @@ export const useStreamingStore = create<StreamingState>((set, get) => {
 
   clearStreaming: (chatId) =>
     set((state) => {
+      const currentState = getOrCreateChatState(state.chatStreams, chatId);
+      // Preserve the message queue when clearing streaming state
+      // This allows queued messages to be processed after streaming completes
+      if (currentState.messageQueue.length > 0) {
+        return {
+          chatStreams: updateChatState(state.chatStreams, chatId, {
+            streamingMessageId: null,
+            streamingContent: "",
+            streamingReasoning: "",
+            streamingToolCalls: [],
+            streamingToolResults: [],
+            streamingVersion: 0,
+            activeSkill: null,
+            // Keep messageQueue intact
+          }),
+        };
+      }
+      // No queue - safe to remove the entire chat state
       const { [chatId]: _, ...rest } = state.chatStreams;
       return { chatStreams: rest };
     }),
