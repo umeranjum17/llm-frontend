@@ -91,7 +91,14 @@ function getConfig(): ComposioConfig | null {
   const stored = localStorage.getItem(STORAGE_KEY);
   if (!stored) return null;
   try {
-    return JSON.parse(stored);
+    const parsed = JSON.parse(stored);
+    // Ensure required fields exist (handle malformed imports)
+    if (!parsed.apiKey) return null;
+    return {
+      apiKey: parsed.apiKey,
+      userId: parsed.userId || "default",
+      enabledToolkits: Array.isArray(parsed.enabledToolkits) ? parsed.enabledToolkits : [],
+    };
   } catch {
     return null;
   }

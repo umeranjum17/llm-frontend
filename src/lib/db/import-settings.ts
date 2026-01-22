@@ -408,6 +408,25 @@ export async function importSettings(
       }
     }
 
+    // Import Composio Config (stored in localStorage)
+    if (opts.importApiKeys && exportData.data.composioConfig?.apiKey) {
+      try {
+        if (typeof window !== "undefined") {
+          const existingConfig = localStorage.getItem("composio_config");
+          if (opts.mode === "overwrite" || opts.mode === "merge" || !existingConfig) {
+            // Save full config structure (hook expects userId and enabledToolkits)
+            localStorage.setItem("composio_config", JSON.stringify({
+              apiKey: exportData.data.composioConfig.apiKey,
+              userId: "default",
+              enabledToolkits: [],
+            }));
+          }
+        }
+      } catch (e) {
+        result.errors.push("Failed to import Composio config");
+      }
+    }
+
     if (result.errors.length > 0) {
       result.success = false;
     }
