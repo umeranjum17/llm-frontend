@@ -141,6 +141,10 @@ export function McpStep({ onComplete, onBack, onSkip }: McpStepProps) {
                                     setComposioKey(e.target.value);
                                     setIsSaved(false);
                                 }}
+                                autoComplete="off"
+                                data-1p-ignore
+                                data-lpignore="true"
+                                data-form-type="other"
                                 className={cn(
                                     "h-10 pr-10",
                                     isSaved && "border-green-500"

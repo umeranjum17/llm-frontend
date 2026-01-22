@@ -498,6 +498,8 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
         return null;
     }
 
+    const hasAnyServers = totalCount > 0;
+
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
@@ -506,9 +508,11 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
                     size="icon"
                     className={cn(
                         "h-8 w-8 relative",
-                        totalTools > 0 && "text-primary"
+                        totalTools > 0 && "text-primary",
+                        !hasAnyServers && "opacity-50 cursor-not-allowed"
                     )}
-                    title="MCP Tools"
+                    title={hasAnyServers ? "MCP Tools" : "No MCP servers configured"}
+                    disabled={!hasAnyServers}
                 >
                     {totalTools > 0 ? (
                         <PlugZap className="h-4 w-4" />

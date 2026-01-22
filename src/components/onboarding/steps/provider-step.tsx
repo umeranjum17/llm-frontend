@@ -124,6 +124,10 @@ export function ProviderStep({ onComplete, onBack }: ProviderStepProps) {
                                     setApiKey(e.target.value);
                                     setValidationResult(null);
                                 }}
+                                autoComplete="off"
+                                data-1p-ignore
+                                data-lpignore="true"
+                                data-form-type="other"
                                 className={cn(
                                     "h-11 pr-10",
                                     validationResult === "success" && "border-green-500 focus-visible:ring-green-500",

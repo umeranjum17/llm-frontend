@@ -623,12 +623,18 @@ export async function loadMcpTools(
 
 /**
  * Build tool instruction messages based on loaded tools.
+ * When no tools are available, returns empty array to avoid injecting unnecessary prompts.
  */
 export function buildToolInstructions(
   metadata: ToolMetadata[],
   toolCallingTier: ToolCallingTier,
   hasTools: boolean
 ): ModelMessage[] {
+  // Don't inject anything if no tools available
+  if (!hasTools && metadata.length === 0) {
+    return [];
+  }
+
   const mcpManager = McpManager.getInstance();
   const instructions: ModelMessage[] = [];
 
@@ -637,11 +643,6 @@ export function buildToolInstructions(
     instructions.push({
       role: "system",
       content: dynamicInstructions,
-    });
-  } else if (!hasTools) {
-    instructions.push({
-      role: "system",
-      content: "You do not have access to external tools, web search, or real-time data. Answer questions based on your training knowledge. If asked to search online, check news, or access external services, politely explain that you cannot do that in this mode and offer to help with what you know.",
     });
   }
 

@@ -585,6 +585,10 @@ export function useChat(chatId: string) {
     // Debounce: wait 20 seconds after last assistant response
     extractionTimeoutRef.current = setTimeout(async () => {
       try {
+        // Check if chat is in incognito mode - skip extraction if so
+        const chat = await getChatById(chatId);
+        if (chat?.incognitoMode) return;
+
         const settings = await getSettings();
         const autoExtract = settings?.memoryAutoExtract ?? true; // Default to true
         if (!settings?.memoryEnabled || !autoExtract) return;
@@ -609,8 +613,10 @@ export function useChat(chatId: string) {
     const handlePageHide = () => {
       if (extractionTimeoutRef.current) {
         clearTimeout(extractionTimeoutRef.current);
-        // Flush immediately
-        getMessages(chatId).then(async (messages) => {
+        // Flush immediately (unless incognito)
+        getChatById(chatId).then(async (chat) => {
+          if (chat?.incognitoMode) return; // Skip extraction in incognito mode
+          const messages = await getMessages(chatId);
           const settings = await getSettings();
           const autoExtract = settings?.memoryAutoExtract ?? true;
           if (settings?.memoryEnabled && autoExtract && messages.length >= 2) {
@@ -841,7 +847,7 @@ export function useChat(chatId: string) {
     const contextMessages = await buildContextMessages(
       getTextFromMessageContent(messageContent),
       chatId,
-      { memoryDisabled: chat.memoryDisabled, skill: activeSkill }
+      { memoryDisabled: chat.memoryDisabled, incognitoMode: chat.incognitoMode, skill: activeSkill }
     );
 
     // === Context Window Management ===
@@ -934,6 +940,12 @@ export function useChat(chatId: string) {
         }, timeoutMs);
 
         // Call API route for streaming
+        // In incognito mode, don't pass any tools
+        const mcpServersForRequest = chat.incognitoMode
+          ? []
+          : await getActiveMcpServersForChat(chat.activeMcpServerIds);
+        const enabledToolsForRequest = chat.incognitoMode ? [] : enabledTools;
+
         response = await fetch("/api/chat", {
           method: "POST",
           headers: {
@@ -945,8 +957,8 @@ export function useChat(chatId: string) {
             providerBaseUrl: apiKey?.baseUrl,
             modelId,
             messages: llmMessages,
-            enabledTools,
-            mcpServers: await getActiveMcpServersForChat(chat.activeMcpServerIds),
+            enabledTools: enabledToolsForRequest,
+            mcpServers: mcpServersForRequest,
             reasoningLevel: chat.reasoningLevel, // Pass reasoning level to backend
           }),
           signal: abortControllerRef.current.signal,

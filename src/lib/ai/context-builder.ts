@@ -145,6 +145,8 @@ export async function buildContextMessages(
     ragLimit?: number;
     /** Per-chat memory disable flag (overrides global setting) */
     memoryDisabled?: boolean;
+    /** Incognito mode - disables memory, tools, auto-extraction */
+    incognitoMode?: boolean;
     /** Active skill to inject systemPrompt from */
     skill?: Skill | null;
   }
@@ -291,7 +293,8 @@ export async function buildContextMessages(
   // 6. Memory context (searched per message - dynamic)
   const globalMemoryEnabled = settings?.memoryEnabled ?? true;
   const perChatMemoryDisabled = options?.memoryDisabled ?? false;
-  const memoryEnabled = globalMemoryEnabled && !perChatMemoryDisabled;
+  const isIncognito = options?.incognitoMode ?? false;
+  const memoryEnabled = globalMemoryEnabled && !perChatMemoryDisabled && !isIncognito;
 
   if (memoryEnabled) {
     try {

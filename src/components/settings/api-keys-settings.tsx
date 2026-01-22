@@ -356,6 +356,10 @@ export function ApiKeysSettings() {
               placeholder={apiKeyOptional ? "(optional)" : "sk-..."}
               value={newKey}
               onChange={(e) => setNewKey(e.target.value)}
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
             />
           </div>
 

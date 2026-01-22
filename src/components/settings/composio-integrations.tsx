@@ -333,6 +333,10 @@ export function ComposioIntegrations() {
                                     onChange={(e) =>
                                         setNewConnection({ ...newConnection, apiKey: e.target.value })
                                     }
+                                    autoComplete="off"
+                                    data-1p-ignore
+                                    data-lpignore="true"
+                                    data-form-type="other"
                                 />
                             </div>
                         </div>
@@ -452,6 +456,10 @@ export function ComposioIntegrations() {
                                             onChange={(e) =>
                                                 handleUpdateApiKey(connection.id, e.target.value)
                                             }
+                                            autoComplete="off"
+                                            data-1p-ignore
+                                            data-lpignore="true"
+                                            data-form-type="other"
                                             className="h-8 text-xs bg-muted/30"
                                         />
                                     </div>

@@ -105,6 +105,10 @@ export function MemoryStep({ onComplete, onBack, onSkip }: MemoryStepProps) {
                                     placeholder="m0-..."
                                     value={mem0ApiKey}
                                     onChange={(e) => setMem0ApiKey(e.target.value)}
+                                    autoComplete="off"
+                                    data-1p-ignore
+                                    data-lpignore="true"
+                                    data-form-type="other"
                                     className="h-10"
                                 />
                                 <p className="text-xs text-muted-foreground">

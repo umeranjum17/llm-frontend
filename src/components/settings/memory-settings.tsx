@@ -140,6 +140,10 @@ export function MemorySettings() {
                                         type="password"
                                         value={apiKeys?.find(k => k.provider === "mem0")?.key || ""}
                                         placeholder="m0-xxxxxxxxxxxxxxxxxxxxxxxx"
+                                        autoComplete="off"
+                                        data-1p-ignore
+                                        data-lpignore="true"
+                                        data-form-type="other"
                                         onChange={async (e) => {
                                             const key = e.target.value;
                                             if (key) {

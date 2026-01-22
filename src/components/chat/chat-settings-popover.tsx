@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { SlidersHorizontal, Bot, Brain, DollarSign, Swords, Thermometer, Hash } from "lucide-react";
+import { SlidersHorizontal, Bot, Brain, DollarSign, Swords, Thermometer, Hash, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -15,6 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import { getAgentById, getSettings, updateSettings, updateChat, getChatById, getMessages } from "@/lib/db/queries";
+import { db } from "@/lib/db/schema";
 import { toast } from "sonner";
 import { useSettingsStore } from "@/stores/settings-store";
 
@@ -50,8 +51,11 @@ export function ChatSettingsPopover({
   );
   const settings = useLiveQuery(() => getSettings());
   const messages = useLiveQuery(() => getMessages(chatId), [chatId]);
+  const mem0ApiKey = useLiveQuery(() => db.apiKeys.get("mem0"), []);
 
-  const memoryEnabled = settings?.memoryEnabled !== false;
+  const hasMem0ApiKey = !!mem0ApiKey?.key;
+  const incognitoMode = chat?.incognitoMode ?? false;
+  const memoryEnabled = settings?.memoryEnabled !== false && hasMem0ApiKey;
   const reasoningLevel = chat?.reasoningLevel || "medium";
   const defaultTemperature = settings?.defaultTemperature ?? 1;
   const defaultMaxTokens = settings?.defaultMaxTokens ?? 4096;
@@ -89,9 +93,15 @@ export function ChatSettingsPopover({
   };
 
   const toggleMemory = async () => {
-    const newStatus = !memoryEnabled;
+    const newStatus = !(settings?.memoryEnabled !== false);
     await updateSettings({ memoryEnabled: newStatus });
     toast.success(newStatus ? "Memory enabled" : "Memory disabled");
+  };
+
+  const toggleIncognito = async () => {
+    const newStatus = !incognitoMode;
+    await updateChat(chatId, { incognitoMode: newStatus });
+    toast.success(newStatus ? "Incognito mode enabled" : "Incognito mode disabled");
   };
 
   const setReasoningLevel = async (level: ReasoningLevel) => {
@@ -186,13 +196,28 @@ export function ChatSettingsPopover({
 
         <DropdownMenuSeparator />
 
+        {/* Incognito Mode */}
+        <div className="flex items-center justify-between px-2 py-1.5">
+          <div className="flex items-center gap-2">
+            <EyeOff className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm">Incognito</span>
+          </div>
+          <Switch checked={incognitoMode} onCheckedChange={toggleIncognito} className="scale-90" />
+        </div>
+
         {/* Memory Toggle */}
         <div className="flex items-center justify-between px-2 py-1.5">
           <div className="flex items-center gap-2">
-            <Brain className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm">Memory</span>
+            <Brain className={cn("h-4 w-4", (!hasMem0ApiKey || incognitoMode) ? "text-muted-foreground/50" : "text-muted-foreground")} />
+            <span className={cn("text-sm", (!hasMem0ApiKey || incognitoMode) && "text-muted-foreground/50")}>Memory</span>
+            {!hasMem0ApiKey && <span className="text-[10px] text-muted-foreground/50">(No key)</span>}
           </div>
-          <Switch checked={memoryEnabled} onCheckedChange={toggleMemory} className="scale-90" />
+          <Switch
+            checked={memoryEnabled && !incognitoMode}
+            onCheckedChange={toggleMemory}
+            className="scale-90"
+            disabled={!hasMem0ApiKey || incognitoMode}
+          />
         </div>
 
         {/* Arena Mode */}
