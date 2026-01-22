@@ -1009,9 +1009,8 @@ export function InputArea({ chatId }: InputAreaProps) {
             onFocus={() => setInputFocused(true)}
             onBlur={() => setInputFocused(false)}
             placeholder={inputFocused ? "@ for agents & skills, # for chats" : "Message Lumina..."}
-            className="w-full resize-none bg-transparent px-2 py-2 pr-10 text-sm leading-6 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 min-h-10 max-h-[200px] disabled:opacity-60"
+            className="w-full resize-none bg-transparent px-2 py-2 pr-10 text-sm leading-6 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 min-h-10 max-h-[200px]"
             rows={1}
-            disabled={isLoading}
           />
 
           {(imageAttachments.length > 0 || attachments.length > 0 || codeSnippets.length > 0) && (
