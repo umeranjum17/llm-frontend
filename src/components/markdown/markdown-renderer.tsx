@@ -113,23 +113,35 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
               : String(rawChildren || "")
             ).replace(/\n$/, "");
 
-            // Handle mermaid diagrams
+            // Handle mermaid diagrams - only render after streaming completes to avoid parse errors
             if (language === "mermaid") {
+              if (isStreaming) {
+                return <CodeBlock language={language} code={code} filename={null} isStreaming={isStreaming} />;
+              }
               return <MermaidDiagram code={code} />;
             }
 
-            // Handle chart/graph data (JSON-based charts)
+            // Handle chart/graph data (JSON-based charts) - only render after streaming completes
             if (language === "chart" || language === "graph") {
+              if (isStreaming) {
+                return <CodeBlock language={language} code={code} filename={null} isStreaming={isStreaming} />;
+              }
               return <ChartRenderer code={code} />;
             }
 
-            // Handle skill definitions
+            // Handle skill definitions - only render after streaming completes to avoid JSON parse errors
             if (language === "skill") {
+              if (isStreaming) {
+                return <CodeBlock language="json" code={code} filename={null} isStreaming={isStreaming} />;
+              }
               return <SkillDefinitionBlock code={code} />;
             }
 
-            // Handle agent definitions
+            // Handle agent definitions - only render after streaming completes
             if (language === "agent") {
+              if (isStreaming) {
+                return <CodeBlock language="json" code={code} filename={null} isStreaming={isStreaming} />;
+              }
               return <AgentDefinitionBlock code={code} />;
             }
 
