@@ -162,8 +162,11 @@ interface StreamingState {
   // Message queue actions
   enqueueMessage: (chatId: string, message: Omit<QueuedMessage, 'id'>) => void;
   dequeueMessage: (chatId: string) => QueuedMessage | null;
+  removeQueuedMessage: (chatId: string, messageId: string) => void;
+  moveQueuedMessageUp: (chatId: string, messageId: string) => void;
   clearQueue: (chatId: string) => void;
   getQueue: (chatId: string) => QueuedMessage[];
+  getQueuedMessageById: (chatId: string, messageId: string) => QueuedMessage | null;
 
   // Pipeline actions
   startPipeline: (chatId: string, steps: Array<{ id: string; name: string; type: "llm" | "image" | "tool" | "subagent" }>) => void;
@@ -459,6 +462,32 @@ export const useStreamingStore = create<StreamingState>((set, get) => {
     return first;
   },
 
+  removeQueuedMessage: (chatId, messageId) =>
+    set((state) => {
+      const currentState = getOrCreateChatState(state.chatStreams, chatId);
+      return {
+        chatStreams: updateChatState(state.chatStreams, chatId, {
+          messageQueue: currentState.messageQueue.filter((m) => m.id !== messageId),
+        }),
+      };
+    }),
+
+  moveQueuedMessageUp: (chatId, messageId) =>
+    set((state) => {
+      const currentState = getOrCreateChatState(state.chatStreams, chatId);
+      const queue = [...currentState.messageQueue];
+      const index = queue.findIndex((m) => m.id === messageId);
+      if (index > 0) {
+        // Swap with previous item
+        [queue[index - 1], queue[index]] = [queue[index], queue[index - 1]];
+      }
+      return {
+        chatStreams: updateChatState(state.chatStreams, chatId, {
+          messageQueue: queue,
+        }),
+      };
+    }),
+
   clearQueue: (chatId) =>
     set((state) => ({
       chatStreams: updateChatState(state.chatStreams, chatId, {
@@ -469,6 +498,11 @@ export const useStreamingStore = create<StreamingState>((set, get) => {
   getQueue: (chatId) => {
     const currentState = getOrCreateChatState(get().chatStreams, chatId);
     return currentState.messageQueue;
+  },
+
+  getQueuedMessageById: (chatId, messageId) => {
+    const currentState = getOrCreateChatState(get().chatStreams, chatId);
+    return currentState.messageQueue.find((m) => m.id === messageId) || null;
   },
 
   // Pipeline actions

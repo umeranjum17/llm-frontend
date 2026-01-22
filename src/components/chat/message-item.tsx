@@ -1148,13 +1148,13 @@ export const MessageItem = memo(function MessageItem({
                   {/* Multi-stop gradient fade on last few lines during streaming
                       Creates a natural reading experience by progressively fading content
                       as new text appears, drawing focus to the cursor position
-                      Extended height (h-48) covers ~6 lines giving markdown time to render
+                      Extended height (h-72) covers ~9 lines giving markdown time to render
                       Only show when there's actual content to fade */}
                   {isAssistant && isStreaming && textContent.length > 0 && (
                     <div
-                      className="absolute bottom-0 left-0 right-0 h-48 pointer-events-none"
+                      className="absolute bottom-0 left-0 right-0 h-72 pointer-events-none"
                       style={{
-                        background: 'linear-gradient(to bottom, transparent 0%, hsl(var(--card) / 0.1) 15%, hsl(var(--card) / 0.25) 30%, hsl(var(--card) / 0.45) 45%, hsl(var(--card) / 0.65) 60%, hsl(var(--card) / 0.82) 75%, hsl(var(--card) / 0.94) 88%, hsl(var(--card) / 0.99) 100%)',
+                        background: 'linear-gradient(to bottom, transparent 0%, hsl(var(--card) / 0.05) 20%, hsl(var(--card) / 0.15) 35%, hsl(var(--card) / 0.35) 50%, hsl(var(--card) / 0.55) 65%, hsl(var(--card) / 0.75) 78%, hsl(var(--card) / 0.9) 90%, hsl(var(--card) / 0.98) 100%)',
                       } as React.CSSProperties}
                     />
                   )}

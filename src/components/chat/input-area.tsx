@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Send, Loader2, Paperclip, X, FileText, Image as ImageIcon, Mic, Square, Star, Code2, ChevronDown, ChevronUp } from "lucide-react";
+import { Send, Loader2, Paperclip, X, FileText, Image as ImageIcon, Mic, Square, Star, Code2, ChevronDown, ChevronUp, Trash2, CornerDownLeft, Pencil, ArrowUp } from "lucide-react";
 import { useChat } from "@/hooks/use-chat";
 import { useChatKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { TokenDisplay } from "./token-display";
@@ -229,7 +229,10 @@ export function InputArea({ chatId }: InputAreaProps) {
   const streamingMessageId = useStreamingStore((state) => chatId ? state.getChatStream(chatId).streamingMessageId : null);
   const enqueueMessage = useStreamingStore((state) => state.enqueueMessage);
   const clearQueue = useStreamingStore((state) => state.clearQueue);
+  const removeQueuedMessage = useStreamingStore((state) => state.removeQueuedMessage);
+  const moveQueuedMessageUp = useStreamingStore((state) => state.moveQueuedMessageUp);
   const messageQueue = useStreamingStore((state) => chatId ? state.getChatStream(chatId).messageQueue : []);
+  const [queueExpanded, setQueueExpanded] = useState(true);
 
   // Force send detection for mobile
   const longPressTimeout = useRef<NodeJS.Timeout | undefined>(undefined);
@@ -603,7 +606,9 @@ export function InputArea({ chatId }: InputAreaProps) {
       })),
     ];
 
-    const isStreaming = !!streamingMessageId;
+    // Check both streamingMessageId AND isLoading to catch the full send cycle
+    // isLoading is set immediately in sendMessage, while streamingMessageId is set later
+    const isStreaming = !!streamingMessageId || isLoading;
     const isForceMode = (e?.nativeEvent as KeyboardEvent)?.shiftKey || forceSendRef.current;
 
     // Reset force send ref
@@ -648,7 +653,7 @@ export function InputArea({ chatId }: InputAreaProps) {
         setImageAttachments([]);
         setCodeSnippets([]);
         setExpandedSnippets(new Set());
-        toast.info(`Message queued (${messageQueue.length + 1} in queue)`);
+        // Visual feedback via the queue panel - no toast needed
       }
     }
   };
@@ -697,14 +702,28 @@ export function InputArea({ chatId }: InputAreaProps) {
 
   const handleMentionTextareaEnter = (e: React.KeyboardEvent) => {
     // On mobile: Enter = new line (default behavior), use send button to submit
-    // On desktop: Enter = send, Shift+Enter = new line
+    // On desktop: Enter = send, Shift+Enter = new line OR force send (when streaming)
     if (isMobile) {
       // Let the default behavior happen (insert new line)
       return;
     }
 
-    // Desktop behavior: Enter sends, Shift+Enter adds new line
-    if (!e.shiftKey) {
+    const isCurrentlyStreaming = !!streamingMessageId || isLoading;
+
+    // Desktop behavior:
+    // - Not streaming: Enter = send, Shift+Enter = new line
+    // - Streaming: Enter = queue, Shift+Enter = force send (interrupt)
+    if (e.shiftKey) {
+      if (isCurrentlyStreaming) {
+        // Force send - interrupt streaming
+        e.preventDefault();
+        forceSendRef.current = true;
+        const syntheticEvent = { preventDefault: () => { } } as React.FormEvent;
+        handleSubmit(syntheticEvent);
+      }
+      // Not streaming + Shift+Enter = new line (default behavior, don't prevent)
+    } else {
+      // Enter without shift = send (or queue if streaming)
       e.preventDefault();
       const syntheticEvent = { preventDefault: () => { } } as React.FormEvent;
       handleSubmit(syntheticEvent);
@@ -753,6 +772,27 @@ export function InputArea({ chatId }: InputAreaProps) {
     await handleFiles(files);
   };
 
+  // Force send a specific queued message (interrupt current stream)
+  const forceSendQueuedMessage = async (queuedMsgId: string) => {
+    if (!chatId) return;
+    const queuedMsg = messageQueue.find(m => m.id === queuedMsgId);
+    if (!queuedMsg) return;
+
+    // Remove from queue
+    removeQueuedMessage(chatId, queuedMsgId);
+
+    // Cancel current stream and send
+    clearQueue(chatId);
+    cancelRequest();
+
+    // Get the skill if any
+    const msgSkill = queuedMsg.skill ? skills?.find(s => s.id === queuedMsg.skill) || null : null;
+
+    setTimeout(() => {
+      sendMessage(queuedMsg.content, queuedMsg.attachments, msgSkill);
+    }, 100);
+  };
+
   return (
     <form
       onSubmit={handleSubmit}
@@ -760,17 +800,95 @@ export function InputArea({ chatId }: InputAreaProps) {
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
     >
-      {/* Queue Preview */}
+      {/* Queue Preview - Cursor-style */}
       {messageQueue.length > 0 && (
-        <div className="mb-2 flex items-center justify-between gap-2 px-3 py-1.5 text-xs text-muted-foreground bg-muted/50 rounded-t-md border-b">
-          <span>{messageQueue.length} message{messageQueue.length > 1 ? 's' : ''} queued</span>
+        <div className="mb-2 rounded-lg border bg-muted/30 overflow-hidden">
+          {/* Header */}
           <button
             type="button"
-            onClick={() => chatId && clearQueue(chatId)}
-            className="hover:text-foreground transition-colors underline"
+            onClick={() => setQueueExpanded(!queueExpanded)}
+            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
           >
-            Clear
+            <span className="flex items-center gap-1.5">
+              <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", !queueExpanded && "-rotate-90")} />
+              <span className="font-medium">{messageQueue.length} Queued</span>
+            </span>
+            <span
+              onClick={(e) => {
+                e.stopPropagation();
+                chatId && clearQueue(chatId);
+              }}
+              className="hover:text-foreground transition-colors text-[11px] hover:underline"
+            >
+              Clear
+            </span>
           </button>
+
+          {/* Queued messages list */}
+          <AnimatePresence>
+            {queueExpanded && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="overflow-hidden"
+              >
+                <div className="border-t px-2 py-1.5 space-y-1 max-h-40 overflow-y-auto">
+                  {messageQueue.map((queuedMsg, index) => {
+                    const preview = typeof queuedMsg.content === 'string'
+                      ? queuedMsg.content
+                      : Array.isArray(queuedMsg.content)
+                        ? queuedMsg.content.find((p: any) => p.type === 'text')?.text || '[Image]'
+                        : '[Message]';
+
+                    return (
+                      <div
+                        key={queuedMsg.id}
+                        className="flex items-center gap-2 px-2 py-2 rounded-md bg-background/50 border border-border/50"
+                      >
+                        <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/40 flex-shrink-0" />
+                        <span className="flex-1 text-sm text-foreground truncate">
+                          {preview.slice(0, 50)}{preview.length > 50 ? '...' : ''}
+                        </span>
+                        <div className="flex items-center gap-0.5">
+                          {/* Send now button */}
+                          <button
+                            type="button"
+                            onClick={() => forceSendQueuedMessage(queuedMsg.id)}
+                            className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+                            aria-label="Send now (interrupt)"
+                          >
+                            <CornerDownLeft className="h-3.5 w-3.5" />
+                          </button>
+                          {/* Move up button */}
+                          {index > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => chatId && moveQueuedMessageUp(chatId, queuedMsg.id)}
+                              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+                              aria-label="Move up in queue"
+                            >
+                              <ArrowUp className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                          {/* Delete button */}
+                          <button
+                            type="button"
+                            onClick={() => chatId && removeQueuedMessage(chatId, queuedMsg.id)}
+                            className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-muted rounded transition-colors"
+                            aria-label="Remove from queue"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
 
@@ -802,7 +920,7 @@ export function InputArea({ chatId }: InputAreaProps) {
                       type="button"
                       onClick={() => removeImageAttachment(i)}
                       className="absolute right-1 top-1 rounded bg-background/80 p-0.5 text-muted-foreground hover:text-foreground transition-colors"
-                      title="Remove image"
+                      aria-label="Remove image"
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -825,7 +943,7 @@ export function InputArea({ chatId }: InputAreaProps) {
                       type="button"
                       onClick={() => removeAttachment(i)}
                       className="text-muted-foreground hover:text-foreground transition-colors"
-                      title="Remove file"
+                      aria-label="Remove file"
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -866,7 +984,7 @@ export function InputArea({ chatId }: InputAreaProps) {
                           type="button"
                           onClick={() => toggleSnippetExpanded(snippet.id)}
                           className="p-1 text-zinc-500 hover:text-zinc-300 transition-colors"
-                          title={isExpanded ? "Collapse" : "Expand"}
+                          aria-label={isExpanded ? "Collapse" : "Expand"}
                         >
                           <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", isExpanded && "rotate-180")} />
                         </button>
@@ -875,7 +993,7 @@ export function InputArea({ chatId }: InputAreaProps) {
                         type="button"
                         onClick={() => removeCodeSnippet(snippet.id)}
                         className="p-1 text-zinc-500 hover:text-zinc-300 transition-colors"
-                        title="Remove snippet"
+                        aria-label="Remove snippet"
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
@@ -922,7 +1040,7 @@ export function InputArea({ chatId }: InputAreaProps) {
           className="h-9 w-9 sm:h-10 sm:w-10 shrink-0"
           onMouseDown={(e) => e.preventDefault()} // Prevent textarea blur
           onClick={() => fileInputRef.current?.click()}
-          title="Attach images or files"
+          aria-label="Attach images or files"
         >
           <Paperclip className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
         </Button>
@@ -942,7 +1060,7 @@ export function InputArea({ chatId }: InputAreaProps) {
             if (voice.isListening) voice.stop();
             else voice.start();
           }}
-          title={voice.isListening ? "Stop recording" : "Voice input"}
+          aria-label={voice.isListening ? "Stop recording" : "Voice input"}
         >
           {voice.isListening ? (
             <Square className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -1005,69 +1123,88 @@ export function InputArea({ chatId }: InputAreaProps) {
           )}
         </div>
 
-        <AnimatePresence mode="wait">
-          {streamingMessageId ? (
-            <motion.div
-              key="stop"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-            >
-              <Button
-                type="button"
-                size="icon"
-                variant="destructive"
-                onClick={cancelRequest}
-                className="h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-lg sm:rounded-xl"
-                title="Stop generating"
-              >
-                <Square className="h-4 w-4 sm:h-5 sm:w-5" />
-              </Button>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="send"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-            >
-              <Button
-                type="submit"
-                size="icon"
-                disabled={!input.trim() && attachments.length === 0 && imageAttachments.length === 0 && codeSnippets.length === 0}
-                className={cn(
-                  "h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-lg sm:rounded-xl",
-                  isLongPressing && "bg-orange-500 hover:bg-orange-600"
-                )}
-                title={streamingMessageId ? "Queue message (Shift to force)" : "Send message"}
-                onTouchStart={(e) => {
-                  if (!streamingMessageId) return;
-                  longPressTimeout.current = setTimeout(() => {
-                    forceSendRef.current = true;
-                    setIsLongPressing(true);
-                    navigator.vibrate?.(50);
-                  }, 500);
-                }}
-                onTouchEnd={() => {
-                  if (longPressTimeout.current) {
-                    clearTimeout(longPressTimeout.current);
-                  }
-                }}
-                onTouchCancel={() => {
-                  if (longPressTimeout.current) {
-                    clearTimeout(longPressTimeout.current);
-                  }
-                  forceSendRef.current = false;
-                  setIsLongPressing(false);
-                }}
-              >
-                <Send className="h-4 w-4 sm:h-5 sm:w-5" />
-              </Button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Button logic: Show send when user has input (to queue), show stop when streaming with no input */}
+        {(() => {
+          const hasInput = input.trim() || attachments.length > 0 || imageAttachments.length > 0 || codeSnippets.length > 0;
+          // Use both streamingMessageId and isLoading for accurate streaming detection
+          const isCurrentlyStreaming = !!streamingMessageId || isLoading;
+          const showSend = !isCurrentlyStreaming || hasInput;
+
+          return (
+            <AnimatePresence mode="wait">
+              {showSend ? (
+                <motion.div
+                  key="send"
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ duration: 0.1 }}
+                  className="relative"
+                >
+                  <Button
+                    type="submit"
+                    size="icon"
+                    disabled={!hasInput}
+                    className={cn(
+                      "h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-lg sm:rounded-xl",
+                      isLongPressing && "bg-orange-500 hover:bg-orange-600",
+                      // Queue mode indicator - subtle ring when streaming
+                      isCurrentlyStreaming && hasInput && "ring-2 ring-primary/30"
+                    )}
+                    aria-label={isCurrentlyStreaming ? "Queue message" : "Send message"}
+                    onTouchStart={(e) => {
+                      if (!isCurrentlyStreaming) return;
+                      longPressTimeout.current = setTimeout(() => {
+                        forceSendRef.current = true;
+                        setIsLongPressing(true);
+                        navigator.vibrate?.(50);
+                      }, 500);
+                    }}
+                    onTouchEnd={() => {
+                      if (longPressTimeout.current) {
+                        clearTimeout(longPressTimeout.current);
+                      }
+                    }}
+                    onTouchCancel={() => {
+                      if (longPressTimeout.current) {
+                        clearTimeout(longPressTimeout.current);
+                      }
+                      forceSendRef.current = false;
+                      setIsLongPressing(false);
+                    }}
+                  >
+                    <Send className="h-4 w-4 sm:h-5 sm:w-5" />
+                  </Button>
+                  {/* Queue mode badge for mobile */}
+                  {isCurrentlyStreaming && hasInput && (
+                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-medium text-primary-foreground">
+                      +
+                    </span>
+                  )}
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="stop"
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ duration: 0.1 }}
+                >
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    onClick={cancelRequest}
+                    className="h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-lg sm:rounded-xl border border-border/50 hover:bg-muted"
+                    aria-label="Stop generating"
+                  >
+                    <Square className="h-4 w-4 sm:h-5 sm:w-5" />
+                  </Button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          );
+        })()}
       </div>
 
       {/* Minimal footer - only show hints when relevant */}
