@@ -92,16 +92,16 @@ export function ChatSettingsPopover({
     await updateChat(chatId, { maxTokens: newMax });
   };
 
+  const toggleIncognito = async () => {
+    const newStatus = !incognitoMode;
+    await updateChat(chatId, { incognitoMode: newStatus });
+    toast.success(newStatus ? "Incognito mode enabled - Memory & tools disabled" : "Incognito mode disabled");
+  };
+
   const toggleMemory = async () => {
     const newStatus = !(settings?.memoryEnabled !== false);
     await updateSettings({ memoryEnabled: newStatus });
     toast.success(newStatus ? "Memory enabled" : "Memory disabled");
-  };
-
-  const toggleIncognito = async () => {
-    const newStatus = !incognitoMode;
-    await updateChat(chatId, { incognitoMode: newStatus });
-    toast.success(newStatus ? "Incognito mode enabled" : "Incognito mode disabled");
   };
 
   const setReasoningLevel = async (level: ReasoningLevel) => {
@@ -196,21 +196,28 @@ export function ChatSettingsPopover({
 
         <DropdownMenuSeparator />
 
-        {/* Incognito Mode */}
-        <div className="flex items-center justify-between px-2 py-1.5">
-          <div className="flex items-center gap-2">
-            <EyeOff className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm">Incognito</span>
-          </div>
-          <Switch checked={incognitoMode} onCheckedChange={toggleIncognito} className="scale-90" />
-        </div>
+        {/* Incognito - Tap to toggle */}
+        <button
+          onClick={toggleIncognito}
+          className={cn(
+            "w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-sm transition-colors",
+            incognitoMode
+              ? "bg-primary/10 text-primary"
+              : "hover:bg-accent text-muted-foreground"
+          )}
+        >
+          <EyeOff className="h-4 w-4" />
+          <span>Incognito</span>
+          {incognitoMode && <span className="ml-auto text-xs">On</span>}
+        </button>
 
         {/* Memory Toggle */}
         <div className="flex items-center justify-between px-2 py-1.5">
           <div className="flex items-center gap-2">
-            <Brain className={cn("h-4 w-4", (!hasMem0ApiKey || incognitoMode) ? "text-muted-foreground/50" : "text-muted-foreground")} />
-            <span className={cn("text-sm", (!hasMem0ApiKey || incognitoMode) && "text-muted-foreground/50")}>Memory</span>
+            <Brain className={cn("h-4 w-4", incognitoMode ? "text-muted-foreground/50" : "text-muted-foreground")} />
+            <span className={cn("text-sm", incognitoMode && "text-muted-foreground/50")}>Memory</span>
             {!hasMem0ApiKey && <span className="text-[10px] text-muted-foreground/50">(No key)</span>}
+            {incognitoMode && hasMem0ApiKey && <span className="text-[10px] text-muted-foreground/50">(Incognito)</span>}
           </div>
           <Switch
             checked={memoryEnabled && !incognitoMode}
@@ -221,13 +228,19 @@ export function ChatSettingsPopover({
         </div>
 
         {/* Arena Mode */}
-        <div className="flex items-center justify-between px-2 py-1.5">
-          <div className="flex items-center gap-2">
-            <Swords className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm">Arena</span>
-          </div>
-          <Switch checked={isArenaMode} onCheckedChange={onToggleArena} className="scale-90" />
-        </div>
+        <button
+          onClick={onToggleArena}
+          className={cn(
+            "w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-sm transition-colors",
+            isArenaMode
+              ? "bg-primary/10 text-primary"
+              : "hover:bg-accent text-muted-foreground"
+          )}
+        >
+          <Swords className="h-4 w-4" />
+          <span>Arena Mode</span>
+          {isArenaMode && <span className="ml-auto text-xs">On</span>}
+        </button>
 
         <DropdownMenuSeparator />
 

@@ -30,6 +30,8 @@ export interface SettingsExport {
     parameterPresets: ParameterPreset[];
     tags: Tag[];
     tagRules: TagRule[];
+    // Additional localStorage configs
+    composioConfig?: { apiKey: string } | null;
   };
 }
 
@@ -94,6 +96,22 @@ export async function exportAllSettings(): Promise<SettingsExport> {
     lastConnectedAt: undefined,
   }));
 
+  // Get Composio config from localStorage (stored separately)
+  let composioConfig: { apiKey: string } | null = null;
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem("composio_config");
+      if (stored) {
+        const config = JSON.parse(stored);
+        if (config.apiKey) {
+          composioConfig = { apiKey: config.apiKey };
+        }
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }
+
   return {
     version: SETTINGS_EXPORT_VERSION,
     exportedAt: Date.now(),
@@ -108,6 +126,7 @@ export async function exportAllSettings(): Promise<SettingsExport> {
       parameterPresets,
       tags,
       tagRules,
+      composioConfig,
     },
   };
 }

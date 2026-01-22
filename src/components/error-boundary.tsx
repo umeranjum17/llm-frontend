@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { AlertTriangle, RefreshCw, Home } from "lucide-react";
+import { AlertTriangle, RefreshCw, Home, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface ErrorBoundaryProps {
@@ -13,12 +13,16 @@ interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
   errorInfo: React.ErrorInfo | null;
+  updateAvailable: boolean;
+  isUpdating: boolean;
 }
 
 export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  private registration: ServiceWorkerRegistration | null = null;
+
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false, error: null, errorInfo: null };
+    this.state = { hasError: false, error: null, errorInfo: null, updateAvailable: false, isUpdating: false };
   }
 
   static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
@@ -28,7 +32,64 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("[Error Boundary] Caught error:", error, errorInfo);
     this.setState({ errorInfo });
+    // Check for updates when an error occurs
+    this.checkForUpdates();
   }
+
+  checkForUpdates = async () => {
+    if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
+
+    try {
+      // Force check for new service worker
+      const reg = await navigator.serviceWorker.ready;
+      this.registration = reg;
+
+      // Trigger update check
+      await reg.update();
+
+      // Check if there's a waiting worker
+      if (reg.waiting) {
+        this.setState({ updateAvailable: true });
+      }
+
+      // Listen for new updates
+      reg.addEventListener("updatefound", () => {
+        const newWorker = reg.installing;
+        if (!newWorker) return;
+
+        newWorker.addEventListener("statechange", () => {
+          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+            this.setState({ updateAvailable: true });
+          }
+        });
+      });
+    } catch (err) {
+      console.warn("[Error Boundary] Failed to check for updates:", err);
+    }
+  };
+
+  handleUpdate = async () => {
+    if (!this.registration?.waiting) {
+      // No waiting worker, just reload
+      window.location.reload();
+      return;
+    }
+
+    this.setState({ isUpdating: true });
+
+    // Listen for controller change to reload
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      window.location.reload();
+    });
+
+    // Tell the waiting SW to activate
+    this.registration.waiting.postMessage({ type: "SKIP_WAITING" });
+
+    // Fallback reload after 5 seconds if SW doesn't activate
+    setTimeout(() => {
+      window.location.reload();
+    }, 5000);
+  };
 
   handleClearCacheAndReload = async () => {
     try {
@@ -108,14 +169,13 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-destructive/10">
                 <AlertTriangle className="h-10 w-10 text-destructive" />
               </div>
-              
+
               <div className="space-y-2">
                 <h1 className="text-2xl font-bold">Something went wrong</h1>
                 <p className="text-muted-foreground">
-                  Lumina encountered an unexpected error. This is usually caused by cached files from a previous version.
-                </p>
-                <p className="text-sm font-medium text-primary">
-                  Click &ldquo;Clear All Data & Reload&rdquo; below to fix this issue.
+                  {this.state.updateAvailable
+                    ? "A new version is available. Update to fix this issue."
+                    : "Lumina encountered an unexpected error. Try reloading the page."}
                 </p>
               </div>
             </div>
@@ -140,44 +200,65 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
               </div>
             )}
 
-            <div className="flex flex-col gap-2">
-              <Button
-                onClick={this.handleClearCacheAndReload}
-                className="w-full"
-                size="lg"
-                variant="default"
-              >
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Clear All Data & Reload (Recommended)
-              </Button>
-
-              <p className="text-xs text-center text-muted-foreground px-2">
-                This will clear caches and storage. Your chats are safe in IndexedDB.
-              </p>
-              
-              <div className="flex gap-2">
+            <div className="flex flex-col gap-3">
+              {this.state.updateAvailable ? (
+                <Button
+                  onClick={this.handleUpdate}
+                  className="w-full"
+                  size="lg"
+                  variant="default"
+                  disabled={this.state.isUpdating}
+                >
+                  {this.state.isUpdating ? (
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="mr-2 h-4 w-4" />
+                  )}
+                  {this.state.isUpdating ? "Updating..." : "Update & Reload"}
+                </Button>
+              ) : (
                 <Button
                   onClick={this.handleReload}
-                  variant="outline"
-                  className="flex-1"
+                  className="w-full"
+                  size="lg"
+                  variant="default"
                 >
                   <RefreshCw className="mr-2 h-4 w-4" />
-                  Reload
+                  Reload Page
                 </Button>
-                
-                <Button
-                  onClick={this.handleGoHome}
-                  variant="outline"
-                  className="flex-1"
-                >
-                  <Home className="mr-2 h-4 w-4" />
-                  Go Home
-                </Button>
-              </div>
+              )}
+
+              <Button
+                onClick={this.handleGoHome}
+                variant="outline"
+                className="w-full"
+              >
+                <Home className="mr-2 h-4 w-4" />
+                Go Home
+              </Button>
+
+              <details className="text-center">
+                <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                  Still not working? Try clearing cache
+                </summary>
+                <div className="mt-3 space-y-2">
+                  <Button
+                    onClick={this.handleClearCacheAndReload}
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                  >
+                    Clear Cache & Reload
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    This clears cached files but keeps your chats safe.
+                  </p>
+                </div>
+              </details>
             </div>
 
             <p className="text-xs text-center text-muted-foreground">
-              If this problem persists, try closing all Lumina tabs and reopening the app.
+              If this keeps happening, try closing all Lumina tabs and reopening.
             </p>
           </div>
         </div>
