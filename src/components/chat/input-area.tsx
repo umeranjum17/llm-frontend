@@ -225,11 +225,11 @@ export function InputArea({ chatId }: InputAreaProps) {
   const wasListeningRef = useRef(false);
   const [isMobile, setIsMobile] = useState(false);
 
-  // Message queue state
-  const streamingMessageId = useStreamingStore((state) => chatId ? state.chatStreams[chatId]?.streamingMessageId ?? null : null);
+  // Message queue state - use getChatStream for consistent defaults
+  const streamingMessageId = useStreamingStore((state) => chatId ? state.getChatStream(chatId).streamingMessageId : null);
   const enqueueMessage = useStreamingStore((state) => state.enqueueMessage);
   const clearQueue = useStreamingStore((state) => state.clearQueue);
-  const messageQueue = useStreamingStore((state) => chatId ? state.chatStreams[chatId]?.messageQueue ?? [] : []);
+  const messageQueue = useStreamingStore((state) => chatId ? state.getChatStream(chatId).messageQueue : []);
 
   // Force send detection for mobile
   const longPressTimeout = useRef<NodeJS.Timeout | undefined>(undefined);
