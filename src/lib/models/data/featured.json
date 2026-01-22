@@ -570,6 +570,7 @@
       "tier": "balanced",
       "supportsReasoning": true,
       "supportsVision": true,
+      "supportsPromptCaching": true,
       "releaseDate": "2025-02",
       "recommendedFor": [
         "Real-time info",
@@ -1259,7 +1260,9 @@
       ],
       "tier": "flagship",
       "supportsReasoning": true,
+      "supportsThinking": true,
       "supportsVision": true,
+      "supportsPromptCaching": true,
       "releaseDate": "2025-12",
       "recommendedFor": [
         "Visual reasoning",

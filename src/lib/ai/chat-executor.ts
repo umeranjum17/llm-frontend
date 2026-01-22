@@ -14,7 +14,9 @@ import { streamText, generateText, generateObject, stepCountIs, type ModelMessag
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createXai } from "@ai-sdk/xai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { normalizeModelIdForProviderId } from "@/lib/ai/provider-routing";
 import { isCustomOpenAIProvider, resolveProvider } from "@/lib/providers";
 import { McpManager, type ToolMetadata } from "@/lib/mcp/mcp-manager";
@@ -163,6 +165,7 @@ export function configurePromptCaching(
   // Anthropic: Direct provider prompt caching with multiple breakpoints
   // Breakpoint strategy: Cache tools, system prompt, and recent conversation
   // IMPORTANT: Anthropic requires minimum 1,024 tokens per cache breakpoint
+  // NOTE: AI SDK expects message.providerOptions.anthropic.cacheControl for system messages
   else if (providerId === 'anthropic' && capabilities.supportsPromptCaching && systemPrompts.length > 0) {
     const ANTHROPIC_MIN_CACHE_TOKENS = 1024;
     const cacheTTL = options?.cacheTTL ?? '5m';
@@ -177,6 +180,38 @@ export function configurePromptCaching(
       return countTokens(content) >= ANTHROPIC_MIN_CACHE_TOKENS;
     };
 
+    // Helper to add cacheControl to a message
+    // For system messages: AI SDK uses message.providerOptions (content stays as string)
+    // For user/assistant messages with array content: add to last text part's providerOptions
+    const addCacheControlToMessage = (msg: any) => {
+      if (msg.role === 'system') {
+        // System messages: SDK uses message.providerOptions, keep content as string
+        msg.providerOptions = {
+          anthropic: { cacheControl }
+        };
+      } else if (Array.isArray(msg.content)) {
+        // User/assistant with array content: add to last text part
+        const lastTextIdx = msg.content
+          .map((p: any, i: number) => p.type === 'text' ? i : -1)
+          .filter((i: number) => i !== -1)
+          .pop();
+        if (lastTextIdx !== undefined && lastTextIdx >= 0) {
+          msg.content[lastTextIdx].providerOptions = {
+            anthropic: { cacheControl }
+          };
+        }
+      } else if (typeof msg.content === 'string') {
+        // User/assistant with string content: convert to array with cacheControl on part
+        msg.content = [{
+          type: 'text',
+          text: msg.content,
+          providerOptions: {
+            anthropic: { cacheControl }
+          }
+        }];
+      }
+    };
+
     // Breakpoint 1: Cache tool-related system messages (if present and large enough)
     // Heuristic: system messages containing tool-related keywords
     const toolSystemIdx = updatedMessages.findIndex(
@@ -188,9 +223,7 @@ export function configurePromptCaching(
     );
 
     if (toolSystemIdx >= 0 && meetsMinTokens(updatedMessages[toolSystemIdx])) {
-      (updatedMessages[toolSystemIdx] as any).providerOptions = {
-        anthropic: { cacheControl }
-      };
+      addCacheControlToMessage(updatedMessages[toolSystemIdx]);
     }
 
     // Breakpoint 2: Cache last system message (main system prompt) if large enough
@@ -200,9 +233,7 @@ export function configurePromptCaching(
       .pop();
 
     if (lastSystemIdx !== undefined && lastSystemIdx >= 0 && meetsMinTokens(updatedMessages[lastSystemIdx])) {
-      (updatedMessages[lastSystemIdx] as any).providerOptions = {
-        anthropic: { cacheControl }
-      };
+      addCacheControlToMessage(updatedMessages[lastSystemIdx]);
     }
 
     // Breakpoint 3: Cache recent conversation (second-to-last user/assistant pair)
@@ -214,9 +245,7 @@ export function configurePromptCaching(
       .pop();
 
     if (lastAssistantIdx !== undefined && lastAssistantIdx >= 0 && meetsMinTokens(updatedMessages[lastAssistantIdx])) {
-      (updatedMessages[lastAssistantIdx] as any).providerOptions = {
-        anthropic: { cacheControl }
-      };
+      addCacheControlToMessage(updatedMessages[lastAssistantIdx]);
     }
   }
   
@@ -483,6 +512,25 @@ export function createModel(config: {
   if (isGoogleProvider || providerId === "google") {
     const google = createGoogleGenerativeAI({ apiKey });
     return google(normalizedModelId);
+  }
+
+  // Use dedicated xAI provider for Grok models
+  // Supports reasoning via reasoningEffort parameter
+  if (resolved.kind === "xai" || providerId === "xai") {
+    const xai = createXai({ apiKey });
+    return xai(normalizedModelId);
+  }
+
+  // Use OpenAI-compatible provider for DeepSeek
+  // DeepSeek only supports Chat Completions API, not the new Responses API
+  // The @ai-sdk/openai-compatible package uses chat completions by default
+  if (providerId === "deepseek") {
+    const deepseek = createOpenAICompatible({
+      name: "deepseek",
+      apiKey,
+      baseURL: "https://api.deepseek.com/v1",
+    });
+    return deepseek(normalizedModelId);
   }
 
   // Use stable OpenRouter provider (v1.5.4) which uses Chat Completions API
@@ -893,7 +941,7 @@ export async function executeChatStreaming(
         };
       }
     } else if (providerId === 'openai') {
-      // OpenAI o3/o4: reasoningEffort parameter
+      // OpenAI o3/o4: reasoningEffort and reasoningSummary parameters
       const reasoningEffortMap: Record<string, string> = {
         low: 'low',
         medium: 'medium',
@@ -902,7 +950,10 @@ export async function executeChatStreaming(
       };
       providerOptions.openai = {
         ...providerOptions.openai,
-        reasoningEffort: reasoningEffortMap[reasoningLevel || 'medium'] || 'medium'
+        reasoningEffort: reasoningEffortMap[reasoningLevel || 'medium'] || 'medium',
+        // NOTE: reasoningSummary: 'detailed' requires verified OpenAI organization
+        // See: https://platform.openai.com/settings/organization/general
+        // Without it, reasoning happens internally but content isn't streamed
       };
     } else if (providerId === 'google') {
       // Google Gemini: thinking configuration depends on model version
@@ -955,13 +1006,12 @@ export async function executeChatStreaming(
       // No explicit configuration needed - models auto-enable reasoning
       console.log('[Thinking] Mistral Magistral: Reasoning enabled automatically');
     } else if (providerId === 'xai') {
-      // xAI Grok: reasoning_effort only supported on grok-3-mini
-      // grok-4-fast-reasoning has built-in reasoning (no parameter)
-      // grok-4-fast-non-reasoning has no reasoning capability
-      const isGrok3Mini = modelId.toLowerCase().includes('grok-3-mini');
+      // xAI Grok: reasoning_effort supported on grok-3, grok-3-mini, grok-4
+      // Uses low/high values
+      const isGrok3OrNewer = modelId.toLowerCase().includes('grok-3') ||
+                             modelId.toLowerCase().includes('grok-4');
 
-      if (isGrok3Mini) {
-        // grok-3-mini: Use reasoning_effort (low or high)
+      if (isGrok3OrNewer) {
         const reasoningEffortMap: Record<string, string> = {
           low: 'low',
           medium: 'high', // Map medium to high (only low/high supported)
@@ -973,8 +1023,6 @@ export async function executeChatStreaming(
           reasoningEffort: reasoningEffortMap[reasoningLevel || 'high'] || 'high'
         };
       }
-      // For grok-4-fast-reasoning: no parameter needed (built-in)
-      // For grok-4-fast-non-reasoning: model doesn't support thinking
     } else if (providerId === 'openrouter') {
       // OpenRouter: Provider-specific routing based on model ID
       if (modelId.includes('anthropic/')) {

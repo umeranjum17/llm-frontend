@@ -123,8 +123,16 @@ function normalizeOpenAIModelId(modelId: string) {
 }
 
 const ANTHROPIC_KNOWN_MAP: Record<string, string> = {
+  // Claude 4.x models (2025) - no date suffix needed for latest
+  "anthropic/claude-opus-4.5": "claude-opus-4-5",
+  "anthropic/claude-sonnet-4.5": "claude-sonnet-4-5",
+  "anthropic/claude-haiku-4.5": "claude-haiku-4-5",
+  "anthropic/claude-sonnet-4": "claude-sonnet-4",
+  "anthropic/claude-haiku-4": "claude-haiku-4",
+  // Claude 3.x models (2024) - require date suffix
   "anthropic/claude-3.5-sonnet": "claude-3-5-sonnet-20241022",
   "anthropic/claude-3-opus": "claude-3-opus-20240229",
+  "anthropic/claude-3-haiku": "claude-3-haiku-20240307",
 };
 
 function normalizeAnthropicModelId(modelId: string) {
@@ -144,6 +152,12 @@ export function normalizeModelIdForProviderId(providerId: string, modelId: strin
   if (providerId === "anthropic") return normalizeAnthropicModelId(modelId);
   if (providerId === "openai" || providerId.startsWith(CUSTOM_OPENAI_PREFIX)) {
     return normalizeOpenAIModelId(modelId);
+  }
+  // xAI uses x-ai/ prefix in registry but API expects unprefixed
+  if (providerId === "xai") {
+    if (modelId.startsWith("x-ai/")) return modelId.slice("x-ai/".length);
+    if (modelId.startsWith("xai/")) return modelId.slice("xai/".length);
+    return modelId;
   }
   // Other OpenAI-compatible providers typically don't accept OpenRouter-style prefixes.
   const prefix = `${providerId}/`;
