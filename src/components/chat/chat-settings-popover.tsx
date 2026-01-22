@@ -100,14 +100,14 @@ export function ChatSettingsPopover({
     const newStatus = !incognitoMode;
     if (chatId) {
       await updateChat(chatId, { incognitoMode: newStatus });
-      toast.success(newStatus ? "Incognito mode enabled - Memory & tools disabled" : "Incognito mode disabled");
+      // No toast - toggle state is visible in UI
     }
   };
 
   const toggleMemory = async () => {
     const newStatus = !(settings?.memoryEnabled !== false);
     await updateSettings({ memoryEnabled: newStatus });
-    toast.success(newStatus ? "Memory enabled" : "Memory disabled");
+    // No toast - toggle state is visible in UI
   };
 
   const setReasoningLevel = async (level: ReasoningLevel) => {
@@ -118,7 +118,7 @@ export function ChatSettingsPopover({
 
   const handleSetAsDefault = async () => {
     await updateDefaultReasoningLevel(reasoningLevel);
-    toast.success(`${REASONING_LEVELS.find(l => l.value === reasoningLevel)?.label} set as default`);
+    // No toast - action is confirmed by "Set as Default" button press
   };
 
   return (
@@ -264,7 +264,6 @@ export function ChatSettingsPopover({
                 <button
                   onClick={async () => {
                     await updateDefaultTemperature(localTemperature);
-                    toast.success(`Temperature ${localTemperature.toFixed(2)} set as default`);
                   }}
                   className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
                 >
@@ -296,7 +295,6 @@ export function ChatSettingsPopover({
                 <button
                   onClick={async () => {
                     await updateDefaultMaxTokens(localMaxTokens);
-                    toast.success(`Max tokens ${localMaxTokens} set as default`);
                   }}
                   className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
                 >

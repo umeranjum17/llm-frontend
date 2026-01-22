@@ -381,7 +381,7 @@ export function ChatShell() {
         const model = quickSwitchModels[num - 1];
         if (model && activeChatId) {
           handleQuickModelChange(model.id);
-          toast.success(`Switched to ${model.name}`);
+          // No toast - model indicator in UI shows the change
         }
       }
     },
@@ -520,7 +520,7 @@ export function ChatShell() {
         maxTokens: defaultMaxTokens,
       });
       setActiveChatId(newChat.id);
-      toast.success("New chat created");
+      // No toast - new chat appearing is obvious
     } catch {
       toast.error("Could not create chat");
     }
@@ -531,11 +531,10 @@ export function ChatShell() {
       // Disable split view
       setIsSplitView(false);
       setSecondaryChatId(null);
-      toast.success("Split view disabled");
+      // No toast - UI change is obvious
     } else {
       // Enable split view - set secondary to the most recent different chat
       setIsSplitView(true);
-      toast.success("Split view enabled - Alt+Click a chat to select it for the second panel");
     }
   };
 

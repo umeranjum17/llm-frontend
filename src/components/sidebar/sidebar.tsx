@@ -169,7 +169,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         <button
           onClick={async () => {
             await createFolder("New Folder", undefined, currentProjectId);
-            toast.success("Folder created");
+            // No toast - folder appears in sidebar
           }}
           className="flex w-full items-center gap-4 py-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >

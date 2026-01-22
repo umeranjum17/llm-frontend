@@ -32,7 +32,7 @@ export function useKeyboardShortcuts() {
         maxTokens: defaultMaxTokens,
       });
       setActiveChatId(newChat.id);
-      toast.success("New chat created");
+      // No toast - new chat appearing in UI is sufficient feedback
     } catch (error) {
       toast.error("Failed to create chat");
     }
@@ -47,11 +47,10 @@ export function useKeyboardShortcuts() {
     const newState = !isSplitView;
     if (newState) {
       setIsSplitView(true);
-      toast.success("Split view enabled - Alt+Click to select second chat");
+      // No toast - UI change is obvious
     } else {
       setIsSplitView(false);
       setSecondaryChatId(null);
-      toast.success("Split view disabled");
     }
   }, {
     enableOnFormTags: false,
