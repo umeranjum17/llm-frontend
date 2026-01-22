@@ -527,7 +527,7 @@ async function handlePipelineExecution(
   }
 }
 
-export function useChat(chatId: string) {
+export function useChat(chatId: string | null) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [continuingMessageId, setContinuingMessageId] = useState<string | null>(null);
@@ -562,6 +562,12 @@ export function useChat(chatId: string) {
   // Sync loading state with streaming store when chatId changes
   // This prevents blocking input when switching to a non-streaming chat
   useEffect(() => {
+    if (!chatId) {
+      setIsLoading(false);
+      setError(null);
+      setContinuingMessageId(null);
+      return;
+    }
     const chatStream = getChatStream(chatId);
     const isCurrentlyStreaming = chatStream.streamingMessageId !== null;
     setIsLoading(isCurrentlyStreaming);
@@ -574,6 +580,8 @@ export function useChat(chatId: string) {
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamingClearTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pipelineClearTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Ref to hold the latest sendMessage function for use in callbacks
+  const sendMessageRef = useRef<((content: MessageContent, attachments?: Array<{ name: string; content: string }>, selectedSkill?: Skill | null) => Promise<void>) | null>(null);
 
   // Schedule memory extraction after assistant response (debounced)
   const scheduleMemoryExtraction = useCallback(async () => {
@@ -585,6 +593,8 @@ export function useChat(chatId: string) {
     // Debounce: wait 20 seconds after last assistant response
     extractionTimeoutRef.current = setTimeout(async () => {
       try {
+        if (!chatId) return; // Can't extract without a chat ID
+
         // Check if chat is in incognito mode - skip extraction if so
         const chat = await getChatById(chatId);
         if (chat?.incognitoMode) return;
@@ -614,6 +624,7 @@ export function useChat(chatId: string) {
       if (extractionTimeoutRef.current) {
         clearTimeout(extractionTimeoutRef.current);
         // Flush immediately (unless incognito)
+        if (!chatId) return;
         getChatById(chatId).then(async (chat) => {
           if (chat?.incognitoMode) return; // Skip extraction in incognito mode
           const messages = await getMessages(chatId);
@@ -671,13 +682,20 @@ export function useChat(chatId: string) {
     attachments?: Array<{ name: string; content: string }>,
     overrideModelId?: string,
     parentUserMessageId?: string,
-    activeSkill?: Skill | null
+    activeSkill?: Skill | null,
+    chatIdOverride?: string
   ) => {
     // Extract user message text for later use (e.g., background memory refresh)
     const userMessageText = getTextFromMessageContent(messageContent);
 
+    // Use override if provided (for draft mode), otherwise use closure chatId
+    const effectiveChatId = chatIdOverride || chatId;
+    if (!effectiveChatId) {
+      throw new Error("No chat ID available");
+    }
+
     // Get chat details for model info
-    const chat = await getChatById(chatId);
+    const chat = await getChatById(effectiveChatId);
     if (!chat) {
       throw new Error("Chat not found");
     }
@@ -750,7 +768,7 @@ export function useChat(chatId: string) {
         const userImages = getImagesFromMessageContent(messageContent);
 
         await handlePipelineExecution(
-          chatId,
+          effectiveChatId,
           agent,
           apiKey,
           cleanReferencesForLLM(getTextFromMessageContent(messageContent)),
@@ -758,14 +776,14 @@ export function useChat(chatId: string) {
           parentUserMessageId,
           abortControllerRef.current.signal,
           {
-            startPipeline: (steps) => startPipeline(chatId, steps),
-            setStepRunning: (stepIndex, input) => setStepRunning(chatId, stepIndex, input),
-            setStepComplete: (stepIndex, output, toolCalls) => setStepComplete(chatId, stepIndex, output, toolCalls),
-            setStepError: (stepIndex, error) => setStepError(chatId, stepIndex, error),
-            setStepRetrying: (stepIndex, retryCount, maxRetries, error) => setStepRetrying(chatId, stepIndex, retryCount, maxRetries, error),
-            completePipeline: (finalResult) => completePipeline(chatId, finalResult),
-            failPipeline: (error) => failPipeline(chatId, error),
-            clearPipeline: () => clearPipeline(chatId),
+            startPipeline: (steps) => startPipeline(effectiveChatId, steps),
+            setStepRunning: (stepIndex, input) => setStepRunning(effectiveChatId, stepIndex, input),
+            setStepComplete: (stepIndex, output, toolCalls) => setStepComplete(effectiveChatId, stepIndex, output, toolCalls),
+            setStepError: (stepIndex, error) => setStepError(effectiveChatId, stepIndex, error),
+            setStepRetrying: (stepIndex, retryCount, maxRetries, error) => setStepRetrying(effectiveChatId, stepIndex, retryCount, maxRetries, error),
+            completePipeline: (finalResult) => completePipeline(effectiveChatId, finalResult),
+            failPipeline: (error) => failPipeline(effectiveChatId, error),
+            clearPipeline: () => clearPipeline(effectiveChatId),
           },
           mcpServers
         );
@@ -774,13 +792,13 @@ export function useChat(chatId: string) {
           clearTimeout(pipelineClearTimeoutRef.current);
         }
         pipelineClearTimeoutRef.current = setTimeout(() => {
-          clearPipeline(chatId);
+          clearPipeline(effectiveChatId);
           pipelineClearTimeoutRef.current = null;
         }, 1000);
         return;
       } catch (error) {
         // Clear pipeline state immediately on error
-        clearPipeline(chatId);
+        clearPipeline(effectiveChatId);
         throw error;
       } finally {
         abortControllerRef.current = null;
@@ -795,7 +813,7 @@ export function useChat(chatId: string) {
         // Extract any input images from the message (for image-to-image transformations)
         const userInputImages = getImagesFromMessageContent(messageContent);
         return await handleImageGeneration(
-          chatId,
+          effectiveChatId,
           modelId,
           providerId,
           apiKey,
@@ -804,17 +822,17 @@ export function useChat(chatId: string) {
           parentUserMessageId,
           abortControllerRef.current.signal,
           agent?.systemPrompt, // Pass agent's system prompt for prompt optimization
-          (stage, messageId) => setImageGenerationProgress(chatId, messageId, stage)
+          (stage, messageId) => setImageGenerationProgress(effectiveChatId, messageId, stage)
         );
       } finally {
         abortControllerRef.current = null;
-        clearImageGenerationProgress(chatId);
+        clearImageGenerationProgress(effectiveChatId);
       }
     }
 
     // Set active skill in streaming store if provided (for UI indicator)
     if (activeSkill) {
-      setActiveSkill(chatId, {
+      setActiveSkill(effectiveChatId, {
         id: activeSkill.id,
         name: activeSkill.name,
         icon: activeSkill.ui.icon,
@@ -828,7 +846,7 @@ export function useChat(chatId: string) {
     // Add empty assistant message IMMEDIATELY to show loading state
     // This happens before any context building, memory, or embedding calls
     const assistantMessage = await addMessage({
-      chatId,
+      chatId: effectiveChatId,
       role: "assistant",
       content: "",
       modelId,
@@ -838,15 +856,15 @@ export function useChat(chatId: string) {
     });
 
     // Update activeBranchLeafId immediately so the UI shows the new message
-    await updateChat(chatId, { activeBranchLeafId: assistantMessage.id });
+    await updateChat(effectiveChatId, { activeBranchLeafId: assistantMessage.id });
 
     // Set streaming message immediately - this shows the assistant loading state
     // BEFORE any memory, embedding, or context building calls
-    setStreamingMessage(chatId, assistantMessage.id);
+    setStreamingMessage(effectiveChatId, assistantMessage.id);
 
     const contextMessages = await buildContextMessages(
       getTextFromMessageContent(messageContent),
-      chatId,
+      effectiveChatId,
       { memoryDisabled: chat.memoryDisabled, incognitoMode: chat.incognitoMode, skill: activeSkill }
     );
 
@@ -876,7 +894,7 @@ export function useChat(chatId: string) {
     const budget = calculateContextBudget(modelId, systemTokens, attachmentTokens);
 
     // 5. Get and transform history to LLM format
-    const rawHistory = await getMessagesForBranch(chatId, parentUserMessageId);
+    const rawHistory = await getMessagesForBranch(effectiveChatId, parentUserMessageId);
     const historyMessages: LLMMessage[] = rawHistory
       .filter((m) => m.role === "system" || m.role === "user" || m.role === "assistant")
       .map((m) => {
@@ -1165,7 +1183,7 @@ export function useChat(chatId: string) {
               fullContent += textDelta;
 
               // Real-time update: Update streaming store immediately for instant UI feedback
-              appendStreamingContent(chatId, textDelta);
+              appendStreamingContent(effectiveChatId, textDelta);
 
               // Batch database updates (debounce to reduce write frequency)
               if (dbUpdateTimeoutRef.current) {
@@ -1183,7 +1201,7 @@ export function useChat(chatId: string) {
             const reasoningDelta = parsed.text ?? parsed.delta ?? parsed.textDelta;
             if ((parsed.type === "reasoning" || parsed.type === "reasoning-delta") && typeof reasoningDelta === "string") {
               fullReasoning += reasoningDelta;
-              appendStreamingReasoning(chatId, reasoningDelta);
+              appendStreamingReasoning(effectiveChatId, reasoningDelta);
             }
 
             if (parsed.type === "tool-call") {
@@ -1198,7 +1216,7 @@ export function useChat(chatId: string) {
                 startTime: now, // Add start time
               });
               // Update streaming store for real-time UI
-              setStreamingToolCalls(chatId, [...toolCalls]);
+              setStreamingToolCalls(effectiveChatId, [...toolCalls]);
               await updateMessage(assistantMessage.id, {
                 toolCalls: [...toolCalls],
               });
@@ -1231,7 +1249,7 @@ export function useChat(chatId: string) {
                 isError: isToolError,
               });
               // Update streaming store for real-time UI
-              setStreamingToolResults(chatId, [...toolResults]);
+              setStreamingToolResults(effectiveChatId, [...toolResults]);
               await updateMessage(assistantMessage.id, {
                 toolResults: [...toolResults],
               });
@@ -1257,7 +1275,7 @@ export function useChat(chatId: string) {
                 if (currentFailures >= 2) {
                   const hintNote = `\n\n💡 *Note: ${parsed.toolName} has failed ${currentFailures} times. The error suggests: "${errorMsg}". Consider using a different approach or tool.*\n\n`;
                   fullContent += hintNote;
-                  appendStreamingContent(chatId, hintNote);
+                  appendStreamingContent(effectiveChatId, hintNote);
                 }
               }
             }
@@ -1317,14 +1335,14 @@ export function useChat(chatId: string) {
               // Append error to content so user sees it, but don't break the stream
               const errorNote = `\n\n⚠️ *${errorLabel}: ${errorMessage}*${actionHint}\n\n`;
               fullContent += errorNote;
-              appendStreamingContent(chatId, errorNote);
+              appendStreamingContent(effectiveChatId, errorNote);
             }
 
             // Handle tool-retry-exhausted events (tool failed after retries)
             if (parsed.type === "tool-retry-exhausted") {
               const failureNote = `\n\n⚠️ *${parsed.toolName} failed after ${parsed.failCount} attempts. ${parsed.suggestion || ""}*\n\n`;
               fullContent += failureNote;
-              appendStreamingContent(chatId, failureNote);
+              appendStreamingContent(effectiveChatId, failureNote);
             }
           } catch (e) {
             // Only log parse errors, don't break the stream
@@ -1341,7 +1359,7 @@ export function useChat(chatId: string) {
           const approxInput = countMessagesTokens(
             llmMessages.map((m, idx) => ({
               id: `req_${idx}`,
-              chatId,
+              chatId: effectiveChatId,
               role: m.role,
               content: m.content as any,
               createdAt: Date.now(),
@@ -1399,7 +1417,7 @@ export function useChat(chatId: string) {
       // Update chat's total cost and cache savings (activeBranchLeafId already set when assistant message was created)
       const currentTotalCost = chat.totalCost || 0;
       const currentTotalCacheSavings = chat.totalCacheSavings || 0;
-      await updateChat(chatId, {
+      await updateChat(effectiveChatId, {
         totalCost: currentTotalCost + cost,
         totalCacheSavings: currentTotalCacheSavings + cacheSavings,
       });
@@ -1454,9 +1472,9 @@ export function useChat(chatId: string) {
               const { title, cost: titleCost } = await titleResponse.json();
               if (title && title.length > 0) {
                 // Add title generation cost to chat total
-                const chatForCost = await getChatById(chatId);
+                const chatForCost = await getChatById(effectiveChatId);
                 const newTotalCost = (chatForCost?.totalCost || 0) + (titleCost || 0);
-                await updateChat(chatId, { title, totalCost: newTotalCost });
+                await updateChat(effectiveChatId, { title, totalCost: newTotalCost });
               }
             } else {
               console.error("[Chat] Failed to generate title:", titleResponse.status, titleResponse.statusText);
@@ -1472,7 +1490,7 @@ export function useChat(chatId: string) {
       scheduleMemoryExtraction();
 
       // Auto-summarize every 10 messages
-      const updatedMessages = await getMessages(chatId);
+      const updatedMessages = await getMessages(effectiveChatId);
       if (updatedMessages.length > 0 && updatedMessages.length % 10 === 0) {
         // Map to ai UIMessages for the utility
         const aiMessages: UIMessage[] = updatedMessages.map(m => ({
@@ -1482,7 +1500,7 @@ export function useChat(chatId: string) {
           createdAt: new Date(m.createdAt),
           parts: [{ type: 'text' as const, text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }]
         }));
-        generateAndApplySummary({ chatId, messages: aiMessages, keys }).catch(console.error);
+        generateAndApplySummary({ chatId: effectiveChatId, messages: aiMessages, keys }).catch(console.error);
       }
     } catch (error) {
       // Clear connection timeout on error
@@ -1523,8 +1541,10 @@ export function useChat(chatId: string) {
         clearTimeout(streamingClearTimeoutRef.current);
       }
       streamingClearTimeoutRef.current = setTimeout(() => {
-        clearStreaming(chatId);
+        clearStreaming(effectiveChatId);
         streamingClearTimeoutRef.current = null;
+        // Process next queued message if any
+        processNextInQueue(effectiveChatId);
       }, 150);
 
       // Refresh memory cache in background for next interaction
@@ -1533,12 +1553,65 @@ export function useChat(chatId: string) {
     }
   }, [chatId, getKeyForProvider, keys, scheduleMemoryExtraction, setStreamingMessage, appendStreamingContent, appendStreamingReasoning, setStreamingToolCalls, setStreamingToolResults, clearStreaming, startPipeline, setStepRunning, setStepComplete, setStepError, setStepRetrying, completePipeline, failPipeline, clearPipeline, setActiveSkill, setImageGenerationProgress, clearImageGenerationProgress, setOptimisticMessage, clearOptimisticMessage, setPendingSkillApproval]);
 
+  // Process next message in queue after streaming completes
+  const processNextInQueue = useCallback(async (targetChatId: string) => {
+    const { getQueue, dequeueMessage } = useStreamingStore.getState();
+    const queue = getQueue(targetChatId);
+
+    if (queue.length === 0) return;
+
+    // Safety check: don't process if still streaming
+    const { getChatStream } = useStreamingStore.getState();
+    const chatState = getChatStream(targetChatId);
+    if (chatState.streamingMessageId !== null) return;
+
+    const nextMessage = dequeueMessage(targetChatId);
+    if (!nextMessage) return;
+
+    // Look up skill by ID if one was stored
+    const skill = nextMessage.skill ? await getSkillById(nextMessage.skill) : null;
+
+    // Use the ref to get the latest sendMessage function (avoids stale closure)
+    if (sendMessageRef.current) {
+      await sendMessageRef.current(nextMessage.content, nextMessage.attachments, skill || null);
+    }
+  }, []);
+
   const sendMessage = async (content: MessageContent, attachments?: Array<{ name: string; content: string }>, selectedSkill?: Skill | null) => {
     setIsLoading(true);
     setError(null);
 
+    let actualChatId = chatId;
+
     try {
-      let chat = await getChatById(chatId);
+      // Handle draft mode - create chat if chatId is null
+      if (!actualChatId) {
+        const { draftChatConfig } = useUIStore.getState();
+        if (!draftChatConfig) {
+          throw new Error("No draft chat configuration found");
+        }
+
+        // Create chat with draft config
+        const { createChat } = await import("@/lib/db/queries");
+        const newChat = await createChat({
+          title: "New Chat",
+          modelId: draftChatConfig.modelId,
+          providerId: draftChatConfig.providerId,
+          projectId: draftChatConfig.projectId,
+          activeMcpServerIds: draftChatConfig.activeMcpServerIds || [],
+          reasoningLevel: (draftChatConfig.reasoningLevel as "low" | "medium" | "high" | "xhigh") || "medium",
+          temperature: draftChatConfig.temperature,
+          maxTokens: draftChatConfig.maxTokens,
+        });
+
+        actualChatId = newChat.id;
+
+        // Update UI store to show the new chat and clear draft
+        useUIStore.getState().setActiveChatId(newChat.id);
+        useUIStore.getState().clearDraftChatConfig();
+      }
+
+      let chat = await getChatById(actualChatId);
       if (!chat) throw new Error("Chat not found");
 
       // Check for @agent mention - if found, switch to that agent
@@ -1549,13 +1622,13 @@ export function useChat(chatId: string) {
         const mentionedAgent = await getAgentById(mentionedAgentId);
         if (mentionedAgent) {
           // Switch the chat to use the mentioned agent
-          await updateChat(chatId, {
+          await updateChat(actualChatId, {
             agentId: mentionedAgent.id,
             modelId: mentionedAgent.modelId || chat.modelId,
             activeMcpServerIds: mentionedAgent.mcpServerIds || [],
           });
           // Refresh chat data after update
-          chat = await getChatById(chatId);
+          chat = await getChatById(actualChatId);
           if (!chat) throw new Error("Chat not found after agent switch");
         }
       }
@@ -1576,21 +1649,21 @@ export function useChat(chatId: string) {
         }
       }
 
-      const parentId = chat.activeBranchLeafId || (await getLastMessage(chatId))?.id;
+      const parentId = chat.activeBranchLeafId || (await getLastMessage(actualChatId))?.id;
 
       // Add user message to database with original content
       const userMessage = await addMessage({
-        chatId,
+        chatId: actualChatId,
         role: "user",
         content,
         parentId,
       });
 
       // Clear optimistic message immediately - user message is now in DB and will appear via live query
-      clearOptimisticMessage(chatId);
+      clearOptimisticMessage(actualChatId);
 
       // Update chat's updatedAt timestamp
-      await updateChat(chatId, { activeBranchLeafId: userMessage.id });
+      await updateChat(actualChatId, { activeBranchLeafId: userMessage.id });
 
       // Auto-detect skill if none selected
       let activeSkill: Skill | null = selectedSkill || null;
@@ -1609,7 +1682,7 @@ export function useChat(chatId: string) {
               // Get recent conversation context for short messages like "retry", "continue"
               let conversationContext: Array<{ role: string; content: string }> | undefined;
               if (messageText.length < 20) {
-                const recentMessages = await getMessages(chatId);
+                const recentMessages = await getMessages(actualChatId);
                 conversationContext = recentMessages.slice(-4).map(m => ({
                   role: m.role,
                   content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
@@ -1630,9 +1703,14 @@ export function useChat(chatId: string) {
               if (matchResult) {
                 // Check if skill requires approval
                 if (matchResult.skill.requireApproval) {
+                  // Ensure we have a valid chat ID for skill approval
+                  if (!actualChatId) {
+                    throw new Error("Cannot show skill approval dialog without a valid chat");
+                  }
                   // Show approval dialog and wait for user decision
                   const approved = await new Promise<boolean>((resolve) => {
-                    setPendingSkillApproval(chatId, {
+                    // Non-null assertion is safe here because we checked above
+                    setPendingSkillApproval(actualChatId!, {
                       skill: {
                         id: matchResult.skill.id,
                         name: matchResult.skill.name,
@@ -1668,7 +1746,7 @@ export function useChat(chatId: string) {
         // Arena mode requires at least 2 models to compare
         // Use allSettled so one model failure doesn't abort the others
         const results = await Promise.allSettled(
-          arenaModelIds.map(arenaModel => generateResponse(content, attachments, arenaModel, userMessage.id, activeSkill))
+          arenaModelIds.map(arenaModel => generateResponse(content, attachments, arenaModel, userMessage.id, activeSkill, actualChatId!))
         );
         // Report individual failures without throwing (so the hook doesn't go into error state)
         for (let i = 0; i < results.length; i++) {
@@ -1680,21 +1758,32 @@ export function useChat(chatId: string) {
           }
         }
       } else {
-        await generateResponse(content, attachments, undefined, userMessage.id, activeSkill);
+        await generateResponse(content, attachments, undefined, userMessage.id, activeSkill, actualChatId!);
       }
 
     } catch (err) {
       handleError(err);
       // Ensure all state is cleared on error
-      clearStreaming(chatId);
-      clearPipeline(chatId);
-      clearOptimisticMessage(chatId);
+      // Use chatId from closure if actualChatId wasn't set (error before chat creation)
+      const idToClear = actualChatId || chatId;
+      if (idToClear) {
+        clearStreaming(idToClear);
+        clearPipeline(idToClear);
+        clearOptimisticMessage(idToClear);
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Keep the ref updated with the latest sendMessage function
+  sendMessageRef.current = sendMessage;
+
   const editMessage = async (messageId: string, newContent: string) => {
+    if (!chatId) {
+      throw new Error("Cannot edit message without a valid chat");
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -1705,14 +1794,14 @@ export function useChat(chatId: string) {
 
       // Create a new branch user message (sibling) instead of overwriting history.
       const branchedUser = await addMessage({
-        chatId,
+        chatId: chatId!,
         role: "user",
         content: newContent,
         parentId: message.parentId,
       });
 
-      const hasBranches = await chatHasBranches(chatId);
-      await updateChat(chatId, {
+      const hasBranches = await chatHasBranches(chatId!);
+      await updateChat(chatId!, {
         activeBranchLeafId: branchedUser.id,
         hasBranches,
       });
@@ -1721,14 +1810,18 @@ export function useChat(chatId: string) {
 
     } catch (err) {
       handleError(err);
-      clearStreaming(chatId);
-      clearPipeline(chatId);
+      clearStreaming(chatId!);
+      clearPipeline(chatId!);
     } finally {
       setIsLoading(false);
     }
   };
 
   const continueResponse = async (messageId: string) => {
+    if (!chatId) {
+      throw new Error("Cannot continue response without a valid chat");
+    }
+
     setIsLoading(true);
     setError(null);
     setContinuingMessageId(messageId);
@@ -1739,20 +1832,20 @@ export function useChat(chatId: string) {
 
       const continuePrompt = "Please continue your previous response.";
       const continueUser = await addMessage({
-        chatId,
+        chatId: chatId!,
         role: "user",
         content: continuePrompt,
         parentId: messageId,
       });
-      await updateChat(chatId, { activeBranchLeafId: continueUser.id });
+      await updateChat(chatId!, { activeBranchLeafId: continueUser.id });
 
       await updateMessage(messageId, { canContinue: false });
       await generateResponse(continuePrompt, undefined, undefined, continueUser.id);
 
     } catch (err) {
       handleError(err);
-      clearStreaming(chatId);
-      clearPipeline(chatId);
+      clearStreaming(chatId!);
+      clearPipeline(chatId!);
     } finally {
       setIsLoading(false);
       setContinuingMessageId(null);
@@ -1760,6 +1853,10 @@ export function useChat(chatId: string) {
   };
 
   const regenerateAssistant = async (assistantMessageId: string) => {
+    if (!chatId) {
+      throw new Error("Cannot regenerate assistant without a valid chat");
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -1774,19 +1871,23 @@ export function useChat(chatId: string) {
         throw new Error("Parent user message not found");
       }
 
-      const hasBranches = await chatHasBranches(chatId);
-      await updateChat(chatId, { activeBranchLeafId: assistant.parentId, hasBranches });
+      const hasBranches = await chatHasBranches(chatId!);
+      await updateChat(chatId!, { activeBranchLeafId: assistant.parentId, hasBranches });
       await generateResponse(parentUser.content, undefined, undefined, parentUser.id);
     } catch (err) {
       handleError(err);
-      clearStreaming(chatId);
-      clearPipeline(chatId);
+      clearStreaming(chatId!);
+      clearPipeline(chatId!);
     } finally {
       setIsLoading(false);
     }
   };
 
   const resendMessage = async (userMessageId: string) => {
+    if (!chatId) {
+      throw new Error("Cannot resend message without a valid chat");
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -1799,8 +1900,8 @@ export function useChat(chatId: string) {
       await generateResponse(userMessage.content, undefined, undefined, userMessageId);
     } catch (err) {
       handleError(err);
-      clearStreaming(chatId);
-      clearPipeline(chatId);
+      clearStreaming(chatId!);
+      clearPipeline(chatId!);
     } finally {
       setIsLoading(false);
     }
@@ -1815,10 +1916,14 @@ export function useChat(chatId: string) {
   };
 
   const cancelRequest = useCallback(async () => {
+    if (!chatId) {
+      return; // Nothing to cancel in draft mode
+    }
+
     if (abortControllerRef.current) {
       // IMPORTANT: Capture state snapshot atomically BEFORE any async operations
       // This prevents race conditions where state could change during the async DB call
-      const chatState = getChatStream(chatId);
+      const chatState = getChatStream(chatId!);
       const { streamingContent, streamingMessageId, streamingReasoning, streamingToolCalls } = chatState;
 
       // Signal abort immediately
@@ -1828,7 +1933,7 @@ export function useChat(chatId: string) {
 
       // Clear streaming state BEFORE async operations to prevent stale reads
       // This ensures no other code path can see inconsistent state
-      clearStreaming(chatId);
+      clearStreaming(chatId!);
 
       // Save partial content to DB using the captured snapshot (not live state)
       if (streamingMessageId && streamingContent && streamingContent.trim().length > 0) {
@@ -1851,8 +1956,13 @@ export function useChat(chatId: string) {
           console.error('[Cancel] Failed to save partial content:', error);
         }
       }
+
+      // Process next queued message after cancellation
+      setTimeout(() => {
+        processNextInQueue(chatId!);
+      }, 200);
     }
-  }, [chatId, getChatStream, clearStreaming]);
+  }, [chatId, getChatStream, clearStreaming, processNextInQueue]);
 
   return {
     sendMessage,

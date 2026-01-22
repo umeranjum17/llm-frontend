@@ -63,6 +63,13 @@ export interface ImageGenerationProgress {
   messageId: string;
 }
 
+export interface QueuedMessage {
+  id: string;
+  content: any;
+  attachments: Array<{ name: string; content: string }>;
+  skill: string | null;
+}
+
 // Per-chat streaming state
 export interface ChatStreamingState {
   streamingMessageId: string | null;
@@ -76,6 +83,7 @@ export interface ChatStreamingState {
   activeSkill: ActiveSkill | null;
   pendingSkillApproval: PendingSkillApproval | null;
   imageGenerationProgress: ImageGenerationProgress | null;
+  messageQueue: QueuedMessage[];
 }
 
 // Default state for a new chat
@@ -91,6 +99,7 @@ const createDefaultChatState = (): ChatStreamingState => ({
   activeSkill: null,
   pendingSkillApproval: null,
   imageGenerationProgress: null,
+  messageQueue: [],
 });
 
 // Stable default state to avoid creating new objects in selectors (prevents infinite re-renders)
@@ -106,6 +115,7 @@ const DEFAULT_CHAT_STATE: ChatStreamingState = Object.freeze({
   activeSkill: null,
   pendingSkillApproval: null,
   imageGenerationProgress: null,
+  messageQueue: [],
 }) as ChatStreamingState;
 
 interface StreamingState {
@@ -148,6 +158,12 @@ interface StreamingState {
   // Image generation progress actions
   setImageGenerationProgress: (chatId: string, messageId: string, stage: ImageGenerationStage) => void;
   clearImageGenerationProgress: (chatId: string) => void;
+
+  // Message queue actions
+  enqueueMessage: (chatId: string, message: Omit<QueuedMessage, 'id'>) => void;
+  dequeueMessage: (chatId: string) => QueuedMessage | null;
+  clearQueue: (chatId: string) => void;
+  getQueue: (chatId: string) => QueuedMessage[];
 
   // Pipeline actions
   startPipeline: (chatId: string, steps: Array<{ id: string; name: string; type: "llm" | "image" | "tool" | "subagent" }>) => void;
@@ -414,6 +430,46 @@ export const useStreamingStore = create<StreamingState>((set, get) => {
         imageGenerationProgress: null,
       }),
     })),
+
+  // Message queue actions
+  enqueueMessage: (chatId, message) =>
+    set((state) => {
+      const currentState = getOrCreateChatState(state.chatStreams, chatId);
+      const newMessage: QueuedMessage = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        ...message,
+      };
+      return {
+        chatStreams: updateChatState(state.chatStreams, chatId, {
+          messageQueue: [...currentState.messageQueue, newMessage],
+        }),
+      };
+    }),
+
+  dequeueMessage: (chatId) => {
+    const currentState = getOrCreateChatState(get().chatStreams, chatId);
+    if (currentState.messageQueue.length === 0) return null;
+
+    const [first, ...rest] = currentState.messageQueue;
+    set((state) => ({
+      chatStreams: updateChatState(state.chatStreams, chatId, {
+        messageQueue: rest,
+      }),
+    }));
+    return first;
+  },
+
+  clearQueue: (chatId) =>
+    set((state) => ({
+      chatStreams: updateChatState(state.chatStreams, chatId, {
+        messageQueue: [],
+      }),
+    })),
+
+  getQueue: (chatId) => {
+    const currentState = getOrCreateChatState(get().chatStreams, chatId);
+    return currentState.messageQueue;
+  },
 
   // Pipeline actions
   startPipeline: (chatId, steps) =>

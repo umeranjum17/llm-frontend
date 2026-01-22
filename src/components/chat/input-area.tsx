@@ -24,7 +24,7 @@ import { SkillQuickSelect } from "@/components/chat/skill-quick-select";
 import { MobileNavInline } from "@/components/mobile-nav";
 
 interface InputAreaProps {
-  chatId: string;
+  chatId: string | null;
 }
 
 interface TextAttachment {
@@ -198,12 +198,13 @@ export function InputArea({ chatId }: InputAreaProps) {
   const [inputFocused, setInputFocused] = useState(false);
 
   // Get active skill from streaming store (persists per chat)
-  const activeSkillFromStore = useStreamingStore((state) => state.chatStreams[chatId]?.activeSkill ?? null);
+  const activeSkillFromStore = useStreamingStore((state) => chatId ? state.chatStreams[chatId]?.activeSkill ?? null : null);
   const setActiveSkillInStore = useStreamingStore((state) => state.setActiveSkill);
 
   // Convert store's ActiveSkill to Skill-like object for the component
   const selectedSkill = activeSkillFromStore;
   const setSelectedSkill = useCallback((skill: Skill | null) => {
+    if (!chatId) return; // Can't set skill without a chat ID
     if (skill) {
       setActiveSkillInStore(chatId, {
         id: skill.id,
@@ -224,6 +225,17 @@ export function InputArea({ chatId }: InputAreaProps) {
   const wasListeningRef = useRef(false);
   const [isMobile, setIsMobile] = useState(false);
 
+  // Message queue state
+  const streamingMessageId = useStreamingStore((state) => chatId ? state.chatStreams[chatId]?.streamingMessageId ?? null : null);
+  const enqueueMessage = useStreamingStore((state) => state.enqueueMessage);
+  const clearQueue = useStreamingStore((state) => state.clearQueue);
+  const messageQueue = useStreamingStore((state) => chatId ? state.chatStreams[chatId]?.messageQueue ?? [] : []);
+
+  // Force send detection for mobile
+  const longPressTimeout = useRef<NodeJS.Timeout | undefined>(undefined);
+  const forceSendRef = useRef(false);
+  const [isLongPressing, setIsLongPressing] = useState(false);
+
   // Detect mobile device - on mobile, Enter creates new line instead of sending
   useEffect(() => {
     const checkMobile = () => {
@@ -238,7 +250,7 @@ export function InputArea({ chatId }: InputAreaProps) {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  const chat = useLiveQuery(() => getChatById(chatId), [chatId]);
+  const chat = useLiveQuery(() => chatId ? getChatById(chatId) : undefined, [chatId]);
   const agents = useLiveQuery(() => getAllAgents(), []);
   const tags = useLiveQuery(() => getAllTags(), []);
   const skills = useLiveQuery(() => getAllSkills(), []);
@@ -596,7 +608,8 @@ export function InputArea({ chatId }: InputAreaProps) {
   const handleSubmit = async (e?: React.FormEvent, overrideContent?: string) => {
     e?.preventDefault();
     const finalInput = overrideContent ?? input;
-    if ((!finalInput.trim() && attachments.length === 0 && imageAttachments.length === 0 && codeSnippets.length === 0) || isLoading)
+    // Only check for empty input - don't check isLoading here as queue logic handles that case
+    if (!finalInput.trim() && attachments.length === 0 && imageAttachments.length === 0 && codeSnippets.length === 0)
       return;
 
     // Append code snippets as markdown code blocks
@@ -614,13 +627,6 @@ export function InputArea({ chatId }: InputAreaProps) {
     // Look up full skill from skills array if we have an active skill ID
     const currentSkill = selectedSkill ? skills?.find(s => s.id === selectedSkill.id) || null : null;
 
-    setInput("");
-    setAttachments([]);
-    setImageAttachments([]);
-    setCodeSnippets([]);
-    setExpandedSnippets(new Set());
-    // Don't clear skill - it stays selected until user removes it
-
     const contentParts: MessageContentPart[] = [
       ...(message ? [{ type: "text" as const, text: message }] : []),
       ...currentImages.map((img) => ({
@@ -629,7 +635,54 @@ export function InputArea({ chatId }: InputAreaProps) {
       })),
     ];
 
-    await sendMessage(currentImages.length > 0 ? contentParts : message, currentAttachments, currentSkill);
+    const isStreaming = !!streamingMessageId;
+    const isForceMode = (e?.nativeEvent as KeyboardEvent)?.shiftKey || forceSendRef.current;
+
+    // Reset force send ref
+    forceSendRef.current = false;
+    setIsLongPressing(false);
+
+    if (!isStreaming) {
+      // Normal send - not currently streaming
+      setInput("");
+      setAttachments([]);
+      setImageAttachments([]);
+      setCodeSnippets([]);
+      setExpandedSnippets(new Set());
+      await sendMessage(currentImages.length > 0 ? contentParts : message, currentAttachments, currentSkill);
+    } else if (isForceMode) {
+      // Force send - interrupt current stream
+      if (chatId) {
+        clearQueue(chatId);
+        cancelRequest();
+        // Clear input fields immediately
+        setInput("");
+        setAttachments([]);
+        setImageAttachments([]);
+        setCodeSnippets([]);
+        setExpandedSnippets(new Set());
+        // Small delay to let cancel complete
+        setTimeout(() => {
+          sendMessage(currentImages.length > 0 ? contentParts : message, currentAttachments, currentSkill);
+        }, 100);
+      }
+    } else {
+      // Queue the message
+      if (chatId) {
+        enqueueMessage(chatId, {
+          content: currentImages.length > 0 ? contentParts : message,
+          attachments: currentAttachments,
+          skill: currentSkill?.id || null,
+        });
+        // Clear input fields so user knows it queued
+        setInput("");
+        setAttachments([]);
+        setImageAttachments([]);
+        setCodeSnippets([]);
+        setExpandedSnippets(new Set());
+        toast.info(`Message queued (${messageQueue.length + 1} in queue)`);
+      }
+    }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -739,6 +792,20 @@ export function InputArea({ chatId }: InputAreaProps) {
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
     >
+      {/* Queue Preview */}
+      {messageQueue.length > 0 && (
+        <div className="mb-2 flex items-center justify-between gap-2 px-3 py-1.5 text-xs text-muted-foreground bg-muted/50 rounded-t-md border-b">
+          <span>{messageQueue.length} message{messageQueue.length > 1 ? 's' : ''} queued</span>
+          <button
+            type="button"
+            onClick={() => chatId && clearQueue(chatId)}
+            className="hover:text-foreground transition-colors underline"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       {/* Attachments Preview */}
       {(imageAttachments.length > 0 || attachments.length > 0 || codeSnippets.length > 0) && (
         <div className="mb-2 flex flex-col gap-2">
@@ -1003,8 +1070,31 @@ export function InputArea({ chatId }: InputAreaProps) {
                 type="submit"
                 size="icon"
                 disabled={!input.trim() && attachments.length === 0 && imageAttachments.length === 0 && codeSnippets.length === 0}
-                className="h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-lg sm:rounded-xl"
-                title="Send"
+                className={cn(
+                  "h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-lg sm:rounded-xl",
+                  isLongPressing && "bg-orange-500 hover:bg-orange-600"
+                )}
+                title={streamingMessageId ? "Queue message (Shift to force)" : "Send message"}
+                onTouchStart={(e) => {
+                  if (!streamingMessageId) return;
+                  longPressTimeout.current = setTimeout(() => {
+                    forceSendRef.current = true;
+                    setIsLongPressing(true);
+                    navigator.vibrate?.(50);
+                  }, 500);
+                }}
+                onTouchEnd={() => {
+                  if (longPressTimeout.current) {
+                    clearTimeout(longPressTimeout.current);
+                  }
+                }}
+                onTouchCancel={() => {
+                  if (longPressTimeout.current) {
+                    clearTimeout(longPressTimeout.current);
+                  }
+                  forceSendRef.current = false;
+                  setIsLongPressing(false);
+                }}
               >
                 <Send className="h-4 w-4 sm:h-5 sm:w-5" />
               </Button>
