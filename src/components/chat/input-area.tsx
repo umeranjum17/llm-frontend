@@ -841,7 +841,7 @@ export function InputArea({ chatId }: InputAreaProps) {
                 transition={{ duration: 0.15 }}
                 className="overflow-hidden"
               >
-                <div className="border-t px-2 py-1.5 space-y-1 max-h-40 overflow-y-auto">
+                <div className="border-t px-2 sm:px-2 py-2 space-y-2 max-h-48 overflow-y-auto">
                   {messageQueue.map((queuedMsg, index) => {
                     const preview = typeof queuedMsg.content === 'string'
                       ? queuedMsg.content
@@ -852,41 +852,42 @@ export function InputArea({ chatId }: InputAreaProps) {
                     return (
                       <div
                         key={queuedMsg.id}
-                        className="flex items-center gap-2 px-2 py-2 rounded-md bg-background/50 border border-border/50"
+                        className="flex items-center gap-2 sm:gap-2 px-3 py-3 sm:py-2 rounded-lg bg-background/50 border border-border/50"
                       >
-                        <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/40 flex-shrink-0" />
-                        <span className="flex-1 text-sm text-foreground truncate">
-                          {preview.slice(0, 50)}{preview.length > 50 ? '...' : ''}
+                        <div className="w-5 h-5 sm:w-4 sm:h-4 rounded-full border-2 border-muted-foreground/40 flex-shrink-0" />
+                        <span className="flex-1 text-sm text-foreground truncate min-w-0">
+                          {preview.slice(0, 40)}{preview.length > 40 ? '...' : ''}
                         </span>
-                        <div className="flex items-center gap-0.5">
+                        {/* Action buttons - always visible on mobile for better touch UX */}
+                        <div className="flex items-center gap-1 sm:gap-0.5 flex-shrink-0">
                           {/* Send now button */}
                           <button
                             type="button"
                             onClick={() => forceSendQueuedMessage(queuedMsg.id)}
-                            className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+                            className="p-2.5 sm:p-1.5 text-muted-foreground hover:text-foreground active:text-foreground hover:bg-muted active:bg-muted rounded-lg sm:rounded transition-colors touch-manipulation"
                             aria-label="Send now (interrupt)"
                           >
-                            <CornerDownLeft className="h-3.5 w-3.5" />
+                            <CornerDownLeft className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
                           </button>
                           {/* Move up button */}
                           {index > 0 && (
                             <button
                               type="button"
                               onClick={() => chatId && moveQueuedMessageUp(chatId, queuedMsg.id)}
-                              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+                              className="p-2.5 sm:p-1.5 text-muted-foreground hover:text-foreground active:text-foreground hover:bg-muted active:bg-muted rounded-lg sm:rounded transition-colors touch-manipulation"
                               aria-label="Move up in queue"
                             >
-                              <ArrowUp className="h-3.5 w-3.5" />
+                              <ArrowUp className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
                             </button>
                           )}
                           {/* Delete button */}
                           <button
                             type="button"
                             onClick={() => chatId && removeQueuedMessage(chatId, queuedMsg.id)}
-                            className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-muted rounded transition-colors"
+                            className="p-2.5 sm:p-1.5 text-muted-foreground hover:text-destructive active:text-destructive hover:bg-muted active:bg-muted rounded-lg sm:rounded transition-colors touch-manipulation"
                             aria-label="Remove from queue"
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <Trash2 className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
                           </button>
                         </div>
                       </div>
@@ -1153,19 +1154,19 @@ export function InputArea({ chatId }: InputAreaProps) {
                     size="icon"
                     disabled={!hasInput}
                     className={cn(
-                      "h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-lg sm:rounded-xl",
-                      isLongPressing && "bg-orange-500 hover:bg-orange-600",
+                      "h-10 w-10 sm:h-10 sm:w-10 shrink-0 rounded-xl touch-manipulation",
+                      isLongPressing && "bg-orange-500 hover:bg-orange-600 scale-110",
                       // Queue mode indicator - subtle ring when streaming
-                      isCurrentlyStreaming && hasInput && "ring-2 ring-primary/30"
+                      isCurrentlyStreaming && hasInput && !isLongPressing && "ring-2 ring-primary/30"
                     )}
-                    aria-label={isCurrentlyStreaming ? "Queue message" : "Send message"}
+                    aria-label={isCurrentlyStreaming ? "Queue message (hold to force send)" : "Send message"}
                     onTouchStart={(e) => {
                       if (!isCurrentlyStreaming) return;
                       longPressTimeout.current = setTimeout(() => {
                         forceSendRef.current = true;
                         setIsLongPressing(true);
                         navigator.vibrate?.(50);
-                      }, 500);
+                      }, 400); // Slightly faster for better responsiveness
                     }}
                     onTouchEnd={() => {
                       if (longPressTimeout.current) {
@@ -1180,12 +1181,18 @@ export function InputArea({ chatId }: InputAreaProps) {
                       setIsLongPressing(false);
                     }}
                   >
-                    <Send className="h-4 w-4 sm:h-5 sm:w-5" />
+                    <Send className={cn("h-5 w-5", isLongPressing && "animate-pulse")} />
                   </Button>
-                  {/* Queue mode badge for mobile */}
-                  {isCurrentlyStreaming && hasInput && (
-                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-medium text-primary-foreground">
+                  {/* Queue mode badge */}
+                  {isCurrentlyStreaming && hasInput && !isLongPressing && (
+                    <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground shadow-sm">
                       +
+                    </span>
+                  )}
+                  {/* Force send indicator */}
+                  {isLongPressing && (
+                    <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-[10px] font-semibold text-white shadow-sm">
+                      !
                     </span>
                   )}
                 </motion.div>

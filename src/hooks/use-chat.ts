@@ -1510,11 +1510,19 @@ export function useChat(chatId: string | null) {
 
       // Handle abort gracefully - don't show as error
       if (error instanceof Error && error.name === "AbortError") {
-        // Check if it was a timeout vs user cancellation
-        const isTimeout = !fullContent && abortControllerRef.current === null;
-        // Update message to show it was cancelled or timed out
+        // Check abort reason: 'user-cancelled' means user clicked stop/force send
+        // DOMException from AbortController has a reason property when abort(reason) is called
+        const abortReason = (error as any).reason || (error as DOMException).message;
+        const isUserCancelled = abortReason === 'user-cancelled';
+
+        // User-initiated cancellations are handled by cancelRequest - don't double-update
+        if (isUserCancelled) {
+          return; // cancelRequest already handled the message update
+        }
+
+        // This was a timeout (connection timeout, not user cancellation)
         await updateMessage(assistantMessage.id, {
-          content: fullContent || (isTimeout ? "⏱️ Connection timed out. Please try again." : "⏹️ Request cancelled"),
+          content: fullContent || "⏱️ Connection timed out. Please try again.",
           isIncomplete: !!fullContent,
           canContinue: false,
         });
@@ -1926,8 +1934,8 @@ export function useChat(chatId: string | null) {
       const chatState = getChatStream(chatId!);
       const { streamingContent, streamingMessageId, streamingReasoning, streamingToolCalls } = chatState;
 
-      // Signal abort immediately
-      abortControllerRef.current.abort();
+      // Signal abort immediately with reason to distinguish from timeout
+      abortControllerRef.current.abort('user-cancelled');
       abortControllerRef.current = null;
       setIsLoading(false);
 
