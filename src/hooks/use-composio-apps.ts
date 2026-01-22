@@ -416,7 +416,7 @@ export function useComposioApps() {
       // Ignore
     }
 
-    if (config.enabledToolkits.length === 0) {
+    if (!config.enabledToolkits?.length) {
       // No toolkits enabled, clean up any existing entries (batch)
       try {
         await cleanupComposioServers();
@@ -663,7 +663,7 @@ export function useComposioApps() {
 
   // Create session when config changes (wait for connection status first)
   useEffect(() => {
-    if (config?.apiKey && !mcpUrl && config.enabledToolkits.length > 0 && connectionStatusReady) {
+    if (config?.apiKey && !mcpUrl && (config.enabledToolkits?.length ?? 0) > 0 && connectionStatusReady) {
       createSession();
     }
   }, [config?.apiKey, config?.enabledToolkits, mcpUrl, connectionStatusReady, createSession]);
@@ -683,10 +683,10 @@ export function useComposioApps() {
     await clearAllMcpServers();
     setMcpUrl(null);
     // If we have enabled toolkits, recreate the session
-    if (config?.enabledToolkits.length) {
+    if (config?.enabledToolkits?.length) {
       await createSession();
     }
-  }, [config?.enabledToolkits.length, createSession]);
+  }, [config?.enabledToolkits?.length, createSession]);
 
   return {
     // Config
