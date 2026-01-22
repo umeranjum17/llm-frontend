@@ -1,5 +1,6 @@
 import { db } from "./schema";
 import type { SettingsExport, SETTINGS_EXPORT_VERSION } from "./export-settings";
+import { encryptApiKey, isEncryptedKey } from "@/lib/crypto/api-key-crypto";
 
 export type ImportMode = "overwrite" | "merge" | "skip";
 
@@ -131,9 +132,19 @@ export async function importSettings(
 
   try {
     // Import API Keys
+    // Keys from export are in plaintext (decrypted during export) and need to be
+    // re-encrypted with this device's secret before storing
     if (opts.importApiKeys && exportData.data.apiKeys.length > 0) {
       for (const apiKey of exportData.data.apiKeys) {
         try {
+          // Re-encrypt the API key with this device's secret
+          // If key is already encrypted (old format export), try to use as-is
+          const keyToStore = isEncryptedKey(apiKey.key)
+            ? apiKey.key // Already encrypted (legacy export format)
+            : await encryptApiKey(apiKey.key); // Encrypt plaintext key
+
+          const encryptedApiKey = { ...apiKey, key: keyToStore };
+
           const existingById = await db.apiKeys.get(apiKey.id);
           const existingByProvider = await db.apiKeys
             .where("provider")
@@ -146,21 +157,21 @@ export async function importSettings(
               // Different ID but same provider - delete the old one first
               await db.apiKeys.delete(existingByProvider.id);
             }
-            await db.apiKeys.put(apiKey);
+            await db.apiKeys.put(encryptedApiKey);
             result.imported.apiKeys++;
           } else if (opts.mode === "merge") {
             // In merge mode, overwrite if same provider exists (regardless of ID)
             if (existingByProvider) {
-              await db.apiKeys.put({ ...apiKey, id: existingByProvider.id });
+              await db.apiKeys.put({ ...encryptedApiKey, id: existingByProvider.id });
               result.imported.apiKeys++;
             } else {
-              await db.apiKeys.add(apiKey);
+              await db.apiKeys.add(encryptedApiKey);
               result.imported.apiKeys++;
             }
           } else {
             // Skip mode - only add if no key for this provider exists
             if (!existingById && !existingByProvider) {
-              await db.apiKeys.add(apiKey);
+              await db.apiKeys.add(encryptedApiKey);
               result.imported.apiKeys++;
             } else {
               result.skipped.apiKeys++;

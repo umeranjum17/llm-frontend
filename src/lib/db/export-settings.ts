@@ -11,8 +11,9 @@ import type {
   Tag,
   TagRule,
 } from "./schema";
+import { decryptApiKey, isEncryptedKey } from "@/lib/crypto/api-key-crypto";
 
-export const SETTINGS_EXPORT_VERSION = 1;
+export const SETTINGS_EXPORT_VERSION = 2; // Bumped for plaintext API key export
 
 export interface SettingsExport {
   version: number;
@@ -35,11 +36,12 @@ export interface SettingsExport {
 /**
  * Exports all user settings and configurations from the database
  * Excludes conversation data (chats, messages) and built-in items
+ * API keys are decrypted before export so they can be re-encrypted on import
  */
 export async function exportAllSettings(): Promise<SettingsExport> {
   // Fetch all relevant data from Dexie tables
   const [
-    apiKeys,
+    rawApiKeys,
     mcpServers,
     allAgents,
     allPrompts,
@@ -61,6 +63,23 @@ export async function exportAllSettings(): Promise<SettingsExport> {
     db.tags.toArray(),
     db.tagRules.toArray(),
   ]);
+
+  // Decrypt API keys for export (they'll be re-encrypted on import with new device secret)
+  const apiKeys: ApiKey[] = [];
+  for (const key of rawApiKeys) {
+    try {
+      if (isEncryptedKey(key.key)) {
+        const decryptedKey = await decryptApiKey(key.key);
+        apiKeys.push({ ...key, key: decryptedKey });
+      } else {
+        // Already plaintext (legacy)
+        apiKeys.push(key);
+      }
+    } catch (error) {
+      // Skip keys that can't be decrypted (orphaned keys)
+      console.warn(`[Export] Skipping undecryptable key for ${key.provider}`);
+    }
+  }
 
   // Filter out built-in items - only export user-created content
   const customAgents = allAgents.filter((agent) => !agent.isBuiltIn);
