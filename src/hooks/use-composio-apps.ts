@@ -122,6 +122,8 @@ function getCachedToolkits(): ComposioToolkit[] | null {
   if (!cached) return null;
   try {
     const { toolkits, timestamp } = JSON.parse(cached);
+    // Validate that toolkits is an array
+    if (!Array.isArray(toolkits)) return null;
     if (Date.now() - timestamp < TOOLKITS_CACHE_TTL) {
       return toolkits;
     }
