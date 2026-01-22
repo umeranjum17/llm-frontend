@@ -702,7 +702,7 @@ export function InputArea({ chatId }: InputAreaProps) {
 
   const handleMentionTextareaEnter = (e: React.KeyboardEvent) => {
     // On mobile: Enter = new line (default behavior), use send button to submit
-    // On desktop: Enter = send, Shift+Enter = new line OR force send (when streaming)
+    // On desktop: Enter = send, Shift+Enter = new line, Ctrl/Cmd+Enter = force send
     if (isMobile) {
       // Let the default behavior happen (insert new line)
       return;
@@ -710,24 +710,31 @@ export function InputArea({ chatId }: InputAreaProps) {
 
     const isCurrentlyStreaming = !!streamingMessageId || isLoading;
 
-    // Desktop behavior:
-    // - Not streaming: Enter = send, Shift+Enter = new line
-    // - Streaming: Enter = queue, Shift+Enter = force send (interrupt)
-    if (e.shiftKey) {
+    // Ctrl/Cmd+Enter = force send (interrupt streaming and send immediately)
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
       if (isCurrentlyStreaming) {
-        // Force send - interrupt streaming
         e.preventDefault();
         forceSendRef.current = true;
         const syntheticEvent = { preventDefault: () => { } } as React.FormEvent;
         handleSubmit(syntheticEvent);
+      } else {
+        // Not streaming - just send normally
+        e.preventDefault();
+        const syntheticEvent = { preventDefault: () => { } } as React.FormEvent;
+        handleSubmit(syntheticEvent);
       }
-      // Not streaming + Shift+Enter = new line (default behavior, don't prevent)
-    } else {
-      // Enter without shift = send (or queue if streaming)
-      e.preventDefault();
-      const syntheticEvent = { preventDefault: () => { } } as React.FormEvent;
-      handleSubmit(syntheticEvent);
+      return;
     }
+
+    // Shift+Enter = new line (always)
+    if (e.shiftKey) {
+      return; // Let default behavior insert new line
+    }
+
+    // Enter = send (or queue if streaming)
+    e.preventDefault();
+    const syntheticEvent = { preventDefault: () => { } } as React.FormEvent;
+    handleSubmit(syntheticEvent);
   };
 
   const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
