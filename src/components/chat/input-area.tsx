@@ -412,41 +412,9 @@ export function InputArea({ chatId }: InputAreaProps) {
     return items;
   }, [files, otherChats, chatId, agents, tags, skills]);
 
-  // Handle submit function for keyboard shortcut
+  // Handle submit function for keyboard shortcut - delegates to handleSubmit for queue support
   const handleSubmitMessage = () => {
-    if ((input.trim() || attachments.length > 0 || imageAttachments.length > 0 || codeSnippets.length > 0) && !isLoading) {
-      // Append code snippets as markdown code blocks
-      let message = input.trim();
-      if (codeSnippets.length > 0) {
-        const snippetText = codeSnippets
-          .map((s) => `\`\`\`${s.language || ''}\n${s.content}\n\`\`\``)
-          .join('\n\n');
-        message = message ? `${message}\n\n${snippetText}` : snippetText;
-      }
-
-      const currentAttachments = [...attachments]; // Capture current state
-      const currentImages = [...imageAttachments];
-
-      // Look up full skill from skills array if we have an active skill ID
-      const currentSkill = selectedSkill ? skills?.find(s => s.id === selectedSkill.id) || null : null;
-
-      setInput("");
-      setAttachments([]); // Clear state immediately
-      setImageAttachments([]);
-      setCodeSnippets([]);
-      setExpandedSnippets(new Set());
-      // Don't clear skill - it stays selected until user removes it
-
-      const contentParts: MessageContentPart[] = [
-        ...(message ? [{ type: "text" as const, text: message }] : []),
-        ...currentImages.map((img) => ({
-          type: "image_url" as const,
-          image_url: { url: img.dataUrl },
-        })),
-      ];
-
-      sendMessage(currentImages.length > 0 ? contentParts : message, currentAttachments, currentSkill);
-    }
+    handleSubmit();
   };
 
   // Register Cmd+Enter keyboard shortcut for sending message
