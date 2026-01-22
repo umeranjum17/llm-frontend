@@ -189,6 +189,9 @@ function toSlashCommand(title: string) {
   return `/${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}`;
 }
 
+// Stable empty array to prevent infinite re-renders in selectors
+const EMPTY_QUEUE: never[] = [];
+
 export function InputArea({ chatId }: InputAreaProps) {
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<TextAttachment[]>([]);
@@ -231,7 +234,7 @@ export function InputArea({ chatId }: InputAreaProps) {
   const clearQueue = useStreamingStore((state) => state.clearQueue);
   const removeQueuedMessage = useStreamingStore((state) => state.removeQueuedMessage);
   const moveQueuedMessageUp = useStreamingStore((state) => state.moveQueuedMessageUp);
-  const messageQueue = useStreamingStore((state) => chatId ? state.getChatStream(chatId).messageQueue : []);
+  const messageQueue = useStreamingStore((state) => chatId ? state.getChatStream(chatId).messageQueue : EMPTY_QUEUE);
   const [queueExpanded, setQueueExpanded] = useState(true);
 
   // Force send detection for mobile
