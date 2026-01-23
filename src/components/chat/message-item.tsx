@@ -1177,57 +1177,54 @@ export const MessageItem = memo(function MessageItem({
                     >
                       <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 font-medium border-t border-border/30 pt-2">
                       <div className="flex items-center gap-3">
-                        <span className="flex items-center gap-0.5">
-                          In: <span className="text-muted-foreground">{message.inputTokens?.toLocaleString() || 0}</span>
-                          {/* Clickable cache indicator with detailed popover */}
-                          {message.cachedTokens && message.cachedTokens > 0 && (
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <button
-                                  className="text-amber-500 dark:text-amber-400 ml-0.5 cursor-pointer hover:scale-110 transition-transform inline-flex"
-                                  title="Click for cache details"
-                                >
-                                  ⚡
-                                </button>
-                              </PopoverTrigger>
-                              <PopoverContent side="top" align="start" className="w-auto p-3 text-xs">
-                                <div className="space-y-2">
-                                  <div className="flex items-center gap-2 font-semibold text-amber-600 dark:text-amber-400">
-                                    <span className="text-sm">⚡</span>
-                                    <span>Prompt Cache Hit</span>
+                        {/* Input tokens - green and clickable when cached */}
+                        {message.cachedTokens && message.cachedTokens > 0 ? (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button className="flex items-center gap-0.5 text-green-600 dark:text-green-400 hover:text-green-500 dark:hover:text-green-300 transition-colors cursor-pointer">
+                                In: <span className="font-semibold">{message.inputTokens?.toLocaleString() || 0}</span>
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent side="top" align="start" className="w-auto p-3 text-xs">
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2 font-semibold text-green-600 dark:text-green-400">
+                                  <span>Prompt Cache Hit</span>
+                                </div>
+                                <div className="space-y-1.5 bg-muted/50 rounded-lg p-2 border border-border/50">
+                                  <div className="flex justify-between gap-4">
+                                    <span className="text-muted-foreground">Cached:</span>
+                                    <span className="font-medium">{message.cachedTokens.toLocaleString()} tokens</span>
                                   </div>
-                                  <div className="space-y-1.5 bg-muted/50 rounded-lg p-2 border border-border/50">
-                                    <div className="flex justify-between gap-4">
-                                      <span className="text-muted-foreground">Cached:</span>
-                                      <span className="font-medium">{message.cachedTokens.toLocaleString()} tokens</span>
-                                    </div>
-                                    <div className="flex justify-between gap-4">
-                                      <span className="text-muted-foreground">Total input:</span>
-                                      <span className="font-medium">{(message.inputTokens || 0).toLocaleString()} tokens</span>
-                                    </div>
+                                  <div className="flex justify-between gap-4">
+                                    <span className="text-muted-foreground">Total input:</span>
+                                    <span className="font-medium">{(message.inputTokens || 0).toLocaleString()} tokens</span>
+                                  </div>
+                                  <div className="flex justify-between gap-4 pt-1.5 border-t border-border/50">
+                                    <span className="text-muted-foreground">Cache rate:</span>
+                                    <span className="font-bold text-green-600 dark:text-green-400">
+                                      {((message.cachedTokens / (message.inputTokens || 1)) * 100).toFixed(0)}%
+                                    </span>
+                                  </div>
+                                  {message.cacheSavings && message.cacheSavings > 0 && (
                                     <div className="flex justify-between gap-4 pt-1.5 border-t border-border/50">
-                                      <span className="text-muted-foreground">Cache rate:</span>
-                                      <span className="font-bold text-amber-600 dark:text-amber-400">
-                                        {((message.cachedTokens / (message.inputTokens || 1)) * 100).toFixed(0)}%
+                                      <span className="text-muted-foreground">Cost saved:</span>
+                                      <span className="font-bold text-green-600 dark:text-green-400">
+                                        ${message.cacheSavings < 0.001 ? '<0.001' : message.cacheSavings.toFixed(4)}
                                       </span>
                                     </div>
-                                    {message.cacheSavings && message.cacheSavings > 0 && (
-                                      <div className="flex justify-between gap-4 pt-1.5 border-t border-border/50">
-                                        <span className="text-muted-foreground">Cost saved:</span>
-                                        <span className="font-bold text-green-600 dark:text-green-400">
-                                          ${message.cacheSavings < 0.001 ? '<0.001' : message.cacheSavings.toFixed(4)}
-                                        </span>
-                                      </div>
-                                    )}
-                                  </div>
-                                  <p className="text-[10px] text-muted-foreground/70 leading-tight">
-                                    Cached tokens are read from prompt cache at 90% discount.
-                                  </p>
+                                  )}
                                 </div>
-                              </PopoverContent>
-                            </Popover>
-                          )}
-                        </span>
+                                <p className="text-[10px] text-muted-foreground/70 leading-tight">
+                                  Cached tokens are read from prompt cache at 90% discount.
+                                </p>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        ) : (
+                          <span className="flex items-center gap-0.5">
+                            In: <span className="text-muted-foreground">{message.inputTokens?.toLocaleString() || 0}</span>
+                          </span>
+                        )}
                         <span className="text-border">•</span>
                         <span>Out: <span className="text-muted-foreground">{message.outputTokens?.toLocaleString() || 0}</span></span>
                         {message.thinkingTokens && message.thinkingTokens > 0 && (
