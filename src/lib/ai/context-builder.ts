@@ -42,10 +42,18 @@ export function formatDynamicContext(dynamicContext: ContextBuilderResult['dynam
 
   // Format memory context
   if (dynamicContext.memory && dynamicContext.memory.length > 0) {
-    parts.push(`## Relevant Memory
+    parts.push(`## Background Context (Internal Reference Only)
 ${dynamicContext.memory.map((m) => `- ${m.memory}`).join("\n")}
 
-(Use memories ONLY when directly relevant to the user's question)`);
+IMPORTANT: This is passive background context. Do NOT:
+- Mention these memories in your response
+- Say "I remember..." or "Based on what I know about you..."
+- Reference this context unless the user explicitly asks about their memories/preferences
+
+ONLY use this to:
+- Answer direct questions like "what's my name?" or "what do you know about me?"
+- Subtly tailor technical suggestions when clearly relevant (e.g., use their preferred language)
+- Otherwise, respond as if you have no special knowledge about the user`);
   }
 
   // Format RAG context
