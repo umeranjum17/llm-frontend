@@ -265,6 +265,15 @@ export function InputArea({ chatId }: InputAreaProps) {
   const files = useLiveQuery(() => (chat?.projectId ? getProjectFiles(chat.projectId) : []), [chat?.projectId]);
   const otherChats = useLiveQuery(() => getChatsByProject(chat?.projectId || ""), [chat?.projectId]);
 
+  // Check if current agent is a pipeline agent (they manage their own context per step)
+  const currentAgent = useMemo(() => {
+    if (!chat?.agentId) return null;
+    const builtin = BUILTIN_AGENTS.find(a => a.id === chat.agentId);
+    if (builtin) return builtin;
+    return agents?.find(a => a.id === chat.agentId) || null;
+  }, [chat?.agentId, agents]);
+  const isPipelineAgent = currentAgent?.executionType === "pipeline";
+
   // Listen for external send messages (e.g., from command palette)
   useEffect(() => {
     const handleExternalSend = (e: any) => {
@@ -1234,6 +1243,18 @@ export function InputArea({ chatId }: InputAreaProps) {
       <div className="mt-2">
         <MobileNavInline />
       </div>
+
+      {/* Token usage display */}
+      {chatId && chat?.modelId && (
+        <div className="flex justify-end mt-2">
+          <TokenCalculator
+            chatId={chatId}
+            inputContent={input}
+            modelId={chat.modelId}
+            isPipelineAgent={isPipelineAgent}
+          />
+        </div>
+      )}
     </form>
   );
 }
