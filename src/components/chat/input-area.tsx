@@ -1326,22 +1326,26 @@ function TokenCalculator({
 
   if (!model) return null;
 
-  const totalUsed = historyTokens + draftTokens;
-
-  // For pipeline agents, don't show context warning - each step manages its own context
-  // The main chat context doesn't limit pipeline execution the same way
-  const isHighUsage = !isPipelineAgent && totalUsed > model.contextLength * 0.85;
-
   // For pipeline agents, don't show the token calculator at all since it's misleading
   if (isPipelineAgent) {
     return null;
   }
 
+  const totalUsed = historyTokens + draftTokens;
+  const percentage = (totalUsed / model.contextLength) * 100;
+
+  // Warning messages based on usage
+  const warningMessage = percentage >= 95
+    ? "Consider starting a new chat"
+    : percentage >= 85
+      ? "Running low on space"
+      : null;
+
   return (
     <div className="flex flex-col items-end gap-1">
-      {isHighUsage && (
-        <span className="text-[10px] text-destructive animate-pulse font-medium">
-          Context nearly full - consider summarizing
+      {warningMessage && (
+        <span className="text-[10px] text-destructive font-medium">
+          {warningMessage}
         </span>
       )}
       <TokenDisplay

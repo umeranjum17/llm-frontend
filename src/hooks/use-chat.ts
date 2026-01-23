@@ -979,16 +979,11 @@ export function useChat(chatId: string | null) {
         };
         setContextCompaction(effectiveChatId, compactionState);
 
-        // Show appropriate notification
+        // Show simple notification
         if (result.wasCompacted && result.messagesSummarized > 0) {
-          toast.success(
-            `Context compacted: ${result.messagesSummarized} messages summarized`,
-            { description: `Saved ~${Math.round(result.tokensSaved / 100) / 10}k tokens` }
-          );
+          toast.success("Older messages summarized to make room");
         } else if (result.wasTruncated && result.messagesDropped > 0) {
-          toast.warning(
-            `Context limit: ${result.messagesDropped} older messages removed`
-          );
+          toast.warning("Older messages removed to make room");
         }
       }
     } else {
