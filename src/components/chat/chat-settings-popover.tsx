@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { SlidersHorizontal, Bot, Brain, DollarSign, Swords, Thermometer, Hash, EyeOff } from "lucide-react";
+import { SlidersHorizontal, Bot, Brain, DollarSign, Swords, Thermometer, Hash, EyeOff, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -57,6 +57,7 @@ export function ChatSettingsPopover({
   const incognitoMode = chat?.incognitoMode ?? false;
   const memoryEnabled = settings?.memoryEnabled !== false && hasMem0ApiKey;
   const reasoningLevel = chat?.reasoningLevel || "medium";
+  const smartCompaction = chat?.smartCompaction !== false; // Default to true
   const defaultTemperature = settings?.defaultTemperature ?? 1;
   const defaultMaxTokens = settings?.defaultMaxTokens ?? 4096;
   const temperature = chat?.temperature ?? defaultTemperature;
@@ -101,6 +102,13 @@ export function ChatSettingsPopover({
     if (chatId) {
       await updateChat(chatId, { incognitoMode: newStatus });
       // No toast - toggle state is visible in UI
+    }
+  };
+
+  const toggleSmartCompaction = async () => {
+    const newStatus = !smartCompaction;
+    if (chatId) {
+      await updateChat(chatId, { smartCompaction: newStatus });
     }
   };
 
@@ -217,6 +225,25 @@ export function ChatSettingsPopover({
           <EyeOff className="h-4 w-4" />
           <span>Incognito</span>
           {incognitoMode && <span className="ml-auto text-xs">On</span>}
+        </button>
+
+        {/* Smart Compaction Toggle */}
+        <button
+          onClick={toggleSmartCompaction}
+          disabled={incognitoMode}
+          className={cn(
+            "w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-sm transition-colors",
+            incognitoMode
+              ? "opacity-50 cursor-not-allowed"
+              : smartCompaction
+                ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                : "hover:bg-accent text-muted-foreground"
+          )}
+          title="When enabled, older messages are summarized instead of removed when context limit is reached"
+        >
+          <Layers className="h-4 w-4" />
+          <span>Smart Context</span>
+          {smartCompaction && !incognitoMode && <span className="ml-auto text-xs">On</span>}
         </button>
 
         {/* Memory Toggle */}

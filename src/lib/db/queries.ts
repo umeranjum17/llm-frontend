@@ -1,4 +1,4 @@
-import { db, type Chat, type Message, type Project, type ProjectFile, type ModelFavorite, type ApiKey, type UserSettings, type Agent, type Prompt, type Skill, type ModelAlias, type McpServer, type Folder, type Tag } from "./schema";
+import { db, type Chat, type Message, type Project, type ProjectFile, type ModelFavorite, type ApiKey, type UserSettings, type Agent, type Prompt, type Skill, type ModelAlias, type McpServer, type Folder, type Tag, type ContextSummary } from "./schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 
 // Re-export db for direct access when needed (e.g., batch operations)
@@ -1468,4 +1468,38 @@ export async function updateMcpServerToolPolicy(id: string, disabledTools: strin
 
 export async function deleteMcpServer(id: string) {
   await db.mcpServers.delete(id);
+}
+
+// ============= CONTEXT SUMMARIES =============
+
+export async function getContextSummaries(chatId: string): Promise<ContextSummary[]> {
+  return db.contextSummaries.where("chatId").equals(chatId).toArray();
+}
+
+export async function addContextSummary(summary: ContextSummary): Promise<string> {
+  return db.contextSummaries.add(summary);
+}
+
+export async function deleteContextSummary(id: string): Promise<void> {
+  await db.contextSummaries.delete(id);
+}
+
+export async function deleteContextSummariesForChat(chatId: string): Promise<void> {
+  await db.contextSummaries.where("chatId").equals(chatId).delete();
+}
+
+export async function getPinnedMessages(chatId: string): Promise<Message[]> {
+  return db.messages
+    .where("chatId")
+    .equals(chatId)
+    .filter((m) => m.isPinned === true)
+    .toArray();
+}
+
+export async function getSummarizedMessages(chatId: string): Promise<Message[]> {
+  return db.messages
+    .where("chatId")
+    .equals(chatId)
+    .filter((m) => m.isSummarized === true)
+    .toArray();
 }

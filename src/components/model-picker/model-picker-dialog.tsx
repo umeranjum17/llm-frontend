@@ -36,6 +36,7 @@ import { useModelSettingsStore } from "@/stores/model-settings-store";
 import { ParameterPresets } from "@/components/settings/parameter-presets";
 import { useModelsStore } from "@/stores/models-store";
 import { useApiKeysStore } from "@/stores/api-keys-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import { isModelIdCompatibleWithProviderId, pickBestProviderId, providerLabel } from "@/lib/ai/provider-routing";
 import { getRankingService } from "@/lib/models/ranking/ranking-service";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
@@ -428,6 +429,7 @@ export function ModelPickerDialog({
 
     await updateModelLastUsed(modelId);
     onSelectModel(modelId);
+    useSettingsStore.getState().updateDefaultModel(modelId);
     onOpenChange(false);
   };
 

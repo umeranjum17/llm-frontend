@@ -212,12 +212,13 @@ export function CommandPalette() {
       maxTokens: defaultMaxTokens,
     });
     setActiveChatId(newChat.id);
-    
+    useSettingsStore.getState().updateDefaultModel(modelId);
+
     // Dispatch event to focus input after chat is created
     setTimeout(() => {
       window.dispatchEvent(new CustomEvent("lumina:chat-created", { detail: { chatId: newChat.id } }));
     }, 100);
-    
+
     setOpen(false);
   };
 
@@ -246,6 +247,7 @@ export function CommandPalette() {
       }
 
       await updateChat(activeChatId, updates);
+      useSettingsStore.getState().updateDefaultModel(modelId);
       const model = getModelById(modelId);
       toast.success(`Switched to ${model?.name || modelId}`);
       setOpen(false);

@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download, ThumbsUp, ThumbsDown, Volume2, VolumeX, ChevronDown, ChevronRight, Wrench, Loader2, Brain, RefreshCw } from "lucide-react";
+import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download, ThumbsUp, ThumbsDown, Volume2, VolumeX, ChevronDown, ChevronRight, Wrench, Loader2, Brain, RefreshCw, Pin, PinOff } from "lucide-react";
 import { usePrefersReducedMotion } from "@/hooks/use-motion-config";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -31,6 +31,7 @@ import { ActiveSkillIndicator, SkillBadge } from "@/components/chat/active-skill
 import { MentionRenderer } from "@/components/chat/mention-renderer";
 import { useLiveQuery } from "dexie-react-hooks";
 import { getSkillById } from "@/lib/db/queries";
+import { toggleMessagePin } from "@/lib/utils/context-compaction";
 
 type ToolCallLike = {
   id?: string;
@@ -845,6 +846,8 @@ interface MessageItemProps {
   // Props passed from parent to bypass memo issues
   streamingContentProp?: string;
   streamingVersionProp?: number;
+  // Pin functionality for context compaction
+  onTogglePin?: (messageId: string, newPinnedState: boolean) => void;
 }
 
 export const MessageItem = memo(function MessageItem({
@@ -857,6 +860,7 @@ export const MessageItem = memo(function MessageItem({
   isContinuing,
   streamingContentProp,
   streamingVersionProp,
+  onTogglePin,
 }: MessageItemProps) {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -1001,6 +1005,11 @@ export const MessageItem = memo(function MessageItem({
     }
   };
 
+  const handleTogglePin = async () => {
+    const newPinnedState = await toggleMessagePin(message.id);
+    onTogglePin?.(message.id, newPinnedState);
+  };
+
   const handleOpenProject = () => {
     if (artifactFiles.length === 0) return;
 
@@ -1045,11 +1054,25 @@ export const MessageItem = memo(function MessageItem({
       <div className="mx-auto max-w-3xl">
         <div className="flex gap-2 sm:gap-4">
           {/* Avatar - hidden on mobile for more space */}
-          <Avatar className="h-8 w-8 shrink-0 ring-1 ring-border hidden sm:flex">
-            <AvatarFallback>
-              {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
-            </AvatarFallback>
-          </Avatar>
+          <div className="relative shrink-0 hidden sm:flex">
+            <Avatar className="h-8 w-8 ring-1 ring-border">
+              <AvatarFallback>
+                {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+              </AvatarFallback>
+            </Avatar>
+            {/* Pinned indicator */}
+            {message.isPinned && (
+              <div className="absolute -top-1 -right-1 h-4 w-4 bg-amber-500 rounded-full flex items-center justify-center" title="Pinned - won't be summarized">
+                <Pin className="h-2.5 w-2.5 text-white" />
+              </div>
+            )}
+            {/* Summarized indicator */}
+            {message.isSummarized && !message.isPinned && (
+              <div className="absolute -top-1 -right-1 h-4 w-4 bg-blue-500 rounded-full flex items-center justify-center" title="This message was summarized">
+                <span className="text-[8px] text-white font-bold">S</span>
+              </div>
+            )}
+          </div>
 
           {/* Content */}
           <div className="flex-1 min-w-0 overflow-hidden">
@@ -1454,6 +1477,19 @@ export const MessageItem = memo(function MessageItem({
                       >
                         <ThumbsDown className={cn("h-3.5 w-3.5", message.rating === "down" && "fill-current text-red-500")} />
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2"
+                        onClick={(e) => { e.stopPropagation(); handleTogglePin(); }}
+                        title={message.isPinned ? "Unpin" : "Pin"}
+                      >
+                        {message.isPinned ? (
+                          <PinOff className={cn("h-3.5 w-3.5 text-amber-500")} />
+                        ) : (
+                          <Pin className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
                     </>
                   )}
                 </div>
@@ -1551,6 +1587,19 @@ export const MessageItem = memo(function MessageItem({
                     title="Bad response"
                   >
                     <ThumbsDown className={cn("h-4 w-4", message.rating === "down" && "fill-current text-red-500")} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={handleTogglePin}
+                    title={message.isPinned ? "Unpin message (will be summarized)" : "Pin message (prevent summarization)"}
+                  >
+                    {message.isPinned ? (
+                      <PinOff className="h-4 w-4 text-amber-500" />
+                    ) : (
+                      <Pin className="h-4 w-4" />
+                    )}
                   </Button>
                 </>
               )}

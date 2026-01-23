@@ -3,10 +3,19 @@
  *
  * Manages context window limits by calculating token budgets
  * and truncating chat history to fit within model limits.
+ * Now includes intelligent compaction via context-compaction.ts
  */
 
 import { getModelById } from "@/lib/constants/models";
 import { countTokens } from "@/lib/utils/token-counter";
+import {
+  compactContextToFit,
+  shouldTriggerCompaction,
+  type CompactionResult,
+  type CompactionConfig,
+  type CompactedMessage,
+} from "@/lib/utils/context-compaction";
+import type { Message } from "@/lib/db/schema";
 
 // Constants
 const OUTPUT_TOKEN_RESERVE = 4000; // Reserve for model output
@@ -195,3 +204,24 @@ export function validateSystemContextFits(
 
   return { fits: true };
 }
+
+/**
+ * Compact and truncate history with intelligent summarization.
+ *
+ * This is the new preferred method for handling context limits.
+ * It attempts to summarize older messages first, then falls back
+ * to truncation if summarization isn't possible or sufficient.
+ */
+export async function compactAndTruncateHistory(
+  messages: Message[],
+  tokenBudget: number,
+  config: CompactionConfig
+): Promise<CompactionResult> {
+  return compactContextToFit(messages, tokenBudget, config);
+}
+
+/**
+ * Re-export compaction utilities for convenience
+ */
+export { shouldTriggerCompaction };
+export type { CompactionResult, CompactionConfig, CompactedMessage };

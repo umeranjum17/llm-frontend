@@ -70,6 +70,16 @@ export interface QueuedMessage {
   skill: string | null;
 }
 
+export interface ContextCompactionState {
+  wasCompacted: boolean;
+  wasTruncated: boolean;
+  messagesInFull: number;
+  messagesSummarized: number;
+  messagesDropped: number;
+  tokensSaved: number;
+  summaryPreview?: string;
+}
+
 // Per-chat streaming state
 export interface ChatStreamingState {
   streamingMessageId: string | null;
@@ -84,6 +94,7 @@ export interface ChatStreamingState {
   pendingSkillApproval: PendingSkillApproval | null;
   imageGenerationProgress: ImageGenerationProgress | null;
   messageQueue: QueuedMessage[];
+  contextCompaction: ContextCompactionState | null;
 }
 
 // Default state for a new chat
@@ -100,6 +111,7 @@ const createDefaultChatState = (): ChatStreamingState => ({
   pendingSkillApproval: null,
   imageGenerationProgress: null,
   messageQueue: [],
+  contextCompaction: null,
 });
 
 // Stable default state to avoid creating new objects in selectors (prevents infinite re-renders)
@@ -116,6 +128,7 @@ const DEFAULT_CHAT_STATE: ChatStreamingState = Object.freeze({
   pendingSkillApproval: null,
   imageGenerationProgress: null,
   messageQueue: [],
+  contextCompaction: null,
 }) as ChatStreamingState;
 
 interface StreamingState {
@@ -177,6 +190,10 @@ interface StreamingState {
   completePipeline: (chatId: string, finalResult: any) => void;
   failPipeline: (chatId: string, error: string) => void;
   clearPipeline: (chatId: string) => void;
+
+  // Context compaction actions
+  setContextCompaction: (chatId: string, state: ContextCompactionState | null) => void;
+  clearContextCompaction: (chatId: string) => void;
 }
 
 // Helper to get or create chat state
@@ -661,6 +678,21 @@ export const useStreamingStore = create<StreamingState>((set, get) => {
     set((state) => ({
       chatStreams: updateChatState(state.chatStreams, chatId, {
         pipelineExecution: null,
+      }),
+    })),
+
+  // Context compaction actions
+  setContextCompaction: (chatId, compactionState) =>
+    set((state) => ({
+      chatStreams: updateChatState(state.chatStreams, chatId, {
+        contextCompaction: compactionState,
+      }),
+    })),
+
+  clearContextCompaction: (chatId) =>
+    set((state) => ({
+      chatStreams: updateChatState(state.chatStreams, chatId, {
+        contextCompaction: null,
       }),
     })),
   };

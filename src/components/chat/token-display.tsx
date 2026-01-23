@@ -14,6 +14,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { FileStack, Layers } from "lucide-react";
+import type { ContextCompactionState } from "@/stores/streaming-store";
 
 interface TokenDisplayProps {
   historyTokens: number;
@@ -21,6 +23,7 @@ interface TokenDisplayProps {
   totalTokens: number;
   modelName: string;
   className?: string;
+  compactionState?: ContextCompactionState | null;
 }
 
 export function TokenDisplay({
@@ -29,6 +32,7 @@ export function TokenDisplay({
   totalTokens,
   modelName,
   className,
+  compactionState,
 }: TokenDisplayProps) {
   const usedTokens = historyTokens + draftTokens;
   const percentage = useMemo(() => {
@@ -60,6 +64,8 @@ export function TokenDisplay({
 
   if (totalTokens === 0) return null;
 
+  const hasCompaction = compactionState && (compactionState.wasCompacted || compactionState.wasTruncated);
+
   const displayContent = (
     <div
       className={cn(
@@ -80,11 +86,14 @@ export function TokenDisplay({
       <span className={cn("font-medium tabular-nums", textColor)}>
         {formatTokenCount(usedTokens)}
       </span>
+      {hasCompaction && (
+        <Layers className="h-3 w-3 text-blue-500" />
+      )}
     </div>
   );
 
   const detailsContent = (
-    <div className="space-y-2 min-w-[160px]">
+    <div className="space-y-2 min-w-[180px]">
       <div className="flex items-center justify-between gap-4">
         <p className="font-semibold text-xs">{modelName}</p>
         <span className={cn("px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-tight",
@@ -110,6 +119,42 @@ export function TokenDisplay({
           <span>{usedTokens.toLocaleString()}</span>
         </div>
       </div>
+
+      {/* Compaction state display */}
+      {compactionState && (compactionState.wasCompacted || compactionState.wasTruncated) && (
+        <div className="space-y-1 bg-blue-500/10 p-2 rounded-lg border border-blue-500/20 text-xs">
+          <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-medium">
+            <Layers className="h-3 w-3" />
+            <span>Context Compacted</span>
+          </div>
+          <div className="space-y-0.5 text-muted-foreground">
+            <div className="flex justify-between">
+              <span>Full messages:</span>
+              <span className="font-medium text-foreground">{compactionState.messagesInFull}</span>
+            </div>
+            {compactionState.messagesSummarized > 0 && (
+              <div className="flex justify-between">
+                <span>Summarized:</span>
+                <span className="font-medium text-blue-600 dark:text-blue-400">{compactionState.messagesSummarized}</span>
+              </div>
+            )}
+            {compactionState.messagesDropped > 0 && (
+              <div className="flex justify-between">
+                <span>Dropped:</span>
+                <span className="font-medium text-amber-600 dark:text-amber-400">{compactionState.messagesDropped}</span>
+              </div>
+            )}
+            {compactionState.tokensSaved > 0 && (
+              <div className="flex justify-between pt-1 border-t border-blue-500/20">
+                <span>Tokens saved:</span>
+                <span className="font-medium text-green-600 dark:text-green-400">
+                  ~{Math.round(compactionState.tokensSaved / 100) / 10}k
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="flex justify-between text-[10px] opacity-70">
         <span>Limit:</span>

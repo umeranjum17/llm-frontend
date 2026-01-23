@@ -2,7 +2,7 @@ import Dexie, { type EntityTable } from "dexie";
 
 // Current schema version - update this when adding new migrations
 // Used by health check to detect migrations and adjust timeouts
-export const DB_SCHEMA_VERSION = 17;
+export const DB_SCHEMA_VERSION = 18;
 
 // Type definitions
 export interface Project {
@@ -51,6 +51,7 @@ export interface Chat {
   summary?: string; // AI-generated summary of the conversation
   memoryDisabled?: boolean; // Per-chat toggle to disable memory injection
   incognitoMode?: boolean; // Disables memory, tools, auto-extraction for privacy
+  smartCompaction?: boolean; // Enable intelligent context compaction (default: true)
 }
 
 export type MessageContentPart =
@@ -104,6 +105,10 @@ export interface Message {
     agentName?: string;
   };
   skillId?: string; // Skill that was active when this message was generated
+  // Context compaction fields
+  isPinned?: boolean; // User pinned, never summarize
+  isSummarized?: boolean; // Message was compressed into summary
+  summarizedIntoId?: string; // ID of summary this was compressed into
 }
 
 export interface ApiKey {
@@ -458,6 +463,20 @@ export interface DeviceSecret {
   createdAt: number;
 }
 
+export interface ContextSummary {
+  id: string;
+  chatId: string;
+  summary: string;
+  originalMessageIds: string[];
+  originalTokenCount: number;
+  summaryTokenCount: number;
+  createdAt: number;
+  dateRange?: {
+    start: number;
+    end: number;
+  };
+}
+
 // Database class
 export class LuminaDB extends Dexie {
   projects!: EntityTable<Project, "id">;
@@ -481,6 +500,7 @@ export class LuminaDB extends Dexie {
   modelAliases!: EntityTable<ModelAlias, "id">;
   mcpServers!: EntityTable<McpServer, "id">;
   deviceSecrets!: EntityTable<DeviceSecret, "id">;
+  contextSummaries!: EntityTable<ContextSummary, "id">;
 
   constructor() {
     super("LuminaDB");
@@ -836,6 +856,35 @@ export class LuminaDB extends Dexie {
       modelAliases: "id, alias, updatedAt",
       mcpServers: "id, enabled, createdAt",
       deviceSecrets: "id",
+    });
+
+    // Version 18: Add contextSummaries table and isPinned index for context compaction
+    // - contextSummaries: Stores AI-generated summaries of compacted message groups
+    // - messages: Add isPinned and summarizedIntoId indexes for quick lookups
+    this.version(18).stores({
+      projects: "id, name, createdAt, updatedAt",
+      projectFiles: "id, projectId, name, createdAt",
+      chats:
+        "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order, [projectId+updatedAt]",
+      messages: "id, chatId, role, createdAt, parentId, rating, skillId, isPinned, summarizedIntoId, [chatId+createdAt]",
+      apiKeys: "id, provider, createdAt, baseUrl",
+      settings: "id",
+      modelFavorites: "id, category, pinnedOrder, lastUsed",
+      userMemories: "id, category, source, createdAt, isActive",
+      folders: "id, projectId, name, createdAt, order",
+      tags: "id, name, createdAt, usageCount",
+      tagRules: "id, tagId, enabled, createdAt",
+      parameterPresets: "id, name, createdAt, isDefault",
+      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
+      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
+      skills: "id, name, category, isBuiltIn, isEnabled, isFavorite, usageCount, updatedAt",
+      skillEmbeddings: "skillId, modelId",
+      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
+      workflows: "id, name, createdAt, updatedAt",
+      modelAliases: "id, alias, updatedAt",
+      mcpServers: "id, enabled, createdAt",
+      deviceSecrets: "id",
+      contextSummaries: "id, chatId, createdAt",
     });
   }
 }

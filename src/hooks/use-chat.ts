@@ -1,11 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useUIStore } from "@/stores/ui-store";
-import { useStreamingStore, type ActiveSkill, type PendingSkillApproval, type ImageGenerationStage } from "@/stores/streaming-store";
+import { useStreamingStore, type ActiveSkill, type PendingSkillApproval, type ImageGenerationStage, type ContextCompactionState } from "@/stores/streaming-store";
 import { addMessage, updateChat, getChatById, updateMessage, getMessagesForBranch, getLastMessage, getMessageById, chatHasBranches, incrementAgentUsage, getMessages, getActiveMcpServersForChat, getAgentById, getSkillById, incrementSkillUsage } from "@/lib/db/queries";
 import { buildContextMessages } from "@/lib/ai/context-builder";
 import { countMessagesTokens, countTokens, estimateCost, calculateCacheSavings } from "@/lib/utils/token-counter";
-import { calculateContextBudget, truncateHistoryToFit, estimateMessagesTokens, validateSystemContextFits, type LLMMessage } from "@/lib/utils/context-budget";
+import { calculateContextBudget, truncateHistoryToFit, estimateMessagesTokens, validateSystemContextFits, compactAndTruncateHistory, type LLMMessage, type CompactionConfig, type CompactionResult, type CompactedMessage } from "@/lib/utils/context-budget";
 import type { MessageContent, Agent, Skill } from "@/lib/db/schema";
 import { getImagesFromMessageContent, getTextFromMessageContent, mapTextInMessageContent, convertToAISDKContent } from "@/lib/utils/message-content";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
@@ -557,6 +557,7 @@ export function useChat(chatId: string | null) {
     setImageGenerationProgress,
     clearImageGenerationProgress,
     getChatStream,
+    setContextCompaction,
   } = useStreamingStore();
 
   // Sync loading state with streaming store when chatId changes
@@ -896,32 +897,126 @@ export function useChat(chatId: string | null) {
     // 4. Calculate available budget for history
     const budget = calculateContextBudget(modelId, systemTokens, attachmentTokens);
 
-    // 5. Get and transform history to LLM format
+    // 5. Get raw history from DB
     const rawHistory = await getMessagesForBranch(effectiveChatId, parentUserMessageId);
-    const historyMessages: LLMMessage[] = rawHistory
-      .filter((m) => m.role === "system" || m.role === "user" || m.role === "assistant")
-      .map((m) => {
+    const filteredHistory = rawHistory.filter(
+      (m) => m.role === "system" || m.role === "user" || m.role === "assistant"
+    );
+
+    // 6. Handle context compaction/truncation
+    // Check if smart compaction is enabled (defaults to true)
+    const smartCompactionEnabled = chat.smartCompaction !== false;
+    const isIncognito = chat.incognitoMode === true;
+
+    let truncatedHistory: LLMMessage[];
+    let compactionState: ContextCompactionState | null = null;
+
+    // Try intelligent compaction if enabled and we have enough messages
+    if (smartCompactionEnabled && !isIncognito && filteredHistory.length > 10 && apiKey?.key) {
+      const compactionConfig: CompactionConfig = {
+        chatId: effectiveChatId,
+        providerId,
+        apiKey: apiKey.key,
+        providerBaseUrl: apiKey?.baseUrl,
+        isIncognitoMode: isIncognito,
+        smartCompactionEnabled,
+      };
+
+      const result = await compactAndTruncateHistory(
+        filteredHistory,
+        budget.remainingForHistory,
+        compactionConfig
+      );
+
+      // Transform the compacted history to LLM format
+      // compactedHistory contains CompactedMessage with string content
+      // We need to get original messages for proper image handling
+      const keptMessageMap = new Map(
+        filteredHistory
+          .filter((m) => result.keptMessageIds.includes(m.id))
+          .map((m) => [m.id, m])
+      );
+
+      truncatedHistory = result.compactedHistory.map((cm: CompactedMessage) => {
+        // Summary messages - use string content directly
+        if (cm.isSummary) {
+          return {
+            role: cm.role,
+            content: cm.content,
+          } as LLMMessage;
+        }
+
+        // For kept messages, get the original and apply transformations
+        const originalMsg = cm.originalId ? keptMessageMap.get(cm.originalId) : undefined;
+        if (originalMsg) {
+          const role = originalMsg.role as "system" | "user" | "assistant";
+          const content = role === "user"
+            ? mapTextInMessageContent(originalMsg.content, cleanReferencesForLLM)
+            : originalMsg.content;
+          return {
+            role,
+            content: convertToAISDKContent(content, role),
+          } as LLMMessage;
+        }
+
+        // Fallback for messages not found in map (shouldn't happen)
+        return {
+          role: cm.role,
+          content: cm.role === "user" ? cleanReferencesForLLM(cm.content) : cm.content,
+        } as LLMMessage;
+      });
+
+      // Store compaction state for UI
+      if (result.wasCompacted || result.wasTruncated) {
+        compactionState = {
+          wasCompacted: result.wasCompacted,
+          wasTruncated: result.wasTruncated,
+          messagesInFull: result.messagesInFull,
+          messagesSummarized: result.messagesSummarized,
+          messagesDropped: result.messagesDropped,
+          tokensSaved: result.tokensSaved,
+          summaryPreview: result.summaryInfo?.summary?.slice(0, 200),
+        };
+        setContextCompaction(effectiveChatId, compactionState);
+
+        // Show appropriate notification
+        if (result.wasCompacted && result.messagesSummarized > 0) {
+          toast.success(
+            `Context compacted: ${result.messagesSummarized} messages summarized`,
+            { description: `Saved ~${Math.round(result.tokensSaved / 100) / 10}k tokens` }
+          );
+        } else if (result.wasTruncated && result.messagesDropped > 0) {
+          toast.warning(
+            `Context limit: ${result.messagesDropped} older messages removed`
+          );
+        }
+      }
+    } else {
+      // Use simple transformation and truncation
+      const historyMessages: LLMMessage[] = filteredHistory.map((m) => {
         const role = m.role as "system" | "user" | "assistant";
-        // Clean references for user messages first
         const content = role === "user"
           ? mapTextInMessageContent(m.content, cleanReferencesForLLM)
           : m.content;
-        // Convert to AI SDK format (image_url -> image for users, strip images from assistants)
         return {
           role,
           content: convertToAISDKContent(content, role),
         };
       });
 
-    // 6. Truncate history to fit within budget
-    const { truncatedHistory, wasLimited, originalCount, truncatedCount } = truncateHistoryToFit(
-      historyMessages,
-      budget.remainingForHistory
-    );
+      const truncationResult = truncateHistoryToFit(
+        historyMessages,
+        budget.remainingForHistory
+      );
 
-    // 7. Show warning toast if history was truncated
-    if (wasLimited) {
-      toast.warning(`Context limit: showing ${truncatedCount} of ${originalCount} messages`);
+      truncatedHistory = truncationResult.truncatedHistory;
+
+      // Show warning toast if history was truncated
+      if (truncationResult.wasLimited) {
+        toast.warning(
+          `Context limit: showing ${truncationResult.truncatedCount} of ${truncationResult.originalCount} messages`
+        );
+      }
     }
 
     // 8. Build final LLM messages with dynamic context in current user message
@@ -1661,7 +1756,7 @@ export function useChat(chatId: string | null) {
       // This keeps memories fresh without blocking the current response
       refreshCacheInBackground(userMessageText);
     }
-  }, [chatId, getKeyForProvider, keys, scheduleMemoryExtraction, setStreamingMessage, appendStreamingContent, appendStreamingReasoning, setStreamingToolCalls, setStreamingToolResults, clearStreaming, startPipeline, setStepRunning, setStepComplete, setStepError, setStepRetrying, completePipeline, failPipeline, clearPipeline, setActiveSkill, setImageGenerationProgress, clearImageGenerationProgress, setOptimisticMessage, clearOptimisticMessage, setPendingSkillApproval]);
+  }, [chatId, getKeyForProvider, keys, scheduleMemoryExtraction, setStreamingMessage, appendStreamingContent, appendStreamingReasoning, setStreamingToolCalls, setStreamingToolResults, clearStreaming, startPipeline, setStepRunning, setStepComplete, setStepError, setStepRetrying, completePipeline, failPipeline, clearPipeline, setActiveSkill, setImageGenerationProgress, clearImageGenerationProgress, setOptimisticMessage, clearOptimisticMessage, setPendingSkillApproval, setContextCompaction]);
 
   // Process next message in queue after streaming completes
   const processNextInQueue = useCallback(async (targetChatId: string) => {

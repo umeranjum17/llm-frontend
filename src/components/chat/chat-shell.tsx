@@ -459,6 +459,7 @@ export function ChatShell() {
         ...draftChatConfig,
         modelId,
       });
+      useSettingsStore.getState().updateDefaultModel(modelId);
       return;
     }
 
@@ -482,6 +483,7 @@ export function ChatShell() {
     }
 
     await updateChat(activeChatId, updates);
+    useSettingsStore.getState().updateDefaultModel(modelId);
 
     // Also persist model preference to the agent if one is selected
     if (chat?.agentId && currentAgent && currentAgent.executionType !== "pipeline") {
