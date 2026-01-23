@@ -435,8 +435,16 @@ export function ChatShell() {
     } else if (activeChatId) {
       const updates: { modelId: string; providerId?: string } = { modelId };
 
-      // If the chat is pinned to an incompatible provider, switch to a compatible one.
-      if (chat?.providerId && !isModelIdCompatibleWithProviderId(chat.providerId, modelId)) {
+      // Check for remembered provider preference first
+      const remembered = lastProviderIdByModel?.[modelId];
+      if (
+        remembered &&
+        llmProviderIds.includes(remembered) &&
+        isModelIdCompatibleWithProviderId(remembered, modelId)
+      ) {
+        updates.providerId = remembered;
+      } else if (chat?.providerId && !isModelIdCompatibleWithProviderId(chat.providerId, modelId)) {
+        // Current provider incompatible, fall back to best provider
         const next = pickBestProviderId({ modelId, availableProviderIds: llmProviderIds });
         updates.providerId = next || undefined;
       }
