@@ -862,15 +862,18 @@ export function useChat(chatId: string | null) {
     // BEFORE any memory, embedding, or context building calls
     setStreamingMessage(effectiveChatId, assistantMessage.id);
 
-    const contextMessages = await buildContextMessages(
+    // Build context with static/dynamic separation for prompt caching
+    // Static messages (agent, project, skill prompts) can be cached across turns
+    // Dynamic context (memory, RAG) is injected into the current user message
+    const { staticMessages, dynamicContext } = await buildContextMessages(
       getTextFromMessageContent(messageContent),
       effectiveChatId,
       { memoryDisabled: chat.memoryDisabled, incognitoMode: chat.incognitoMode, skill: activeSkill }
     );
 
     // === Context Window Management ===
-    // 1. Convert context messages to LLM format and estimate tokens
-    const systemMessages: LLMMessage[] = contextMessages.map((m) => ({
+    // 1. Convert static system messages to LLM format and estimate tokens
+    const systemMessages: LLMMessage[] = staticMessages.map((m) => ({
       role: m.role as "system" | "user" | "assistant",
       content: convertToAISDKContent(m.content, m.role as "system" | "user" | "assistant"),
     }));
@@ -921,11 +924,57 @@ export function useChat(chatId: string | null) {
       toast.warning(`Context limit: showing ${truncatedCount} of ${originalCount} messages`);
     }
 
-    // 8. Build final LLM messages with truncated history
+    // 8. Build final LLM messages with dynamic context in current user message
+    //
+    // IMPORTANT: Anthropic doesn't allow system messages after user/assistant.
+    // So we inject memory/RAG into the CURRENT user message content.
+    //
+    // Message order:
+    // 1. Static system messages (tools, agent prompt) - CACHEABLE if >= 1024 tokens
+    // 2. Conversation history from DB (user/assistant) - raw, stable
+    // 3. Current user message WITH memory/RAG prepended
+    //
+    // Cache strategy: ONLY cache at static system messages.
+    // The prefix [static_system] is stable. Memory changes in user message
+    // don't affect the cached prefix since we don't cache user messages.
+
+    // Build dynamic context prefix for current user message
+    let contextPrefix = '';
+    if (dynamicContext.memory && dynamicContext.memory.length > 0) {
+      contextPrefix += `## Relevant Memory\n${dynamicContext.memory.map(m => `- ${m.memory}`).join('\n')}\n\n`;
+    }
+    if (dynamicContext.rag && dynamicContext.rag.length > 0) {
+      const ragText = dynamicContext.rag
+        .map((r, i) => `[Context ${i + 1}]\n${r.text}`)
+        .join('\n\n---\n\n');
+      contextPrefix += `## Related Context\n${ragText}\n\n`;
+    }
+    if (contextPrefix) {
+      contextPrefix += '---\n\n';
+    }
+
+    // Inject context into the LAST user message (current message being sent)
+    let finalHistory = truncatedHistory;
+    if (contextPrefix && truncatedHistory.length > 0) {
+      const lastIdx = truncatedHistory.length - 1;
+      const lastMsg = truncatedHistory[lastIdx];
+      if (lastMsg.role === 'user') {
+        const originalContent = typeof lastMsg.content === 'string'
+          ? lastMsg.content
+          : Array.isArray(lastMsg.content)
+            ? lastMsg.content.filter((p: any) => p.type === 'text').map((p: any) => p.text || '').join('')
+            : '';
+        finalHistory = [
+          ...truncatedHistory.slice(0, lastIdx),
+          { ...lastMsg, content: contextPrefix + originalContent },
+        ];
+      }
+    }
+
     const llmMessages = [
-      ...systemMessages,
-      ...attachmentMessages,
-      ...truncatedHistory,
+      ...systemMessages,           // Static system (cacheable if >= 1024 tokens)
+      ...attachmentMessages,       // File attachments
+      ...finalHistory,             // History + current user message with context
     ];
 
     // Create abort controller for this request
@@ -1099,6 +1148,11 @@ export function useChat(chatId: string | null) {
           try {
             const parsed = JSON.parse(data);
 
+            // Debug: Log all step-finish events (these contain providerMetadata)
+            if (parsed.type === 'step-finish' || parsed.type === 'finish') {
+              console.log(`[use-chat] ${parsed.type} event:`, JSON.stringify(parsed).slice(0, 1000));
+            }
+
             const extractUsage = (value: any): { inTok?: number; outTok?: number; cachedTok?: number; thinkingTok?: number; cost?: number } => {
               if (!value || typeof value !== "object") return {};
               const usage = (value.usage && typeof value.usage === "object") ? value.usage : value;
@@ -1113,14 +1167,42 @@ export function useChat(chatId: string | null) {
 
               // Extract cached tokens from various provider formats:
               // - OpenAI: usage.promptTokensDetails?.cachedTokens or usage.prompt_tokens_details?.cached_tokens
-              // - Anthropic: usage.cacheReadInputTokens or usage.cache_read_input_tokens
+              // - Anthropic: providerMetadata.anthropic.usage.cache_read_input_tokens
               // - Google: providerMetadata.google.usageMetadata.cachedContentTokenCount
               // - OpenRouter: same as underlying provider
               const promptDetails = usage.promptTokensDetails ?? usage.prompt_tokens_details ?? {};
               const googleUsageMeta = value.providerMetadata?.google?.usageMetadata ?? {};
+              // Anthropic metadata can be at various paths depending on AI SDK version
+              const anthropicUsageMeta =
+                value.providerMetadata?.anthropic?.usage ??
+                value.response?.providerMetadata?.anthropic?.usage ??
+                value.experimental_providerMetadata?.anthropic?.usage ??
+                {};
+
+              // Debug: Log when Anthropic cache data is found
+              if (anthropicUsageMeta.cache_read_input_tokens) {
+                console.log('[use-chat] Found Anthropic cache:', anthropicUsageMeta.cache_read_input_tokens);
+              }
+              // Debug: Log any providerMetadata to see what's being received
+              if (value.providerMetadata || value.response?.providerMetadata || value.experimental_providerMetadata) {
+                const meta = value.providerMetadata || value.response?.providerMetadata || value.experimental_providerMetadata;
+                console.log('[use-chat] providerMetadata received:', JSON.stringify(meta).slice(0, 500));
+              }
+              // Debug: Log entire event if it contains 'cache' (helps find unexpected structures)
+              const eventStr = JSON.stringify(value);
+              if (eventStr.includes('cache_read') || eventStr.includes('cacheRead')) {
+                console.log('[use-chat] Event with cache data:', eventStr.slice(0, 800));
+              }
+
+              // Also check inputTokenDetails (AI SDK v5 format)
+              const inputTokenDetails = usage.inputTokenDetails ?? {};
+
               const cachedTok =
                 toNum(promptDetails.cachedTokens) ??
                 toNum(promptDetails.cached_tokens) ??
+                toNum(inputTokenDetails.cacheReadTokens) ??  // AI SDK v5 format
+                toNum(anthropicUsageMeta.cache_read_input_tokens) ??
+                toNum(anthropicUsageMeta.cacheReadInputTokens) ??
                 toNum(usage.cacheReadInputTokens) ??
                 toNum(usage.cache_read_input_tokens) ??
                 toNum(googleUsageMeta.cachedContentTokenCount) ??

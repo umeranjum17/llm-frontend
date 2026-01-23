@@ -162,11 +162,11 @@ export function configurePromptCaching(
     // Else: OpenAI handles caching automatically (no parameter needed)
   }
 
-  // Anthropic: Direct provider prompt caching with multiple breakpoints
-  // Breakpoint strategy: Cache tools, system prompt, and recent conversation
-  // IMPORTANT: Anthropic requires minimum 1,024 tokens per cache breakpoint
+  // Anthropic: Direct provider prompt caching using cumulative token counting
+  // Anthropic caches the entire PREFIX up to the breakpoint, not individual messages
+  // The cumulative prefix must be >= 1024 tokens for caching to activate
   // NOTE: AI SDK expects message.providerOptions.anthropic.cacheControl for system messages
-  else if (providerId === 'anthropic' && capabilities.supportsPromptCaching && systemPrompts.length > 0) {
+  else if (providerId === 'anthropic' && capabilities.supportsPromptCaching) {
     const ANTHROPIC_MIN_CACHE_TOKENS = 1024;
     const cacheTTL = options?.cacheTTL ?? '5m';
     const cacheControl = {
@@ -174,11 +174,14 @@ export function configurePromptCaching(
       ...(cacheTTL !== '5m' && { ttl: cacheTTL })
     };
 
-    // Helper to check if a message meets minimum token requirement for caching
-    const meetsMinTokens = (msg: ModelMessage): boolean => {
+    // Calculate cumulative tokens at each message index
+    const cumulativeTokens: number[] = [];
+    let runningTotal = 0;
+    for (const msg of updatedMessages) {
       const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
-      return countTokens(content) >= ANTHROPIC_MIN_CACHE_TOKENS;
-    };
+      runningTotal += countTokens(content);
+      cumulativeTokens.push(runningTotal);
+    }
 
     // Helper to add cacheControl to a message
     // For system messages: AI SDK uses message.providerOptions (content stays as string)
@@ -212,44 +215,70 @@ export function configurePromptCaching(
       }
     };
 
-    // Breakpoint 1: Cache tool-related system messages (if present and large enough)
-    // Heuristic: system messages containing tool-related keywords
-    const toolSystemIdx = updatedMessages.findIndex(
-      m => m.role === 'system' &&
-      typeof m.content === 'string' &&
-      (m.content.toLowerCase().includes('tool') ||
-       m.content.toLowerCase().includes('function') ||
-       m.content.toLowerCase().includes('mcp'))
-    );
+    // ================================================================
+    // CACHING STRATEGY FOR ANTHROPIC WITH DYNAMIC CONTEXT
+    // ================================================================
+    // Message structure (set by use-chat.ts):
+    //   [system..., user1, asst1, user2, asst2, ..., asst_n, current_user_with_memory]
+    //
+    // Memory/RAG is injected into the CURRENT user message only.
+    // All PREVIOUS messages (system, user1-n, asst1-n) are STABLE (raw from DB).
+    //
+    // Cache strategy:
+    //   1. Cache at LAST ASSISTANT message (stable prefix up to previous turn)
+    //   2. If no assistant yet, cache at last SYSTEM message
+    //   3. Skip the CURRENT user message (has dynamic memory)
+    //
+    // This enables incremental caching:
+    //   Turn 2: [system, user1, asst1*, user2_mem] → cache prefix [system, user1, asst1]
+    //   Turn 3: [system, user1, asst1, user2, asst2*, user3_mem] → cache HIT + extend
+    //   Turn 4: [system, ..., asst3*, user4_mem] → cache HIT on longer prefix
+    // ================================================================
 
-    if (toolSystemIdx >= 0 && meetsMinTokens(updatedMessages[toolSystemIdx])) {
-      addCacheControlToMessage(updatedMessages[toolSystemIdx]);
-    }
-
-    // Breakpoint 2: Cache last system message (main system prompt) if large enough
-    const lastSystemIdx = updatedMessages
+    // Find indices by role
+    const systemIndices = updatedMessages
       .map((m, i) => m.role === 'system' ? i : -1)
-      .filter(i => i !== -1 && i !== toolSystemIdx) // Exclude already cached
-      .pop();
-
-    if (lastSystemIdx !== undefined && lastSystemIdx >= 0 && meetsMinTokens(updatedMessages[lastSystemIdx])) {
-      addCacheControlToMessage(updatedMessages[lastSystemIdx]);
-    }
-
-    // Breakpoint 3: Cache recent conversation (second-to-last user/assistant pair)
-    // This allows the entire conversation history to be cached for multi-turn chats
-    // Only cache if the message meets minimum token requirement
-    const lastAssistantIdx = updatedMessages
+      .filter(i => i !== -1);
+    const assistantIndices = updatedMessages
       .map((m, i) => m.role === 'assistant' ? i : -1)
-      .filter(i => i !== -1)
-      .pop();
+      .filter(i => i !== -1);
 
-    if (lastAssistantIdx !== undefined && lastAssistantIdx >= 0 && meetsMinTokens(updatedMessages[lastAssistantIdx])) {
-      addCacheControlToMessage(updatedMessages[lastAssistantIdx]);
+    const lastSystemIdx = systemIndices.length > 0 ? systemIndices[systemIndices.length - 1] : undefined;
+    const lastAssistantIdx = assistantIndices.length > 0 ? assistantIndices[assistantIndices.length - 1] : undefined;
+
+    // Determine best cache breakpoint: prefer last assistant (includes conversation history)
+    let cacheBreakpointIdx: number | undefined = undefined;
+    let cacheLocation = 'none';
+
+    // First choice: last assistant message (maximizes cached prefix)
+    if (lastAssistantIdx !== undefined && cumulativeTokens[lastAssistantIdx] >= ANTHROPIC_MIN_CACHE_TOKENS) {
+      cacheBreakpointIdx = lastAssistantIdx;
+      cacheLocation = 'assistant';
     }
+    // Fallback: last system message
+    else if (lastSystemIdx !== undefined && cumulativeTokens[lastSystemIdx] >= ANTHROPIC_MIN_CACHE_TOKENS) {
+      cacheBreakpointIdx = lastSystemIdx;
+      cacheLocation = 'system';
+    }
+
+    // Apply cache_control
+    if (cacheBreakpointIdx !== undefined) {
+      addCacheControlToMessage(updatedMessages[cacheBreakpointIdx]);
+      console.log(`[Cache] Anthropic: Caching at ${cacheLocation} idx ${cacheBreakpointIdx} (${cumulativeTokens[cacheBreakpointIdx]} tokens)`);
+    } else {
+      const maxTokens = Math.max(
+        lastAssistantIdx !== undefined ? cumulativeTokens[lastAssistantIdx] : 0,
+        lastSystemIdx !== undefined ? cumulativeTokens[lastSystemIdx] : 0
+      );
+      console.log(`[Cache] Anthropic: No cache (max prefix ${maxTokens} tokens < ${ANTHROPIC_MIN_CACHE_TOKENS} minimum)`);
+    }
+
+    // Log message counts
+    const userCount = updatedMessages.filter(m => m.role === 'user').length;
+    console.log(`[Cache] Anthropic: ${systemIndices.length} system, ${userCount} user, ${assistantIndices.length} assistant msgs`);
   }
   
-  // OpenRouter: Explicit caching for Gemini/Claude/OpenAI models
+  // OpenRouter: Explicit caching for Gemini/Claude/OpenAI models using cumulative tokens
   else if (providerId === 'openrouter') {
     const isGeminiModel = modelId.toLowerCase().includes('gemini');
     const isClaudeModel = modelId.toLowerCase().includes('claude');
@@ -258,18 +287,39 @@ export function configurePromptCaching(
     // Enable caching for all supported models (Gemini, Claude, OpenAI)
     const supportsCaching = isGeminiModel || isClaudeModel || isOpenAIModel;
 
-    if (supportsCaching && systemPrompts.length > 0) {
+    if (supportsCaching) {
+      // Calculate cumulative tokens (same approach as Anthropic)
+      const OPENROUTER_MIN_CACHE_TOKENS = 1024;
+      let runningTotal = 0;
+      const cumulativeTokens: number[] = [];
+      for (const msg of updatedMessages) {
+        const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+        runningTotal += countTokens(content);
+        cumulativeTokens.push(runningTotal);
+      }
+
+      // Find best cache breakpoint using cumulative tokens
+      // IMPORTANT: Cache at STABLE position (last system message) for consistent cache hits
+      let cacheBreakpointIdx = -1;
+
+      // Cache at last system message - stable across conversation turns
       const lastSystemIdx = updatedMessages
         .map((m, i) => m.role === 'system' ? i : -1)
         .filter(i => i !== -1)
         .pop();
 
-      if (lastSystemIdx !== undefined && lastSystemIdx >= 0) {
-        const msg = updatedMessages[lastSystemIdx] as any;
+      if (lastSystemIdx !== undefined && lastSystemIdx >= 0 && cumulativeTokens[lastSystemIdx] >= OPENROUTER_MIN_CACHE_TOKENS) {
+        cacheBreakpointIdx = lastSystemIdx;
+      }
 
-        // Change role to 'user' to allow array content with providerOptions
+      if (cacheBreakpointIdx >= 0) {
+        const msg = updatedMessages[cacheBreakpointIdx] as any;
+
+        // For system messages, change role to 'user' to allow array content with providerOptions
         // AI SDK requires system messages to have string content
-        msg.role = 'user';
+        if (msg.role === 'system') {
+          msg.role = 'user';
+        }
 
         // Convert string content to array format with providerOptions
         if (typeof msg.content === 'string') {
@@ -299,7 +349,7 @@ export function configurePromptCaching(
             };
           }
         }
-
+        console.log(`[Cache] OpenRouter: Caching at idx ${cacheBreakpointIdx} (${cumulativeTokens[cacheBreakpointIdx]} cumulative tokens)`);
       }
     }
     // Note: Groq, DeepSeek, xAI have automatic caching - no explicit config needed

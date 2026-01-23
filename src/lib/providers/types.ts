@@ -1,4 +1,4 @@
-export type ProviderKind = "openai-compatible" | "anthropic" | "google-genai";
+export type ProviderKind = "openai-compatible" | "anthropic" | "google-genai" | "xai";
 
 export type ProviderFeatureSet = {
   streaming: boolean;

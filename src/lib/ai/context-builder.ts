@@ -5,6 +5,69 @@ import { retrieveContext } from "@/lib/rag/retrieval";
 import { searchMemories, getAllMemories, type MemoryItem } from "@/lib/memory";
 
 /**
+ * RAG retrieval result type
+ */
+export interface RagResult {
+  text: string;
+  similarity: number;
+  metadata?: any;
+}
+
+/**
+ * Context builder result with static/dynamic separation for prompt caching.
+ *
+ * Static messages (agent, project, skill prompts) can be cached across turns.
+ * Dynamic context (memory, RAG) changes per turn and should be injected into
+ * the current user message to avoid breaking the cache prefix.
+ */
+export interface ContextBuilderResult {
+  /** Static system messages that can be cached across conversation turns */
+  staticMessages: Message[];
+  /** Dynamic context to inject into current user message (not cached) */
+  dynamicContext: {
+    memory: MemoryItem[] | null;
+    rag: RagResult[] | null;
+  };
+}
+
+/**
+ * Format dynamic context (memory + RAG) for injection into user message.
+ * Returns empty string if no dynamic context is available.
+ *
+ * This is called by use-chat.ts to prepend context to the current user message,
+ * keeping the conversation history prefix stable for prompt caching.
+ */
+export function formatDynamicContext(dynamicContext: ContextBuilderResult['dynamicContext']): string {
+  const parts: string[] = [];
+
+  // Format memory context
+  if (dynamicContext.memory && dynamicContext.memory.length > 0) {
+    parts.push(`## Relevant Memory
+${dynamicContext.memory.map((m) => `- ${m.memory}`).join("\n")}
+
+(Use memories ONLY when directly relevant to the user's question)`);
+  }
+
+  // Format RAG context
+  if (dynamicContext.rag && dynamicContext.rag.length > 0) {
+    const ragContext = dynamicContext.rag
+      .map((result, idx) => `[Context ${idx + 1}]\n${result.text}`)
+      .join("\n\n---\n\n");
+    parts.push(`## Related Context\n${ragContext}`);
+  }
+
+  if (parts.length === 0) {
+    return '';
+  }
+
+  // Return formatted context with separator
+  return parts.join("\n\n") + "\n\n---\n\n";
+}
+
+// Re-export MemoryItem for use in other modules
+export type { MemoryItem } from "@/lib/memory";
+
+/**
  * Maximum number of file mentions allowed per message.
  * Prevents context pollution and excessive token usage.
  */
@@ -150,9 +213,14 @@ export async function buildContextMessages(
     /** Active skill to inject systemPrompt from */
     skill?: Skill | null;
   }
-): Promise<Message[]> {
+): Promise<ContextBuilderResult> {
   const messages: Message[] = [];
   const activeContexts: string[] = []; // Track active contexts for priority header
+
+  // Dynamic context - will be injected into current user message, not as system messages
+  // This is critical for prompt caching: keeps the static prefix stable across turns
+  let dynamicMemory: MemoryItem[] | null = null;
+  let dynamicRag: RagResult[] | null = null;
 
   // Parse references from user message FIRST (needed for batch queries)
   const { cleanContent, fileReferences, chatReferences, agentReferences } = await parseReferences(userMessage);
@@ -290,91 +358,7 @@ export async function buildContextMessages(
     activeContexts.push(`Invoked Agent${invokedAgentCount > 1 ? 's' : ''}`);
   }
 
-  // 6. Memory context (searched per message - dynamic)
-  const globalMemoryEnabled = settings?.memoryEnabled ?? true;
-  const perChatMemoryDisabled = options?.memoryDisabled ?? false;
-  const isIncognito = options?.incognitoMode ?? false;
-  const memoryEnabled = globalMemoryEnabled && !perChatMemoryDisabled && !isIncognito;
-
-  if (memoryEnabled) {
-    try {
-      const memoryQuery = userMessage;
-      const rawMemories = await searchMemories(memoryQuery);
-
-      // Apply budgeting: relevance filter, item limit, token/char limit
-      let budgetedMemories = rawMemories && rawMemories.length > 0 ? budgetMemories(rawMemories) : [];
-
-      // Identity questions should never come back empty if any memories exist.
-      // If search returns nothing (or everything filtered out), fall back to "all memories".
-      if (budgetedMemories.length === 0 && isIdentityQuestion(userMessage)) {
-        const all = await getAllMemories();
-        budgetedMemories = all && all.length > 0 ? budgetMemories(all) : [];
-      }
-
-      if (budgetedMemories.length > 0) {
-        const rawLen = rawMemories?.length ?? 0;
-        const filtered = rawLen > 0 ? rawLen - budgetedMemories.length : 0;
-
-        // Format memories with clear instructions for the model
-        const memoryContext = `## User Memory
-${budgetedMemories.map((m) => `- ${m.memory}`).join("\n")}
-
-CRITICAL: Use memories ONLY when directly relevant. NEVER:
-- Volunteer personal info unprompted
-- Reference memories unless user asks about themselves
-- Say "I remember you..." or "Based on your memory..."`;
-        const memoryTokens = Math.ceil(memoryContext.length / 4); // ~4 chars per token
-
-        messages.push({
-          id: "memory-context",
-          chatId,
-          role: "system",
-          content: memoryContext,
-          createdAt: Date.now(),
-        });
-        activeContexts.push("User Memory");
-
-        // Log with budget info
-      } else if (rawMemories && rawMemories.length > 0) {
-      }
-    } catch (error) {
-      console.error("[Context] Failed to load memory context:", error);
-      // Continue without memory if it fails
-    }
-  } else if (perChatMemoryDisabled) {
-  }
-
-  // 7. RAG retrieval (most dynamic - changes with every query)
-  if (options?.enableRAG) {
-    try {
-      const ragResults = await retrieveContext(cleanContent, {
-        chatId,
-        projectId: chat?.projectId,
-        limit: options.ragLimit || 3,
-        threshold: 0.6,
-      });
-
-      if (ragResults.length > 0) {
-        const ragContext = ragResults
-          .map((result, idx) => `[Context ${idx + 1} (similarity: ${(result.similarity * 100).toFixed(1)}%)]\n${result.text}`)
-          .join("\n\n---\n\n");
-
-        messages.push({
-          id: "rag-context",
-          chatId,
-          role: "system",
-          content: `Relevant context from previous conversations:\n\n${ragContext}`,
-          createdAt: Date.now(),
-        });
-        activeContexts.push("RAG Context");
-      }
-    } catch (error) {
-      console.error("RAG retrieval failed:", error);
-      // Continue without RAG if it fails
-    }
-  }
-
-  // Add file contents as context (uses batch-fetched files map)
+  // 6. File contents as context (uses batch-fetched files map) - relatively stable
   for (const fileRef of fileReferences) {
     const file = filesMap.get(fileRef.id);
     if (file && file.text) {
@@ -409,6 +393,7 @@ CRITICAL: Use memories ONLY when directly relevant. NEVER:
   }
 
   // Prepend priority header if multiple contexts are active (helps model resolve conflicts)
+  // NOTE: Only includes static contexts - dynamic ones (memory, RAG) are added after
   const priorityHeader = buildPriorityHeader(activeContexts.reverse()); // Highest priority first
   if (priorityHeader) {
     messages.unshift({
@@ -420,5 +405,65 @@ CRITICAL: Use memories ONLY when directly relevant. NEVER:
     });
   }
 
-  return messages;
+  // ============================================================
+  // DYNAMIC CONTENT - Added as system messages AFTER static content
+  // These change per-message but are placed after conversation history
+  // in the final message array (by use-chat.ts) to not break cache prefix
+  // ============================================================
+
+  // 8. Memory context (searched per message - DYNAMIC, changes every request)
+  const globalMemoryEnabled = settings?.memoryEnabled ?? true;
+  const perChatMemoryDisabled = options?.memoryDisabled ?? false;
+  const isIncognito = options?.incognitoMode ?? false;
+  const memoryEnabled = globalMemoryEnabled && !perChatMemoryDisabled && !isIncognito;
+
+  if (memoryEnabled) {
+    try {
+      const memoryQuery = userMessage;
+      const rawMemories = await searchMemories(memoryQuery);
+
+      // Apply budgeting: relevance filter, item limit, token/char limit
+      let budgetedMemories = rawMemories && rawMemories.length > 0 ? budgetMemories(rawMemories) : [];
+
+      // Identity questions should never come back empty if any memories exist.
+      if (budgetedMemories.length === 0 && isIdentityQuestion(userMessage)) {
+        const all = await getAllMemories();
+        budgetedMemories = all && all.length > 0 ? budgetMemories(all) : [];
+      }
+
+      // Store as dynamic context for later positioning
+      if (budgetedMemories.length > 0) {
+        dynamicMemory = budgetedMemories;
+      }
+    } catch (error) {
+      console.error("[Context] Failed to load memory context:", error);
+    }
+  }
+
+  // 9. RAG retrieval (DYNAMIC - changes with every query)
+  if (options?.enableRAG) {
+    try {
+      const ragResults = await retrieveContext(cleanContent, {
+        chatId,
+        projectId: chat?.projectId,
+        limit: options.ragLimit || 3,
+        threshold: 0.6,
+      });
+
+      // Store as dynamic context for later positioning
+      if (ragResults.length > 0) {
+        dynamicRag = ragResults;
+      }
+    } catch (error) {
+      console.error("RAG retrieval failed:", error);
+    }
+  }
+
+  return {
+    staticMessages: messages,
+    dynamicContext: {
+      memory: dynamicMemory,
+      rag: dynamicRag,
+    },
+  };
 }

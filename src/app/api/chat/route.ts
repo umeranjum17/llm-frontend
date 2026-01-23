@@ -273,13 +273,28 @@ export async function POST(req: Request) {
     // OpenAI: Explicit caching via providerOptions.openai.promptCacheKey (1024+ tokens)
     // Anthropic: Direct provider caching via providerOptions.anthropic.cacheControl
     // OpenRouter: Explicit caching for Gemini/Claude via providerOptions.openrouter.cacheControl
+
+    // Debug: Log cache configuration inputs with cumulative token count
+    let cumulativeTokens = 0;
+    for (const msg of coreMessages) {
+      const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+      cumulativeTokens += countTokens(content);
+    }
+    console.log(`[Cache] Provider: ${providerId}, supportsPromptCaching: ${capabilities.supportsPromptCaching}, totalMsgs: ${coreMessages.length}, cumulativeTokens: ${cumulativeTokens}`);
+
     const { messages: cachedMessages, providerOptions: cacheProviderOptions } = configurePromptCaching(
       coreMessages,
       providerId,
       modelId,
       capabilities
     );
-    
+
+    // Debug: Log if cacheControl was added (check any message, not just system)
+    const cachedMsg = cachedMessages.find(m => (m as any).providerOptions?.anthropic?.cacheControl);
+    if (cachedMsg && providerId === 'anthropic') {
+      console.log(`[Cache] ✓ cacheControl added to ${cachedMsg.role} message`);
+    }
+
     // Merge cache provider options with existing provider options
     Object.assign(providerOptions, cacheProviderOptions);
 
@@ -507,8 +522,17 @@ export async function POST(req: Request) {
               // Log usage data, cache metrics, and thinking tokens
               if ((part as any).usage) {
                 const usage = (part as any).usage;
-                const cachedTokens = usage.promptTokensDetails?.cachedTokens ?? 0;
                 const promptTokens = usage.inputTokens ?? 0;
+
+                // Extract cached tokens from various provider formats:
+                // - OpenAI: usage.promptTokensDetails?.cachedTokens
+                // - Anthropic: usage.cacheReadInputTokens or usage.cache_read_input_tokens
+                // - Google: handled via providerMetadata
+                const cachedTokens =
+                  usage.promptTokensDetails?.cachedTokens ??
+                  usage.cacheReadInputTokens ??
+                  usage.cache_read_input_tokens ??
+                  0;
 
                 // Extract thinking/reasoning tokens (AI SDK standard)
                 const thinkingTokens = usage.reasoningTokens ?? 0;
@@ -527,9 +551,27 @@ export async function POST(req: Request) {
                 }
               }
 
-              // Extract provider-specific metadata (fallback for thinking tokens)
+              // Extract provider-specific metadata (fallback for thinking tokens and cache)
               if ((part as any).providerMetadata) {
                 const metadata = (part as any).providerMetadata;
+
+                // Debug: Confirm providerMetadata is in the streamed part
+                console.log(`[Chat] Streaming event type=${partType} with providerMetadata`);
+
+                // Debug: Log Anthropic metadata to see cache structure
+                if (metadata.anthropic) {
+                  console.log(`[Chat] Anthropic metadata:`, JSON.stringify(metadata.anthropic, null, 2));
+                }
+
+                // Anthropic-specific cache metrics (may be in providerMetadata)
+                if (metadata.anthropic?.usage) {
+                  const anthropicUsage = metadata.anthropic.usage;
+                  const cacheRead = anthropicUsage.cache_read_input_tokens ?? anthropicUsage.cacheReadInputTokens ?? 0;
+                  const cacheCreation = anthropicUsage.cache_creation_input_tokens ?? anthropicUsage.cacheCreationInputTokens ?? 0;
+                  if (cacheRead > 0 || cacheCreation > 0) {
+                    console.log(`[Chat] Anthropic cache: read=${cacheRead}, created=${cacheCreation}`);
+                  }
+                }
 
                 // Anthropic-specific thinking tokens
                 if (metadata.anthropic?.thinking?.tokens) {
