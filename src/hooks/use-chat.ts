@@ -1197,6 +1197,17 @@ export function useChat(chatId: string | null) {
               // Also check inputTokenDetails (AI SDK v5 format)
               const inputTokenDetails = usage.inputTokenDetails ?? {};
 
+              // Extract cache tokens from various provider formats:
+              // - OpenAI: promptTokensDetails.cachedTokens
+              // - Anthropic: providerMetadata.anthropic.usage.cache_read_input_tokens
+              // - Google: providerMetadata.google.usageMetadata.cachedContentTokenCount
+              // - DeepSeek: usage.prompt_cache_hit_tokens
+              // - Groq: usage.cache_read_input_tokens
+              // - xAI: providerMetadata.xai.cache_read_tokens
+              const deepseekMeta = value.providerMetadata?.deepseek || {};
+              const groqMeta = value.providerMetadata?.groq || {};
+              const xaiCacheMeta = value.providerMetadata?.xai || {};
+
               const cachedTok =
                 toNum(promptDetails.cachedTokens) ??
                 toNum(promptDetails.cached_tokens) ??
@@ -1206,6 +1217,15 @@ export function useChat(chatId: string | null) {
                 toNum(usage.cacheReadInputTokens) ??
                 toNum(usage.cache_read_input_tokens) ??
                 toNum(googleUsageMeta.cachedContentTokenCount) ??
+                // DeepSeek format
+                toNum(usage.prompt_cache_hit_tokens) ??
+                toNum(deepseekMeta.prompt_cache_hit_tokens) ??
+                // Groq format
+                toNum(groqMeta.cache_read_input_tokens) ??
+                // xAI format
+                toNum(xaiCacheMeta.cache_read_tokens) ??
+                toNum(xaiCacheMeta.cached_tokens) ??
+                // Generic fallbacks
                 toNum(usage.cachedTokens) ??
                 toNum(usage.cached_tokens);
 

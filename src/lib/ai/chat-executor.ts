@@ -138,7 +138,7 @@ export function configurePromptCaching(
   providerId: string,
   modelId: string,
   capabilities: ReturnType<typeof getModelCapabilities>,
-  options?: { cacheTTL?: '5m' | '1h' }
+  options?: { cacheTTL?: '5m' | '1h' | '24h' }
 ): { messages: ModelMessage[]; providerOptions: Record<string, any> } {
   const providerOptions: Record<string, any> = {};
   const updatedMessages = [...messages];
@@ -298,22 +298,37 @@ export function configurePromptCaching(
         cumulativeTokens.push(runningTotal);
       }
 
-      // Find best cache breakpoint using cumulative tokens
-      // IMPORTANT: Cache at STABLE position (last system message) for consistent cache hits
-      let cacheBreakpointIdx = -1;
-
-      // Cache at last system message - stable across conversation turns
-      const lastSystemIdx = updatedMessages
+      // Find indices for cache breakpoint candidates
+      const assistantIndices = updatedMessages
+        .map((m, i) => m.role === 'assistant' ? i : -1)
+        .filter(i => i !== -1);
+      const systemIndices = updatedMessages
         .map((m, i) => m.role === 'system' ? i : -1)
-        .filter(i => i !== -1)
-        .pop();
+        .filter(i => i !== -1);
 
-      if (lastSystemIdx !== undefined && lastSystemIdx >= 0 && cumulativeTokens[lastSystemIdx] >= OPENROUTER_MIN_CACHE_TOKENS) {
+      const lastAssistantIdx = assistantIndices.length > 0 ? assistantIndices[assistantIndices.length - 1] : undefined;
+      const lastSystemIdx = systemIndices.length > 0 ? systemIndices[systemIndices.length - 1] : undefined;
+
+      // Find best cache breakpoint - prefer last assistant (maximizes cached prefix across turns)
+      let cacheBreakpointIdx = -1;
+      let cacheLocation = 'none';
+
+      // First choice: last assistant message (stable across turns, maximizes cache hits)
+      if (lastAssistantIdx !== undefined && cumulativeTokens[lastAssistantIdx] >= OPENROUTER_MIN_CACHE_TOKENS) {
+        cacheBreakpointIdx = lastAssistantIdx;
+        cacheLocation = 'assistant';
+      }
+      // Fallback: last system message
+      else if (lastSystemIdx !== undefined && cumulativeTokens[lastSystemIdx] >= OPENROUTER_MIN_CACHE_TOKENS) {
         cacheBreakpointIdx = lastSystemIdx;
+        cacheLocation = 'system';
       }
 
       if (cacheBreakpointIdx >= 0) {
-        const msg = updatedMessages[cacheBreakpointIdx] as any;
+        const originalMsg = updatedMessages[cacheBreakpointIdx];
+
+        // Clone message to avoid mutating original
+        const msg: any = { ...originalMsg };
 
         // For system messages, change role to 'user' to allow array content with providerOptions
         // AI SDK requires system messages to have string content
@@ -335,21 +350,28 @@ export function configurePromptCaching(
             }
           ];
         } else if (Array.isArray(msg.content)) {
-          // Add cacheControl to the last text part
+          // Clone content array and add cacheControl to the last text part
+          msg.content = [...msg.content];
           const lastTextPartIdx = msg.content
             .map((p: any, i: number) => p.type === 'text' ? i : -1)
             .filter((i: number) => i !== -1)
             .pop();
 
           if (lastTextPartIdx !== undefined && lastTextPartIdx >= 0) {
-            msg.content[lastTextPartIdx].providerOptions = {
-              openrouter: {
-                cacheControl: { type: 'ephemeral' }
+            msg.content[lastTextPartIdx] = {
+              ...msg.content[lastTextPartIdx],
+              providerOptions: {
+                openrouter: {
+                  cacheControl: { type: 'ephemeral' }
+                }
               }
             };
           }
         }
-        console.log(`[Cache] OpenRouter: Caching at idx ${cacheBreakpointIdx} (${cumulativeTokens[cacheBreakpointIdx]} cumulative tokens)`);
+
+        // Replace message in array with cloned version
+        updatedMessages[cacheBreakpointIdx] = msg;
+        console.log(`[Cache] OpenRouter: Caching at ${cacheLocation} idx ${cacheBreakpointIdx} (${cumulativeTokens[cacheBreakpointIdx]} cumulative tokens)`);
       }
     }
     // Note: Groq, DeepSeek, xAI have automatic caching - no explicit config needed
