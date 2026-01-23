@@ -131,12 +131,14 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
 
     // Settings store for persisting default MCP servers
     const updateDefaultMcpServerIds = useSettingsStore((s) => s.updateDefaultMcpServerIds);
+    const defaultMcpServerIds = useSettingsStore((s) => s.defaultMcpServerIds);
 
     // Get toolkits from the composio server
     const toolkits = composioServer?.composioToolkits || [];
 
-    // Check if Composio is active (in activeMcpServerIds)
-    const isComposioActive = chat?.activeMcpServerIds?.includes("composio-consolidated") ?? false;
+    // Check if Composio is active - use chat's activeMcpServerIds if available, else fall back to defaults
+    const activeMcpIds = chat?.activeMcpServerIds ?? defaultMcpServerIds ?? [];
+    const isComposioActive = activeMcpIds.includes("composio-consolidated");
 
     // Count enabled toolkits
     const enabledToolkitsCount = toolkits.filter(t => t.isEnabled).length;
@@ -169,19 +171,22 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
 
     // Handler for master Composio toggle
     const toggleComposio = useCallback(async () => {
-        if (!chatId) return;
-
-        const currentActive = chat?.activeMcpServerIds ?? [];
+        // Use current active IDs from chat or defaults
+        const currentActive = chat?.activeMcpServerIds ?? defaultMcpServerIds ?? [];
         const newActive = isComposioActive
             ? currentActive.filter(id => id !== "composio-consolidated")
             : [...currentActive, "composio-consolidated"];
 
-        await Promise.all([
-            updateChat(chatId, { activeMcpServerIds: newActive }),
-            updateDefaultMcpServerIds(newActive),
-        ]);
+        // Always update defaults
+        await updateDefaultMcpServerIds(newActive);
+
+        // Also update specific chat if we have one
+        if (chatId) {
+            await updateChat(chatId, { activeMcpServerIds: newActive });
+        }
+
         toast.success(isComposioActive ? "Composio disconnected" : "Composio connected");
-    }, [chatId, chat?.activeMcpServerIds, isComposioActive, updateDefaultMcpServerIds]);
+    }, [chatId, chat?.activeMcpServerIds, defaultMcpServerIds, isComposioActive, updateDefaultMcpServerIds]);
 
     // Enable all toolkits
     const enableAllToolkits = useCallback(async () => {
