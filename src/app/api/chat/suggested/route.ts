@@ -1,11 +1,17 @@
 import { generateSimpleText, DEFAULT_UTILITY_MODELS } from "@/lib/ai/chat-executor";
+import { createErrorResponse } from "@/lib/utils/api-error-response";
 
 export async function POST(req: Request) {
+    let providerId = "openrouter";
     try {
-        const { messages, providerId = "openrouter", providerBaseUrl, apiKey } = await req.json();
+        const body = await req.json();
+        const { messages, providerId: bodyProviderId = "openrouter", providerBaseUrl, apiKey } = body;
+        providerId = bodyProviderId;
 
         if (!messages || messages.length === 0) {
-            return new Response("No messages provided", { status: 400 });
+            return createErrorResponse("VALIDATION_ERROR", {
+                message: "No messages provided",
+            });
         }
 
         const configuredModel = DEFAULT_UTILITY_MODELS[providerId] || "gpt-5-nano";
@@ -40,9 +46,18 @@ export async function POST(req: Request) {
         });
     } catch (error: any) {
         console.error("Suggestion generation failed:", error);
+        // Return 200 with empty suggestions so UI doesn't crash - suggestions are optional
+        // Include structured error info for debugging
+        const { classifyUpstreamError } = await import("@/lib/utils/api-error-response");
+        const classified = classifyUpstreamError(error, providerId);
         return new Response(JSON.stringify({
             suggestions: [],
-            error: error.message || "Unknown error"
-        }), { status: 200 });
+            error: classified.message,
+            errorCode: classified.errorCode,
+            provider: providerId,
+        }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+        });
     }
 }

@@ -31,7 +31,22 @@ type ErrorCode =
   | "STREAM_ERROR"
   | "DB_ERROR"
   | "DB_TIMEOUT"
+  | "IMAGE_GENERATION_FAILED"
+  | "EMBEDDING_FAILED"
+  | "CONTENT_POLICY_VIOLATION"
   | "UNKNOWN";
+
+/**
+ * Structured API error response from server
+ */
+export interface APIErrorResponse {
+  error: string;
+  errorCode?: ErrorCode;
+  provider?: string;
+  retryAfter?: number;
+  suggestion?: string;
+  recoverable?: boolean;
+}
 
 const ERROR_MESSAGES: Record<ErrorCode, (context?: Record<string, string>) => ActionableError> = {
   CHAT_CREATE_FAILED: () => ({
@@ -159,6 +174,33 @@ const ERROR_MESSAGES: Record<ErrorCode, (context?: Record<string, string>) => Ac
     },
   }),
 
+  IMAGE_GENERATION_FAILED: (ctx) => ({
+    title: "Image generation failed",
+    description: ctx?.reason || "The model couldn't generate an image. Try a different prompt.",
+    action: {
+      label: "Retry",
+    },
+    secondaryAction: {
+      label: "Change Model",
+    },
+  }),
+
+  EMBEDDING_FAILED: (ctx) => ({
+    title: "Embedding failed",
+    description: ctx?.reason || "Couldn't generate embeddings for the text.",
+    action: {
+      label: "Retry",
+    },
+  }),
+
+  CONTENT_POLICY_VIOLATION: () => ({
+    title: "Content blocked",
+    description: "Your request was blocked by safety policy. Try rephrasing.",
+    action: {
+      label: "Edit Message",
+    },
+  }),
+
   UNKNOWN: (ctx) => ({
     title: "Something went wrong",
     description: ctx?.message || "An unexpected error occurred. Try again.",
@@ -252,6 +294,21 @@ export function classifyError(error: unknown): { code: ErrorCode; context?: Reco
       return { code: "PROVIDER_UNAVAILABLE" };
     }
 
+    // Image generation errors
+    if (message.includes("image") && (message.includes("generation") || message.includes("failed") || message.includes("generate"))) {
+      return { code: "IMAGE_GENERATION_FAILED", context: { reason: error.message } };
+    }
+
+    // Embedding errors
+    if (message.includes("embedding") && (message.includes("failed") || message.includes("error"))) {
+      return { code: "EMBEDDING_FAILED", context: { reason: error.message } };
+    }
+
+    // Content policy violations
+    if (message.includes("content policy") || message.includes("safety") || message.includes("blocked") || message.includes("inappropriate") || message.includes("content filter")) {
+      return { code: "CONTENT_POLICY_VIOLATION" };
+    }
+
     return { code: "UNKNOWN", context: { message: error.message } };
   }
 
@@ -293,4 +350,81 @@ export function formatProviderName(providerId: string): string {
   }
 
   return names[providerId] || providerId;
+}
+
+/**
+ * Parse an API error response and return a structured error with context
+ */
+export async function parseAPIError(
+  response: Response
+): Promise<{ code: ErrorCode; context?: Record<string, string>; apiError?: APIErrorResponse }> {
+  try {
+    const data: APIErrorResponse = await response.json();
+
+    // If server provided a structured error code, use it directly
+    if (data.errorCode) {
+      const context: Record<string, string> = {};
+      if (data.provider) context.provider = data.provider;
+      if (data.retryAfter) context.retryAfter = String(data.retryAfter);
+      if (data.error) context.message = data.error;
+      if (data.suggestion) context.reason = data.suggestion;
+
+      return {
+        code: data.errorCode as ErrorCode,
+        context,
+        apiError: data,
+      };
+    }
+
+    // Fall back to classifying the error message
+    const errorMessage = data.error || response.statusText;
+    const classified = classifyError(new Error(errorMessage));
+
+    return {
+      ...classified,
+      apiError: data,
+    };
+  } catch {
+    // Couldn't parse JSON, classify based on status code
+    return classifyFromStatusCode(response.status);
+  }
+}
+
+/**
+ * Classify error based on HTTP status code
+ */
+function classifyFromStatusCode(status: number): { code: ErrorCode; context?: Record<string, string> } {
+  switch (status) {
+    case 401:
+      return { code: "API_KEY_INVALID" };
+    case 403:
+      return { code: "API_KEY_INVALID" };
+    case 404:
+      return { code: "MODEL_UNAVAILABLE" };
+    case 413:
+      return { code: "CONTEXT_TOO_LONG" };
+    case 429:
+      return { code: "RATE_LIMITED" };
+    case 502:
+    case 503:
+    case 504:
+      return { code: "PROVIDER_UNAVAILABLE" };
+    default:
+      return { code: "UNKNOWN" };
+  }
+}
+
+/**
+ * Get actionable error from a structured API error response
+ */
+export function getActionableErrorFromAPI(apiError: APIErrorResponse): ActionableError {
+  const context: Record<string, string> = {};
+
+  if (apiError.provider) context.provider = apiError.provider;
+  if (apiError.retryAfter) context.retryAfter = String(apiError.retryAfter);
+  if (apiError.error) context.message = apiError.error;
+  if (apiError.suggestion) context.reason = apiError.suggestion;
+
+  const code = (apiError.errorCode as ErrorCode) || "UNKNOWN";
+  return getErrorMessage(code, context);
 }

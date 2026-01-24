@@ -4,6 +4,7 @@ import { pickBestProviderId } from "@/lib/ai/provider-routing";
 import { db } from "@/lib/db/schema";
 import { updateChat } from "@/lib/db/queries";
 import { toast } from "sonner";
+import { getErrorMessage, type APIErrorResponse } from "@/lib/utils/error-messages";
 
 export function useChatSummary(
     chatId?: string,
@@ -52,20 +53,25 @@ export function useChatSummary(
                 throw new Error(`Summary API failed: ${response.statusText}`);
             }
 
-            const data = await response.json();
-            if (data.error) throw new Error(data.error);
+            const data = await response.json() as { summary?: string } & Partial<APIErrorResponse>;
+
+            // Handle structured error responses (returned as 200 for graceful degradation)
+            if (data.errorCode && data.errorCode !== "API_KEY_MISSING") {
+                // Show toast for unexpected errors (not missing key, which is expected)
+                const context: Record<string, string> = {};
+                if (data.provider) context.provider = data.provider;
+                const actionable = getErrorMessage(data.errorCode as any, context);
+                console.warn("Summary generation error:", data.error, { errorCode: data.errorCode });
+                toast.error(actionable.title, { description: actionable.description });
+            }
 
             if (data.summary) {
                 await updateChat(targetChatId, { summary: data.summary });
-
-                // Only show toast if explicitly triggered (manual), otherwise silent
-                if (!generatedRef.current) {
-                    // Logic for manual trigger feedback could be handled by caller or state
-                    // But here we might be reusing this function.
-                }
             }
         } catch (error: any) {
             console.error("Summarization error:", error);
+            // Only show toast for network/unexpected errors
+            toast.error("Summary generation failed", { description: "Check your connection and try again." });
         } finally {
             setIsGenerating(false);
         }

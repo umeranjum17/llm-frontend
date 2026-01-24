@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { resolveProvider, isCustomOpenAIProvider } from "@/lib/providers";
+import { createErrorResponse, createUpstreamErrorResponse } from "@/lib/utils/api-error-response";
 
 export const runtime = "edge";
 
@@ -21,13 +22,10 @@ export async function POST(req: Request) {
         const body = await req.json();
         const parsedBody = ImageRequestSchema.safeParse(body);
         if (!parsedBody.success) {
-            return new Response(
-                JSON.stringify({
-                    error: "Invalid request body",
-                    details: parsedBody.error.flatten(),
-                }),
-                { status: 400, headers: { "Content-Type": "application/json" } }
-            );
+            return createErrorResponse("VALIDATION_ERROR", {
+                message: "Invalid request body",
+                suggestion: parsedBody.error.issues[0]?.message,
+            });
         }
 
         const {
@@ -47,21 +45,23 @@ export async function POST(req: Request) {
         const resolved = resolveProvider(providerId, { baseUrl: providerBaseUrl });
 
         if (!resolved) {
-            return new Response(
-                JSON.stringify({ error: "Unknown provider", providerId }),
-                { status: 400, headers: { "Content-Type": "application/json" } }
-            );
+            return createErrorResponse("UNKNOWN_PROVIDER", {
+                provider: providerId,
+                message: `Unknown provider: ${providerId}`,
+            });
         }
 
         if (isCustomOpenAIProvider(providerId) && !providerBaseUrl) {
-            return new Response(
-                JSON.stringify({ error: "Missing providerBaseUrl for custom provider" }),
-                { status: 400, headers: { "Content-Type": "application/json" } }
-            );
+            return createErrorResponse("VALIDATION_ERROR", {
+                provider: providerId,
+                message: "Missing base URL for custom provider",
+            });
         }
 
         if (resolved.apiKeyRequired && !apiKey) {
-            return new Response("No API key provided", { status: 401 });
+            return createErrorResponse("API_KEY_MISSING", {
+                provider: providerId,
+            });
         }
 
         // Normalize model ID (strip provider prefix if present)
@@ -76,12 +76,12 @@ export async function POST(req: Request) {
         // DALL-E models need OpenAI's dedicated /images/generations endpoint
         // They cannot be used via OpenRouter's chat/completions
         if (isDalleModel && providerId === "openrouter") {
-            return new Response(
-                JSON.stringify({
-                    error: "DALL-E models require an OpenAI API key. Please add your OpenAI key in Settings and select 'OpenAI' as the provider."
-                }),
-                { status: 400, headers: { "Content-Type": "application/json" } }
-            );
+            return createErrorResponse("IMAGE_GENERATION_FAILED", {
+                provider: "openrouter",
+                message: "DALL-E models require an OpenAI API key",
+                suggestion: "Add your OpenAI key in Settings and select 'OpenAI' as the provider",
+                recoverable: true,
+            });
         }
 
         // OpenRouter uses chat/completions endpoint with modalities for image generation
@@ -169,10 +169,12 @@ export async function POST(req: Request) {
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 const errorMessage = (errorData as any)?.error?.message || response.statusText;
-                return new Response(
-                    JSON.stringify({ error: `Image generation failed: ${errorMessage}` }),
-                    { status: response.status, headers: { "Content-Type": "application/json" } }
-                );
+                return createErrorResponse("IMAGE_GENERATION_FAILED", {
+                    provider: providerId,
+                    message: errorMessage,
+                    recoverable: true,
+                    statusCode: response.status,
+                });
             }
 
             const data = await response.json();
@@ -283,14 +285,12 @@ export async function POST(req: Request) {
 
                 // Error: Model doesn't support image generation
                 if (usage?.completion_tokens === 0 || finishReason === "stop" && !hasTextResponse) {
-                    return new Response(
-                        JSON.stringify({
-                            error: "This model doesn't support image generation",
-                            suggestion: "Try an image-capable model like 'openai/gpt-4o', 'google/gemini-2.0-flash-exp:free', or 'openai/dall-e-3' (requires OpenAI API key)",
-                            recoverable: true,
-                        }),
-                        { status: 400, headers: { "Content-Type": "application/json" } }
-                    );
+                    return createErrorResponse("IMAGE_GENERATION_FAILED", {
+                        provider: providerId,
+                        message: "This model doesn't support image generation",
+                        suggestion: "Try an image-capable model like 'openai/gpt-4o', 'google/gemini-2.0-flash-exp:free', or 'openai/dall-e-3' (requires OpenAI API key)",
+                        recoverable: true,
+                    });
                 }
 
                 // Error: Content policy violation
@@ -299,41 +299,33 @@ export async function POST(req: Request) {
                     textContent.toLowerCase().includes("inappropriate") ||
                     textContent.toLowerCase().includes("policy") ||
                     finishReason === "content_filter") {
-                    return new Response(
-                        JSON.stringify({
-                            error: "Image generation was blocked by content policy",
-                            suggestion: "Try rephrasing your prompt to avoid potentially sensitive content. Use more general descriptions.",
-                            recoverable: true,
-                        }),
-                        { status: 400, headers: { "Content-Type": "application/json" } }
-                    );
+                    return createErrorResponse("CONTENT_POLICY_VIOLATION", {
+                        provider: providerId,
+                        message: "Image generation was blocked by content policy",
+                        suggestion: "Try rephrasing your prompt to avoid potentially sensitive content",
+                        recoverable: true,
+                    });
                 }
 
                 // Error: Gemini returned text instead of image
                 if (isGeminiImageModel && hasTextResponse) {
-                    return new Response(
-                        JSON.stringify({
-                            error: "Gemini returned text instead of an image",
-                            suggestion: "Start your prompt with 'Generate an image of...' or 'Create a picture of...' to trigger image generation mode",
-                            recoverable: true,
-                            debug: { textPreview: textContent.slice(0, 100) },
-                        }),
-                        { status: 400, headers: { "Content-Type": "application/json" } }
-                    );
+                    return createErrorResponse("IMAGE_GENERATION_FAILED", {
+                        provider: providerId,
+                        message: "Gemini returned text instead of an image",
+                        suggestion: "Start your prompt with 'Generate an image of...' to trigger image generation mode",
+                        recoverable: true,
+                    });
                 }
 
                 // Generic fallback with helpful context
-                return new Response(
-                    JSON.stringify({
-                        error: "No images found in response",
-                        suggestion: hasTextResponse
-                            ? "The model responded with text instead of an image. Try being more explicit: 'Generate an image of...'"
-                            : "Try a different image model or be more specific with your prompt",
-                        recoverable: true,
-                        debug: { contentType: typeof content, isArray: Array.isArray(content), contentPreview: typeof content === 'string' ? content?.slice?.(0, 200) : JSON.stringify(content)?.slice(0, 200) }
-                    }),
-                    { status: 500, headers: { "Content-Type": "application/json" } }
-                );
+                return createErrorResponse("IMAGE_GENERATION_FAILED", {
+                    provider: providerId,
+                    message: "No images found in response",
+                    suggestion: hasTextResponse
+                        ? "The model responded with text instead of an image. Try: 'Generate an image of...'"
+                        : "Try a different image model or be more specific with your prompt",
+                    recoverable: true,
+                });
             }
 
             return new Response(
@@ -366,10 +358,12 @@ export async function POST(req: Request) {
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             const errorMessage = (errorData as any)?.error?.message || response.statusText;
-            return new Response(
-                JSON.stringify({ error: `Image generation failed: ${errorMessage}` }),
-                { status: response.status, headers: { "Content-Type": "application/json" } }
-            );
+            return createErrorResponse("IMAGE_GENERATION_FAILED", {
+                provider: providerId,
+                message: errorMessage,
+                recoverable: true,
+                statusCode: response.status,
+            });
         }
 
         const data = await response.json();
@@ -387,9 +381,6 @@ export async function POST(req: Request) {
         );
     } catch (error) {
         console.error("Image API error:", error);
-        return new Response(
-            JSON.stringify({ error: "Failed to process image request" }),
-            { status: 500, headers: { "Content-Type": "application/json" } }
-        );
+        return createUpstreamErrorResponse(error, "openai");
     }
 }

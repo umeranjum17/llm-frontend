@@ -1,6 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { embedMany } from "ai";
 import { withRetry } from "@/lib/ai/chat-executor";
+import { createErrorResponse, createUpstreamErrorResponse } from "@/lib/utils/api-error-response";
 
 /**
  * Available embedding models by provider
@@ -29,21 +30,23 @@ const DEFAULT_MODELS: Record<string, string> = {
 };
 
 export async function POST(req: Request) {
+  let providerId = "openrouter";
   try {
     const apiKey = req.headers.get("X-API-Key");
-    const { texts, providerId = "openrouter", modelId: requestedModel, providerBaseUrl } = await req.json();
+    const body = await req.json();
+    const { texts, providerId: bodyProviderId = "openrouter", modelId: requestedModel, providerBaseUrl } = body;
+    providerId = bodyProviderId;
 
     if (!texts || !Array.isArray(texts) || texts.length === 0) {
-      return new Response(JSON.stringify({ error: "No texts provided" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
+      return createErrorResponse("VALIDATION_ERROR", {
+        message: "No texts provided",
+        suggestion: "Provide an array of texts to generate embeddings",
       });
     }
 
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: "API key required" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
+      return createErrorResponse("API_KEY_MISSING", {
+        provider: providerId,
       });
     }
 
@@ -95,15 +98,7 @@ export async function POST(req: Request) {
     );
   } catch (error) {
     console.error("[Embeddings] Error:", error);
-    return new Response(
-      JSON.stringify({
-        error: error instanceof Error ? error.message : "Failed to generate embeddings",
-      }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+    return createUpstreamErrorResponse(error, providerId);
   }
 }
 

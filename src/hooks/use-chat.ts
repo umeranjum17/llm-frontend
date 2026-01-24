@@ -10,7 +10,7 @@ import type { MessageContent, Agent, Skill } from "@/lib/db/schema";
 import { getImagesFromMessageContent, getTextFromMessageContent, mapTextInMessageContent, convertToAISDKContent } from "@/lib/utils/message-content";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { toast } from "sonner";
-import { getActionableError } from "@/lib/utils/error-messages";
+import { getActionableError, getErrorMessage, type APIErrorResponse } from "@/lib/utils/error-messages";
 import { isModelIdCompatibleWithProviderId, pickBestProviderId, providerLabel } from "@/lib/ai/provider-routing";
 import { addMemory, refreshCacheInBackground, searchMemories } from "@/lib/memory";
 import { generateAndApplySummary } from "@/lib/ai/summarization";
@@ -28,37 +28,69 @@ function cleanReferencesForLLM(content: string) {
 }
 
 /**
- * Extract user-friendly error message from stream error.
- * Avoids exposing raw JSON or sensitive details.
+ * Extract structured error info from stream error events.
+ * Returns both the message and optional error code/provider for actionable feedback.
  */
-function extractErrorMessage(parsed: { error?: unknown }): string {
+function extractStreamError(parsed: { error?: unknown }): {
+  message: string;
+  errorCode?: string;
+  provider?: string;
+  retryAfter?: number;
+} {
   const err = parsed.error as Record<string, unknown> | string | undefined;
-  if (!err) return "Unknown error occurred";
+  if (!err) return { message: "Unknown error occurred" };
 
-  // Prefer string message fields
-  if (typeof err === 'string' && err) return err;
+  // Handle structured API error format from server
   if (typeof err === 'object') {
-    if (typeof err.message === 'string' && err.message) return err.message;
+    // Check for our structured error format: { message, errorCode, provider, retryAfter }
+    if (err.errorCode) {
+      return {
+        message: (err.message as string) || "An error occurred",
+        errorCode: err.errorCode as string,
+        provider: err.provider as string | undefined,
+        retryAfter: err.retryAfter as number | undefined,
+      };
+    }
+
+    // Legacy/fallback: extract message from various formats
+    if (typeof err.message === 'string' && err.message) {
+      return { message: err.message };
+    }
 
     // Nested message paths (AI SDK variants)
     const data = err.data as Record<string, unknown> | undefined;
     if (data?.error && typeof data.error === 'object') {
       const nestedErr = data.error as Record<string, unknown>;
-      if (typeof nestedErr.message === 'string') return nestedErr.message;
+      if (typeof nestedErr.message === 'string') {
+        return { message: nestedErr.message };
+      }
     }
     const innerErr = err.error as Record<string, unknown> | undefined;
-    if (innerErr && typeof innerErr.message === 'string') return innerErr.message;
+    if (innerErr && typeof innerErr.message === 'string') {
+      return { message: innerErr.message };
+    }
 
     // HTTP-style with status code
-    if (err.status && err.statusText) return `HTTP ${err.status}: ${err.statusText}`;
-    if (err.status) return `Request failed with status ${err.status}`;
+    if (err.status && err.statusText) {
+      return { message: `HTTP ${err.status}: ${err.statusText}` };
+    }
+    if (err.status) {
+      return { message: `Request failed with status ${err.status}` };
+    }
+  }
 
-    // Error code present
-    if (err.code) return `Error code: ${err.code}`;
+  // String error
+  if (typeof err === 'string' && err) {
+    return { message: err };
   }
 
   // Safe fallback - no raw JSON stringify
-  return "Stream error occurred - check browser console for details";
+  return { message: "Stream error occurred - check browser console for details" };
+}
+
+// Legacy wrapper for backwards compatibility
+function extractErrorMessage(parsed: { error?: unknown }): string {
+  return extractStreamError(parsed).message;
 }
 
 /**
@@ -1509,33 +1541,47 @@ export function useChat(chatId: string | null) {
             // Handle error events gracefully - don't break the stream
             // Tool errors and transient failures should allow the LLM to recover
             if (parsed.type === "error") {
-              const errorMessage = extractErrorMessage(parsed);
-              console.warn("[Chat] Stream error event (continuing):", errorMessage);
+              const { message, errorCode, provider, retryAfter } = extractStreamError(parsed);
+              console.warn("[Chat] Stream error event (continuing):", message, { errorCode, provider });
 
-              // Categorize the error for better user feedback
+              // Use structured error code if available, otherwise fall back to message classification
               let errorLabel = "Error";
-              const lowerMsg = errorMessage.toLowerCase();
-              if (lowerMsg.includes("model") || lowerMsg.includes("not a valid model")) {
-                errorLabel = "Model error";
-              } else if (lowerMsg.includes("api key") || lowerMsg.includes("unauthorized") || lowerMsg.includes("401") || lowerMsg.includes("403")) {
-                errorLabel = "API error";
-              } else if (lowerMsg.includes("rate limit") || lowerMsg.includes("429") || lowerMsg.includes("quota")) {
-                errorLabel = "Rate limit";
-              } else if (lowerMsg.includes("timeout") || lowerMsg.includes("timed out")) {
-                errorLabel = "Timeout";
-              } else if (lowerMsg.includes("tool") || lowerMsg.includes("validation error") || lowerMsg.includes("required at")) {
-                errorLabel = "Tool error";
+              let actionHint = "";
+
+              if (errorCode) {
+                // Use getErrorMessage for consistent actionable messages
+                const context: Record<string, string> = {};
+                if (provider) context.provider = provider;
+                if (retryAfter) context.retryAfter = String(retryAfter);
+                const actionable = getErrorMessage(errorCode as any, context);
+                errorLabel = actionable.title;
+                if (actionable.action?.href) {
+                  actionHint = ` [${actionable.action.label}](${actionable.action.href})`;
+                } else if (actionable.description) {
+                  actionHint = ` ${actionable.description}`;
+                }
+              } else {
+                // Legacy fallback: categorize by message content
+                const lowerMsg = message.toLowerCase();
+                if (lowerMsg.includes("model") || lowerMsg.includes("not a valid model")) {
+                  errorLabel = "Model error";
+                  actionHint = " Try selecting a different model.";
+                } else if (lowerMsg.includes("api key") || lowerMsg.includes("unauthorized") || lowerMsg.includes("401") || lowerMsg.includes("403")) {
+                  errorLabel = "API error";
+                  actionHint = " Check your API key in settings.";
+                } else if (lowerMsg.includes("rate limit") || lowerMsg.includes("429") || lowerMsg.includes("quota")) {
+                  errorLabel = "Rate limit";
+                  actionHint = retryAfter ? ` Wait ${retryAfter} seconds and try again.` : " Wait a moment and try again.";
+                } else if (lowerMsg.includes("timeout") || lowerMsg.includes("timed out")) {
+                  errorLabel = "Timeout";
+                  actionHint = " Try a shorter request.";
+                } else if (lowerMsg.includes("tool") || lowerMsg.includes("validation error") || lowerMsg.includes("required at")) {
+                  errorLabel = "Tool error";
+                }
               }
 
-              // Add actionable hint based on error category
-              let actionHint = "";
-              if (errorLabel === "API error") actionHint = " Check your API key in settings.";
-              else if (errorLabel === "Rate limit") actionHint = " Wait a moment and try again.";
-              else if (errorLabel === "Model error") actionHint = " Try selecting a different model.";
-              else if (errorLabel === "Timeout") actionHint = " Try a shorter request.";
-
               // Append error to content so user sees it, but don't break the stream
-              const errorNote = `\n\n⚠️ *${errorLabel}: ${errorMessage}*${actionHint}\n\n`;
+              const errorNote = `\n\n⚠️ *${errorLabel}: ${message}*${actionHint}\n\n`;
               fullContent += errorNote;
               appendStreamingContent(effectiveChatId, errorNote);
             }

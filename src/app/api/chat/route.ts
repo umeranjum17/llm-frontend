@@ -10,6 +10,7 @@ import {
   configurePromptCaching,
 } from "@/lib/ai/chat-executor";
 import { countTokens } from "@/lib/utils/token-counter";
+import { createErrorResponse, createUpstreamErrorResponse } from "@/lib/utils/api-error-response";
 
 /**
  * Tier-based maxSteps for tool calling.
@@ -104,13 +105,10 @@ export async function POST(req: Request) {
     const body = await req.json();
     const parsedBody = ChatRequestSchema.safeParse(body);
     if (!parsedBody.success) {
-      return new Response(
-        JSON.stringify({
-          error: "Invalid request body",
-          details: parsedBody.error.flatten(),
-        }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
+      return createErrorResponse("VALIDATION_ERROR", {
+        message: "Invalid request body",
+        suggestion: parsedBody.error.issues[0]?.message,
+      });
     }
 
     const {
@@ -139,10 +137,10 @@ export async function POST(req: Request) {
         if (!url) continue;
         const bytes = dataUrlBase64SizeBytes(url);
         if (bytes !== null && bytes > MAX_IMAGE_BYTES) {
-          return new Response(
-            JSON.stringify({ error: "Image too large (max 5MB)" }),
-            { status: 413, headers: { "Content-Type": "application/json" } }
-          );
+          return createErrorResponse("VALIDATION_ERROR", {
+            message: "Image too large (max 5MB)",
+            suggestion: "Resize or compress the image before uploading",
+          });
         }
       }
     }
@@ -150,21 +148,24 @@ export async function POST(req: Request) {
     const providerId = providerIdFromBody || "openrouter";
     const resolved = resolveProvider(providerId, { baseUrl: providerBaseUrl });
     if (!resolved) {
-      return new Response(
-        JSON.stringify({ error: "Unknown provider", providerId }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
+      return createErrorResponse("UNKNOWN_PROVIDER", {
+        provider: providerId,
+        message: `Unknown provider: ${providerId}`,
+      });
     }
 
     if (isCustomOpenAIProvider(providerId) && !providerBaseUrl) {
-      return new Response(
-        JSON.stringify({ error: "Missing providerBaseUrl for custom provider", providerId }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
+      return createErrorResponse("VALIDATION_ERROR", {
+        provider: providerId,
+        message: "Missing base URL for custom provider",
+        suggestion: "Add a base URL when configuring custom OpenAI-compatible providers",
+      });
     }
 
     if (resolved.apiKeyRequired && !apiKey) {
-      return new Response("No API key provided", { status: 401 });
+      return createErrorResponse("API_KEY_MISSING", {
+        provider: providerId,
+      });
     }
 
     const effectiveApiKey = apiKey || "local";
@@ -620,8 +621,19 @@ export async function POST(req: Request) {
             if (error instanceof Error && error.stack) {
               console.error("[Chat Route] Stack:", error.stack);
             }
+            // Send structured error event with provider context
+            const { classifyUpstreamError } = await import("@/lib/utils/api-error-response");
+            const classified = classifyUpstreamError(error, providerId);
             controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ type: "error", error: { message: errorMessage } })}\n\n`)
+              encoder.encode(`data: ${JSON.stringify({
+                type: "error",
+                error: {
+                  message: classified.message,
+                  errorCode: classified.errorCode,
+                  provider: providerId,
+                  retryAfter: classified.retryAfter,
+                }
+              })}\n\n`)
             );
           } finally {
             // Clean up abort listener to prevent memory leak
@@ -643,14 +655,6 @@ export async function POST(req: Request) {
     );
   } catch (error) {
     console.error("Chat API error:", error);
-    // Return actual error message for better debugging
-    const errorMessage = error instanceof Error ? error.message : "Failed to process chat request";
-    return new Response(
-      JSON.stringify({ error: errorMessage }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+    return createUpstreamErrorResponse(error);
   }
 }

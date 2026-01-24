@@ -1,14 +1,20 @@
 import { generateSimpleText, DEFAULT_UTILITY_MODELS } from "@/lib/ai/chat-executor";
+import { createErrorResponse } from "@/lib/utils/api-error-response";
 
 export async function POST(req: Request) {
+    let providerId = "openrouter";
     try {
-        const { messages, providerId = "openrouter", providerBaseUrl, apiKey } = await req.json();
+        const body = await req.json();
+        const { messages, providerId: bodyProviderId = "openrouter", providerBaseUrl, apiKey } = body;
+        providerId = bodyProviderId;
 
         if (!messages || messages.length === 0) {
-            return new Response("No messages provided", { status: 400 });
+            return createErrorResponse("VALIDATION_ERROR", {
+                message: "No messages provided",
+            });
         }
 
-        // Require user-provided API key
+        // Require user-provided API key - return empty tags silently (not an error case)
         if (!apiKey) {
             return new Response(JSON.stringify({ tags: [] }), {
                 headers: { "Content-Type": "application/json" },
@@ -99,10 +105,18 @@ Example outputs:
         });
     } catch (error: any) {
         console.error("Tag generation failed:", error);
+        // Return 200 with empty tags so UI doesn't crash - tags are optional
+        // Include structured error info for debugging
+        const { classifyUpstreamError } = await import("@/lib/utils/api-error-response");
+        const classified = classifyUpstreamError(error, providerId);
         return new Response(JSON.stringify({
             tags: [],
-            error: error.message || "Unknown error",
-            stack: error.stack
-        }), { status: 200 });
+            error: classified.message,
+            errorCode: classified.errorCode,
+            provider: providerId,
+        }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+        });
     }
 }
