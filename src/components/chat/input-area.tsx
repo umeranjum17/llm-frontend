@@ -1142,17 +1142,6 @@ export function InputArea({ chatId }: InputAreaProps) {
           )}
         </div>
 
-        {/* Mobile token display - inside input row */}
-        {chatId && chat?.modelId && !isPipelineAgent && (
-          <div className="sm:hidden flex items-center">
-            <TokenCalculator
-              chatId={chatId}
-              inputContent={input}
-              modelId={chat.modelId}
-              isPipelineAgent={isPipelineAgent}
-            />
-          </div>
-        )}
 
         {/* Button logic: Show send when user has input (to queue), show stop when streaming with no input */}
         {(() => {
@@ -1256,9 +1245,9 @@ export function InputArea({ chatId }: InputAreaProps) {
         <MobileNavInline />
       </div>
 
-      {/* Token usage display - desktop only (mobile shows inline) */}
-      {chatId && chat?.modelId && (
-        <div className="hidden sm:flex justify-end mt-2">
+      {/* Token usage display - subtle, below input on all devices */}
+      {chatId && chat?.modelId && !isPipelineAgent && (
+        <div className="flex justify-end mt-1.5 sm:mt-2 opacity-60 hover:opacity-100 transition-opacity">
           <TokenCalculator
             chatId={chatId}
             inputContent={input}
