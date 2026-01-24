@@ -537,19 +537,19 @@ async function testProvider(
   if (args.tests.has('reasoning')) {
     if (args.verbose) console.log('  Running reasoning test...');
     result.reasoning = await testReasoningStreaming(provider, apiKey, args);
-    console.log(`  Reasoning: ${result.reasoning.received ? `\x1b[32m✓\x1b[0m (${formatBytes(result.reasoning.length)})` : result.reasoning.success ? '\x1b[33m- (no model)\x1b[0m' : `\x1b[31m✗\x1b[0m ${result.reasoning.error}`}`);
+    console.log(`  Reasoning: ${result.reasoning!.received ? `\x1b[32m✓\x1b[0m (${formatBytes(result.reasoning!.length)})` : result.reasoning!.success ? '\x1b[33m- (no model)\x1b[0m' : `\x1b[31m✗\x1b[0m ${result.reasoning!.error}`}`);
   }
 
   if (args.tests.has('cache')) {
     if (args.verbose) console.log('  Running cache test...');
     result.cache = await testCacheMetrics(provider, apiKey, args);
-    console.log(`  Cache: ${result.cache.success ? `\x1b[32m✓\x1b[0m (${result.cache.cacheHitRate.toFixed(0)}%)` : `\x1b[31m✗\x1b[0m ${result.cache.error}`}`);
+    console.log(`  Cache: ${result.cache!.success ? `\x1b[32m✓\x1b[0m (${result.cache!.cacheHitRate.toFixed(0)}%)` : `\x1b[31m✗\x1b[0m ${result.cache!.error}`}`);
   }
 
   if (args.tests.has('streaming')) {
     if (args.verbose) console.log('  Running streaming test...');
     result.streaming = await testBasicStreaming(provider, apiKey, args);
-    console.log(`  Streaming: ${result.streaming.success ? `\x1b[32m✓\x1b[0m (${result.streaming.responseTime}ms)` : `\x1b[31m✗\x1b[0m ${result.streaming.error}`}`);
+    console.log(`  Streaming: ${result.streaming!.success ? `\x1b[32m✓\x1b[0m (${result.streaming!.responseTime}ms)` : `\x1b[31m✗\x1b[0m ${result.streaming!.error}`}`);
   }
 
   return result;

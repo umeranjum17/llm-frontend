@@ -238,8 +238,13 @@ export function ChatShell() {
   useEffect(() => {
     if (!chat?.providerId) return;
     if (isModelIdCompatibleWithProviderId(chat.providerId, chat.modelId)) return;
-    updateChat(chat.id, { providerId: undefined }).catch(() => { });
-  }, [chat?.id, chat?.modelId, chat?.providerId]);
+    // Current provider is incompatible with model - try to find a replacement
+    const newProvider = pickBestProviderId({ modelId: chat.modelId, availableProviderIds: llmProviderIds });
+    // Only update if we found a new provider or if keys are loaded (llmProviderIds won't be empty)
+    if (newProvider || llmProviderIds.length > 0) {
+      updateChat(chat.id, { providerId: newProvider || undefined }).catch(() => { });
+    }
+  }, [chat?.id, chat?.modelId, chat?.providerId, llmProviderIds]);
 
   // Batch query for model picker data - reduces 3 queries to 1 transaction
   const modelPickerData = useLiveQuery(() => getModelPickerData(), []);
@@ -446,7 +451,10 @@ export function ChatShell() {
       } else if (chat?.providerId && !isModelIdCompatibleWithProviderId(chat.providerId, modelId)) {
         // Current provider incompatible, fall back to best provider
         const next = pickBestProviderId({ modelId, availableProviderIds: llmProviderIds });
-        updates.providerId = next || undefined;
+        // Only update provider if we found a valid one - don't clear it if keys haven't loaded
+        if (next) {
+          updates.providerId = next;
+        }
       }
 
       await updateChat(activeChatId, updates);
@@ -487,7 +495,10 @@ export function ChatShell() {
     } else if (chat?.providerId && !isModelIdCompatibleWithProviderId(chat.providerId, modelId)) {
       // Current provider incompatible, fall back to best provider
       const next = pickBestProviderId({ modelId, availableProviderIds: llmProviderIds });
-      updates.providerId = next || undefined;
+      // Only update provider if we found a valid one - don't clear it if keys haven't loaded
+      if (next) {
+        updates.providerId = next;
+      }
     }
 
     await updateChat(activeChatId, updates);
@@ -738,6 +749,10 @@ export function ChatShell() {
                                         if (chat?.modelId) {
                                           await updateLastProviderForModel(chat.modelId, p.id);
                                         }
+                                        // Also update the default provider in settings to keep them in sync
+                                        await useSettingsStore.getState().updateDefaultChatDefaults({
+                                          defaultProviderId: p.id,
+                                        });
                                       }
                                     }}
                                     className="cursor-pointer"
@@ -1112,7 +1127,21 @@ export function ChatShell() {
             currentModelId={chat.modelId}
             onSelectModel={handleModelChange}
             currentProviderId={chat.providerId}
-            onSelectProviderId={(providerId) => activeChatId && updateChat(activeChatId, { providerId })}
+            onSelectProviderId={async (providerId) => {
+              if (activeChatId) {
+                await updateChat(activeChatId, { providerId });
+                // Also update the default provider in settings to keep them in sync
+                if (providerId) {
+                  await useSettingsStore.getState().updateDefaultChatDefaults({
+                    defaultProviderId: providerId,
+                  });
+                  // Remember this provider for the current model
+                  if (chat?.modelId) {
+                    await updateLastProviderForModel(chat.modelId, providerId);
+                  }
+                }
+              }
+            }}
           />
         </Suspense>
       )}

@@ -77,7 +77,7 @@ async function testProvider(config: {
     });
 
     for await (const part of result.fullStream) {
-      if (part.type === 'reasoning' || part.type === 'reasoning-delta') {
+      if (part.type === 'reasoning-start' || part.type === 'reasoning-end' || part.type === 'reasoning-delta') {
         reasoningLength += (part as any).text?.length || (part as any).textDelta?.length || 0;
       }
       if (part.type === 'text-delta') {

@@ -107,6 +107,15 @@ export default function Home() {
         console.warn("[Page] Error initializing device secret on resume:", error);
       }
 
+      // Reload settings and API keys on PWA resume to ensure fresh state
+      // This fixes "No provider" showing after app was backgrounded for a while
+      try {
+        await useSettingsStore.getState().loadSettings();
+        await useApiKeysStore.getState().loadKeys();
+      } catch (error) {
+        console.warn("[Page] Error reloading settings/keys on resume:", error);
+      }
+
       const activeChatId = useUIStore.getState().activeChatId;
       if (activeChatId) {
         try {

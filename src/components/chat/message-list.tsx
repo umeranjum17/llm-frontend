@@ -457,7 +457,7 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
           // Not streaming: auto-scroll if at bottom (for new messages)
           return isAtBottom ? 'auto' : false;
         }}
-        alignToBottom={true}
+        alignToBottom={!streamingMessageId}
         atBottomThreshold={100}
         atBottomStateChange={handleAtBottomChange}
         className="scrollbar-thin scroll-anchor-auto"

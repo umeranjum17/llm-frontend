@@ -44,8 +44,9 @@ async function testAnthropic(): Promise<TestResult> {
     });
 
     for await (const part of reasoningResult.fullStream) {
-      if (part.type === 'reasoning') {
-        reasoningLength += (part as any).text?.length || 0;
+      const p = part as any;
+      if (p.type === 'reasoning' || p.type === 'reasoning-delta') {
+        reasoningLength += p.text?.length || p.textDelta?.length || 0;
       }
     }
     result.reasoning = { success: reasoningLength > 0, length: reasoningLength };
@@ -145,8 +146,9 @@ async function testXai(): Promise<TestResult> {
     });
 
     for await (const part of reasoningResult.fullStream) {
-      if (part.type === 'reasoning' || part.type === 'reasoning-delta') {
-        reasoningLength += (part as any).text?.length || (part as any).textDelta?.length || 0;
+      const p = part as any;
+      if (p.type === 'reasoning' || p.type === 'reasoning-delta') {
+        reasoningLength += p.text?.length || p.textDelta?.length || 0;
       }
     }
     result.reasoning = { success: reasoningLength > 0, length: reasoningLength };
@@ -236,8 +238,9 @@ async function testOpenRouter(): Promise<TestResult> {
     });
 
     for await (const part of reasoningResult.fullStream) {
-      if (part.type === 'reasoning' || part.type === 'reasoning-delta') {
-        reasoningLength += (part as any).text?.length || (part as any).textDelta?.length || 0;
+      const p = part as any;
+      if (p.type === 'reasoning' || p.type === 'reasoning-delta') {
+        reasoningLength += p.text?.length || p.textDelta?.length || 0;
       }
     }
     result.reasoning = { success: reasoningLength > 0, length: reasoningLength };
