@@ -33,10 +33,23 @@ export default function Home() {
   // Register global keyboard shortcuts
   useKeyboardShortcuts();
 
+  /**
+   * PERFORMANCE CRITICAL - Parallel Initialization
+   *
+   * Previously, settings and API keys loaded SEQUENTIALLY:
+   *   await loadSettings();
+   *   await loadKeys();
+   *
+   * This added unnecessary latency (each ~100-500ms). Now they load in PARALLEL.
+   *
+   * Device secret MUST initialize first (it's the encryption key for API keys),
+   * but settings and keys can load concurrently after that.
+   *
+   * Also, API keys are now decrypted in parallel (see api-keys-store.ts).
+   */
   useEffect(() => {
-    // Initialize device secret first (migrate from localStorage to IndexedDB if needed)
-    // This ensures the encryption key is in IndexedDB before loading encrypted API keys
     const initAndLoad = async () => {
+      // Device secret must init first - needed to decrypt API keys
       try {
         const { initializeDeviceSecret } = await import("@/lib/crypto/api-key-crypto");
         await initializeDeviceSecret();
@@ -44,7 +57,7 @@ export default function Home() {
         console.warn("[Page] Error initializing device secret:", error);
       }
 
-      // Load settings and API keys in parallel for faster startup
+      // Load settings and API keys in PARALLEL for faster startup
       const loadPromises: Promise<void>[] = [];
       if (!settingsLoaded) {
         loadPromises.push(loadSettings());
@@ -92,12 +105,28 @@ export default function Home() {
     }
   }, [keysLoaded, keys.length]);
 
-  // Handle PWA resume - validate active chat still exists when app comes back to foreground
+  /**
+   * PERFORMANCE CRITICAL - Non-Blocking Visibility Handler
+   *
+   * Previously, this handler was async and AWAITED all operations:
+   *   const handleVisibilityChange = async () => {
+   *     await initializeDeviceSecret();
+   *     await loadSettings();
+   *     await loadKeys();
+   *     ...
+   *   }
+   *
+   * This BLOCKED the UI when switching tabs or resuming from background!
+   * The app would freeze until all operations completed.
+   *
+   * FIX: Wrap in async IIFE so the handler returns immediately.
+   * Operations run in background without blocking the main thread.
+   */
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState !== "visible") return;
 
-      // Run recovery in background - don't block the UI
+      // Run recovery in background - DO NOT await, DO NOT block UI
       (async () => {
         // Wait briefly for DB health hook to validate/reopen connection
         await new Promise((resolve) => setTimeout(resolve, 100));

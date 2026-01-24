@@ -251,10 +251,20 @@ export function useDBHealth() {
         const migrationInfo = await detectMigrationNeeded();
         const sizeFactor = migrationInfo.needed ? await estimateDbSizeFactor() : 1;
 
-        // Calculate adaptive timeout:
-        // - Base: 8s for normal init (fast fail for better UX)
-        // - Migration: 30s * sizeFactor, up to 90s max
-        // - Retries: additional 10s buffer
+        /**
+         * PERFORMANCE CRITICAL - Adaptive Timeout Values
+         *
+         * These timeouts were tuned for optimal UX:
+         * - 8s base: Fast fail so users see feedback quickly (was 30s, caused "Loading took too long")
+         * - Migration: Scaled by DB size (more chats = longer migration)
+         * - Retries: Small buffer to avoid premature failure
+         *
+         * If DB init is genuinely slow, the overlay shows "Clear Cache" button after 5s.
+         * Users can recover without waiting the full timeout.
+         *
+         * DO NOT increase base timeout significantly - it will make the app feel slow.
+         * If DB consistently times out, the issue is elsewhere (migration bug, etc).
+         */
         const baseTimeout = migrationInfo.needed
           ? Math.min(90000, 30000 * sizeFactor)
           : 8000;

@@ -78,6 +78,19 @@ const ICON_MAP: Record<string, string> = {
 
 const PREFERENCES_KEY = "composio_preferences";
 const TOOLKITS_CACHE_KEY = "composio_toolkits_cache";
+
+/**
+ * PERFORMANCE CRITICAL - Cache TTLs
+ *
+ * These values were tuned to balance freshness vs performance:
+ * - Toolkits rarely change, so 4 hours is safe
+ * - Sessions are expensive to create (API call + DB write), so 2 hours saves resources
+ * - Composio docs say 10-minute expiry is only for INCOMPLETE connection attempts,
+ *   not active sessions, so longer TTL is safe
+ *
+ * DO NOT reduce these without good reason - it will cause unnecessary API calls
+ * and slow down the app, especially on "New Chat" which was previously blocked.
+ */
 const TOOLKITS_CACHE_TTL = 1000 * 60 * 60 * 4; // 4 hours - toolkits rarely change
 const SESSION_TTL_MS = 1000 * 60 * 60 * 2; // 2 hours - active sessions last longer than incomplete ones
 
@@ -368,12 +381,20 @@ export function useComposioApps() {
     }
   }, [apiKey, preferences?.enabledToolkits]);
 
-  // Load cached session on mount (non-blocking) - reuse existing valid session
+  /**
+   * PERFORMANCE CRITICAL - Lazy Session Loading
+   *
+   * Load cached session on mount (non-blocking) - reuse existing valid session.
+   * This allows the session to be available immediately without blocking render.
+   *
+   * The session is stored in IndexedDB with a TTL (SESSION_TTL_MS).
+   * If valid, we reuse it. If expired, components will trigger createSession() when needed.
+   */
   useEffect(() => {
     if (sessionLoadedRef.current) return;
     sessionLoadedRef.current = true;
 
-    // Load cached session in background
+    // Load cached session in background - DO NOT await
     getCachedSession().then((cached) => {
       if (cached) {
         setMcpUrl(cached.url);
@@ -382,8 +403,21 @@ export function useComposioApps() {
     }).catch(() => {});
   }, []);
 
-  // Don't auto-fetch toolkits on mount - let components trigger fetch when needed
-  // This prevents blocking the app on initial load
+  /**
+   * PERFORMANCE CRITICAL - No Auto-Fetch on Mount
+   *
+   * Previously, this hook auto-fetched toolkits and connection status on mount.
+   * This BLOCKED the entire app because:
+   * 1. useComposioApps() is used by tool-quick-toggle.tsx
+   * 2. tool-quick-toggle.tsx renders in every chat view
+   * 3. Network calls blocked the React render cycle
+   *
+   * FIX: Components now explicitly call fetchToolkits() when needed:
+   * - Settings page: fetches on mount (user expects to wait)
+   * - Tool toggle dialog: fetches when opened (lazy load)
+   *
+   * DO NOT add auto-fetch back - it will break "New Chat" responsiveness.
+   */
 
   // Update enabled status when preferences change
   useEffect(() => {

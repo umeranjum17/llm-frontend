@@ -39,12 +39,25 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
       try {
         const encryptedKeys = await getAllApiKeys();
 
-        // Decrypt keys in parallel for faster loading
+        /**
+         * PERFORMANCE CRITICAL - Parallel Decryption
+         *
+         * Previously, keys were decrypted SEQUENTIALLY in a for loop:
+         *   for (const key of keys) {
+         *     await decryptApiKey(key);  // Blocks until done
+         *   }
+         *
+         * With 5+ providers, this added 500ms+ to startup.
+         * Now we decrypt ALL keys in parallel with Promise.all().
+         *
+         * Also, plaintext key migration now runs in background (fire-and-forget)
+         * instead of blocking the load.
+         */
         const decryptedKeys: ApiKey[] = [];
         const failedDecryptionKeys: { provider: string; code: string; message: string }[] = [];
         const keysToDelete: string[] = [];
 
-        // Process all keys in parallel
+        // Process all keys in PARALLEL
         const decryptionResults = await Promise.all(
           encryptedKeys.map(async (storedKey) => {
             try {
