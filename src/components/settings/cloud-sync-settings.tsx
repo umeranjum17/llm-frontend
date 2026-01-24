@@ -48,6 +48,7 @@ import {
   Settings2,
   Trash2,
   ExternalLink,
+  HelpCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -164,7 +165,28 @@ export function CloudSyncSettings() {
     if (result.success) {
       toast.success("Connection successful");
     } else {
-      toast.error("Connection failed", { description: result.error });
+      // Check if it's a CORS error
+      const isCorsError = result.error?.toLowerCase().includes("cors") ||
+                         result.error?.toLowerCase().includes("cross-origin");
+
+      if (isCorsError) {
+        toast.error("CORS Error - Click 'Fix CORS' or see troubleshooting guide", {
+          description: result.error,
+          duration: 6000,
+          action: {
+            label: "Guide",
+            onClick: () => window.open("/CLOUD_SYNC_TROUBLESHOOTING.md", "_blank"),
+          },
+        });
+      } else {
+        toast.error("Connection failed", {
+          description: result.error,
+          action: {
+            label: "Help",
+            onClick: () => window.open("/CLOUD_SYNC_TROUBLESHOOTING.md", "_blank"),
+          },
+        });
+      }
     }
   };
 
@@ -218,11 +240,21 @@ export function CloudSyncSettings() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-medium">Cloud Sync</h3>
-        <p className="text-sm text-muted-foreground">
-          Sync your data to your own cloud storage (S3/Cloudflare R2)
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h3 className="text-lg font-medium">Cloud Sync</h3>
+          <p className="text-sm text-muted-foreground">
+            Sync your data to your own cloud storage (S3/Cloudflare R2)
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => window.open("/CLOUD_SYNC_TROUBLESHOOTING.md", "_blank")}
+        >
+          <HelpCircle className="h-4 w-4 mr-2" />
+          Troubleshooting
+        </Button>
       </div>
 
       {/* Status Card */}
@@ -264,6 +296,29 @@ export function CloudSyncSettings() {
               </CardDescription>
             )}
           </CardHeader>
+          {status === "error" && (
+            <CardContent className="pt-0 pb-3">
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Connection Issue</AlertTitle>
+                <AlertDescription className="space-y-2">
+                  <p className="text-sm">
+                    Most connection issues are caused by CORS configuration.
+                    Try clicking &quot;Fix CORS&quot; below or check the troubleshooting guide.
+                  </p>
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0"
+                    onClick={() => window.open("/CLOUD_SYNC_TROUBLESHOOTING.md", "_blank")}
+                  >
+                    <ExternalLink className="h-3 w-3 mr-1" />
+                    View Troubleshooting Guide
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            </CardContent>
+          )}
           {config?.enabled && (
             <CardContent className="pt-0">
               <div className="flex flex-wrap gap-2">

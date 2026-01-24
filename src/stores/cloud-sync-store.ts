@@ -254,8 +254,15 @@ export const useCloudSyncStore = create<CloudSyncState>((set, get) => ({
       }
     } catch (error) {
       const err = error as Error;
-      set({ status: "error", error: err.message });
-      return { success: false, error: err.message };
+      // Enhance error message if it's a CORS error
+      let errorMessage = err.message;
+      if (err.message.toLowerCase().includes("cors") ||
+          err.message.toLowerCase().includes("cross-origin") ||
+          err.message.toLowerCase().includes("network error")) {
+        errorMessage = `CORS Error: ${err.message}. Click "Fix CORS" button or check troubleshooting guide.`;
+      }
+      set({ status: "error", error: errorMessage });
+      return { success: false, error: errorMessage };
     }
   },
 
@@ -281,10 +288,14 @@ export const useCloudSyncStore = create<CloudSyncState>((set, get) => ({
       const result = await configureCors(client, config.bucket);
 
       if (result.success) {
-        toast.success("CORS configured successfully");
+        toast.success("CORS configured successfully", {
+          description: "Now try testing the connection again",
+        });
         return { success: true };
       } else {
-        toast.error("Failed to configure CORS", { description: result.error });
+        toast.error("Failed to configure CORS", {
+          description: `${result.error}. You may need to configure CORS manually. See troubleshooting guide.`,
+        });
         return { success: false, error: result.error };
       }
     } catch (error) {
