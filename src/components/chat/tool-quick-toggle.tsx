@@ -236,9 +236,10 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
     }, [disableAllToolkits]);
 
     // Get status icon for Composio connection
+    // Only show loading if we don't have data yet (preemptive loading should have data ready)
     const getStatusIcon = () => {
         if (!isComposioActive) return null;
-        if (isLoadingToolkits) {
+        if (isLoadingToolkits && toolkits.length === 0) {
             return <Loader2 className="h-3 w-3 text-muted-foreground animate-spin" />;
         }
         switch (composioServer?.status) {
@@ -405,9 +406,10 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
                                 Retry
                             </Button>
                         </div>
-                    ) : isLoadingToolkits ? (
-                        <div className="flex items-center justify-center py-8">
-                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    ) : isLoadingToolkits && toolkits.length === 0 ? (
+                        <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span className="text-sm">Loading...</span>
                         </div>
                     ) : (
                         <div className="space-y-1">
