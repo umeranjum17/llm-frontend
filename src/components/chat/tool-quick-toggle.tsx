@@ -137,7 +137,7 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
     );
 
     // Composio hook for toggling individual toolkits - only fetch when dialog is open
-    const { toggleToolkit, hasApiKey: hasComposioKey, fetchToolkits, fetchConnectionStatus, enabledCount, mcpUrl } = useComposioApps();
+    const { toggleToolkit, hasApiKey: hasComposioKey, fetchToolkits, fetchConnectionStatus, enabledCount, mcpUrl, toolkits: composioToolkits } = useComposioApps();
 
     // Lazy-load Composio data when dialog opens
     const hasFetchedRef = useRef(false);
@@ -153,8 +153,12 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
     const updateDefaultMcpServerIds = useSettingsStore((s) => s.updateDefaultMcpServerIds);
     const defaultMcpServerIds = useSettingsStore((s) => s.defaultMcpServerIds);
 
-    // Get toolkits from the composio server (memoize to prevent new array on every render)
-    const toolkits = useMemo(() => composioServer?.composioToolkits || [], [composioServer?.composioToolkits]);
+    // Get toolkits from the useComposioApps hook (single source of truth)
+    // Previously used composioServer?.composioToolkits from IndexedDB which got out of sync
+    const toolkits = useMemo(() => {
+        // Filter to only show connected/noAuth toolkits (ones that can actually be used)
+        return composioToolkits.filter(t => t.isConnected || t.noAuth);
+    }, [composioToolkits]);
 
     // Check if Composio is active - use chat's activeMcpServerIds if available, else fall back to defaults
     const activeMcpIds = chat?.activeMcpServerIds ?? defaultMcpServerIds ?? [];
@@ -267,24 +271,13 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
     }
 
     /**
-     * PERFORMANCE CRITICAL - Button State Without DB Query
-     *
-     * For the button (when dialog is closed), we use:
-     * - hasComposioKey: from API keys store (already loaded)
-     * - mcpUrl: from useComposioApps hook (cached session)
-     * - enabledCount: from useComposioApps hook (cached preferences)
-     *
-     * This avoids hitting the database just to render the button.
-     * Full data is only queried when dialog opens.
+     * Button state - use single source of truth from useComposioApps hook
+     * Previously had mismatches between localStorage, IndexedDB, and hook state
      */
-    const hasComposio = open
-        ? (composioServer && toolkits.length > 0)  // Full check when dialog open
-        : (hasComposioKey && mcpUrl);               // Quick check for button
+    const hasComposio = hasComposioKey;
 
-    // Count active tools - use hook's enabledCount when dialog closed
-    const activeToolsCount = isComposioActive
-        ? (open ? enabledToolkitsCount : enabledCount)
-        : 0;
+    // Count active tools - always use enabledToolkitsCount from toolkits array (single source)
+    const activeToolsCount = isComposioActive ? enabledToolkitsCount : 0;
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>

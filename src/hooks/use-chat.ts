@@ -3,7 +3,7 @@ import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useUIStore } from "@/stores/ui-store";
 import { useStreamingStore, type ActiveSkill, type PendingSkillApproval, type ImageGenerationStage, type ContextCompactionState } from "@/stores/streaming-store";
 import { addMessage, updateChat, getChatById, updateMessage, getMessagesForBranch, getLastMessage, getMessageById, chatHasBranches, incrementAgentUsage, getMessages, getActiveMcpServersForChat, getAgentById, getSkillById, incrementSkillUsage } from "@/lib/db/queries";
-import { buildContextMessages } from "@/lib/ai/context-builder";
+import { buildContextMessages, formatDynamicContext } from "@/lib/ai/context-builder";
 import { countMessagesTokens, countTokens, estimateCost, calculateCacheSavings } from "@/lib/utils/token-counter";
 import { calculateContextBudget, truncateHistoryToFit, estimateMessagesTokens, validateSystemContextFits, compactAndTruncateHistory, type LLMMessage, type CompactionConfig, type CompactionResult, type CompactedMessage } from "@/lib/utils/context-budget";
 import type { MessageContent, Agent, Skill } from "@/lib/db/schema";
@@ -1071,19 +1071,8 @@ export function useChat(chatId: string | null) {
     // don't affect the cached prefix since we don't cache user messages.
 
     // Build dynamic context prefix for current user message
-    let contextPrefix = '';
-    if (dynamicContext.memory && dynamicContext.memory.length > 0) {
-      contextPrefix += `## Relevant Memory\n${dynamicContext.memory.map(m => `- ${m.memory}`).join('\n')}\n\n`;
-    }
-    if (dynamicContext.rag && dynamicContext.rag.length > 0) {
-      const ragText = dynamicContext.rag
-        .map((r, i) => `[Context ${i + 1}]\n${r.text}`)
-        .join('\n\n---\n\n');
-      contextPrefix += `## Related Context\n${ragText}\n\n`;
-    }
-    if (contextPrefix) {
-      contextPrefix += '---\n\n';
-    }
+    // Uses formatDynamicContext which includes instructions to NOT echo memories back
+    const contextPrefix = formatDynamicContext(dynamicContext);
 
     // Inject context into the LAST user message (current message being sent)
     let finalHistory = truncatedHistory;
