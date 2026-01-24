@@ -105,29 +105,39 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
         }
     }, [open]);
 
-    // Query only the composio-consolidated server
+    /**
+     * PERFORMANCE CRITICAL - Lazy Database Queries
+     *
+     * Previously, these queries ran on EVERY render even when dialog was closed.
+     * This caused continuous database reads and blocked the UI.
+     *
+     * FIX: Only query when dialog is open. For the button display, we use
+     * cached/static data from settings store (defaultMcpServerIds).
+     */
     const composioServerQuery = useLiveQueryWithTimeout(
-        () => getMcpServerById("composio-consolidated"),
-        [],
-        { timeoutMs: 5000 }
+        // Only query when dialog is open - button doesn't need full server data
+        () => open ? getMcpServerById("composio-consolidated") : undefined,
+        [open],
+        { timeoutMs: 3000 }
     );
     const composioServer = composioServerQuery.data;
 
     const chatQuery = useLiveQueryWithTimeout(
-        () => chatId ? getChatById(chatId) : undefined,
-        [chatId],
-        { timeoutMs: 5000 }
+        // Only query when dialog is open
+        () => (open && chatId) ? getChatById(chatId) : undefined,
+        [open, chatId],
+        { timeoutMs: 3000 }
     );
     const chat = chatQuery.data;
 
-    // Get agent if chat has one
+    // Get agent if chat has one - only when dialog is open
     const agent = useLiveQuery(
-        () => chat?.agentId ? getAgentById(chat.agentId) : undefined,
-        [chat?.agentId]
+        () => (open && chat?.agentId) ? getAgentById(chat.agentId) : undefined,
+        [open, chat?.agentId]
     );
 
     // Composio hook for toggling individual toolkits - only fetch when dialog is open
-    const { toggleToolkit, hasApiKey: hasComposioKey, fetchToolkits, fetchConnectionStatus } = useComposioApps();
+    const { toggleToolkit, hasApiKey: hasComposioKey, fetchToolkits, fetchConnectionStatus, enabledCount, mcpUrl } = useComposioApps();
 
     // Lazy-load Composio data when dialog opens
     const hasFetchedRef = useRef(false);
@@ -233,8 +243,8 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
         }
     };
 
-    // Show error state if queries timed out
-    if (composioServerQuery.isTimedOut || chatQuery.isTimedOut) {
+    // Show error state if queries timed out (only when dialog is open)
+    if (open && (composioServerQuery.isTimedOut || chatQuery.isTimedOut)) {
         return (
             <Button
                 variant="ghost"
@@ -250,17 +260,31 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
         );
     }
 
-    // Hide for pipeline agents - tools are configured per-step
-    const isPipelineAgent = agent?.pipeline?.steps && agent.pipeline.steps.length > 0;
+    // Hide for pipeline agents - tools are configured per-step (only check when dialog open)
+    const isPipelineAgent = open && agent?.pipeline?.steps && agent.pipeline.steps.length > 0;
     if (isPipelineAgent) {
         return null;
     }
 
-    // Check if Composio is configured
-    const hasComposio = composioServer && toolkits.length > 0;
+    /**
+     * PERFORMANCE CRITICAL - Button State Without DB Query
+     *
+     * For the button (when dialog is closed), we use:
+     * - hasComposioKey: from API keys store (already loaded)
+     * - mcpUrl: from useComposioApps hook (cached session)
+     * - enabledCount: from useComposioApps hook (cached preferences)
+     *
+     * This avoids hitting the database just to render the button.
+     * Full data is only queried when dialog opens.
+     */
+    const hasComposio = open
+        ? (composioServer && toolkits.length > 0)  // Full check when dialog open
+        : (hasComposioKey && mcpUrl);               // Quick check for button
 
-    // Count active tools (enabled toolkits when Composio is active)
-    const activeToolsCount = isComposioActive ? enabledToolkitsCount : 0;
+    // Count active tools - use hook's enabledCount when dialog closed
+    const activeToolsCount = isComposioActive
+        ? (open ? enabledToolkitsCount : enabledCount)
+        : 0;
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
