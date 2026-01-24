@@ -18,9 +18,10 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { getMcpServerById, getChatById, updateChat, getAgentById } from "@/lib/db/queries";
 import { useSettingsStore } from "@/stores/settings-store";
+import { useComposioStore, selectConnectedToolkits } from "@/stores/composio-store";
+import { useApiKeysStore } from "@/stores/api-keys-store";
 import { toast } from "sonner";
 import Link from "next/link";
-import { useComposioApps } from "@/hooks/use-composio-apps";
 
 // Memoized toolkit logo component
 const ToolkitLogo = memo(function ToolkitLogo({
@@ -88,8 +89,23 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
     const [open, setOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const searchInputRef = useRef<HTMLInputElement>(null);
+    const hasFetchedRef = useRef(false);
 
     const deferredSearch = useDeferredValue(searchQuery);
+
+    // Composio store - single source of truth
+    const toolkits = useComposioStore(selectConnectedToolkits);
+    const enabledToolkitKeys = useComposioStore((s) => s.enabledToolkitKeys);
+    const toggleToolkit = useComposioStore((s) => s.toggleToolkit);
+    const enableAllToolkits = useComposioStore((s) => s.enableAllToolkits);
+    const disableAllToolkits = useComposioStore((s) => s.disableAllToolkits);
+    const fetchToolkits = useComposioStore((s) => s.fetchToolkits);
+    const fetchConnectionStatus = useComposioStore((s) => s.fetchConnectionStatus);
+    const isLoadingToolkits = useComposioStore((s) => s.isLoadingToolkits);
+
+    // API key from secure store
+    const composioKey = useApiKeysStore((s) => s.getKeyForProvider("composio"));
+    const hasComposioKey = !!composioKey?.key;
 
     // Listen for keyboard shortcut event to open dialog
     useEffect(() => {
@@ -107,15 +123,9 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
 
     /**
      * PERFORMANCE CRITICAL - Lazy Database Queries
-     *
-     * Previously, these queries ran on EVERY render even when dialog was closed.
-     * This caused continuous database reads and blocked the UI.
-     *
-     * FIX: Only query when dialog is open. For the button display, we use
-     * cached/static data from settings store (defaultMcpServerIds).
+     * Only query when dialog is open - button uses store state directly
      */
     const composioServerQuery = useLiveQueryWithTimeout(
-        // Only query when dialog is open - button doesn't need full server data
         () => open ? getMcpServerById("composio-consolidated") : undefined,
         [open],
         { timeoutMs: 3000 }
@@ -123,7 +133,6 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
     const composioServer = composioServerQuery.data;
 
     const chatQuery = useLiveQueryWithTimeout(
-        // Only query when dialog is open
         () => (open && chatId) ? getChatById(chatId) : undefined,
         [open, chatId],
         { timeoutMs: 3000 }
@@ -136,36 +145,38 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
         [open, chat?.agentId]
     );
 
-    // Composio hook for toggling individual toolkits - only fetch when dialog is open
-    const { toggleToolkit, hasApiKey: hasComposioKey, fetchToolkits, fetchConnectionStatus, enabledCount, mcpUrl, toolkits: composioToolkits } = useComposioApps();
-
-    // Lazy-load Composio data when dialog opens
-    const hasFetchedRef = useRef(false);
+    /**
+     * PERFORMANCE CRITICAL - Lazy-load Composio data when dialog opens
+     * Fetches run in background, don't block render
+     */
     useEffect(() => {
-        if (open && hasComposioKey && !hasFetchedRef.current) {
+        if (open && hasComposioKey && composioKey?.key && !hasFetchedRef.current) {
             hasFetchedRef.current = true;
             // Fetch in background, don't block
-            Promise.all([fetchToolkits(), fetchConnectionStatus()]).catch(() => {});
+            Promise.all([
+                fetchToolkits(composioKey.key),
+                fetchConnectionStatus(composioKey.key)
+            ]).catch(() => {});
         }
-    }, [open, hasComposioKey, fetchToolkits, fetchConnectionStatus]);
+    }, [open, hasComposioKey, composioKey?.key, fetchToolkits, fetchConnectionStatus]);
+
+    // Reset fetch flag when dialog closes
+    useEffect(() => {
+        if (!open) {
+            hasFetchedRef.current = false;
+        }
+    }, [open]);
 
     // Settings store for persisting default MCP servers
     const updateDefaultMcpServerIds = useSettingsStore((s) => s.updateDefaultMcpServerIds);
     const defaultMcpServerIds = useSettingsStore((s) => s.defaultMcpServerIds);
 
-    // Get toolkits from the useComposioApps hook (single source of truth)
-    // Previously used composioServer?.composioToolkits from IndexedDB which got out of sync
-    const toolkits = useMemo(() => {
-        // Filter to only show connected/noAuth toolkits (ones that can actually be used)
-        return composioToolkits.filter(t => t.isConnected || t.noAuth);
-    }, [composioToolkits]);
-
-    // Check if Composio is active - use chat's activeMcpServerIds if available, else fall back to defaults
+    // Check if Composio is active
     const activeMcpIds = chat?.activeMcpServerIds ?? defaultMcpServerIds ?? [];
     const isComposioActive = activeMcpIds.includes("composio-consolidated");
 
-    // Count enabled toolkits
-    const enabledToolkitsCount = toolkits.filter(t => t.isEnabled).length;
+    // Count enabled toolkits from store
+    const enabledToolkitsCount = enabledToolkitKeys.length;
 
     // Filter toolkits based on search
     const filteredToolkits = useMemo(() => {
@@ -188,23 +199,21 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
 
     // Handler for toggling individual Composio toolkits
     const handleToolkitToggle = useCallback((toolkitKey: string) => {
-        toggleToolkit(toolkitKey);
         const toolkit = toolkits.find(t => t.key === toolkitKey);
-        toast.success(toolkit?.isEnabled ? `Disabled ${toolkit?.name}` : `Enabled ${toolkit?.name}`);
+        const wasEnabled = toolkit?.isEnabled;
+        toggleToolkit(toolkitKey);
+        toast.success(wasEnabled ? `Disabled ${toolkit?.name}` : `Enabled ${toolkit?.name}`);
     }, [toggleToolkit, toolkits]);
 
     // Handler for master Composio toggle
-    const toggleComposio = useCallback(async () => {
-        // Use current active IDs from chat or defaults
+    const handleToggleComposio = useCallback(async () => {
         const currentActive = chat?.activeMcpServerIds ?? defaultMcpServerIds ?? [];
         const newActive = isComposioActive
             ? currentActive.filter(id => id !== "composio-consolidated")
             : [...currentActive, "composio-consolidated"];
 
-        // Always update defaults
         await updateDefaultMcpServerIds(newActive);
 
-        // Also update specific chat if we have one
         if (chatId) {
             await updateChat(chatId, { activeMcpServerIds: newActive });
         }
@@ -213,35 +222,28 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
     }, [chatId, chat?.activeMcpServerIds, defaultMcpServerIds, isComposioActive, updateDefaultMcpServerIds]);
 
     // Enable all toolkits
-    const enableAllToolkits = useCallback(async () => {
-        for (const toolkit of toolkits) {
-            if (!toolkit.isEnabled) {
-                await toggleToolkit(toolkit.key);
-            }
-        }
+    const handleEnableAll = useCallback(() => {
+        enableAllToolkits();
         toast.success("All apps enabled");
-    }, [toolkits, toggleToolkit]);
+    }, [enableAllToolkits]);
 
     // Disable all toolkits
-    const disableAllToolkits = useCallback(async () => {
-        for (const toolkit of toolkits) {
-            if (toolkit.isEnabled) {
-                await toggleToolkit(toolkit.key);
-            }
-        }
+    const handleDisableAll = useCallback(() => {
+        disableAllToolkits();
         toast.success("All apps disabled");
-    }, [toolkits, toggleToolkit]);
+    }, [disableAllToolkits]);
 
     // Get status icon for Composio connection
     const getStatusIcon = () => {
         if (!isComposioActive) return null;
+        if (isLoadingToolkits) {
+            return <Loader2 className="h-3 w-3 text-muted-foreground animate-spin" />;
+        }
         switch (composioServer?.status) {
             case "connected":
                 return <Check className="h-3 w-3 text-green-500" />;
             case "error":
                 return <AlertCircle className="h-3 w-3 text-destructive" />;
-            case "disconnected":
-                return <Loader2 className="h-3 w-3 text-muted-foreground animate-spin" />;
             default:
                 return null;
         }
@@ -255,28 +257,21 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
                 size="icon"
                 className="h-8 w-8"
                 title="Database timeout - click to retry"
-                onClick={() => {
-                    window.location.reload();
-                }}
+                onClick={() => window.location.reload()}
             >
                 <Plug className="h-4 w-4 text-destructive" />
             </Button>
         );
     }
 
-    // Hide for pipeline agents - tools are configured per-step (only check when dialog open)
+    // Hide for pipeline agents
     const isPipelineAgent = open && agent?.pipeline?.steps && agent.pipeline.steps.length > 0;
     if (isPipelineAgent) {
         return null;
     }
 
-    /**
-     * Button state - use single source of truth from useComposioApps hook
-     * Previously had mismatches between localStorage, IndexedDB, and hook state
-     */
+    // Button state - simple check
     const hasComposio = hasComposioKey;
-
-    // Count active tools - always use enabledToolkitsCount from toolkits array (single source)
     const activeToolsCount = isComposioActive ? enabledToolkitsCount : 0;
 
     return (
@@ -316,7 +311,7 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
                         <div onClick={(e) => e.stopPropagation()}>
                             <Switch
                                 checked={isComposioActive}
-                                onCheckedChange={toggleComposio}
+                                onCheckedChange={handleToggleComposio}
                             />
                         </div>
                     </div>
@@ -360,7 +355,7 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
                         variant="outline"
                         size="sm"
                         className="text-xs h-7"
-                        onClick={enableAllToolkits}
+                        onClick={handleEnableAll}
                         disabled={!isComposioActive}
                     >
                         Enable All
@@ -369,7 +364,7 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
                         variant="outline"
                         size="sm"
                         className="text-xs h-7"
-                        onClick={disableAllToolkits}
+                        onClick={handleDisableAll}
                         disabled={!isComposioActive}
                     >
                         Disable All
@@ -385,32 +380,38 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
 
                 {/* Toolkit List */}
                 <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
-                    <div className="space-y-1">
-                        {sortedToolkits.map((toolkit) => (
-                            <ToolkitItem
-                                key={toolkit.key}
-                                toolkit={toolkit}
-                                isEnabled={toolkit.isEnabled}
-                                isComposioActive={isComposioActive}
-                                onToggle={handleToolkitToggle}
-                            />
-                        ))}
+                    {isLoadingToolkits ? (
+                        <div className="flex items-center justify-center py-8">
+                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        </div>
+                    ) : (
+                        <div className="space-y-1">
+                            {sortedToolkits.map((toolkit) => (
+                                <ToolkitItem
+                                    key={toolkit.key}
+                                    toolkit={toolkit}
+                                    isEnabled={toolkit.isEnabled}
+                                    isComposioActive={isComposioActive}
+                                    onToggle={handleToolkitToggle}
+                                />
+                            ))}
 
-                        {sortedToolkits.length === 0 && searchQuery && (
-                            <div className="text-center py-8 text-muted-foreground text-sm">
-                                No apps matching &ldquo;{searchQuery}&rdquo;
-                            </div>
-                        )}
+                            {sortedToolkits.length === 0 && searchQuery && (
+                                <div className="text-center py-8 text-muted-foreground text-sm">
+                                    No apps matching &ldquo;{searchQuery}&rdquo;
+                                </div>
+                            )}
 
-                        {sortedToolkits.length === 0 && !searchQuery && (
-                            <div className="text-center py-8 text-muted-foreground text-sm">
-                                No apps configured.{" "}
-                                <Link href="/settings?tab=mcp" className="text-primary hover:underline" onClick={() => setOpen(false)}>
-                                    Add apps in settings
-                                </Link>
-                            </div>
-                        )}
-                    </div>
+                            {sortedToolkits.length === 0 && !searchQuery && (
+                                <div className="text-center py-8 text-muted-foreground text-sm">
+                                    No apps configured.{" "}
+                                    <Link href="/settings?tab=mcp" className="text-primary hover:underline" onClick={() => setOpen(false)}>
+                                        Add apps in settings
+                                    </Link>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             </DialogContent>
         </Dialog>
