@@ -78,8 +78,8 @@ const ICON_MAP: Record<string, string> = {
 
 const PREFERENCES_KEY = "composio_preferences";
 const TOOLKITS_CACHE_KEY = "composio_toolkits_cache";
-const TOOLKITS_CACHE_TTL = 1000 * 60 * 60; // 1 hour
-const SESSION_TTL_MS = 1000 * 60 * 30; // 30 minutes - sessions expire and need refresh
+const TOOLKITS_CACHE_TTL = 1000 * 60 * 60 * 4; // 4 hours - toolkits rarely change
+const SESSION_TTL_MS = 1000 * 60 * 60 * 2; // 2 hours - active sessions last longer than incomplete ones
 
 // NOTE: Using "default" for userId is secure because Composio isolates ALL data by API key.
 // Each user has their own API key → their own isolated data.
@@ -227,6 +227,7 @@ export function useComposioApps() {
   const fetchedRef = useRef(false);
   const connectionStatusFetchedRef = useRef(false);
   const sessionCreationInProgressRef = useRef(false);
+  const sessionLoadedRef = useRef(false);
 
   // Get Composio API key from encrypted store
   const composioKey = useApiKeysStore((s) => s.getKeyForProvider("composio"));
@@ -366,6 +367,20 @@ export function useComposioApps() {
       setIsLoadingToolkits(false);
     }
   }, [apiKey, preferences?.enabledToolkits]);
+
+  // Load cached session on mount (non-blocking) - reuse existing valid session
+  useEffect(() => {
+    if (sessionLoadedRef.current) return;
+    sessionLoadedRef.current = true;
+
+    // Load cached session in background
+    getCachedSession().then((cached) => {
+      if (cached) {
+        setMcpUrl(cached.url);
+        setMcpHeaders(cached.headers);
+      }
+    }).catch(() => {});
+  }, []);
 
   // Don't auto-fetch toolkits on mount - let components trigger fetch when needed
   // This prevents blocking the app on initial load
