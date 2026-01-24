@@ -3,11 +3,13 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { db, DB_SCHEMA_VERSION } from "@/lib/db/schema";
 import { toast } from "sonner";
-import { RefreshCw, AlertTriangle } from "lucide-react";
+import { RefreshCw, AlertTriangle, Download } from "lucide-react";
 import { useLoadingStore } from "@/stores/loading-store";
 import { withTimeout, withTimeoutFallback } from "@/lib/utils/async-timeout";
 import { operationMutex, LockKeys } from "@/lib/utils/operation-mutex";
 import { broadcastToTabs, CrossTabMessages } from "@/lib/utils/cross-tab";
+import { exportAllSettings, downloadSettingsFile } from "@/lib/db/export-settings";
+import { encryptSettings } from "@/lib/crypto/settings-crypto";
 
 interface DBHealthState {
   isHealthy: boolean;
@@ -120,12 +122,16 @@ export function useDBHealth() {
   const maxRetries = 3;
   const setDbInitializing = useLoadingStore((state) => state.setDbInitializing);
 
-  const clearCacheAndReload = useCallback(async () => {
-    // Acquire mutex to prevent race with PWA update
+  /**
+   * Tier 1: Soft Refresh - Preserves all user data
+   * Clears service worker caches and registrations only.
+   * Safe option that preserves all chats, API keys, settings, etc.
+   */
+  const softRefresh = useCallback(async () => {
     const release = await operationMutex.acquire(LockKeys.CACHE_CLEAR);
 
     try {
-      // Clear all caches with timeouts
+      // Clear all SW caches with timeouts
       if ("caches" in window) {
         const cacheNames = await withTimeoutFallback(
           caches.keys(),
@@ -161,7 +167,86 @@ export function useDBHealth() {
         );
       }
 
-      // Delete IndexedDB with timeout
+      // Reload the page - data preserved!
+      window.location.reload();
+    } catch (error) {
+      console.error("[DB Health] Soft refresh failed:", error);
+      toast.error("Failed to refresh. Please manually reload the page.");
+    } finally {
+      release();
+    }
+  }, []);
+
+  /**
+   * Tier 2: Hard Reset with Backup - Last resort
+   * Auto-downloads a backup of all settings, then deletes entire IndexedDB.
+   * User will need to import the backup after reload.
+   * Note: Chats are NOT in the backup (too large).
+   */
+  const hardResetWithBackup = useCallback(async () => {
+    const release = await operationMutex.acquire(LockKeys.CACHE_CLEAR);
+
+    try {
+      // Step 1: Export all settings before deletion
+      try {
+        const settings = await exportAllSettings();
+        // Use a simple default password for emergency backups
+        const encrypted = await encryptSettings(settings, "lumina-emergency-backup");
+        const filename = `lumina-emergency-backup-${new Date().toISOString().split("T")[0]}.lumina`;
+        downloadSettingsFile(encrypted, filename);
+
+        // Give user a moment to see the download
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        toast.info("Backup downloaded", {
+          description: "Password: lumina-emergency-backup",
+          duration: 10000,
+        });
+      } catch (exportError) {
+        console.error("[DB Health] Failed to export settings:", exportError);
+        // Still proceed with reset, but warn user
+        toast.warning("Could not create backup. Proceeding with reset.", {
+          duration: 5000,
+        });
+      }
+
+      // Step 2: Clear all SW caches
+      if ("caches" in window) {
+        const cacheNames = await withTimeoutFallback(
+          caches.keys(),
+          5000,
+          [] as string[],
+          "Get cache names"
+        );
+
+        await Promise.all(
+          cacheNames.map((name) =>
+            withTimeout(caches.delete(name), 5000, `Delete cache ${name}`).catch(
+              (err) => console.warn(`[DB Health] Cache delete failed:`, err)
+            )
+          )
+        );
+      }
+
+      // Step 3: Unregister service workers
+      if ("serviceWorker" in navigator) {
+        const registrations = await withTimeoutFallback(
+          navigator.serviceWorker.getRegistrations(),
+          5000,
+          [] as ServiceWorkerRegistration[],
+          "Get SW registrations"
+        );
+
+        await Promise.all(
+          registrations.map((reg) =>
+            withTimeout(reg.unregister(), 5000, "Unregister SW").catch((err) =>
+              console.warn("[DB Health] Unregister failed:", err)
+            )
+          )
+        );
+      }
+
+      // Step 4: Delete IndexedDB
       if (db.isOpen()) {
         await db.close();
       }
@@ -180,11 +265,11 @@ export function useDBHealth() {
         "Delete IndexedDB"
       );
 
-      // Reload the page
+      // Step 5: Reload the page
       window.location.reload();
     } catch (error) {
-      console.error("[DB Health] Failed to clear cache:", error);
-      toast.error("Failed to clear cache. Please manually refresh the page.");
+      console.error("[DB Health] Hard reset failed:", error);
+      toast.error("Failed to reset. Please manually clear site data.");
     } finally {
       release();
     }
@@ -201,35 +286,58 @@ export function useDBHealth() {
 
       setDbInitializing(false);
 
-      toast.error("Database Error", {
-        description: message,
-        duration: Infinity,
-        icon: <AlertTriangle className="h-4 w-4" />,
-        action: {
-          label: "Clear Cache & Reload",
-          onClick: clearCacheAndReload,
-        },
-        cancel: allowRetry
-          ? {
-              label: "Retry",
-              onClick: () => {
-                retryCountRef.current += 1;
-                setState((prev) => ({
-                  ...prev,
-                  isHealthy: true,
-                  isChecking: true,
-                  error: null,
-                  retryCount: retryCountRef.current,
-                }));
+      // Determine which recovery tier to suggest based on error type
+      // Tier 1 (soft refresh) for: timeout, version mismatch, closed errors
+      // Tier 2 (hard reset) for: corruption, quota exceeded, invalid state
+      const needsHardReset = ["invalid_state", "quota_exceeded", "corruption"].includes(errorType);
+
+      if (needsHardReset) {
+        // Tier 2: Hard reset required - show Export & Reset as primary
+        toast.error("Database Error", {
+          description: message,
+          duration: Infinity,
+          icon: <AlertTriangle className="h-4 w-4" />,
+          action: {
+            label: "Export & Reset",
+            onClick: hardResetWithBackup,
+          },
+          cancel: {
+            label: "Refresh App",
+            onClick: softRefresh,
+          },
+        });
+      } else {
+        // Tier 1: Soft refresh should work - show Refresh App as primary
+        toast.error("Database Error", {
+          description: message,
+          duration: Infinity,
+          icon: <AlertTriangle className="h-4 w-4" />,
+          action: {
+            label: "Refresh App",
+            onClick: softRefresh,
+          },
+          cancel: allowRetry
+            ? {
+                label: "Retry",
+                onClick: () => {
+                  retryCountRef.current += 1;
+                  setState((prev) => ({
+                    ...prev,
+                    isHealthy: true,
+                    isChecking: true,
+                    error: null,
+                    retryCount: retryCountRef.current,
+                  }));
+                },
+              }
+            : {
+                label: "Export & Reset",
+                onClick: hardResetWithBackup,
               },
-            }
-          : {
-              label: "Refresh",
-              onClick: () => window.location.reload(),
-            },
-      });
+        });
+      }
     },
-    [clearCacheAndReload, setDbInitializing]
+    [softRefresh, hardResetWithBackup, setDbInitializing]
   );
 
   useEffect(() => {
@@ -501,5 +609,9 @@ export function useDBHealth() {
     };
   }, [handleRecovery]);
 
-  return state;
+  return {
+    ...state,
+    softRefresh,
+    hardResetWithBackup,
+  };
 }
