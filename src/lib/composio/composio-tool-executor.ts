@@ -70,7 +70,7 @@ export function logToolTelemetry(entry: ToolCallTelemetry) {
   }
   // Log to console for debugging
   if (!entry.success) {
-    console.warn(`[MCP Telemetry] Tool failure:`, entry);
+    console.warn(`[Composio Telemetry] Tool failure:`, entry);
   }
 }
 
@@ -78,13 +78,16 @@ export function getToolTelemetry(): ToolCallTelemetry[] {
   return [...telemetryBuffer];
 }
 
-export interface ToolMetadata {
+export interface ComposioToolMetadata {
   fullName: string;        // "server_id/tool_name"
   serverName: string;      // User-friendly server name
   toolName: string;        // Original tool name
   description: string;     // Tool description from MCP
   inputSchema?: any;       // Tool parameters schema
 }
+
+// Export ToolMetadata as alias for backwards compatibility
+export type ToolMetadata = ComposioToolMetadata;
 
 /**
  * Some providers (notably Google/Gemini via OpenRouter) enforce strict tool/function naming:
@@ -119,7 +122,7 @@ function sanitizeToolFunctionName(raw: string): string {
   return name;
 }
 
-function buildSafeMcpToolName(serverId: string, toolName: string): string {
+function buildSafeComposioToolName(serverId: string, toolName: string): string {
   const hash = fnv1a32(`${serverId}::${toolName}`).toString(36);
   // Keep tool name reasonably readable, but bounded.
   const toolPart = sanitizeToolFunctionName(toolName).slice(0, 40);
@@ -620,7 +623,7 @@ function detectTransportType(url: string): 'sse' | 'streamableHttp' {
 
 interface CachedTools {
   tools: Record<string, any>;
-  metadata: ToolMetadata[];
+  metadata: ComposioToolMetadata[];
   timestamp: number;
 }
 
@@ -634,10 +637,10 @@ interface ComposioSearchHintCacheEntry {
   timestamp: number;
 }
 
-export class McpManager {
+export class ComposioToolExecutor {
   private clients: Map<string, Client> = new Map();
   private readonly DEFAULT_TOOL_CAP = 50; // Maximum tools per server by default
-  private static instance: McpManager | null = null;
+  private static instance: ComposioToolExecutor | null = null;
 
   // Tools cache: key is a hash of enabled server IDs, value is the cached tools
   private toolsCache: Map<string, CachedTools> = new Map();
@@ -650,14 +653,14 @@ export class McpManager {
   private composioSearchHintsCache: Map<string, ComposioSearchHintCacheEntry> = new Map();
 
   /**
-   * Get the singleton instance of McpManager
+   * Get the singleton instance of ComposioToolExecutor
    * This ensures connection pooling across requests
    */
-  static getInstance(): McpManager {
-    if (!McpManager.instance) {
-      McpManager.instance = new McpManager();
+  static getInstance(): ComposioToolExecutor {
+    if (!ComposioToolExecutor.instance) {
+      ComposioToolExecutor.instance = new ComposioToolExecutor();
     }
-    return McpManager.instance;
+    return ComposioToolExecutor.instance;
   }
 
   private readonly MAX_RETRIES = 3;
@@ -928,7 +931,7 @@ export class McpManager {
       return client;
     } catch (error) {
       const userMessage = this.formatErrorMessage(error, server);
-      console.error(`[MCP] Final connection failure for ${server.name}:`, userMessage);
+      console.error(`[Composio] Final connection failure for ${server.name}:`, userMessage);
       throw new Error(userMessage);
     }
   }
@@ -959,7 +962,7 @@ export class McpManager {
     }
   }
 
-  async getTools(servers: McpServer[]): Promise<{ tools: Record<string, any>; metadata: ToolMetadata[] }> {
+  async getTools(servers: McpServer[]): Promise<{ tools: Record<string, any>; metadata: ComposioToolMetadata[] }> {
     // Check cache first
     const cacheKey = this.generateCacheKey(servers);
     const cached = this.toolsCache.get(cacheKey);
@@ -969,7 +972,7 @@ export class McpManager {
     }
 
     const allTools: Record<string, any> = {};
-    const metadata: ToolMetadata[] = [];
+    const metadata: ComposioToolMetadata[] = [];
 
     for (const server of servers) {
       if (!server.enabled) continue;
@@ -1042,7 +1045,7 @@ export class McpManager {
 
           // Build a provider-safe tool/function name.
           // We also keep server/tool metadata for UX (display names) separately.
-          const fullName = buildSafeMcpToolName(server.id, tool.name);
+          const fullName = buildSafeComposioToolName(server.id, tool.name);
 
           metadata.push({
             fullName,
@@ -1126,7 +1129,7 @@ export class McpManager {
 
                   if (emptyArgTools.length > 0) {
                     const emptyToolSlugs = emptyArgTools.map((t: any) => t.tool_slug || 'unknown').join(', ');
-                    console.error(`[MCP] ❌ EMPTY ARGUMENTS: ${emptyToolSlugs}`);
+                    console.error(`[Composio] ❌ EMPTY ARGUMENTS: ${emptyToolSlugs}`);
 
                     // Build example with correct values
                     const schemas = this.getComposioSchemas(serverRef.id, args?.session_id);
@@ -1290,7 +1293,7 @@ export class McpManager {
                             // Single surgical log line with all key info
                             const toolNames = Object.keys(parsed.data.tool_schemas).join(', ');
                             if (!guide) {
-                              console.warn(`[MCP] ⚠️ No parameter guide generated - check tool_schemas structure`);
+                              console.warn(`[Composio] ⚠️ No parameter guide generated - check tool_schemas structure`);
                             }
                           }
                         }
@@ -1309,7 +1312,7 @@ export class McpManager {
               } catch (error) {
                 const executionTimeMs = Date.now() - startTime;
                 const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-                
+
                 // Enhance Composio error messages with actionable guidance
                 let enhancedError = errorMsg;
                 if (toolRef.name === 'COMPOSIO_MULTI_EXECUTE_TOOL' || toolRef.name === 'MULTI_EXECUTE_TOOL') {
@@ -1320,7 +1323,7 @@ export class McpManager {
                       const errorObj = typeof error === 'object' && error !== null ? error : {};
                       const details = (errorObj as any).details || (errorObj as any).data || {};
                       const toolErrors = details.tool_errors || details.errors || [];
-                      
+
                       if (toolErrors.length > 0) {
                         const firstError = toolErrors[0];
                         const toolSlug = firstError.tool_slug || 'unknown';
@@ -1352,8 +1355,8 @@ export class McpManager {
                   executionTimeMs,
                 });
 
-                console.error(`[MCP] Tool ${toolRef.name} failed after ${executionTimeMs}ms:`, enhancedError);
-                
+                console.error(`[Composio] Tool ${toolRef.name} failed after ${executionTimeMs}ms:`, enhancedError);
+
                 // Create enhanced error with better message
                 const enhancedErrorObj = new Error(enhancedError);
                 if (error instanceof Error && error.stack) {
@@ -1367,7 +1370,7 @@ export class McpManager {
           addedCount++;
         }
       } catch (error) {
-        console.warn(`[MCP] Skipping ${server.name}:`, error instanceof Error ? error.message : error);
+        console.warn(`[Composio] Skipping ${server.name}:`, error instanceof Error ? error.message : error);
       }
     }
 
@@ -1395,14 +1398,14 @@ export class McpManager {
    * Build structured system instructions for MCP tools.
    * Optimized for token efficiency (~60% reduction from verbose version).
    */
-  buildToolInstructions(metadata: ToolMetadata[], tier: ToolCallingTier = "basic"): string {
+  buildToolInstructions(metadata: ComposioToolMetadata[], tier: ToolCallingTier = "basic"): string {
     if (metadata.length === 0) return "";
 
     const groupedByServer = metadata.reduce((acc, tool) => {
       if (!acc[tool.serverName]) acc[tool.serverName] = [];
       acc[tool.serverName].push(tool);
       return acc;
-    }, {} as Record<string, ToolMetadata[]>);
+    }, {} as Record<string, ComposioToolMetadata[]>);
 
     // Check if Composio tools are present (router-first mode)
     const searchTool = metadata.find(t => t.toolName === 'COMPOSIO_SEARCH_TOOLS');
@@ -1410,7 +1413,7 @@ export class McpManager {
     const hasComposioSearchOnly = searchTool && !executeTool;
     const hasComposioSearchAndExecute = searchTool && executeTool;
 
-    let instructions = "# MCP Tools\n\n";
+    let instructions = "# Composio Tools\n\n";
 
     // Optimized Composio instructions - preserves all critical info, reduced token usage
     if (hasComposioSearchAndExecute) {
@@ -1535,3 +1538,6 @@ For multiple images, put each on its own line.
     this.toolsCache.clear();
   }
 }
+
+// Export McpManager as alias for backwards compatibility during migration
+export { ComposioToolExecutor as McpManager };

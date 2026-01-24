@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { McpManager } from "@/lib/mcp/mcp-manager";
+import { ComposioToolExecutor } from "@/lib/composio/composio-tool-executor";
 import { getActiveMcpServersForChat } from "@/lib/db/queries";
 import { MODELS } from "@/lib/constants/models";
 import { isImageGenerationModel } from "@/lib/constants/model-capabilities";
@@ -20,8 +20,8 @@ export async function POST(req: NextRequest) {
     if (mcpServerIds && Array.isArray(mcpServerIds) && mcpServerIds.length > 0) {
       try {
         const mcpServers = await getActiveMcpServersForChat(mcpServerIds);
-        const manager = McpManager.getInstance();
-        const { tools, metadata } = await manager.getTools(mcpServers);
+        const executor = ComposioToolExecutor.getInstance();
+        const { tools, metadata } = await executor.getTools(mcpServers);
         
         // Build a concise list of available tools (cap at 50 to avoid token bloat)
         toolsList = metadata.slice(0, 50).map(m => ({

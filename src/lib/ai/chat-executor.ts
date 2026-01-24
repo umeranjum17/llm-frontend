@@ -19,7 +19,7 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { normalizeModelIdForProviderId } from "@/lib/ai/provider-routing";
 import { isCustomOpenAIProvider, resolveProvider } from "@/lib/providers";
-import { McpManager, type ToolMetadata } from "@/lib/mcp/mcp-manager";
+import { ComposioToolExecutor, type ComposioToolMetadata } from "@/lib/composio/composio-tool-executor";
 import type { McpServer } from "@/lib/db/schema";
 import { getModelCapabilities, type ToolCallingTier } from "@/lib/constants/model-capabilities";
 import { z } from "zod";
@@ -671,12 +671,12 @@ export async function loadMcpTools(
   mcpServers: McpServer[],
   enabledTools?: string[],
   disabledTools?: string[]
-): Promise<{ tools: Record<string, any>; metadata: ToolMetadata[] }> {
+): Promise<{ tools: Record<string, any>; metadata: ComposioToolMetadata[] }> {
   if (!mcpServers || mcpServers.length === 0) {
     return { tools: {}, metadata: [] };
   }
 
-  const mcpManager = McpManager.getInstance();
+  const composioExecutor = ComposioToolExecutor.getInstance();
   const enabledMcpServers = mcpServers.filter(s => s.enabled);
 
   if (enabledMcpServers.length === 0) {
@@ -684,7 +684,7 @@ export async function loadMcpTools(
   }
 
   try {
-    const { tools: loadedTools, metadata } = await mcpManager.getTools(enabledMcpServers);
+    const { tools: loadedTools, metadata } = await composioExecutor.getTools(enabledMcpServers);
 
 
     // Apply enabledTools filter if provided
@@ -693,7 +693,7 @@ export async function loadMcpTools(
       : null;
 
     let filteredTools: Record<string, any> = loadedTools;
-    let filteredMetadata: ToolMetadata[] = metadata;
+    let filteredMetadata: ComposioToolMetadata[] = metadata;
 
     if (enabledToolsSet) {
       // Check if any MCP tool matches the allowlist
@@ -746,7 +746,7 @@ export async function loadMcpTools(
  * When no tools are available, returns empty array to avoid injecting unnecessary prompts.
  */
 export function buildToolInstructions(
-  metadata: ToolMetadata[],
+  metadata: ComposioToolMetadata[],
   toolCallingTier: ToolCallingTier,
   hasTools: boolean
 ): ModelMessage[] {
@@ -755,11 +755,11 @@ export function buildToolInstructions(
     return [];
   }
 
-  const mcpManager = McpManager.getInstance();
+  const composioExecutor = ComposioToolExecutor.getInstance();
   const instructions: ModelMessage[] = [];
 
   if (metadata.length > 0) {
-    const dynamicInstructions = mcpManager.buildToolInstructions(metadata, toolCallingTier);
+    const dynamicInstructions = composioExecutor.buildToolInstructions(metadata, toolCallingTier);
     instructions.push({
       role: "system",
       content: dynamicInstructions,

@@ -145,8 +145,8 @@ const FEATURE_STEPS: FeatureStep[] = [
       },
       {
         icon: Wrench,
-        title: "Web Search Tools",
-        description: "Enable AI to search the web with multiple providers (Tavily, Serper, Brave)",
+        title: "Composio Tools",
+        description: "Enable 100+ integrations including web search, GitHub, Gmail, Slack, and more",
       },
       {
         icon: Brain,

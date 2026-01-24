@@ -79,7 +79,7 @@ Based on 2025 user feedback across Reddit, Product Hunt, and forums:
 - ✅ **Conversation Branching** - Fork, navigate, regenerate-as-branch
 - ✅ **Vision/Images** - Upload, paste, drag-drop + model detection
 - ✅ **Voice Input** - Browser Speech Recognition
-- ✅ **Web Search** - 4 providers (Tavily, Serper, Brave, SearxNG)
+- ✅ **Composio Tools** - 100+ integrations (web search, GitHub, Gmail, Slack, etc.)
 - ✅ **Projects** - System prompts, file attachments (PDF/DOCX/TXT)
 - ✅ **Organization** - Tags, folders, pinning, favorites, search
 - ✅ **Arena Mode** - Side-by-side model comparison

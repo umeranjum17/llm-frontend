@@ -570,8 +570,8 @@ async function executeToolStep(
     }
   }
 
-  // Call the MCP tool execution API
-  const response = await fetch(`${baseUrl}/api/mcp/execute-tool`, {
+  // Call the Composio tool execution API
+  const response = await fetch(`${baseUrl}/api/composio/execute-tool`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

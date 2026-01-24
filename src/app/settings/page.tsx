@@ -31,7 +31,7 @@ const MemorySettings = dynamic(() => import("@/components/settings/memory-settin
 const TrustDashboard = dynamic(() => import("@/components/settings/trust-dashboard").then(m => ({ default: m.TrustDashboard })), { loading: LoadingSpinner });
 const UsageAnalytics = dynamic(() => import("@/components/settings/usage-analytics").then(m => ({ default: m.UsageAnalytics })), { loading: LoadingSpinner });
 const ModelAliasSettings = dynamic(() => import("@/components/settings/model-alias-settings").then(m => ({ default: m.ModelAliasSettings })), { loading: LoadingSpinner });
-const McpMarketplace = dynamic(() => import("@/components/settings/mcp-marketplace").then(m => ({ default: m.McpMarketplace })), { loading: LoadingSpinner });
+const ComposioAppsSection = dynamic(() => import("@/components/settings/composio-apps-section").then(m => ({ default: m.ComposioAppsSection })), { loading: LoadingSpinner });
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("general");
@@ -162,7 +162,7 @@ export default function SettingsPage() {
             </TabsContent>
 
             <TabsContent value="mcp" className="space-y-6">
-              <McpMarketplace />
+              <ComposioAppsSection />
             </TabsContent>
 
             <TabsContent value="api-keys" className="space-y-6">

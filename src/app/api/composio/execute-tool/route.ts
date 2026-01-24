@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpManager } from "@/lib/mcp/mcp-manager";
+import { ComposioToolExecutor } from "@/lib/composio/composio-tool-executor";
 import type { McpServer } from "@/lib/db/schema";
 
 export const runtime = "nodejs";
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const manager = McpManager.getInstance();
+    const executor = ComposioToolExecutor.getInstance();
 
     // Cast servers to McpServer type (we have required fields)
     const mcpServers = servers.map(s => ({
@@ -88,7 +88,7 @@ export async function POST(req: Request) {
     })) as McpServer[];
 
     // Get all tools to find the one we need
-    const { tools, metadata } = await manager.getTools(mcpServers);
+    const { tools, metadata } = await executor.getTools(mcpServers);
 
     // Find the tool by name (fullName)
     const toolMeta = metadata.find(m => m.fullName === toolName || m.toolName === toolName);
@@ -159,7 +159,7 @@ export async function POST(req: Request) {
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("[MCP Execute] Error:", error);
+    console.error("[Composio Execute] Error:", error);
     const errorMessage = sanitizeErrorMessage(error);
     return new Response(
       JSON.stringify({ error: errorMessage }),

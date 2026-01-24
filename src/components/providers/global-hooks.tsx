@@ -1,6 +1,6 @@
 "use client";
 
-import { useMcpCleanup } from "@/hooks/use-mcp-cleanup";
+import { useComposioCleanup } from "@/hooks/use-composio-cleanup";
 import { useDBHealth } from "@/hooks/use-db-health";
 import { useCacheCleanup } from "@/hooks/use-cache-cleanup";
 
@@ -15,8 +15,8 @@ export function GlobalHooks() {
   // Monitor IndexedDB health and handle recovery scenarios
   useDBHealth();
 
-  // Ensure MCP connections are cleaned up on page unload
-  useMcpCleanup();
+  // Ensure Composio connections are cleaned up on page unload
+  useComposioCleanup();
 
   // This component doesn't render anything
   return null;

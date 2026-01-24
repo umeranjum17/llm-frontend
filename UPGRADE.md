@@ -16,7 +16,7 @@
 - **Prompt library** with templates and variables
 - **Memory system** (Mem0 integration for long-term memory)
 - **RAG/vector store** for context retrieval
-- **Web search** (Tavily, Serper, Brave, SearXNG)
+- **Composio Tools** (100+ integrations: web search, GitHub, Gmail, etc.)
 - **Arena mode** (side-by-side model comparison)
 - **Projects** with per-project system prompts and colors
 - **Folders & tags** for chat organization

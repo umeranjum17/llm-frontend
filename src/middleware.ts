@@ -13,7 +13,7 @@ const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
 const RATE_LIMITS: Record<string, number> = {
   "/api/chat": 30,
   "/api/images": 10,
-  "/api/mcp/execute-tool": 60,
+  "/api/composio/execute-tool": 60,
   "/api/agents/run": 20,
   "/api/providers/test": 10,
   "/api/memory": 30,

@@ -53,8 +53,7 @@ type ToolResultLike = {
 
 /** Human-friendly tool name mappings */
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
-  // Web & Search
-  webSearch: "Web Search",
+  // Composio Tools
   COMPOSIO_SEARCH_TOOLS: "Finding tools",
   COMPOSIO_MULTI_EXECUTE_TOOL: "Executing actions",
   MULTI_EXECUTE_TOOL: "Executing actions",

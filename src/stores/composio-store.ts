@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { db } from "@/lib/db/schema";
-import { McpManager } from "@/lib/mcp/mcp-manager";
+import { ComposioToolExecutor } from "@/lib/composio/composio-tool-executor";
 
 // Types
 export interface ComposioToolkit {
@@ -162,11 +162,11 @@ export const useComposioStore = create<ComposioState & ComposioActions>()(
           sessionExpiresAt: null,
         });
 
-        // Invalidate MCP tools cache
+        // Invalidate Composio tools cache
         try {
-          McpManager.getInstance().invalidateToolsCache();
+          ComposioToolExecutor.getInstance().invalidateToolsCache();
         } catch {
-          // Manager may not be initialized
+          // Executor may not be initialized
         }
       },
 
