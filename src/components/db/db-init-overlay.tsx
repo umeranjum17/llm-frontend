@@ -54,7 +54,7 @@ export function DbInitOverlay() {
         );
       }
 
-      // Unregister service workers
+      // Unregister service workers and trigger update check
       if ("serviceWorker" in navigator) {
         const registrations = await withTimeoutFallback(
           navigator.serviceWorker.getRegistrations(),
@@ -63,14 +63,20 @@ export function DbInitOverlay() {
           "Get SW registrations"
         );
         await Promise.all(
-          registrations.map((reg) =>
-            withTimeout(reg.unregister(), 5000, "Unregister SW").catch(() => {})
-          )
+          registrations.map(async (reg) => {
+            // Force update check before unregistering
+            try {
+              await reg.update();
+            } catch {}
+            await withTimeout(reg.unregister(), 5000, "Unregister SW").catch(() => {});
+          })
         );
       }
 
-      // Reload
-      window.location.reload();
+      // Hard reload - bypass cache by navigating to same URL with cache buster
+      const url = new URL(window.location.href);
+      url.searchParams.set("_refresh", Date.now().toString());
+      window.location.href = url.toString();
     } catch (error) {
       console.error("[DB Init] Failed to clear cache:", error);
       // Still try to reload

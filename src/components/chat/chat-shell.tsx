@@ -592,9 +592,15 @@ export function ChatShell() {
             }
             if ("serviceWorker" in navigator) {
               const registrations = await navigator.serviceWorker.getRegistrations();
-              await Promise.all(registrations.map((reg) => reg.unregister()));
+              await Promise.all(registrations.map(async (reg) => {
+                try { await reg.update(); } catch {}
+                await reg.unregister();
+              }));
             }
-            window.location.reload();
+            // Hard reload with cache buster
+            const url = new URL(window.location.href);
+            url.searchParams.set("_refresh", Date.now().toString());
+            window.location.href = url.toString();
           },
         }}
         secondaryAction={{
