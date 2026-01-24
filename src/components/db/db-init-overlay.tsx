@@ -83,8 +83,7 @@ export function DbInitOverlay() {
   }
 
   const isMigrating = dbInitMessage?.toLowerCase().includes("migrat");
-  const isTakingLong = elapsedSeconds > 10;
-  const isTakingVeryLong = elapsedSeconds > 20;
+  const showButtons = elapsedSeconds >= 5;
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-background/95 backdrop-blur-sm">
@@ -105,32 +104,14 @@ export function DbInitOverlay() {
           </p>
         </div>
 
-        {/* Elapsed time (shown after 5 seconds) */}
-        {elapsedSeconds >= 5 && (
-          <p className="text-xs text-muted-foreground/70">
-            Elapsed: {elapsedSeconds}s
-          </p>
-        )}
-
-        {/* Warning for long operations */}
-        {isTakingLong && !isTakingVeryLong && (
-          <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-500">
-            <AlertTriangle className="h-4 w-4" />
-            <span>
-              {isMigrating
-                ? "Large database migration in progress..."
-                : "This is taking longer than usual..."}
-            </span>
-          </div>
-        )}
-
-        {/* Actions for very long operations */}
-        {isTakingVeryLong && (
+        {/* Show buttons after 5 seconds */}
+        {showButtons && (
           <div className="flex flex-col items-center gap-3 mt-2">
-            <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-500">
-              <AlertTriangle className="h-4 w-4" />
-              <span>This often happens after an app update</span>
-            </div>
+            <p className="text-xs text-muted-foreground">
+              {isMigrating
+                ? "If this takes too long, try clearing cache"
+                : "Stuck? This often happens after an app update"}
+            </p>
 
             <div className="flex flex-col sm:flex-row gap-2">
               <Button
@@ -158,19 +139,8 @@ export function DbInitOverlay() {
               </Button>
             </div>
 
-            <p className="text-[11px] text-muted-foreground mt-1">
-              Clearing cache won&apos;t delete your chats
-            </p>
-          </div>
-        )}
-
-        {/* Migration-specific tips */}
-        {isMigrating && !isTakingVeryLong && (
-          <div className="mt-4 p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground">
-            <p>
-              Your database is being upgraded to a new version.
-              This is a one-time process that ensures compatibility
-              with the latest app features.
+            <p className="text-[11px] text-muted-foreground">
+              Your chats are stored safely in IndexedDB
             </p>
           </div>
         )}
