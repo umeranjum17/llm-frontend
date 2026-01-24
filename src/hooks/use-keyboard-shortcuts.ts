@@ -40,22 +40,6 @@ export function useKeyboardShortcuts() {
     enableOnFormTags: false,
   });
 
-  // Cmd/Ctrl + \ - Toggle Split View
-  useHotkeys("mod+\\", (e) => {
-    e.preventDefault();
-    const { isSplitView, setIsSplitView, setSecondaryChatId } = useUIStore.getState();
-    const newState = !isSplitView;
-    if (newState) {
-      setIsSplitView(true);
-      // No toast - UI change is obvious
-    } else {
-      setIsSplitView(false);
-      setSecondaryChatId(null);
-    }
-  }, {
-    enableOnFormTags: false,
-  });
-
   // Cmd/Ctrl + M - Open model picker (unified shortcut)
   useHotkeys("mod+m", (e) => {
     e.preventDefault();

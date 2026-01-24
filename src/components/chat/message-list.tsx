@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 
 interface MessageListProps {
   chatId: string | null;
-  arenaModelId?: string; // Optional filter for Arena Mode
+  modelId?: string; // Optional filter for Multi-Model Mode
   onSendMessage?: (content: string) => void;
 }
 
@@ -220,7 +220,7 @@ function PipelineProgressIndicator({ execution }: { execution: NonNullable<impor
   );
 }
 
-export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageListProps) {
+export function MessageList({ chatId, modelId, onSendMessage }: MessageListProps) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const { continueResponse, continuingMessageId, editMessage, regenerateAssistant, resendMessage } = useChat(chatId);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -250,7 +250,7 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
   const { suggestions, isLoading: suggestionsLoading, setSuggestions } = useSuggestedResponses(
     chatId || undefined,
     allMessages || [],
-    !arenaModelId // Suggestions only in normal mode for now
+    !modelId // Suggestions only in normal mode for now
   );
 
   const activeLeafId = chat?.activeBranchLeafId;
@@ -265,7 +265,7 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
   const messages = useMemo(() => {
     if (!branchPath || !allMessages) return undefined;
 
-    if (!arenaModelId) {
+    if (!modelId) {
       // Normal mode: just use branch path as-is
       return branchPath;
     }
@@ -279,7 +279,7 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
         // For user messages, also find the arena assistant response for this model
         const children = childrenByParent.get(msg.id) || [];
         const arenaResponse = children.find(
-          (c) => c.role === "assistant" && c.modelId === arenaModelId
+          (c) => c.role === "assistant" && c.modelId === modelId
         );
         if (arenaResponse) {
           result.push(arenaResponse);
@@ -289,7 +289,7 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
     }
 
     return result;
-  }, [branchPath, allMessages, arenaModelId, childrenByParent]);
+  }, [branchPath, allMessages, modelId, childrenByParent]);
 
   const messageCount = messages?.length || 0;
 
@@ -452,7 +452,7 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
                 siblings={siblingInfo.siblings}
                 siblingIndex={siblingInfo.index}
                 onSwitchSibling={switchSibling}
-                showBranchNav={!arenaModelId}
+                showBranchNav={!modelId}
                 isStreaming={isMessageStreaming}
                 streamingContent={isMessageStreaming ? context.streamingContent : undefined}
                 streamingVersion={isMessageStreaming ? context.streamingVersion : undefined}

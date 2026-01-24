@@ -2,7 +2,7 @@ import Dexie, { type EntityTable } from "dexie";
 
 // Current schema version - update this when adding new migrations
 // Used by health check to detect migrations and adjust timeouts
-export const DB_SCHEMA_VERSION = 18;
+export const DB_SCHEMA_VERSION = 19;
 
 // Type definitions
 export interface Project {
@@ -471,6 +471,7 @@ export interface ContextSummary {
   originalTokenCount: number;
   summaryTokenCount: number;
   createdAt: number;
+  modelId?: string;     // Which model this summary was created for (multi-model mode)
   dateRange?: {
     start: number;
     end: number;
@@ -885,6 +886,34 @@ export class LuminaDB extends Dexie {
       mcpServers: "id, enabled, createdAt",
       deviceSecrets: "id",
       contextSummaries: "id, chatId, createdAt",
+    });
+
+    // Version 19: Add modelId index to contextSummaries for multi-model mode
+    // Each model in multi-model mode maintains its own context summaries
+    this.version(19).stores({
+      projects: "id, name, createdAt, updatedAt",
+      projectFiles: "id, projectId, name, createdAt",
+      chats:
+        "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order, [projectId+updatedAt]",
+      messages: "id, chatId, role, createdAt, parentId, rating, skillId, isPinned, summarizedIntoId, [chatId+createdAt]",
+      apiKeys: "id, provider, createdAt, baseUrl",
+      settings: "id",
+      modelFavorites: "id, category, pinnedOrder, lastUsed",
+      userMemories: "id, category, source, createdAt, isActive",
+      folders: "id, projectId, name, createdAt, order",
+      tags: "id, name, createdAt, usageCount",
+      tagRules: "id, tagId, enabled, createdAt",
+      parameterPresets: "id, name, createdAt, isDefault",
+      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
+      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
+      skills: "id, name, category, isBuiltIn, isEnabled, isFavorite, usageCount, updatedAt",
+      skillEmbeddings: "skillId, modelId",
+      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
+      workflows: "id, name, createdAt, updatedAt",
+      modelAliases: "id, alias, updatedAt",
+      mcpServers: "id, enabled, createdAt",
+      deviceSecrets: "id",
+      contextSummaries: "id, chatId, modelId, createdAt",
     });
   }
 }

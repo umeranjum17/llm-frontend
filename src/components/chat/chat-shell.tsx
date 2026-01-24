@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, useRef, lazy, Suspense } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef, lazy, Suspense } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useLiveQueryWithTimeout } from "@/hooks/use-live-query-with-timeout";
@@ -18,6 +18,7 @@ import {
 } from "@/lib/db/queries";
 import { MODELS, type Model, getModelById, USE_CASE_RECOMMENDATIONS, MODEL_CATALOG } from "@/lib/constants/models";
 import { MessageList } from "./message-list";
+import { ModelPanel, AddModelPanelButton } from "./model-panel";
 import { InputArea } from "./input-area";
 import { TagList } from "./tag-list";
 import { cn } from "@/lib/utils";
@@ -59,9 +60,10 @@ import {
   PanelRightClose,
   Maximize2,
   Minimize2,
-  Columns2,
+  Swords,
   Bot,
   FileEdit,
+  Plus,
 } from "lucide-react";
 import {
   Tooltip,
@@ -103,16 +105,8 @@ export function ChatShell() {
   const {
     activeChatId,
     setActiveChatId,
-    secondaryChatId,
-    setSecondaryChatId,
-    isSplitView,
-    setIsSplitView,
     showArtifacts,
     setShowArtifacts,
-    isArenaMode,
-    setIsArenaMode,
-    arenaModelIds,
-    setArenaModelIds,
     isFocusMode,
     setIsFocusMode,
     skillEditorOpen,
@@ -120,20 +114,18 @@ export function ChatShell() {
     agentEditorOpen,
     setAgentEditorOpen,
     draftChatConfig,
+    isMultiModelMode,
+    multiModelPanels,
+    toggleMultiModelMode,
+    addModelPanel,
+    removeModelPanel,
+    updatePanelModel,
   } = useUIStore(
     useShallow((state) => ({
       activeChatId: state.activeChatId,
       setActiveChatId: state.setActiveChatId,
-      secondaryChatId: state.secondaryChatId,
-      setSecondaryChatId: state.setSecondaryChatId,
-      isSplitView: state.isSplitView,
-      setIsSplitView: state.setIsSplitView,
       showArtifacts: state.showArtifacts,
       setShowArtifacts: state.setShowArtifacts,
-      isArenaMode: state.isArenaMode,
-      setIsArenaMode: state.setIsArenaMode,
-      arenaModelIds: state.arenaModelIds,
-      setArenaModelIds: state.setArenaModelIds,
       isFocusMode: state.isFocusMode,
       setIsFocusMode: state.setIsFocusMode,
       skillEditorOpen: state.skillEditorOpen,
@@ -141,6 +133,12 @@ export function ChatShell() {
       agentEditorOpen: state.agentEditorOpen,
       setAgentEditorOpen: state.setAgentEditorOpen,
       draftChatConfig: state.draftChatConfig,
+      isMultiModelMode: state.isMultiModelMode,
+      multiModelPanels: state.multiModelPanels,
+      toggleMultiModelMode: state.toggleMultiModelMode,
+      addModelPanel: state.addModelPanel,
+      removeModelPanel: state.removeModelPanel,
+      updatePanelModel: state.updatePanelModel,
     }))
   );
 
@@ -167,7 +165,6 @@ export function ChatShell() {
   );
 
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
-  const [arenaPickerOpen, setArenaPickerOpen] = useState<{ open: boolean, index: number }>({ open: false, index: 0 });
   const [agentPickerOpen, setAgentPickerOpen] = useState(false);
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
   const [headerExpanded, setHeaderExpanded] = useState(false);
@@ -404,15 +401,15 @@ export function ChatShell() {
     [quickSwitchModels, activeChatId]
   );
 
-  // Use ref to avoid recreating listener on isArenaMode changes
-  const isArenaModeRef = useRef(isArenaMode);
+  // Use ref to avoid recreating listener on isMultiModelMode changes
+  const isMultiModelModeRef = useRef(isMultiModelMode);
   useEffect(() => {
-    isArenaModeRef.current = isArenaMode;
-  }, [isArenaMode]);
+    isMultiModelModeRef.current = isMultiModelMode;
+  }, [isMultiModelMode]);
 
   useEffect(() => {
     const handler = () => {
-      if (!isArenaModeRef.current) setModelPickerOpen(true);
+      if (!isMultiModelModeRef.current) setModelPickerOpen(true);
     };
     window.addEventListener("lumina:open-model-picker", handler);
     return () => window.removeEventListener("lumina:open-model-picker", handler);
@@ -541,13 +538,6 @@ export function ChatShell() {
     }
   };
 
-  const handleArenaModelChange = (modelId: string) => {
-    const newIds = [...arenaModelIds];
-    newIds[arenaPickerOpen.index] = modelId;
-    setArenaModelIds(newIds);
-    setArenaPickerOpen({ open: false, index: 0 });
-  };
-
   const handleNewChat = async () => {
     try {
       // Ensure settings are loaded before creating chat (prevents MCP servers from being empty on mobile)
@@ -587,24 +577,9 @@ export function ChatShell() {
     }
   };
 
-  const toggleSplitView = () => {
-    if (isSplitView) {
-      // Disable split view
-      setIsSplitView(false);
-      setSecondaryChatId(null);
-      // No toast - UI change is obvious
-    } else {
-      // Enable split view - set secondary to the most recent different chat
-      setIsSplitView(true);
-    }
-  };
-
-  const toggleArenaMode = () => {
-    if (!isArenaMode) {
-      // Initialize with current model vs another default
-      setArenaModelIds([chat?.modelId || "openai/gpt-4o", "anthropic/claude-3.5-sonnet"]);
-    }
-    setIsArenaMode(!isArenaMode);
+  // Toggle multi-model mode
+  const handleToggleMultiModelMode = () => {
+    toggleMultiModelMode(chat?.modelId);
   };
 
   const providerId = chat
@@ -725,7 +700,7 @@ export function ChatShell() {
                 {/* Right: Model Selector + Settings (Agent selector hidden on mobile) */}
                 <div className="flex items-center gap-1">
                   {/* Agent Selector - hidden on mobile for cleaner look */}
-                  {!isArenaMode && chat && (
+                  {!isMultiModelMode && chat && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -762,7 +737,7 @@ export function ChatShell() {
                   )}
 
                   {/* Model Selector - simplified on mobile */}
-                  {!isArenaMode && chat && !(currentAgent?.executionType === "pipeline" && currentAgent.pipeline?.steps?.length) && (
+                  {!isMultiModelMode && chat && !(currentAgent?.executionType === "pipeline" && currentAgent.pipeline?.steps?.length) && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
@@ -1023,13 +998,13 @@ export function ChatShell() {
                     </DropdownMenu>
                   )}
 
-                  {isArenaMode && (
+                  {isMultiModelMode && (
                     <Badge variant="secondary" className="h-8 px-3 text-xs font-medium">
                       Arena Mode
                     </Badge>
                   )}
 
-                  {!providerId && !isArenaMode && (
+                  {!providerId && !isMultiModelMode && (
                     <Badge
                       variant="destructive"
                       className="h-8 text-xs font-medium px-3 cursor-pointer"
@@ -1047,8 +1022,8 @@ export function ChatShell() {
                     chatId={activeChatId || undefined}
                     onOpenAgentPicker={() => setAgentPickerOpen(true)}
                     onOpenBudgetDialog={() => setBudgetDialogOpen(true)}
-                    isArenaMode={isArenaMode}
-                    onToggleArena={toggleArenaMode}
+                    isMultiModelMode={isMultiModelMode}
+                    onToggleMultiModel={handleToggleMultiModelMode}
                   />
 
                   {/* Desktop only buttons - always visible */}
@@ -1059,15 +1034,14 @@ export function ChatShell() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className={cn("h-8 w-8", isSplitView && "text-primary")}
-                            onClick={toggleSplitView}
+                            className={cn("h-8 w-8", isMultiModelMode && "text-primary")}
+                            onClick={handleToggleMultiModelMode}
                           >
-                            <Columns2 className="h-4 w-4" />
+                            <Swords className="h-4 w-4" />
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent side="bottom" className="flex items-center gap-2">
-                          <span>{isSplitView ? "Exit Split View" : "Split View"}</span>
-                          <kbd className="ml-1 text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono">⌘\</kbd>
+                          <span>{isMultiModelMode ? "Exit Multi-Model" : "Multi-Model Mode"}</span>
                         </TooltipContent>
                       </Tooltip>
 
@@ -1117,60 +1091,38 @@ export function ChatShell() {
                   onSuggestionClick={handleSuggestionClick}
                   modelName={currentModel?.name}
                 />
-              ) : isArenaMode && arenaModelIds.length >= 2 ? (
+              ) : isMultiModelMode && multiModelPanels.length >= 2 ? (
                 <ResizablePanelGroup direction="horizontal" className="h-full">
-                  <ResizablePanel defaultSize={50} minSize={20}>
-                    <div className="flex flex-col h-full border-r">
-                      <div className="px-4 py-1.5 border-b bg-background/60 backdrop-blur flex justify-between items-center">
-                        <span className="text-[10px] font-bold uppercase">{getModelById(arenaModelIds[0])?.name || arenaModelIds[0].split("/").pop()?.replace(/-/g, " ") || "Model 1"}</span>
-                        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setArenaPickerOpen({ open: true, index: 0 })}>
-                          <Settings className="h-3 w-3" />
-                        </Button>
-                      </div>
-                      <MessageList chatId={activeChatId} arenaModelId={arenaModelIds[0]} />
-                    </div>
-                  </ResizablePanel>
-                  <ResizableHandle withHandle />
-                  <ResizablePanel defaultSize={50} minSize={20}>
-                    <div className="flex flex-col h-full">
-                      <div className="px-4 py-1.5 border-b bg-background/60 backdrop-blur flex justify-between items-center">
-                        <span className="text-[10px] font-bold uppercase">{getModelById(arenaModelIds[1])?.name || arenaModelIds[1].split("/").pop()?.replace(/-/g, " ") || "Model 2"}</span>
-                        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setArenaPickerOpen({ open: true, index: 1 })}>
-                          <Settings className="h-3 w-3" />
-                        </Button>
-                      </div>
-                      <MessageList chatId={activeChatId} arenaModelId={arenaModelIds[1]} />
-                    </div>
-                  </ResizablePanel>
-                </ResizablePanelGroup>
-              ) : isSplitView ? (
-                <ResizablePanelGroup direction="horizontal" className="h-full">
-                  <ResizablePanel defaultSize={50} minSize={30}>
-                    <MessageList
-                      chatId={activeChatId}
-                      onSendMessage={(content) => {
-                        window.dispatchEvent(new CustomEvent("lumina:send-message", { detail: { content } }));
-                      }}
-                    />
-                  </ResizablePanel>
-                  <ResizableHandle withHandle />
-                  <ResizablePanel defaultSize={50} minSize={30}>
-                    {secondaryChatId ? (
-                      <MessageList
-                        chatId={secondaryChatId}
-                        onSendMessage={(content) => {
-                          window.dispatchEvent(new CustomEvent("lumina:send-message", { detail: { content } }));
-                        }}
-                      />
-                    ) : (
-                      <EmptyState
-                        icon={MessageSquare}
-                        title="Select a chat"
-                        description="Click on a chat from the sidebar to view it here"
-                        className="h-full"
-                      />
-                    )}
-                  </ResizablePanel>
+                  {multiModelPanels.map((panel, idx) => (
+                    <React.Fragment key={panel.id}>
+                      {idx > 0 && <ResizableHandle withHandle />}
+                      <ResizablePanel defaultSize={100 / multiModelPanels.length} minSize={20}>
+                        <ModelPanel
+                          panelId={panel.id}
+                          modelId={panel.modelId}
+                          chatId={activeChatId}
+                          onChangeModel={(modelId) => updatePanelModel(panel.id, modelId)}
+                          onRemove={() => removeModelPanel(panel.id)}
+                          canRemove={multiModelPanels.length > 1}
+                        >
+                          <MessageList chatId={activeChatId} modelId={panel.modelId} />
+                        </ModelPanel>
+                      </ResizablePanel>
+                    </React.Fragment>
+                  ))}
+                  {/* Add model button if < 4 panels */}
+                  {multiModelPanels.length < 4 && (
+                    <>
+                      <ResizableHandle withHandle />
+                      <ResizablePanel defaultSize={5} minSize={5} maxSize={10}>
+                        <div className="flex items-center justify-center h-full bg-muted/30">
+                          <AddModelPanelButton
+                            onAdd={(modelId) => addModelPanel(modelId)}
+                          />
+                        </div>
+                      </ResizablePanel>
+                    </>
+                  )}
                 </ResizablePanelGroup>
               ) : (
                 <MessageList
@@ -1226,16 +1178,6 @@ export function ChatShell() {
           />
         </Suspense>
       )}
-
-      {/* Arena Model Picker - Lazy loaded */}
-      <Suspense fallback={null}>
-        <ModelPickerDialog
-          open={arenaPickerOpen.open}
-          onOpenChange={(open) => setArenaPickerOpen(prev => ({ ...prev, open }))}
-          currentModelId={arenaModelIds[arenaPickerOpen.index]}
-          onSelectModel={handleArenaModelChange}
-        />
-      </Suspense>
 
       {/* Agent Picker - Lazy loaded */}
       {chat && (

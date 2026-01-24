@@ -33,16 +33,16 @@ interface ChatSettingsPopoverProps {
   chatId: string | undefined;
   onOpenAgentPicker: () => void;
   onOpenBudgetDialog: () => void;
-  isArenaMode: boolean;
-  onToggleArena: () => void;
+  isMultiModelMode: boolean;
+  onToggleMultiModel: () => void;
 }
 
 export function ChatSettingsPopover({
   chatId,
   onOpenAgentPicker,
   onOpenBudgetDialog,
-  isArenaMode,
-  onToggleArena,
+  isMultiModelMode,
+  onToggleMultiModel,
 }: ChatSettingsPopoverProps) {
   const chat = useLiveQuery(() => chatId ? getChatById(chatId) : undefined, [chatId]);
   const currentAgent = useLiveQuery(
@@ -262,19 +262,19 @@ export function ChatSettingsPopover({
           />
         </div>
 
-        {/* Arena Mode */}
+        {/* Multi-Model Mode */}
         <button
-          onClick={onToggleArena}
+          onClick={onToggleMultiModel}
           className={cn(
             "w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-sm transition-colors",
-            isArenaMode
+            isMultiModelMode
               ? "bg-primary/10 text-primary"
               : "hover:bg-accent text-muted-foreground"
           )}
         >
           <Swords className="h-4 w-4" />
-          <span>Arena Mode</span>
-          {isArenaMode && <span className="ml-auto text-xs">On</span>}
+          <span>Multi-Model</span>
+          {isMultiModelMode && <span className="ml-auto text-xs">On</span>}
         </button>
 
         <DropdownMenuSeparator />

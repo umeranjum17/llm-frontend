@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Layers, Pin, PinOff, RefreshCw, Undo2, Trash2, MessageSquare } from "lucide-react";
+import { Layers, Pin, PinOff, RefreshCw, Undo2, Trash2, MessageSquare, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { db, type Message, type ContextSummary } from "@/lib/db/schema";
 import { getMessages } from "@/lib/db/queries";
@@ -143,8 +143,14 @@ export function ContextManagerDialog({
                     >
                       <div className="flex items-start justify-between gap-3 mb-2">
                         <div>
-                          <div className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                          <div className="flex items-center gap-2 text-sm font-medium text-blue-700 dark:text-blue-300">
                             {summary.originalMessageIds.length} messages
+                            {summary.modelId && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1 border-blue-300 dark:border-blue-700">
+                                <Bot className="h-2.5 w-2.5" />
+                                {summary.modelId.split("/").pop()?.replace(/-/g, " ")}
+                              </Badge>
+                            )}
                           </div>
                           <div className="text-xs text-blue-600/70 dark:text-blue-400/70">
                             {summary.dateRange

@@ -609,7 +609,7 @@ export function useChat(chatId: string | null) {
   const [continuingMessageId, setContinuingMessageId] = useState<string | null>(null);
   const { keys, getKeyForProvider } = useApiKeysStore();
 
-  const { isArenaMode, arenaModelIds } = useUIStore();
+  const { isMultiModelMode, multiModelPanels } = useUIStore();
   const {
     setStreamingMessage,
     appendStreamingContent,
@@ -2043,19 +2043,20 @@ export function useChat(chatId: string | null) {
         }
       }
 
-      if (isArenaMode && arenaModelIds.length >= 2) {
-        // Arena mode requires at least 2 models to compare
+      if (isMultiModelMode && multiModelPanels.length >= 2) {
+        // Multi-model mode: send to all active model panels in parallel
         // Use allSettled so one model failure doesn't abort the others
+        const modelIds = multiModelPanels.map(panel => panel.modelId);
         const results = await Promise.allSettled(
-          arenaModelIds.map(arenaModel => generateResponse(content, attachments, arenaModel, userMessage.id, activeSkill, actualChatId!))
+          modelIds.map(modelId => generateResponse(content, attachments, modelId, userMessage.id, activeSkill, actualChatId!))
         );
         // Report individual failures without throwing (so the hook doesn't go into error state)
         for (let i = 0; i < results.length; i++) {
           const result = results[i];
           if (result.status === "rejected") {
-            const failedModelId = arenaModelIds[i];
+            const failedModelId = modelIds[i];
             const { title, description } = getActionableError(result.reason);
-            // Prefix with model name for arena clarity
+            // Prefix with model name for clarity
             const modelName = failedModelId.split("/").pop()?.replace(/-/g, " ") || failedModelId;
             toast.error(`${modelName}: ${title}`, { description });
           }

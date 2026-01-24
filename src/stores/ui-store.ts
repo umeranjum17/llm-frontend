@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { nanoid } from "nanoid";
 import type { Skill, Agent } from "@/lib/db/schema";
 
 export interface Artifact {
@@ -23,19 +24,51 @@ export interface DraftChatConfig {
   projectId?: string;
 }
 
+// Multi-model panel configuration
+export interface MultiModelPanel {
+  id: string;
+  modelId: string;
+}
+
+// localStorage key for remembering last used models in multi-model mode
+const MULTI_MODEL_LAST_USED_KEY = "multiModelLastUsed";
+
+// Get last used models from localStorage or return defaults
+function getLastUsedModels(defaultModelId: string): string[] {
+  if (typeof window === "undefined") return [defaultModelId, "anthropic/claude-3.5-sonnet"];
+  try {
+    const stored = localStorage.getItem(MULTI_MODEL_LAST_USED_KEY);
+    if (stored) {
+      const models = JSON.parse(stored);
+      if (Array.isArray(models) && models.length >= 2) {
+        return models;
+      }
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return [defaultModelId, "anthropic/claude-3.5-sonnet"];
+}
+
+// Save last used models to localStorage
+function saveLastUsedModels(models: string[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(MULTI_MODEL_LAST_USED_KEY, JSON.stringify(models));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 interface UIState {
   sidebarCollapsed: boolean;
   activeChatId: string | null;
-  secondaryChatId: string | null; // For split view
-  isSplitView: boolean;
   commandPaletteOpen: boolean;
   modelPickerOpen: boolean;
   toolSelectorOpen: boolean;
   showArtifacts: boolean;
   activeArtifact: Artifact | null;
   artifactTabs: Artifact[]; // Multi-artifact tabs
-  isArenaMode: boolean;
-  arenaModelIds: string[];
   isFocusMode: boolean;
   artifactsFullscreen: boolean;
   skillEditorOpen: boolean;
@@ -46,11 +79,13 @@ interface UIState {
   agentEditorTargetId: string | null; // ID of agent to edit (for edit flows)
   draftChatConfig: DraftChatConfig | null; // Config for draft chat (when activeChatId is null)
 
+  // Multi-model mode (replaces arena mode and split view)
+  isMultiModelMode: boolean;
+  multiModelPanels: MultiModelPanel[];
+
   // Actions
   setSidebarCollapsed: (collapsed: boolean) => void;
   setActiveChatId: (chatId: string | null) => void;
-  setSecondaryChatId: (chatId: string | null) => void;
-  setIsSplitView: (enabled: boolean) => void;
   setCommandPaletteOpen: (open: boolean) => void;
   setModelPickerOpen: (open: boolean) => void;
   setToolSelectorOpen: (open: boolean) => void;
@@ -59,8 +94,6 @@ interface UIState {
   addArtifactTab: (artifact: Artifact) => void;
   removeArtifactTab: (id: string) => void;
   clearArtifactTabs: () => void;
-  setIsArenaMode: (enabled: boolean) => void;
-  setArenaModelIds: (ids: string[]) => void;
   setIsFocusMode: (enabled: boolean) => void;
   setArtifactsFullscreen: (fullscreen: boolean) => void;
   setSkillEditorOpen: (open: boolean) => void;
@@ -71,21 +104,24 @@ interface UIState {
   clearAgentEditorData: () => void;
   setDraftChatConfig: (config: DraftChatConfig | null) => void;
   clearDraftChatConfig: () => void;
+
+  // Multi-model mode actions
+  toggleMultiModelMode: (currentModelId?: string) => void;
+  addModelPanel: (modelId: string) => void;
+  removeModelPanel: (panelId: string) => void;
+  updatePanelModel: (panelId: string, modelId: string) => void;
+  resetMultiModelMode: () => void;
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
   sidebarCollapsed: false,
   activeChatId: null,
-  secondaryChatId: null,
-  isSplitView: false,
   commandPaletteOpen: false,
   modelPickerOpen: false,
   toolSelectorOpen: false,
   showArtifacts: false,
   activeArtifact: null,
   artifactTabs: [],
-  isArenaMode: false,
-  arenaModelIds: [],
   isFocusMode: false,
   artifactsFullscreen: false,
   skillEditorOpen: false,
@@ -96,10 +132,19 @@ export const useUIStore = create<UIState>((set, get) => ({
   agentEditorTargetId: null,
   draftChatConfig: null,
 
+  // Multi-model mode - ephemeral state (resets on chat change or page refresh)
+  isMultiModelMode: false,
+  multiModelPanels: [],
+
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
-  setActiveChatId: (chatId) => set({ activeChatId: chatId }),
-  setSecondaryChatId: (chatId) => set({ secondaryChatId: chatId }),
-  setIsSplitView: (enabled) => set({ isSplitView: enabled }),
+  setActiveChatId: (chatId) => {
+    // Reset multi-model mode when changing chats
+    set({
+      activeChatId: chatId,
+      isMultiModelMode: false,
+      multiModelPanels: [],
+    });
+  },
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
   setModelPickerOpen: (open) => set({ modelPickerOpen: open }),
   setToolSelectorOpen: (open) => set({ toolSelectorOpen: open }),
@@ -142,14 +187,12 @@ export const useUIStore = create<UIState>((set, get) => ({
     });
   },
   clearArtifactTabs: () => set({ artifactTabs: [], activeArtifact: null, showArtifacts: false }),
-  setIsArenaMode: (enabled) => set({ isArenaMode: enabled }),
-  setArenaModelIds: (ids) => set({ arenaModelIds: ids }),
   setIsFocusMode: (enabled) => set({ isFocusMode: enabled }),
   setArtifactsFullscreen: (fullscreen) => set({ artifactsFullscreen: fullscreen }),
   setSkillEditorOpen: (open) => set({ skillEditorOpen: open }),
   openSkillEditorWithData: (data, targetId) => {
-    set({ 
-      skillEditorOpen: true, 
+    set({
+      skillEditorOpen: true,
       skillEditorPrefilledData: data,
       skillEditorTargetId: targetId || null
     });
@@ -157,8 +200,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   clearSkillEditorData: () => set({ skillEditorPrefilledData: null, skillEditorTargetId: null }),
   setAgentEditorOpen: (open) => set({ agentEditorOpen: open }),
   openAgentEditorWithData: (data, targetId) => {
-    set({ 
-      agentEditorOpen: true, 
+    set({
+      agentEditorOpen: true,
       agentEditorPrefilledData: data,
       agentEditorTargetId: targetId || null
     });
@@ -166,4 +209,56 @@ export const useUIStore = create<UIState>((set, get) => ({
   clearAgentEditorData: () => set({ agentEditorPrefilledData: null, agentEditorTargetId: null }),
   setDraftChatConfig: (config) => set({ draftChatConfig: config }),
   clearDraftChatConfig: () => set({ draftChatConfig: null }),
+
+  // Multi-model mode actions
+  toggleMultiModelMode: (currentModelId) => {
+    const state = get();
+    if (state.isMultiModelMode) {
+      // Turn off - reset panels
+      set({ isMultiModelMode: false, multiModelPanels: [] });
+    } else {
+      // Turn on - restore from localStorage or use defaults
+      const defaultModelId = currentModelId || "openai/gpt-4o";
+      const lastUsedModels = getLastUsedModels(defaultModelId);
+      const panels: MultiModelPanel[] = lastUsedModels.slice(0, 2).map((modelId) => ({
+        id: nanoid(),
+        modelId,
+      }));
+      set({ isMultiModelMode: true, multiModelPanels: panels });
+    }
+  },
+
+  addModelPanel: (modelId) => {
+    const state = get();
+    if (state.multiModelPanels.length >= 4) return; // Max 4 panels
+    const newPanels = [...state.multiModelPanels, { id: nanoid(), modelId }];
+    set({ multiModelPanels: newPanels });
+    // Save to localStorage
+    saveLastUsedModels(newPanels.map((p) => p.modelId));
+  },
+
+  removeModelPanel: (panelId) => {
+    const state = get();
+    const newPanels = state.multiModelPanels.filter((p) => p.id !== panelId);
+    // If only 1 panel left, turn off multi-model mode
+    if (newPanels.length <= 1) {
+      set({ isMultiModelMode: false, multiModelPanels: [] });
+    } else {
+      set({ multiModelPanels: newPanels });
+      saveLastUsedModels(newPanels.map((p) => p.modelId));
+    }
+  },
+
+  updatePanelModel: (panelId, modelId) => {
+    const state = get();
+    const newPanels = state.multiModelPanels.map((p) =>
+      p.id === panelId ? { ...p, modelId } : p
+    );
+    set({ multiModelPanels: newPanels });
+    saveLastUsedModels(newPanels.map((p) => p.modelId));
+  },
+
+  resetMultiModelMode: () => {
+    set({ isMultiModelMode: false, multiModelPanels: [] });
+  },
 }));

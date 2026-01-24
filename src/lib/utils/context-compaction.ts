@@ -58,6 +58,7 @@ export interface CompactionResult {
 
 export interface CompactionConfig {
   chatId: string;
+  modelId?: string;  // Which model we're compacting for (multi-model mode)
   providerId: string;
   apiKey: string;
   providerBaseUrl?: string;
@@ -83,6 +84,24 @@ function estimateMessageTokens(message: Message | CompactedMessage): number {
  */
 export async function getSummariesForChat(chatId: string): Promise<ContextSummary[]> {
   return db.contextSummaries.where("chatId").equals(chatId).toArray();
+}
+
+/**
+ * Get summaries for a chat filtered by model (multi-model mode)
+ * Returns summaries that either have no modelId or match the specified modelId
+ */
+export async function getSummariesForChatAndModel(
+  chatId: string,
+  modelId?: string
+): Promise<ContextSummary[]> {
+  if (!modelId) {
+    return getSummariesForChat(chatId);
+  }
+  return db.contextSummaries
+    .where("chatId")
+    .equals(chatId)
+    .filter((s) => !s.modelId || s.modelId === modelId)
+    .toArray();
 }
 
 /**
@@ -283,6 +302,7 @@ export async function compactContextToFit(
     originalTokenCount: toSummarizeTokens,
     summaryTokenCount: summaryTokens,
     createdAt: Date.now(),
+    modelId: config.modelId,  // Track which model this summary was created for
     dateRange,
   };
 

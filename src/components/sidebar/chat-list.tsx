@@ -59,8 +59,6 @@ type ListItem = { type: "folder"; folder: FolderType } | { type: "chat"; chat: C
 export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatListProps) {
   const activeChatId = useUIStore((state) => state.activeChatId);
   const setActiveChatId = useUIStore((state) => state.setActiveChatId);
-  const secondaryChatId = useUIStore((state) => state.secondaryChatId);
-  const isSplitView = useUIStore((state) => state.isSplitView);
 
   // Get chatStreams directly, then derive streaming IDs in useMemo to avoid infinite re-renders
   // Calling getStreamingChatIds() inside selector creates new array each render
@@ -217,15 +215,7 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
   const filteredChats = searchResults ?? (chats || []);
 
   const handleChatClick = (chatId: string, index: number, e: React.MouseEvent) => {
-    const isSplitView = useUIStore.getState().isSplitView;
-    const setSecondaryChatId = useUIStore.getState().setSecondaryChatId;
-
-    if (e.altKey && isSplitView) {
-      // Alt+Click in split view: Set as secondary chat
-      setSecondaryChatId(chatId);
-      setSelectedChats(new Set());
-      setLastSelectedIndex(null);
-    } else if (e.metaKey || e.ctrlKey) {
+    if (e.metaKey || e.ctrlKey) {
       // Cmd/Ctrl+Click: Toggle selection
       setSelectedChats(prev => {
         const next = new Set(prev);
@@ -610,11 +600,9 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
                     lastMessage={lastMessagesMap.get(item.chat.id)}
                     searchMatches={matches}
                     isActive={item.chat.id === activeChatId}
-                    isSecondary={isSplitView && item.chat.id === secondaryChatId}
                     isSelected={selectedChats.has(item.chat.id)}
                     isNested={!!item.chat.folderId}
                     isStreaming={streamingChatIds.includes(item.chat.id)}
-                    isSplitView={isSplitView}
                     onClick={(e) => handleChatClick(item.chat.id, chatIndex, e)}
                     onTogglePin={(e) => handleTogglePin(e, item.chat)}
                     onToggleFavorite={(e) => handleToggleFavorite(e, item.chat)}
@@ -745,12 +733,10 @@ interface SortableChatItemProps {
   lastMessage?: import("@/lib/db/schema").Message;
   searchMatches?: import("@/lib/db/queries").MessageSearchResult[];
   isActive: boolean;
-  isSecondary?: boolean;
   isSelected?: boolean;
   isNested?: boolean;
   isStreaming?: boolean;
   isInActiveSection?: boolean;
-  isSplitView?: boolean;
   onClick: (e: React.MouseEvent) => void;
   onTogglePin: (e: React.MouseEvent) => void;
   onToggleFavorite: (e: React.MouseEvent) => void;
@@ -764,12 +750,10 @@ function ChatItem({
   lastMessage,
   searchMatches,
   isActive,
-  isSecondary = false,
   isSelected = false,
   isNested,
   isStreaming = false,
   isInActiveSection = false,
-  isSplitView = false,
   onClick,
   onTogglePin,
   onToggleFavorite,
@@ -810,7 +794,6 @@ function ChatItem({
           "group relative cursor-pointer px-3 py-1.5 rounded-md transition-colors select-none max-w-full min-w-0 overflow-hidden",
           "hover:bg-accent/20",
           (isActive || isStreaming) && "bg-accent/20",
-          isSecondary && "bg-accent/15",
           isSelected && "bg-accent/30",
           isNested && "ml-4",
         )}
@@ -818,8 +801,8 @@ function ChatItem({
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
-        {/* Curved pill accent bar for streaming or active in workspace */}
-        {(isStreaming || (isActive && isSplitView)) && (
+        {/* Curved pill accent bar for streaming chats */}
+        {isStreaming && (
           <motion.div
             className="absolute left-0 top-1 bottom-1 w-1 bg-primary rounded-full"
             initial={{ scaleY: 0, opacity: 0 }}
