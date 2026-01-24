@@ -286,11 +286,12 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
                             Composio Tools
                             {getStatusIcon()}
                         </DialogTitle>
-                        <Switch
-                            checked={isComposioActive}
-                            onCheckedChange={toggleComposio}
-                            className="scale-90"
-                        />
+                        <div onClick={(e) => e.stopPropagation()}>
+                            <Switch
+                                checked={isComposioActive}
+                                onCheckedChange={toggleComposio}
+                            />
+                        </div>
                     </div>
                     <div className="flex items-center gap-2 mt-1">
                         <Badge variant={isComposioActive ? "secondary" : "outline"} className="text-xs">

@@ -279,11 +279,12 @@ export function ComposioAppsSection() {
             )}
           </CardTitle>
           {hasApiKey && (
-            <Switch
-              checked={isComposioEnabled}
-              onCheckedChange={handleMasterToggle}
-              className="scale-90"
-            />
+            <div onClick={(e) => e.stopPropagation()}>
+              <Switch
+                checked={isComposioEnabled}
+                onCheckedChange={handleMasterToggle}
+              />
+            </div>
           )}
         </div>
         <CardDescription>
