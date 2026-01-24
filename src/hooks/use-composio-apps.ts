@@ -367,13 +367,8 @@ export function useComposioApps() {
     }
   }, [apiKey, preferences?.enabledToolkits]);
 
-  // Fetch toolkits when API key is available
-  useEffect(() => {
-    if (apiKey && keysLoaded && !fetchedRef.current) {
-      fetchedRef.current = true;
-      fetchAvailableToolkits();
-    }
-  }, [apiKey, keysLoaded, fetchAvailableToolkits]);
+  // Don't auto-fetch toolkits on mount - let components trigger fetch when needed
+  // This prevents blocking the app on initial load
 
   // Update enabled status when preferences change
   useEffect(() => {
@@ -733,20 +728,11 @@ export function useComposioApps() {
     [apiKey, preferences]
   );
 
-  // Fetch connection status when toolkits are loaded
-  useEffect(() => {
-    if (apiKey && availableToolkits.length > 0 && !connectionStatusFetchedRef.current) {
-      connectionStatusFetchedRef.current = true;
-      fetchConnectionStatus();
-    }
-  }, [apiKey, availableToolkits.length, fetchConnectionStatus]);
+  // Don't auto-fetch connection status - let components trigger fetch when needed
+  // This prevents blocking the app on initial load
 
-  // Create session when needed (wait for connection status first)
-  useEffect(() => {
-    if (apiKey && !mcpUrl && (preferences?.enabledToolkits?.length ?? 0) > 0 && connectionStatusReady) {
-      createSession();
-    }
-  }, [apiKey, preferences?.enabledToolkits, mcpUrl, connectionStatusReady, createSession]);
+  // Don't auto-create session on mount - let components trigger it when needed
+  // This prevents blocking the app on initial load and allows lazy initialization
 
   // Get toolkits with proper logo URLs (memoized)
   const toolkitsWithLogos = useMemo(

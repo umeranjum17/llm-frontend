@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, memo, useMemo, useRef, useCallback, useDeferredValue } from "react";
+import { useState, memo, useMemo, useRef, useCallback, useDeferredValue, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -146,6 +146,16 @@ export function ComposioAppsSection() {
     fetchConnectionStatus,
     resetMcpServers,
   } = useComposioApps();
+
+  // Fetch toolkits on mount if we have an API key
+  const hasFetchedRef = useRef(false);
+  useEffect(() => {
+    if (hasApiKey && !hasFetchedRef.current) {
+      hasFetchedRef.current = true;
+      // Fetch in background, don't block
+      Promise.all([fetchToolkits(), fetchConnectionStatus()]).catch(() => {});
+    }
+  }, [hasApiKey, fetchToolkits, fetchConnectionStatus]);
 
   // Settings store for master toggle
   const storeDefaultMcpServerIds = useSettingsStore((s) => s.defaultMcpServerIds);

@@ -126,8 +126,18 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
         [chat?.agentId]
     );
 
-    // Composio hook for toggling individual toolkits
-    const { toggleToolkit, hasApiKey: hasComposioKey } = useComposioApps();
+    // Composio hook for toggling individual toolkits - only fetch when dialog is open
+    const { toggleToolkit, hasApiKey: hasComposioKey, fetchToolkits, fetchConnectionStatus } = useComposioApps();
+
+    // Lazy-load Composio data when dialog opens
+    const hasFetchedRef = useRef(false);
+    useEffect(() => {
+        if (open && hasComposioKey && !hasFetchedRef.current) {
+            hasFetchedRef.current = true;
+            // Fetch in background, don't block
+            Promise.all([fetchToolkits(), fetchConnectionStatus()]).catch(() => {});
+        }
+    }, [open, hasComposioKey, fetchToolkits, fetchConnectionStatus]);
 
     // Settings store for persisting default MCP servers
     const updateDefaultMcpServerIds = useSettingsStore((s) => s.updateDefaultMcpServerIds);
