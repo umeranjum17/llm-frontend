@@ -76,10 +76,6 @@ vi.mock('@/components/prompts/variable-input-modal', () => ({
   VariableInputModal: () => null,
 }));
 
-vi.mock('@/components/chat/token-display', () => ({
-  TokenDisplay: () => <div data-testid="token-display">Token Display</div>,
-}));
-
 vi.mock('sonner', () => ({
   toast: {
     error: vi.fn(),

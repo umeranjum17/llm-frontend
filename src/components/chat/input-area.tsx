@@ -8,10 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Send, Loader2, Paperclip, X, FileText, Image as ImageIcon, Mic, Square, Star, Code2, ChevronDown, ChevronUp, Trash2, CornerDownLeft, Pencil, ArrowUp } from "lucide-react";
 import { useChat } from "@/hooks/use-chat";
 import { useChatKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
-import { TokenDisplay } from "./token-display";
-import { getChatById, getProjectFiles, getChatsByProject, getAllAgents, getAllTags, getMessages, getAllSkills } from "@/lib/db/queries";
-import { countMessagesTokens, countTokens } from "@/lib/utils/token-counter";
-import { getModelById } from "@/lib/constants/models";
+import { getChatById, getProjectFiles, getChatsByProject, getAllAgents, getAllTags, getAllSkills } from "@/lib/db/queries";
 import { BUILTIN_AGENTS } from "@/lib/constants/agents";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -1050,16 +1047,6 @@ export function InputArea({ chatId }: InputAreaProps) {
         accept="image/*,.txt,.md,.js,.ts,.tsx,.jsx,.json,.csv,.py,.java,.c,.cpp,.h,.css,.html"
       />
 
-      {/* Token usage display - compact bar above input */}
-      {chatId && chat?.modelId && !isPipelineAgent && (
-        <TokenCalculator
-          chatId={chatId}
-          inputContent={input}
-          modelId={chat.modelId}
-          isPipelineAgent={isPipelineAgent}
-        />
-      )}
-
       <div className="flex gap-1.5 sm:gap-2 rounded-xl sm:rounded-2xl border border-border/50 bg-background p-1.5 sm:p-2 focus-within:border-border focus-within:ring-1 focus-within:ring-ring/20 transition-all duration-150">
         {/* Controls - always visible to prevent layout shift */}
         <Button
@@ -1255,75 +1242,5 @@ export function InputArea({ chatId }: InputAreaProps) {
         <MobileNavInline />
       </div>
     </form>
-  );
-}
-
-function TokenCalculator({
-  chatId,
-  inputContent,
-  modelId,
-  isPipelineAgent = false,
-}: {
-  chatId: string;
-  inputContent: string;
-  modelId: string;
-  isPipelineAgent?: boolean;
-}) {
-  const messages = useLiveQuery(() => getMessages(chatId), [chatId]);
-  const model = getModelById(modelId);
-
-  // Debounce input content to avoid recalculating tokens on every keystroke
-  const [debouncedInput, setDebouncedInput] = useState(inputContent);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedInput(inputContent), 300);
-    return () => clearTimeout(timer);
-  }, [inputContent]);
-
-  const { historyTokens, draftTokens } = useMemo(() => {
-    if (!messages) return { historyTokens: 0, draftTokens: 0 };
-
-    // For pipeline agents, don't count image tokens heavily since they manage their own context per step
-    if (isPipelineAgent) {
-      // Just count text tokens, images are handled per-step by the pipeline
-      let textTokens = 0;
-      for (const message of messages) {
-        const content = message.content;
-        if (typeof content === "string") {
-          textTokens += countTokens(content);
-        } else if (Array.isArray(content)) {
-          for (const part of content) {
-            if (part.type === "text") {
-              textTokens += countTokens(part.text);
-            }
-            // Skip image_url parts - they don't accumulate in pipeline context the same way
-          }
-        }
-      }
-      return {
-        historyTokens: textTokens,
-        draftTokens: countTokens(debouncedInput),
-      };
-    }
-
-    return {
-      historyTokens: countMessagesTokens(messages),
-      draftTokens: countTokens(debouncedInput),
-    };
-  }, [messages, debouncedInput, isPipelineAgent]);
-
-  if (!model) return null;
-
-  // For pipeline agents, don't show the token calculator at all since it's misleading
-  if (isPipelineAgent) {
-    return null;
-  }
-
-  return (
-    <TokenDisplay
-      historyTokens={historyTokens}
-      draftTokens={draftTokens}
-      totalTokens={model.contextLength}
-      modelName={model.name}
-    />
   );
 }
