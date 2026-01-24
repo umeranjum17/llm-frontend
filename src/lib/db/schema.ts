@@ -2,7 +2,7 @@ import Dexie, { type EntityTable } from "dexie";
 
 // Current schema version - update this when adding new migrations
 // Used by health check to detect migrations and adjust timeouts
-export const DB_SCHEMA_VERSION = 19;
+export const DB_SCHEMA_VERSION = 20;
 
 // Type definitions
 export interface Project {
@@ -463,6 +463,29 @@ export interface DeviceSecret {
   createdAt: number;
 }
 
+export interface CloudSyncConfig {
+  id: string; // Always 'default'
+  provider: "s3" | "r2";
+  bucket: string;
+  region?: string; // S3 region (e.g., 'us-east-1')
+  endpoint?: string; // R2/custom endpoint URL
+  accessKeyId: string; // Encrypted
+  secretAccessKey: string; // Encrypted
+  enabled: boolean;
+  autoSyncEnabled: boolean;
+  syncIntervalSeconds: number; // Default: 30
+  encryptionEnabled: boolean;
+  deviceId: string; // Unique device identifier for sync loop prevention
+  deviceName?: string; // Human-readable device name (e.g., "MacBook", "iPhone")
+  lastSyncAt?: number;
+  lastSyncStatus?: "success" | "error" | "in_progress";
+  lastSyncError?: string;
+  lastSyncDeviceId?: string; // Device that performed the last sync (from manifest)
+  lastSyncDeviceName?: string; // Device name that performed the last sync
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface ContextSummary {
   id: string;
   chatId: string;
@@ -501,6 +524,7 @@ export class LuminaDB extends Dexie {
   modelAliases!: EntityTable<ModelAlias, "id">;
   mcpServers!: EntityTable<McpServer, "id">;
   deviceSecrets!: EntityTable<DeviceSecret, "id">;
+  cloudSyncConfig!: EntityTable<CloudSyncConfig, "id">;
   contextSummaries!: EntityTable<ContextSummary, "id">;
 
   constructor() {
@@ -913,6 +937,35 @@ export class LuminaDB extends Dexie {
       modelAliases: "id, alias, updatedAt",
       mcpServers: "id, enabled, createdAt",
       deviceSecrets: "id",
+      contextSummaries: "id, chatId, modelId, createdAt",
+    });
+
+    // Version 20: Add cloudSyncConfig table for S3/R2 cloud sync
+    // Stores configuration for syncing database to user's own cloud storage
+    this.version(20).stores({
+      projects: "id, name, createdAt, updatedAt",
+      projectFiles: "id, projectId, name, createdAt",
+      chats:
+        "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order, [projectId+updatedAt]",
+      messages: "id, chatId, role, createdAt, parentId, rating, skillId, isPinned, summarizedIntoId, [chatId+createdAt]",
+      apiKeys: "id, provider, createdAt, baseUrl",
+      settings: "id",
+      modelFavorites: "id, category, pinnedOrder, lastUsed",
+      userMemories: "id, category, source, createdAt, isActive",
+      folders: "id, projectId, name, createdAt, order",
+      tags: "id, name, createdAt, usageCount",
+      tagRules: "id, tagId, enabled, createdAt",
+      parameterPresets: "id, name, createdAt, isDefault",
+      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
+      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
+      skills: "id, name, category, isBuiltIn, isEnabled, isFavorite, usageCount, updatedAt",
+      skillEmbeddings: "skillId, modelId",
+      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
+      workflows: "id, name, createdAt, updatedAt",
+      modelAliases: "id, alias, updatedAt",
+      mcpServers: "id, enabled, createdAt",
+      deviceSecrets: "id",
+      cloudSyncConfig: "id",
       contextSummaries: "id, chatId, modelId, createdAt",
     });
   }
