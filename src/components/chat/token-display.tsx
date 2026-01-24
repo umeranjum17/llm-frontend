@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { AlertTriangle } from "lucide-react";
 
 interface TokenDisplayProps {
   historyTokens: number;
@@ -24,7 +25,10 @@ export function TokenDisplay({
   modelName,
   className,
 }: TokenDisplayProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [showPopup, setShowPopup] = useState(false);
+  const popupRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
   const usedTokens = historyTokens + draftTokens;
   const percentage = useMemo(() => {
     if (totalTokens === 0) return 0;
@@ -37,29 +41,128 @@ export function TokenDisplay({
     return "bg-primary/60";
   }, [percentage]);
 
+  const warningMessage = useMemo(() => {
+    if (percentage >= 95) return "Context nearly full - consider starting a new chat";
+    if (percentage >= 85) return "Running low on context space";
+    return null;
+  }, [percentage]);
+
+  // Close popup when clicking outside
+  useEffect(() => {
+    if (!showPopup) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        popupRef.current &&
+        !popupRef.current.contains(e.target as Node) &&
+        buttonRef.current &&
+        !buttonRef.current.contains(e.target as Node)
+      ) {
+        setShowPopup(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showPopup]);
+
   if (totalTokens === 0) return null;
 
   return (
-    <div className={cn("flex flex-col items-end gap-1", className)}>
-      {/* Minimal bar - clickable */}
+    <div className={cn("relative mb-2", className)}>
+      {/* Compact full-width progress bar */}
       <button
+        ref={buttonRef}
         type="button"
-        onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-1.5 group cursor-pointer p-1 -m-1"
-        aria-label={expanded ? "Hide context details" : "Show context details"}
+        onClick={() => setShowPopup(!showPopup)}
+        className="w-full flex items-center gap-2 group cursor-pointer"
+        aria-label={showPopup ? "Hide context details" : "Show context details"}
       >
-        <div className="h-1.5 w-16 sm:w-20 bg-muted/60 rounded-full overflow-hidden">
+        {/* Warning icon for high usage */}
+        {percentage >= 70 && (
+          <AlertTriangle className={cn(
+            "h-3 w-3 shrink-0",
+            percentage >= 85 ? "text-destructive" : "text-yellow-500"
+          )} />
+        )}
+
+        {/* Progress bar */}
+        <div className="flex-1 h-1 bg-muted/40 rounded-full overflow-hidden">
           <div
             className={cn("h-full transition-all duration-500", statusColor)}
             style={{ width: `${percentage}%` }}
           />
         </div>
+
+        {/* Compact stats */}
+        <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+          {formatTokenCount(usedTokens)} / {formatTokenCount(totalTokens)}
+        </span>
       </button>
 
-      {/* Expanded details */}
-      {expanded && (
-        <div className="text-[10px] text-muted-foreground tabular-nums">
-          {formatTokenCount(usedTokens)} / {formatTokenCount(totalTokens)} ({Math.round(percentage)}%)
+      {/* Popup with details */}
+      {showPopup && (
+        <div
+          ref={popupRef}
+          className="absolute bottom-full left-0 right-0 mb-2 p-3 rounded-lg border bg-popover shadow-lg z-50 animate-in fade-in-0 zoom-in-95 duration-150"
+        >
+          <div className="space-y-2">
+            {/* Header */}
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-medium">Context Usage</span>
+              <span className="text-muted-foreground">{modelName}</span>
+            </div>
+
+            {/* Visual bar with segments */}
+            <div className="h-2 bg-muted/60 rounded-full overflow-hidden">
+              <div className="h-full flex">
+                {/* History tokens segment */}
+                <div
+                  className="bg-primary/60 transition-all duration-300"
+                  style={{ width: `${(historyTokens / totalTokens) * 100}%` }}
+                />
+                {/* Draft tokens segment */}
+                <div
+                  className="bg-primary/30 transition-all duration-300"
+                  style={{ width: `${(draftTokens / totalTokens) * 100}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Breakdown */}
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-primary/60" />
+                <span className="text-muted-foreground">History:</span>
+                <span className="font-medium tabular-nums">{formatTokenCount(historyTokens)}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-primary/30" />
+                <span className="text-muted-foreground">Draft:</span>
+                <span className="font-medium tabular-nums">{formatTokenCount(draftTokens)}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-muted" />
+                <span className="text-muted-foreground">Available:</span>
+                <span className="font-medium tabular-nums">{formatTokenCount(totalTokens - usedTokens)}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-muted-foreground">Used:</span>
+                <span className="font-medium tabular-nums">{Math.round(percentage)}%</span>
+              </div>
+            </div>
+
+            {/* Warning message */}
+            {warningMessage && (
+              <div className={cn(
+                "flex items-center gap-1.5 text-[11px] pt-1 border-t",
+                percentage >= 85 ? "text-destructive" : "text-yellow-600"
+              )}>
+                <AlertTriangle className="h-3 w-3" />
+                <span>{warningMessage}</span>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

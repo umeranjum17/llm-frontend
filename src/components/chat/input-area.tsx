@@ -1050,6 +1050,16 @@ export function InputArea({ chatId }: InputAreaProps) {
         accept="image/*,.txt,.md,.js,.ts,.tsx,.jsx,.json,.csv,.py,.java,.c,.cpp,.h,.css,.html"
       />
 
+      {/* Token usage display - compact bar above input */}
+      {chatId && chat?.modelId && !isPipelineAgent && (
+        <TokenCalculator
+          chatId={chatId}
+          inputContent={input}
+          modelId={chat.modelId}
+          isPipelineAgent={isPipelineAgent}
+        />
+      )}
+
       <div className="flex gap-1.5 sm:gap-2 rounded-xl sm:rounded-2xl border border-border/50 bg-background p-1.5 sm:p-2 focus-within:border-border focus-within:ring-1 focus-within:ring-ring/20 transition-all duration-150">
         {/* Controls - always visible to prevent layout shift */}
         <Button
@@ -1244,18 +1254,6 @@ export function InputArea({ chatId }: InputAreaProps) {
       <div className="mt-2">
         <MobileNavInline />
       </div>
-
-      {/* Token usage display - subtle, below input on all devices */}
-      {chatId && chat?.modelId && !isPipelineAgent && (
-        <div className="flex justify-end mt-1.5 sm:mt-2">
-          <TokenCalculator
-            chatId={chatId}
-            inputContent={input}
-            modelId={chat.modelId}
-            isPipelineAgent={isPipelineAgent}
-          />
-        </div>
-      )}
     </form>
   );
 }
@@ -1320,29 +1318,12 @@ function TokenCalculator({
     return null;
   }
 
-  const totalUsed = historyTokens + draftTokens;
-  const percentage = (totalUsed / model.contextLength) * 100;
-
-  // Warning messages based on usage
-  const warningMessage = percentage >= 95
-    ? "Consider starting a new chat"
-    : percentage >= 85
-      ? "Running low on space"
-      : null;
-
   return (
-    <div className="flex flex-col items-end gap-1">
-      {warningMessage && (
-        <span className="text-[10px] text-destructive font-medium">
-          {warningMessage}
-        </span>
-      )}
-      <TokenDisplay
-        historyTokens={historyTokens}
-        draftTokens={draftTokens}
-        totalTokens={model.contextLength}
-        modelName={model.name}
-      />
-    </div>
+    <TokenDisplay
+      historyTokens={historyTokens}
+      draftTokens={draftTokens}
+      totalTokens={model.contextLength}
+      modelName={model.name}
+    />
   );
 }

@@ -445,6 +445,7 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
         ref={virtuosoRef}
         data={messages}
         computeItemKey={(index, message) => message.id}
+        initialTopMostItemIndex={messages.length - 1}
         increaseViewportBy={{ top: 200, bottom: 200 }}
         overscan={100}
         // Pass streaming context to force re-renders when streaming state changes
