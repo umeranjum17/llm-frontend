@@ -4,7 +4,13 @@ import { useState, useCallback, useEffect } from "react";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { pickBestProviderId } from "@/lib/ai/provider-routing";
 import { db } from "@/lib/db/schema";
+import { toast } from "@/hooks/use-toast";
 import type { UIMessage } from "ai";
+import type { APIErrorCode } from "@/lib/utils/api-error-response";
+
+// Track last shown error to prevent toast spam
+let lastApiKeyErrorTimestamp = 0;
+const API_KEY_ERROR_COOLDOWN_MS = 60_000; // Only show once per minute
 
 export function useSuggestedResponses(
     chatId?: string,
@@ -47,6 +53,20 @@ export function useSuggestedResponses(
             if (!response.ok) throw new Error("API failed");
 
             const data = await response.json();
+
+            // Check for API key errors and surface them to the user (with cooldown to prevent spam)
+            if (data.errorCode && (data.errorCode === "API_KEY_INVALID" || data.errorCode === "API_KEY_MISSING")) {
+                const now = Date.now();
+                if (now - lastApiKeyErrorTimestamp > API_KEY_ERROR_COOLDOWN_MS) {
+                    lastApiKeyErrorTimestamp = now;
+                    toast({
+                        title: "API Key Error",
+                        description: data.error || `There's an issue with your ${data.provider || "API"} key. Please check your settings.`,
+                        variant: "destructive",
+                    });
+                }
+            }
+
             if (data.suggestions) {
                 setSuggestions(data.suggestions);
             }

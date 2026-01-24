@@ -1,8 +1,11 @@
 import { generateSimpleText, DEFAULT_UTILITY_MODELS } from "@/lib/ai/chat-executor";
+import { classifyUpstreamError } from "@/lib/utils/api-error-response";
 
 export async function POST(req: Request) {
+    let currentProviderId = "openrouter";
     try {
         const { messages, providerId = "openrouter", providerBaseUrl, titleModelId, apiKey } = await req.json();
+        currentProviderId = providerId;
 
         if (!messages || messages.length === 0) {
             return new Response("No messages provided", { status: 400 });
@@ -78,7 +81,16 @@ Title:`,
         });
     } catch (error) {
         console.error("Title generation failed:", error);
-        // Don't fail the client, just return generic
-        return new Response(JSON.stringify({ title: "New Chat" }), { status: 200 });
+        // Don't fail the client, just return generic title with error info
+        const classified = classifyUpstreamError(error, currentProviderId);
+        return new Response(JSON.stringify({
+            title: "New Chat",
+            error: classified.message,
+            errorCode: classified.errorCode,
+            provider: currentProviderId,
+        }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+        });
     }
 }

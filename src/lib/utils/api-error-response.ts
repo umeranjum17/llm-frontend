@@ -168,11 +168,21 @@ export function classifyUpstreamError(
     };
   }
 
-  // API key issues
-  if (lowerMessage.includes("401") || lowerMessage.includes("unauthorized") || lowerMessage.includes("authentication")) {
+  // API key issues - includes "user not found" which OpenRouter returns for invalid/exhausted keys
+  if (
+    lowerMessage.includes("401") ||
+    lowerMessage.includes("unauthorized") ||
+    lowerMessage.includes("authentication") ||
+    lowerMessage.includes("user not found") ||
+    lowerMessage.includes("invalid key") ||
+    lowerMessage.includes("invalid api key") ||
+    lowerMessage.includes("incorrect api key") ||
+    lowerMessage.includes("no auth") ||
+    lowerMessage.includes("forbidden")
+  ) {
     return {
       errorCode: "API_KEY_INVALID",
-      message: `Invalid API key${provider ? ` for ${formatProviderName(provider)}` : ""}`,
+      message: `Invalid or exhausted API key${provider ? ` for ${formatProviderName(provider)}` : ""}. Please check your API key in settings.`,
     };
   }
 

@@ -1717,7 +1717,17 @@ export function useChat(chatId: string | null) {
             });
 
             if (titleResponse.ok) {
-              const { title, cost: titleCost } = await titleResponse.json();
+              const data = await titleResponse.json();
+              const { title, cost: titleCost, errorCode, error: errorMsg, provider: errorProvider } = data;
+
+              // Check for API key errors in the response (backend returns 200 with error info for graceful degradation)
+              if (errorCode && (errorCode === "API_KEY_INVALID" || errorCode === "API_KEY_MISSING")) {
+                const context: Record<string, string> = {};
+                if (errorProvider) context.provider = errorProvider;
+                const actionable = getErrorMessage(errorCode as any, context);
+                toast.error(actionable.title, { description: actionable.description });
+              }
+
               if (title && title.length > 0) {
                 // Add title generation cost to chat total
                 const chatForCost = await getChatById(effectiveChatId);
