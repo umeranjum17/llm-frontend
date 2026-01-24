@@ -8,6 +8,7 @@ import { getChatWithMessages, updateChat } from "@/lib/db/queries";
 import { MessageItem } from "./message-item";
 import { useChat } from "@/hooks/use-chat";
 import { Loader2, ArrowDown, RefreshCw } from "lucide-react";
+import { SkeletonMessage } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import type { Message } from "@/lib/db/schema";
 import { BranchNavigator } from "./branch-navigator";
@@ -383,9 +384,9 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
 
   if (!messages) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3">
+      <div className="flex h-full flex-col">
         {isTimedOut ? (
-          <>
+          <div className="flex h-full flex-col items-center justify-center gap-3">
             <p className="text-sm text-muted-foreground">Loading took too long</p>
             <Button
               variant="outline"
@@ -396,9 +397,32 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
               <RefreshCw className="h-4 w-4" />
               Retry
             </Button>
-          </>
+          </div>
         ) : (
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <div className="flex-1 overflow-hidden px-2 sm:px-4 py-6">
+            <div className="mx-auto max-w-3xl space-y-6">
+              {/* Skeleton messages to indicate loading */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-6"
+              >
+                <div className="flex gap-4">
+                  <div className="h-8 w-8 rounded-full bg-muted animate-pulse shrink-0 hidden sm:block" />
+                  <div className="flex-1 rounded-2xl border bg-primary/5 border-primary/20 p-4">
+                    <SkeletonMessage />
+                  </div>
+                </div>
+                <div className="flex gap-4">
+                  <div className="h-8 w-8 rounded-full bg-muted animate-pulse shrink-0 hidden sm:block" />
+                  <div className="flex-1 rounded-2xl border bg-card p-4">
+                    <SkeletonMessage />
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          </div>
         )}
       </div>
     );

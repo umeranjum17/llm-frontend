@@ -148,7 +148,8 @@ export function ComposioAppsSection() {
   } = useComposioApps();
 
   // Settings store for master toggle
-  const defaultMcpServerIds = useSettingsStore((s) => s.defaultMcpServerIds) ?? [];
+  const storeDefaultMcpServerIds = useSettingsStore((s) => s.defaultMcpServerIds);
+  const defaultMcpServerIds = useMemo(() => storeDefaultMcpServerIds ?? [], [storeDefaultMcpServerIds]);
   const updateDefaultMcpServerIds = useSettingsStore((s) => s.updateDefaultMcpServerIds);
 
   // Check if Composio is enabled (in default server IDs)

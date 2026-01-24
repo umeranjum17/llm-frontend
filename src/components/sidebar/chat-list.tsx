@@ -63,7 +63,8 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
 
   // Get chatStreams directly, then derive streaming IDs in useMemo to avoid infinite re-renders
   // Calling getStreamingChatIds() inside selector creates new array each render
-  const chatStreams = useStreamingStore((state) => state.chatStreams) ?? {};
+  const storeChatStreams = useStreamingStore((state) => state.chatStreams);
+  const chatStreams = useMemo(() => storeChatStreams ?? {}, [storeChatStreams]);
   const streamingChatIds = useMemo(() => {
     try {
       return Object.entries(chatStreams)

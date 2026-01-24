@@ -61,7 +61,14 @@ import {
   Minimize2,
   Columns2,
   Bot,
+  FileEdit,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { ArtifactShell } from "@/components/artifacts/artifact-shell";
 import { useApiKeysStore } from "@/stores/api-keys-store";
@@ -80,6 +87,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
+import { getActionableError } from "@/lib/utils/error-messages";
 import { EmptyState } from "@/components/ui/empty-state";
 import { EmptyStateWelcome } from "@/components/chat/empty-state-welcome";
 import { MessageSquare, Eye, Brain, Wrench, Code, Zap, DollarSign, Sparkles, AlertTriangle, ImageIcon } from "lucide-react";
@@ -205,7 +213,8 @@ export function ChatShell() {
   const messagesFromDb = messagesQuery.data;
 
   // In draft mode, there are no messages yet
-  const messages = isDraftMode ? [] : messagesFromDb;
+  // Memoize to prevent new array reference on every render
+  const messages = useMemo(() => isDraftMode ? [] : messagesFromDb, [isDraftMode, messagesFromDb]);
 
   // Map messages to match ai SDK Message type (createdAt as Date)
   const aiMessages = useMemo(() => {
@@ -542,8 +551,17 @@ export function ChatShell() {
       });
       setActiveChatId(newChat.id);
       // No toast - new chat appearing is obvious
-    } catch {
-      toast.error("Could not create chat");
+    } catch (error) {
+      const { title, description, action } = getActionableError(error);
+      toast.error(title, {
+        description,
+        action: action ? {
+          label: action.label,
+          onClick: action.href
+            ? () => router.push(action.href!)
+            : () => handleNewChat(),
+        } : undefined,
+      });
     }
   };
 
@@ -649,13 +667,25 @@ export function ChatShell() {
               <div className="flex items-center justify-between px-3 sm:px-6 h-12">
                 {/* Left: Title (hidden on mobile for cleaner look) */}
                 <div className="hidden sm:flex items-center gap-3 min-w-0 flex-1">
-                  <div className="flex flex-col min-w-0">
+                  <div className="flex items-center gap-2 min-w-0">
                     <h1 className="text-sm font-medium truncate text-foreground max-w-none">{chat?.title || "Chat"}</h1>
+                    {isDraftMode && (
+                      <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-medium border-amber-500/50 text-amber-600 dark:text-amber-400 bg-amber-500/10 shrink-0">
+                        <FileEdit className="h-3 w-3 mr-1" />
+                        Draft
+                      </Badge>
+                    )}
                   </div>
                   <OfflineIndicator className="inline-flex" />
                 </div>
-                {/* Mobile: Active chats indicator (opens sidebar) */}
-                <div className="sm:hidden flex-1 flex items-center">
+                {/* Mobile: Draft indicator or Active chats indicator (opens sidebar) */}
+                <div className="sm:hidden flex-1 flex items-center gap-2">
+                  {isDraftMode && (
+                    <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-medium border-amber-500/50 text-amber-600 dark:text-amber-400 bg-amber-500/10">
+                      <FileEdit className="h-3 w-3 mr-1" />
+                      Draft
+                    </Badge>
+                  )}
                   {activeStreamCount > 0 && (
                     <button
                       onClick={() => window.dispatchEvent(new CustomEvent("lumina:open-sidebar"))}
@@ -1000,37 +1030,60 @@ export function ChatShell() {
                   />
 
                   {/* Desktop only buttons - always visible */}
-                  <div className="hidden sm:flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={cn("h-8 w-8", isSplitView && "text-primary")}
-                      onClick={toggleSplitView}
-                      title={isSplitView ? "Exit Split View" : "Split View"}
-                    >
-                      <Columns2 className="h-4 w-4" />
-                    </Button>
+                  <TooltipProvider delayDuration={300}>
+                    <div className="hidden sm:flex items-center gap-1">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn("h-8 w-8", isSplitView && "text-primary")}
+                            onClick={toggleSplitView}
+                          >
+                            <Columns2 className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="flex items-center gap-2">
+                          <span>{isSplitView ? "Exit Split View" : "Split View"}</span>
+                          <kbd className="ml-1 text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono">⌘\</kbd>
+                        </TooltipContent>
+                      </Tooltip>
 
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={cn("h-8 w-8", isFocusMode && "text-primary")}
-                      onClick={() => setIsFocusMode(!isFocusMode)}
-                      title={isFocusMode ? "Exit Focus Mode" : "Enter Focus Mode"}
-                    >
-                      {isFocusMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-                    </Button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn("h-8 w-8", isFocusMode && "text-primary")}
+                            onClick={() => setIsFocusMode(!isFocusMode)}
+                          >
+                            {isFocusMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="flex items-center gap-2">
+                          <span>{isFocusMode ? "Exit Focus Mode" : "Focus Mode"}</span>
+                          <kbd className="ml-1 text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono">⌘⇧F</kbd>
+                        </TooltipContent>
+                      </Tooltip>
 
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => setShowArtifacts(!showArtifacts)}
-                      title={showArtifacts ? "Hide artifacts" : "Show artifacts"}
-                    >
-                      {showArtifacts ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
-                    </Button>
-                  </div>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => setShowArtifacts(!showArtifacts)}
+                          >
+                            {showArtifacts ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="flex items-center gap-2">
+                          <span>{showArtifacts ? "Hide Artifacts" : "Show Artifacts"}</span>
+                          <kbd className="ml-1 text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono">⌘B</kbd>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                  </TooltipProvider>
                 </div>
               </div>
             </header>

@@ -179,11 +179,25 @@ export async function decryptApiKey(storedKey: string): Promise<string> {
   try {
     const parts = storedKey.split(":");
     if (parts.length !== 3) {
-      throw new Error("Invalid encrypted key format");
+      throw new DecryptionError(
+        "Invalid encrypted key format. The key may be corrupted.",
+        "FORMAT_ERROR"
+      );
     }
 
-    const iv = base64ToArray(parts[1]);
-    const ciphertext = base64ToArray(parts[2]);
+    let iv: Uint8Array;
+    let ciphertext: Uint8Array;
+
+    try {
+      iv = base64ToArray(parts[1]);
+      ciphertext = base64ToArray(parts[2]);
+    } catch {
+      throw new DecryptionError(
+        "Could not decode encrypted key data. The key may be corrupted.",
+        "DECODE_ERROR"
+      );
+    }
+
     const key = await deriveKey();
 
     const plaintext = await crypto.subtle.decrypt(
@@ -195,12 +209,40 @@ export async function decryptApiKey(storedKey: string): Promise<string> {
     const decoder = new TextDecoder();
     return decoder.decode(plaintext);
   } catch (error) {
+    // If it's already our custom error, re-throw
+    if (error instanceof DecryptionError) {
+      throw error;
+    }
+
     console.error("[API Key Crypto] Decryption failed:", error);
-    // Re-throw the error so callers can detect decryption failures
-    // This is important when device secret changes (e.g., after PWA reinstall)
-    throw new Error(
-      `Failed to decrypt API key: ${error instanceof Error ? error.message : "Unknown error"}. Device secret may have changed.`
+
+    // Provide specific error message based on the error type
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+
+    if (errorMessage.includes("OperationError") || errorMessage.includes("decrypt")) {
+      throw new DecryptionError(
+        "Device encryption key has changed. This typically happens after clearing browser data or reinstalling the PWA. Please re-enter your API key.",
+        "SECRET_CHANGED"
+      );
+    }
+
+    throw new DecryptionError(
+      `Failed to decrypt API key: ${errorMessage}`,
+      "UNKNOWN_ERROR"
     );
+  }
+}
+
+/**
+ * Custom error class for decryption failures with error codes
+ */
+export class DecryptionError extends Error {
+  code: "FORMAT_ERROR" | "DECODE_ERROR" | "SECRET_CHANGED" | "UNKNOWN_ERROR";
+
+  constructor(message: string, code: DecryptionError["code"]) {
+    super(message);
+    this.name = "DecryptionError";
+    this.code = code;
   }
 }
 

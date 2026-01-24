@@ -1398,96 +1398,108 @@ export const MessageItem = memo(function MessageItem({
                 </div>
               )}
 
-              {/* Tool calls/results - collapsible */}
+              {/* Tool calls/results - collapsible with fade-in */}
               {!isEditing && isAssistant && toolEvents.length > 0 && (
-                <ToolCallsSection toolEvents={toolEvents} />
+                <motion.div
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
+                >
+                  <ToolCallsSection toolEvents={toolEvents} />
+                </motion.div>
               )}
 
-              {/* Pipeline execution details (persisted, after completion) */}
+              {/* Pipeline execution details (persisted, after completion) with fade-in */}
               {!isEditing && isAssistant && !isStreaming && message.pipelineExecution && (
-                <PipelineExecutionDetails pipelineExecution={message.pipelineExecution} />
+                <motion.div
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
+                >
+                  <PipelineExecutionDetails pipelineExecution={message.pipelineExecution} />
+                </motion.div>
               )}
 
-              {/* Mobile Actions - Inside bubble */}
+              {/* Mobile Actions - Inside bubble with larger touch targets */}
               {!isEditing && showMobileActions && (
-                <div className="sm:hidden flex items-center gap-1 mt-2 pt-2 border-t border-border/30 flex-wrap">
+                <div className="sm:hidden flex items-center gap-0.5 mt-2 pt-2 border-t border-border/30 flex-wrap">
                   <Button
                     variant="ghost"
-                    size="sm"
-                    className="h-7 px-2"
+                    size="icon"
+                    className="h-10 w-10 touch-manipulation"
                     onClick={(e) => { e.stopPropagation(); handleCopy(); }}
                   >
-                    {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                    {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
                   </Button>
                   {isAssistant && (
                     <Button
                       variant="ghost"
-                      size="sm"
-                      className={cn("h-7 px-2", isPlaying && "text-primary")}
+                      size="icon"
+                      className={cn("h-10 w-10 touch-manipulation", isPlaying && "text-primary")}
                       onClick={(e) => { e.stopPropagation(); isPlaying ? stop() : speak(textContent); }}
                     >
-                      {isPlaying ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+                      {isPlaying ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
                     </Button>
                   )}
                   {canRegenerate && (
                     <Button
                       variant="ghost"
-                      size="sm"
-                      className="h-7 px-2"
+                      size="icon"
+                      className="h-10 w-10 touch-manipulation"
                       onClick={(e) => { e.stopPropagation(); onRegenerate?.(message.id); }}
                     >
-                      <RotateCcw className="h-3.5 w-3.5" />
+                      <RotateCcw className="h-4 w-4" />
                     </Button>
                   )}
                   {canResend && (
                     <Button
                       variant="ghost"
-                      size="sm"
-                      className="h-7 px-2"
+                      size="icon"
+                      className="h-10 w-10 touch-manipulation"
                       onClick={(e) => { e.stopPropagation(); onResend?.(message.id); }}
                     >
-                      <RefreshCw className="h-3.5 w-3.5" />
+                      <RefreshCw className="h-4 w-4" />
                     </Button>
                   )}
                   {canEdit && (
                     <Button
                       variant="ghost"
-                      size="sm"
-                      className="h-7 px-2"
+                      size="icon"
+                      className="h-10 w-10 touch-manipulation"
                       onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
                     >
-                      <Pencil className="h-3.5 w-3.5" />
+                      <Pencil className="h-4 w-4" />
                     </Button>
                   )}
                   {isAssistant && (
                     <>
                       <Button
                         variant="ghost"
-                        size="sm"
-                        className="h-7 px-2"
+                        size="icon"
+                        className="h-10 w-10 touch-manipulation"
                         onClick={(e) => { e.stopPropagation(); handleRate("up"); }}
                       >
-                        <ThumbsUp className={cn("h-3.5 w-3.5", message.rating === "up" && "fill-current text-green-500")} />
+                        <ThumbsUp className={cn("h-4 w-4", message.rating === "up" && "fill-current text-green-500")} />
                       </Button>
                       <Button
                         variant="ghost"
-                        size="sm"
-                        className="h-7 px-2"
+                        size="icon"
+                        className="h-10 w-10 touch-manipulation"
                         onClick={(e) => { e.stopPropagation(); handleRate("down"); }}
                       >
-                        <ThumbsDown className={cn("h-3.5 w-3.5", message.rating === "down" && "fill-current text-red-500")} />
+                        <ThumbsDown className={cn("h-4 w-4", message.rating === "down" && "fill-current text-red-500")} />
                       </Button>
                       <Button
                         variant="ghost"
-                        size="sm"
-                        className="h-7 px-2"
+                        size="icon"
+                        className="h-10 w-10 touch-manipulation"
                         onClick={(e) => { e.stopPropagation(); handleTogglePin(); }}
                         title={message.isPinned ? "Unpin" : "Pin"}
                       >
                         {message.isPinned ? (
-                          <PinOff className={cn("h-3.5 w-3.5 text-amber-500")} />
+                          <PinOff className={cn("h-4 w-4 text-amber-500")} />
                         ) : (
-                          <Pin className="h-3.5 w-3.5" />
+                          <Pin className="h-4 w-4" />
                         )}
                       </Button>
                     </>

@@ -36,15 +36,15 @@ export function BranchNavigator({
   const currentBranchName = branchNames?.[index] || `Branch ${index + 1}`;
 
   return (
-    <div className="mt-2 flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
-      <div className="flex items-center gap-2 flex-1 min-w-0">
+    <div className="mt-2 flex items-center gap-1 sm:gap-2 rounded-lg border bg-muted/30 px-2 sm:px-3 py-1.5 sm:py-2">
+      <div className="flex items-center gap-1 sm:gap-2 flex-1 min-w-0">
         <GitBranch className="h-4 w-4 text-muted-foreground shrink-0" />
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-1 min-w-0">
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="h-6 w-6 shrink-0"
+            className="h-9 w-9 sm:h-6 sm:w-6 shrink-0 touch-manipulation"
             onClick={onPrev}
             disabled={index === 0}
             title="Previous branch"
@@ -61,7 +61,7 @@ export function BranchNavigator({
             type="button"
             variant="ghost"
             size="icon"
-            className="h-6 w-6 shrink-0"
+            className="h-9 w-9 sm:h-6 sm:w-6 shrink-0 touch-manipulation"
             onClick={onNext}
             disabled={index === count - 1}
             title="Next branch"
@@ -77,7 +77,7 @@ export function BranchNavigator({
               type="button"
               variant="ghost"
               size="icon"
-              className="h-6 w-6 shrink-0"
+              className="h-9 w-9 sm:h-6 sm:w-6 shrink-0 touch-manipulation"
             >
               <X className="h-4 w-4" />
             </Button>

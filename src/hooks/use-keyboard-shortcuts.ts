@@ -80,6 +80,24 @@ export function useKeyboardShortcuts() {
     enableOnFormTags: true,
   });
 
+  // Cmd/Ctrl + B - Toggle Artifacts Panel
+  useHotkeys("mod+b", (e) => {
+    e.preventDefault();
+    const { showArtifacts, setShowArtifacts } = useUIStore.getState();
+    setShowArtifacts(!showArtifacts);
+  }, {
+    enableOnFormTags: false,
+  });
+
+  // Cmd/Ctrl + Shift + F - Toggle Focus Mode
+  useHotkeys("mod+shift+f", (e) => {
+    e.preventDefault();
+    const { isFocusMode, setIsFocusMode } = useUIStore.getState();
+    setIsFocusMode(!isFocusMode);
+  }, {
+    enableOnFormTags: false,
+  });
+
   // Cmd/Ctrl + F - Focus Search (handled by sidebar component)
   // Cmd/Ctrl + K - Command Palette (handled by command palette component)
   // Escape - Close modals (handled by individual dialog components)

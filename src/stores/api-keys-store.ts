@@ -11,6 +11,7 @@ import {
   encryptApiKey,
   decryptApiKey,
   isEncryptedKey,
+  DecryptionError,
 } from "@/lib/crypto/api-key-crypto";
 import { toast } from "sonner";
 
@@ -40,7 +41,7 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
 
         // Decrypt keys and migrate any plaintext keys to encrypted format
         const decryptedKeys: ApiKey[] = [];
-        const failedDecryptionKeys: string[] = [];
+        const failedDecryptionKeys: { provider: string; code: string; message: string }[] = [];
 
         const keysToDelete: string[] = [];
 
@@ -59,16 +60,21 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
               key: decryptedKeyValue, // Store decrypted value in memory
             });
           } catch (error) {
-            const errorObj = error as Error;
-            const errorMessage = errorObj?.message || "Unknown error";
+            const isDecryptionError = error instanceof DecryptionError;
+            const errorMessage = error instanceof Error ? error.message : "Unknown error";
+            const errorCode = isDecryptionError ? (error as DecryptionError).code : "UNKNOWN_ERROR";
 
             // If it's an encrypted key and decryption failed, mark for deletion
             if (isEncryptedKey(storedKey.key)) {
               console.warn(
-                `[API Keys] Decryption failed for ${storedKey.provider}, will delete orphaned key:`,
+                `[API Keys] Decryption failed for ${storedKey.provider} (${errorCode}):`,
                 errorMessage
               );
-              failedDecryptionKeys.push(storedKey.provider);
+              failedDecryptionKeys.push({
+                provider: storedKey.provider,
+                code: errorCode,
+                message: errorMessage,
+              });
               keysToDelete.push(storedKey.id);
               continue;
             }
@@ -95,11 +101,22 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
           }
         }
 
-        // Show toast if any keys were cleaned up
+        // Show actionable toast if any keys were cleaned up
         if (failedDecryptionKeys.length > 0) {
-          toast.info("Cleaned Up Orphaned API Keys", {
-            description: `Removed ${failedDecryptionKeys.length} API key(s) that could not be decrypted (device secret changed). Your working keys are unaffected.`,
-            duration: 5000,
+          const providerNames = failedDecryptionKeys.map(k => k.provider).join(", ");
+          const hasSecretChanged = failedDecryptionKeys.some(k => k.code === "SECRET_CHANGED");
+
+          const description = hasSecretChanged
+            ? `Browser encryption key changed (cache cleared or PWA reinstalled). Please re-enter API keys for: ${providerNames}`
+            : `Could not decrypt keys for: ${providerNames}. Please re-enter these API keys.`;
+
+          toast.error("API Keys Need Re-entry", {
+            description,
+            duration: 15000,
+            action: {
+              label: "Go to Settings",
+              onClick: () => window.location.href = "/settings",
+            },
           });
         }
 

@@ -133,8 +133,8 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
     const updateDefaultMcpServerIds = useSettingsStore((s) => s.updateDefaultMcpServerIds);
     const defaultMcpServerIds = useSettingsStore((s) => s.defaultMcpServerIds);
 
-    // Get toolkits from the composio server
-    const toolkits = composioServer?.composioToolkits || [];
+    // Get toolkits from the composio server (memoize to prevent new array on every render)
+    const toolkits = useMemo(() => composioServer?.composioToolkits || [], [composioServer?.composioToolkits]);
 
     // Check if Composio is active - use chat's activeMcpServerIds if available, else fall back to defaults
     const activeMcpIds = chat?.activeMcpServerIds ?? defaultMcpServerIds ?? [];

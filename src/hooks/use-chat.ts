@@ -10,6 +10,7 @@ import type { MessageContent, Agent, Skill } from "@/lib/db/schema";
 import { getImagesFromMessageContent, getTextFromMessageContent, mapTextInMessageContent, convertToAISDKContent } from "@/lib/utils/message-content";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { toast } from "sonner";
+import { getActionableError } from "@/lib/utils/error-messages";
 import { isModelIdCompatibleWithProviderId, pickBestProviderId, providerLabel } from "@/lib/ai/provider-routing";
 import { addMemory, refreshCacheInBackground, searchMemories } from "@/lib/memory";
 import { generateAndApplySummary } from "@/lib/ai/summarization";
@@ -893,7 +894,13 @@ export function useChat(chatId: string | null) {
     // 3. Validate system context fits within model limits
     const validation = validateSystemContextFits(modelId, systemTokens + attachmentTokens);
     if (!validation.fits) {
-      toast.error(validation.message || "System context exceeds model's context limit");
+      toast.error("Context limit exceeded", {
+        description: validation.message || "Your message is too long for this model.",
+        action: {
+          label: "Start New",
+          onClick: () => window.dispatchEvent(new CustomEvent("lumina:new-chat")),
+        },
+      });
       return;
     }
 
@@ -1956,8 +1963,10 @@ export function useChat(chatId: string | null) {
           const result = results[i];
           if (result.status === "rejected") {
             const failedModelId = arenaModelIds[i];
-            const errorMessage = result.reason instanceof Error ? result.reason.message : "Unknown error";
-            toast.error(`Arena: ${failedModelId} failed - ${errorMessage}`);
+            const { title, description } = getActionableError(result.reason);
+            // Prefix with model name for arena clarity
+            const modelName = failedModelId.split("/").pop()?.replace(/-/g, " ") || failedModelId;
+            toast.error(`${modelName}: ${title}`, { description });
           }
         }
       } else {
@@ -2115,7 +2124,16 @@ export function useChat(chatId: string | null) {
     setError(errorMessage);
     // Log as warning to avoid triggering Next.js error overlay in dev mode
     console.warn("[Chat Error]", errorMessage);
-    toast.error(errorMessage);
+
+    // Use actionable error messages for better UX
+    const { title, description, action } = getActionableError(err);
+    toast.error(title, {
+      description,
+      action: action?.onClick ? {
+        label: action.label,
+        onClick: action.onClick,
+      } : undefined,
+    });
   };
 
   const cancelRequest = useCallback(async () => {

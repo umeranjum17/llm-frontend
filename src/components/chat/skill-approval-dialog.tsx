@@ -18,8 +18,9 @@ export function SkillApprovalDialog() {
   const { approveSkill, rejectSkill } = useStreamingStore();
 
   // Defensive: handle state structure mismatch from cached files
-  // Use nullish coalescing outside selector to avoid creating new objects on each render
-  const chatStreams = useStreamingStore((state) => state.chatStreams) ?? {};
+  // Memoize to avoid creating new objects on each render
+  const storeChatStreams = useStreamingStore((state) => state.chatStreams);
+  const chatStreams = useMemo(() => storeChatStreams ?? {}, [storeChatStreams]);
 
   // Find which chat has a pending skill approval
   const pendingApprovalInfo = useMemo(() => {
