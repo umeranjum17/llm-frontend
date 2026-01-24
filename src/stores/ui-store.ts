@@ -28,6 +28,7 @@ export interface DraftChatConfig {
 export interface MultiModelPanel {
   id: string;
   modelId: string;
+  isCollapsed: boolean;
 }
 
 // localStorage key for remembering last used models in multi-model mode
@@ -82,6 +83,7 @@ interface UIState {
   // Multi-model mode (replaces arena mode and split view)
   isMultiModelMode: boolean;
   multiModelPanels: MultiModelPanel[];
+  activePanelId: string | null; // For mobile tab tracking
 
   // Actions
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -111,6 +113,8 @@ interface UIState {
   removeModelPanel: (panelId: string) => void;
   updatePanelModel: (panelId: string, modelId: string) => void;
   resetMultiModelMode: () => void;
+  setActivePanelId: (panelId: string | null) => void;
+  togglePanelCollapse: (panelId: string) => void;
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
@@ -135,6 +139,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   // Multi-model mode - ephemeral state (resets on chat change or page refresh)
   isMultiModelMode: false,
   multiModelPanels: [],
+  activePanelId: null,
 
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   setActiveChatId: (chatId) => {
@@ -143,6 +148,7 @@ export const useUIStore = create<UIState>((set, get) => ({
       activeChatId: chatId,
       isMultiModelMode: false,
       multiModelPanels: [],
+      activePanelId: null,
     });
   },
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
@@ -215,7 +221,7 @@ export const useUIStore = create<UIState>((set, get) => ({
     const state = get();
     if (state.isMultiModelMode) {
       // Turn off - reset panels
-      set({ isMultiModelMode: false, multiModelPanels: [] });
+      set({ isMultiModelMode: false, multiModelPanels: [], activePanelId: null });
     } else {
       // Turn on - restore from localStorage or use defaults
       const defaultModelId = currentModelId || "openai/gpt-4o";
@@ -223,15 +229,17 @@ export const useUIStore = create<UIState>((set, get) => ({
       const panels: MultiModelPanel[] = lastUsedModels.slice(0, 2).map((modelId) => ({
         id: nanoid(),
         modelId,
+        isCollapsed: false,
       }));
-      set({ isMultiModelMode: true, multiModelPanels: panels });
+      set({ isMultiModelMode: true, multiModelPanels: panels, activePanelId: panels[0]?.id || null });
     }
   },
 
   addModelPanel: (modelId) => {
     const state = get();
     if (state.multiModelPanels.length >= 4) return; // Max 4 panels
-    const newPanels = [...state.multiModelPanels, { id: nanoid(), modelId }];
+    const newPanel = { id: nanoid(), modelId, isCollapsed: false };
+    const newPanels = [...state.multiModelPanels, newPanel];
     set({ multiModelPanels: newPanels });
     // Save to localStorage
     saveLastUsedModels(newPanels.map((p) => p.modelId));
@@ -242,9 +250,13 @@ export const useUIStore = create<UIState>((set, get) => ({
     const newPanels = state.multiModelPanels.filter((p) => p.id !== panelId);
     // If only 1 panel left, turn off multi-model mode
     if (newPanels.length <= 1) {
-      set({ isMultiModelMode: false, multiModelPanels: [] });
+      set({ isMultiModelMode: false, multiModelPanels: [], activePanelId: null });
     } else {
-      set({ multiModelPanels: newPanels });
+      // If removing active panel, switch to first available
+      const newActiveId = state.activePanelId === panelId
+        ? newPanels[0]?.id || null
+        : state.activePanelId;
+      set({ multiModelPanels: newPanels, activePanelId: newActiveId });
       saveLastUsedModels(newPanels.map((p) => p.modelId));
     }
   },
@@ -259,6 +271,16 @@ export const useUIStore = create<UIState>((set, get) => ({
   },
 
   resetMultiModelMode: () => {
-    set({ isMultiModelMode: false, multiModelPanels: [] });
+    set({ isMultiModelMode: false, multiModelPanels: [], activePanelId: null });
+  },
+
+  setActivePanelId: (panelId) => set({ activePanelId: panelId }),
+
+  togglePanelCollapse: (panelId) => {
+    const state = get();
+    const newPanels = state.multiModelPanels.map((p) =>
+      p.id === panelId ? { ...p, isCollapsed: !p.isCollapsed } : p
+    );
+    set({ multiModelPanels: newPanels });
   },
 }));

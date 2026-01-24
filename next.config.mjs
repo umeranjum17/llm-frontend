@@ -9,9 +9,9 @@ const withPWA = withPWAInit({
   disable: process.env.NODE_ENV === "development",
   workboxOptions: {
     disableDevLogs: true,
-    // Don't auto-activate new SW - let user control when to update
-    // skipWaiting is handled manually via postMessage when user clicks "Update"
-    skipWaiting: false,
+    // Auto-activate new SW to prevent code/DB schema mismatch after deployments
+    // Without this, old cached code may try to access new DB schema, causing initialization failures
+    skipWaiting: true,
     clientsClaim: true,
     // Selective precaching - exclude unnecessary files to reduce cache size
     exclude: [

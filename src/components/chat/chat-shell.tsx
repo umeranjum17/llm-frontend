@@ -19,6 +19,7 @@ import {
 import { MODELS, type Model, getModelById, USE_CASE_RECOMMENDATIONS, MODEL_CATALOG } from "@/lib/constants/models";
 import { MessageList } from "./message-list";
 import { ModelPanel, AddModelPanelButton } from "./model-panel";
+import { MultiModelTabs } from "./multi-model-tabs";
 import { InputArea } from "./input-area";
 import { TagList } from "./tag-list";
 import { cn } from "@/lib/utils";
@@ -116,10 +117,13 @@ export function ChatShell() {
     draftChatConfig,
     isMultiModelMode,
     multiModelPanels,
+    activePanelId,
     toggleMultiModelMode,
     addModelPanel,
     removeModelPanel,
     updatePanelModel,
+    setActivePanelId,
+    togglePanelCollapse,
   } = useUIStore(
     useShallow((state) => ({
       activeChatId: state.activeChatId,
@@ -135,10 +139,13 @@ export function ChatShell() {
       draftChatConfig: state.draftChatConfig,
       isMultiModelMode: state.isMultiModelMode,
       multiModelPanels: state.multiModelPanels,
+      activePanelId: state.activePanelId,
       toggleMultiModelMode: state.toggleMultiModelMode,
       addModelPanel: state.addModelPanel,
       removeModelPanel: state.removeModelPanel,
       updatePanelModel: state.updatePanelModel,
+      setActivePanelId: state.setActivePanelId,
+      togglePanelCollapse: state.togglePanelCollapse,
     }))
   );
 
@@ -999,9 +1006,17 @@ export function ChatShell() {
                   )}
 
                   {isMultiModelMode && (
-                    <Badge variant="secondary" className="h-8 px-3 text-xs font-medium">
-                      Arena Mode
-                    </Badge>
+                    <div className="flex items-center gap-1">
+                      <Badge variant="secondary" className="h-8 px-3 text-xs font-medium">
+                        Multi-Model
+                      </Badge>
+                      {multiModelPanels.length < 4 && (
+                        <AddModelPanelButton
+                          variant="compact"
+                          onAdd={(modelId) => addModelPanel(modelId)}
+                        />
+                      )}
+                    </div>
                   )}
 
                   {!providerId && !isMultiModelMode && (
@@ -1092,38 +1107,50 @@ export function ChatShell() {
                   modelName={currentModel?.name}
                 />
               ) : isMultiModelMode && multiModelPanels.length >= 2 ? (
-                <ResizablePanelGroup direction="horizontal" className="h-full">
-                  {multiModelPanels.map((panel, idx) => (
-                    <React.Fragment key={panel.id}>
-                      {idx > 0 && <ResizableHandle withHandle />}
-                      <ResizablePanel defaultSize={100 / multiModelPanels.length} minSize={20}>
-                        <ModelPanel
-                          panelId={panel.id}
-                          modelId={panel.modelId}
-                          chatId={activeChatId}
-                          onChangeModel={(modelId) => updatePanelModel(panel.id, modelId)}
-                          onRemove={() => removeModelPanel(panel.id)}
-                          canRemove={multiModelPanels.length > 1}
-                        >
-                          <MessageList chatId={activeChatId} modelId={panel.modelId} />
-                        </ModelPanel>
-                      </ResizablePanel>
-                    </React.Fragment>
-                  ))}
-                  {/* Add model button if < 4 panels */}
-                  {multiModelPanels.length < 4 && (
-                    <>
-                      <ResizableHandle withHandle />
-                      <ResizablePanel defaultSize={5} minSize={5} maxSize={10}>
-                        <div className="flex items-center justify-center h-full bg-muted/30">
-                          <AddModelPanelButton
-                            onAdd={(modelId) => addModelPanel(modelId)}
-                          />
-                        </div>
-                      </ResizablePanel>
-                    </>
-                  )}
-                </ResizablePanelGroup>
+                <>
+                  {/* Mobile: Tab-based UI */}
+                  <div className="md:hidden h-full">
+                    <MultiModelTabs
+                      panels={multiModelPanels}
+                      activePanelId={activePanelId}
+                      chatId={activeChatId}
+                      onSelectPanel={setActivePanelId}
+                      onChangeModel={updatePanelModel}
+                      onRemovePanel={removeModelPanel}
+                      onAddPanel={addModelPanel}
+                      canAddMore={multiModelPanels.length < 4}
+                    />
+                  </div>
+
+                  {/* Desktop: Side-by-side panels */}
+                  <div className="hidden md:flex h-full">
+                    <ResizablePanelGroup direction="horizontal" className="h-full">
+                      {multiModelPanels.map((panel, idx) => (
+                        <React.Fragment key={panel.id}>
+                          {idx > 0 && <ResizableHandle withHandle />}
+                          <ResizablePanel
+                            defaultSize={panel.isCollapsed ? 3 : 100 / multiModelPanels.length}
+                            minSize={panel.isCollapsed ? 3 : 15}
+                            maxSize={panel.isCollapsed ? 5 : undefined}
+                          >
+                            <ModelPanel
+                              panelId={panel.id}
+                              modelId={panel.modelId}
+                              chatId={activeChatId}
+                              isCollapsed={panel.isCollapsed}
+                              onToggleCollapse={() => togglePanelCollapse(panel.id)}
+                              onChangeModel={(modelId) => updatePanelModel(panel.id, modelId)}
+                              onRemove={() => removeModelPanel(panel.id)}
+                              canRemove={multiModelPanels.length > 1}
+                            >
+                              <MessageList chatId={activeChatId} modelId={panel.modelId} />
+                            </ModelPanel>
+                          </ResizablePanel>
+                        </React.Fragment>
+                      ))}
+                    </ResizablePanelGroup>
+                  </div>
+                </>
               ) : (
                 <MessageList
                   chatId={activeChatId}

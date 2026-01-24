@@ -1,22 +1,10 @@
 "use client";
 
 import { useState, lazy, Suspense } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { ChevronDown, X, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, X, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getModelById } from "@/lib/constants/models";
-import { getModelPickerData } from "@/lib/db/queries";
-import { TokenDisplay } from "./token-display";
 
 // Lazy load model picker dialog
 const ModelPickerDialog = lazy(() =>
@@ -33,8 +21,8 @@ interface ModelPanelProps {
   onRemove: () => void;
   canRemove: boolean;
   children: React.ReactNode;
-  historyTokens?: number;
-  draftTokens?: number;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 export function ModelPanel({
@@ -45,97 +33,79 @@ export function ModelPanel({
   onRemove,
   canRemove,
   children,
-  historyTokens = 0,
-  draftTokens = 0,
+  isCollapsed = false,
+  onToggleCollapse,
 }: ModelPanelProps) {
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const model = getModelById(modelId);
 
-  // Get quick switch models
-  const modelPickerData = useLiveQuery(() => getModelPickerData(), []);
-  const favorites = modelPickerData?.favorites || [];
-  const recent = modelPickerData?.recent || [];
+  const modelName = model?.name || modelId.split("/").pop()?.replace(/-/g, " ") || "Model";
 
-  const quickSwitchModels = [
-    ...favorites.slice(0, 3).map((f) => getModelById(f.id)).filter(Boolean),
-    ...recent
-      .filter((r) => !favorites.some((f) => f.id === r.id))
-      .slice(0, 3)
-      .map((r) => getModelById(r.id))
-      .filter(Boolean),
-  ].slice(0, 5);
+  // Collapsed state - narrow strip with vertical text
+  if (isCollapsed) {
+    return (
+      <div className="flex flex-col items-center w-8 border-r bg-muted/20 h-full">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0 mt-1"
+          onClick={onToggleCollapse}
+          title="Expand panel"
+        >
+          <ChevronRight className="h-3.5 w-3.5" />
+        </Button>
+        <div
+          className="flex-1 flex items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors py-2"
+          onClick={onToggleCollapse}
+        >
+          <span
+            className="text-[10px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+            style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
+          >
+            {modelName}
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full border-r last:border-r-0 bg-background min-w-0">
       {/* Panel Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b bg-background/80 backdrop-blur-sm">
-        {/* Model selector dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+      <div className="flex items-center justify-between px-2 py-1 border-b bg-muted/30">
+        <div className="flex items-center gap-1 min-w-0">
+          {onToggleCollapse && (
             <Button
               variant="ghost"
-              size="sm"
-              className="h-7 gap-1.5 px-2 text-xs font-medium hover:bg-muted"
+              size="icon"
+              className="h-6 w-6 shrink-0"
+              onClick={onToggleCollapse}
+              title="Collapse panel"
             >
-              <span className="truncate max-w-[120px]">
-                {model?.name || modelId.split("/").pop()?.replace(/-/g, " ") || "Model"}
-              </span>
-              <ChevronDown className="h-3 w-3 opacity-60" />
+              <ChevronLeft className="h-3.5 w-3.5" />
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-64">
-            <DropdownMenuLabel className="text-[10px] text-muted-foreground uppercase tracking-wider">
-              Quick Switch
-            </DropdownMenuLabel>
-            {quickSwitchModels.map((m) => (
-              <DropdownMenuItem
-                key={m!.id}
-                onClick={() => onChangeModel(m!.id)}
-                className="cursor-pointer"
-              >
-                <span className="truncate flex-1">{m!.name}</span>
-                {m!.id === modelId && (
-                  <Badge variant="secondary" className="text-[10px] px-1 py-0">
-                    Active
-                  </Badge>
-                )}
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => setModelPickerOpen(true)}
-              className="cursor-pointer font-medium"
-            >
-              Browse all models...
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+          )}
+          <button
+            className="text-xs font-medium truncate max-w-[150px] hover:text-primary transition-colors text-left"
+            onClick={() => setModelPickerOpen(true)}
+            title="Change model"
+          >
+            {modelName}
+          </button>
+        </div>
 
-        {/* Remove panel button */}
         {canRemove && (
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+            className="h-5 w-5 text-muted-foreground hover:text-destructive shrink-0"
             onClick={onRemove}
             title="Remove panel"
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="h-3 w-3" />
           </Button>
         )}
       </div>
-
-      {/* Token display for this panel */}
-      {model && (
-        <div className="px-3 py-1 border-b">
-          <TokenDisplay
-            historyTokens={historyTokens}
-            draftTokens={draftTokens}
-            totalTokens={model.contextLength}
-            modelName={model.name}
-          />
-        </div>
-      )}
 
       {/* Panel content (MessageList) */}
       <div className="flex-1 overflow-hidden">{children}</div>
@@ -159,10 +129,40 @@ export function ModelPanel({
 interface AddModelPanelButtonProps {
   onAdd: (modelId: string) => void;
   disabled?: boolean;
+  variant?: "default" | "compact";
 }
 
-export function AddModelPanelButton({ onAdd, disabled }: AddModelPanelButtonProps) {
+export function AddModelPanelButton({ onAdd, disabled, variant = "default" }: AddModelPanelButtonProps) {
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+
+  if (variant === "compact") {
+    return (
+      <>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={() => setModelPickerOpen(true)}
+          disabled={disabled}
+          title="Add model"
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
+
+        <Suspense fallback={null}>
+          <ModelPickerDialog
+            open={modelPickerOpen}
+            onOpenChange={setModelPickerOpen}
+            currentModelId=""
+            onSelectModel={(modelId) => {
+              onAdd(modelId);
+              setModelPickerOpen(false);
+            }}
+          />
+        </Suspense>
+      </>
+    );
+  }
 
   return (
     <>
