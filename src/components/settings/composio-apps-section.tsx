@@ -179,6 +179,22 @@ export function ComposioAppsSection() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Refs for memory leak prevention
+  const isMountedRef = useRef(true);
+  const authTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (authTimeoutRef.current) {
+        clearTimeout(authTimeoutRef.current);
+        authTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   // Use deferred value for search to keep input responsive
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
@@ -193,8 +209,7 @@ export function ComposioAppsSection() {
       (toolkit) =>
         toolkit.name.toLowerCase().includes(query) ||
         toolkit.key.toLowerCase().includes(query) ||
-        toolkit.description?.toLowerCase().includes(query) ||
-        toolkit.categories?.some((c) => c.name.toLowerCase().includes(query))
+        toolkit.description?.toLowerCase().includes(query)
     );
   }, [toolkits, deferredSearchQuery]);
 
@@ -244,7 +259,17 @@ export function ComposioAppsSection() {
       toast.success(`Authorizing ${name}`, {
         description: "Complete authentication in the new window",
       });
-      setTimeout(() => fetchConnectionStatus(), 3000);
+      // Clear any existing timeout before setting a new one
+      if (authTimeoutRef.current) {
+        clearTimeout(authTimeoutRef.current);
+      }
+      // Only fetch if still mounted
+      authTimeoutRef.current = setTimeout(() => {
+        if (isMountedRef.current) {
+          fetchConnectionStatus();
+        }
+        authTimeoutRef.current = null;
+      }, 3000);
     } catch {
       toast.error(`Failed to authorize ${name}`);
     }

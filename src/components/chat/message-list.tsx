@@ -7,7 +7,7 @@ import { useLiveQueryWithTimeout } from "@/hooks/use-live-query-with-timeout";
 import { getChatWithMessages, updateChat } from "@/lib/db/queries";
 import { MessageItem } from "./message-item";
 import { useChat } from "@/hooks/use-chat";
-import { Loader2, ArrowDown, RefreshCw } from "lucide-react";
+import { ArrowDown, Loader2, RefreshCw } from "lucide-react";
 import { SkeletonMessage } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import type { Message } from "@/lib/db/schema";
@@ -293,33 +293,20 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
 
   const messageCount = messages?.length || 0;
 
-  // Auto-scroll to bottom when new messages arrive (only if user is at bottom)
+  // Show "new messages" button when messages arrive while user is scrolled up
   useEffect(() => {
     if (messageCount === 0) return;
 
-    // Check if there are new messages
     const hasNewMessages = messageCount > previousMessageCount.current;
     previousMessageCount.current = messageCount;
 
     if (!hasNewMessages) return;
 
-    // Don't auto-scroll during streaming - let user read at their own pace
-    if (streamingMessageId) {
-      return;
-    }
-
-    if (isAtBottom) {
-      // User is at bottom, auto-scroll
-      virtuosoRef.current?.scrollToIndex({
-        index: messageCount - 1,
-        behavior: "smooth",
-      });
-    } else {
-      // User has scrolled up, show "new messages" button
+    // If user is not at bottom and not streaming, show the button
+    if (!isAtBottom && !streamingMessageId) {
       setShowNewMessagesButton(true);
     }
   }, [messageCount, isAtBottom, streamingMessageId]);
-
 
   const scrollToBottom = useCallback(() => {
     if (messageCount > 0) {
@@ -327,6 +314,13 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
       setShowNewMessagesButton(false);
     }
   }, [messageCount]);
+
+  const handleAtBottomChange = useCallback((atBottom: boolean) => {
+    setIsAtBottom(atBottom);
+    if (atBottom) {
+      setShowNewMessagesButton(false);
+    }
+  }, []);
 
   // Memoize callbacks to prevent re-renders
   const switchSibling = useCallback(async (message: Message, direction: -1 | 1) => {
@@ -360,13 +354,6 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
       });
     }
   }, [chatId, byId]);
-
-  const handleAtBottomChange = useCallback((atBottom: boolean) => {
-    setIsAtBottom(atBottom);
-    if (atBottom) {
-      setShowNewMessagesButton(false);
-    }
-  }, []);
 
   // Compute sibling info for each message - memoized
   const siblingInfoMap = useMemo(() => {
@@ -473,19 +460,9 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
             </div>
           );
         }}
-        followOutput={(isAtBottom) => {
-          // Disable auto-scroll during streaming so user can read at their own pace
-          if (streamingMessageId) {
-            return false;
-          }
-          // Not streaming: auto-scroll if at bottom (for new messages)
-          return isAtBottom ? 'auto' : false;
-        }}
-        alignToBottom={!streamingMessageId}
         atBottomThreshold={100}
         atBottomStateChange={handleAtBottomChange}
-        className="scrollbar-thin scroll-anchor-auto"
-        style={{ overflowAnchor: 'auto' }}
+        className="scrollbar-thin"
         components={{
           Footer: () => (
             <div className="mx-auto max-w-3xl px-4 pb-4">
@@ -512,32 +489,18 @@ export function MessageList({ chatId, arenaModelId, onSendMessage }: MessageList
           <motion.div
             className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10"
             initial={{ opacity: 0, y: 50, scale: 0.9 }}
-            animate={{
-              opacity: 1,
-              y: 0,
-              scale: 1,
-            }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.9 }}
             transition={{ type: "spring", stiffness: 300, damping: 25 }}
           >
-            <motion.div
-              animate={{ scale: [1, 1.02, 1] }}
-              transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+            <Button
+              onClick={scrollToBottom}
+              size="sm"
+              className="shadow-lg gap-2"
             >
-              <Button
-                onClick={scrollToBottom}
-                size="sm"
-                className="shadow-lg gap-2"
-              >
-                <motion.span
-                  animate={{ y: [0, 2, 0] }}
-                  transition={{ repeat: Infinity, duration: 1, ease: "easeInOut" }}
-                >
-                  <ArrowDown className="h-4 w-4" />
-                </motion.span>
-                New messages
-              </Button>
-            </motion.div>
+              <ArrowDown className="h-4 w-4" />
+              New messages
+            </Button>
           </motion.div>
         )}
       </AnimatePresence>

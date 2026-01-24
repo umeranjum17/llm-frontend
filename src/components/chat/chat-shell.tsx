@@ -73,6 +73,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { ArtifactShell } from "@/components/artifacts/artifact-shell";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useSettingsStore } from "@/stores/settings-store";
+import { useComposioStore, selectHasValidSession } from "@/stores/composio-store";
 import { useModelsStore } from "@/stores/models-store";
 import { useStreamingStore } from "@/stores/streaming-store";
 import { getDefaultChatConfig } from "@/lib/ai/default-chat";
@@ -438,6 +439,27 @@ export function ChatShell() {
       },
     });
   }, [toolCallingWarning, activeChatId, toolWarningDismissed]);
+
+  // Preemptive Composio background loading - non-blocking
+  // Ensures session/toolkits are ready before user needs them
+  useEffect(() => {
+    const composioKey = useApiKeysStore.getState().getKeyForProvider("composio");
+    const composioStore = useComposioStore.getState();
+
+    // Only load if user has Composio configured and toolkits enabled
+    if (composioKey?.key && composioStore.enabledToolkitKeys.length > 0) {
+      // Fire and forget - uses existing deduplication
+      Promise.all([
+        composioStore.fetchToolkits(composioKey.key),
+        composioStore.fetchConnectionStatus(composioKey.key),
+      ]).catch(() => {});
+
+      // Also ensure session is ready (non-blocking, will be used later)
+      if (!selectHasValidSession(composioStore)) {
+        composioStore.createSession(composioKey.key).catch(() => {});
+      }
+    }
+  }, []); // Run once on mount
 
   const handleModelChange = async (modelId: string) => {
     if (isDraftMode && draftChatConfig) {

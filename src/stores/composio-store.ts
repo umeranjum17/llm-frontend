@@ -67,6 +67,12 @@ interface ComposioActions {
 // Constants
 const SESSION_TTL_MS = 1000 * 60 * 60 * 2; // 2 hours
 const TOOLKITS_CACHE_TTL = 1000 * 60 * 60 * 4; // 4 hours
+const API_TIMEOUT_MS = 10000; // 10 seconds
+
+// In-flight request deduplication
+let inFlightFetchToolkits: Promise<void> | null = null;
+let inFlightFetchConnectionStatus: Promise<void> | null = null;
+let inFlightCreateSession: Promise<{ url: string; headers: Record<string, string> } | null> | null = null;
 
 // Fallback icons
 const ICON_MAP: Record<string, string> = {
@@ -204,109 +210,154 @@ export const useComposioStore = create<ComposioState & ComposioActions>()(
           return;
         }
 
-        set({ isLoadingToolkits: true });
-
-        try {
-          const response = await fetch("/api/composio/available-toolkits", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-composio-key": apiKey,
-            },
-          });
-
-          if (!response.ok) throw new Error("Failed to fetch toolkits");
-
-          const { toolkits } = await response.json();
-          const { enabledToolkitKeys } = get();
-          const enabledSet = new Set(enabledToolkitKeys);
-
-          // Preserve existing connection status
-          const existingConnectionStatus = new Map(
-            existingToolkits.map((t) => [t.key, { isConnected: t.isConnected, connectedAccountId: t.connectedAccountId }])
-          );
-
-          const processed: ComposioToolkit[] = toolkits.map((t: any) => {
-            const existing = existingConnectionStatus.get(t.key);
-            return {
-              key: t.key,
-              name: t.name,
-              description: t.description,
-              logo: t.logo || getIconUrl(t.key),
-              toolsCount: t.toolsCount,
-              noAuth: t.noAuth,
-              isConnected: existing?.isConnected ?? false,
-              isEnabled: enabledSet.has(t.key),
-              connectedAccountId: existing?.connectedAccountId,
-            };
-          });
-
-          set({
-            toolkits: processed,
-            _lastFetchedAt: Date.now(),
-            isLoadingToolkits: false,
-          });
-        } catch (err) {
-          console.error("[Composio] Failed to fetch toolkits:", err);
-          set({ isLoadingToolkits: false });
+        // Deduplicate in-flight requests
+        if (inFlightFetchToolkits) {
+          return inFlightFetchToolkits;
         }
+
+        set({ isLoadingToolkits: true, error: null });
+
+        const abortController = new AbortController();
+        const timeoutId = setTimeout(() => abortController.abort(), API_TIMEOUT_MS);
+
+        const fetchPromise = (async () => {
+          try {
+            const response = await fetch("/api/composio/available-toolkits", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-composio-key": apiKey,
+              },
+              signal: abortController.signal,
+            });
+
+            if (!response.ok) throw new Error("Failed to fetch toolkits");
+
+            const { toolkits } = await response.json();
+            const { enabledToolkitKeys } = get();
+            const enabledSet = new Set(enabledToolkitKeys);
+
+            // Preserve existing connection status
+            const existingConnectionStatus = new Map(
+              existingToolkits.map((t) => [t.key, { isConnected: t.isConnected, connectedAccountId: t.connectedAccountId }])
+            );
+
+            const processed: ComposioToolkit[] = toolkits.map((t: any) => {
+              const existing = existingConnectionStatus.get(t.key);
+              return {
+                key: t.key,
+                name: t.name,
+                description: t.description,
+                logo: t.logo || getIconUrl(t.key),
+                toolsCount: t.toolsCount,
+                noAuth: t.noAuth,
+                isConnected: existing?.isConnected ?? false,
+                isEnabled: enabledSet.has(t.key),
+                connectedAccountId: existing?.connectedAccountId,
+              };
+            });
+
+            set({
+              toolkits: processed,
+              _lastFetchedAt: Date.now(),
+              isLoadingToolkits: false,
+              error: null,
+            });
+          } catch (err) {
+            const message = err instanceof Error
+              ? (err.name === "AbortError" ? "Request timed out" : err.message)
+              : "Failed to fetch toolkits";
+            console.error("[Composio] Failed to fetch toolkits:", err);
+            set({ isLoadingToolkits: false, error: message });
+          } finally {
+            clearTimeout(timeoutId);
+            inFlightFetchToolkits = null;
+          }
+        })();
+
+        inFlightFetchToolkits = fetchPromise;
+        return fetchPromise;
       },
 
       fetchConnectionStatus: async (apiKey) => {
-        try {
-          const response = await fetch("/api/composio/toolkits", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-composio-key": apiKey,
-            },
-            body: JSON.stringify({ userId: "default" }),
-          });
-
-          if (!response.ok) return;
-
-          const { connectionMap } = await response.json();
-          if (!connectionMap) return;
-
-          // Build connected map
-          const connectedMap = new Map<string, string>();
-          for (const [key, value] of Object.entries(connectionMap)) {
-            const status = ((value as any).status || "").toUpperCase();
-            const accountId = (value as any).id;
-            if (status === "ACTIVE" && accountId) {
-              connectedMap.set(key.toLowerCase(), accountId);
-            }
-          }
-
-          const { toolkits } = get();
-          set({
-            toolkits: toolkits.map((t) => {
-              // Try multiple variations to match
-              const variations = [
-                t.key,
-                t.key.toLowerCase(),
-                t.key.replace(/-/g, "_"),
-                t.key.replace(/_/g, "-"),
-              ];
-
-              let connectedAccountId: string | undefined;
-              for (const v of variations) {
-                if (connectedMap.has(v)) {
-                  connectedAccountId = connectedMap.get(v);
-                  break;
-                }
-              }
-
-              return {
-                ...t,
-                isConnected: !!connectedAccountId,
-                connectedAccountId,
-              };
-            }),
-          });
-        } catch (err) {
-          console.error("[Composio] Failed to fetch connection status:", err);
+        // Deduplicate in-flight requests
+        if (inFlightFetchConnectionStatus) {
+          return inFlightFetchConnectionStatus;
         }
+
+        const abortController = new AbortController();
+        const timeoutId = setTimeout(() => abortController.abort(), API_TIMEOUT_MS);
+
+        const fetchPromise = (async () => {
+          try {
+            const response = await fetch("/api/composio/toolkits", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-composio-key": apiKey,
+              },
+              body: JSON.stringify({ userId: "default" }),
+              signal: abortController.signal,
+            });
+
+            if (!response.ok) {
+              throw new Error("Failed to fetch connection status");
+            }
+
+            const { connectionMap } = await response.json();
+            if (!connectionMap) return;
+
+            // Build connected map
+            const connectedMap = new Map<string, string>();
+            for (const [key, value] of Object.entries(connectionMap)) {
+              const status = ((value as any).status || "").toUpperCase();
+              const accountId = (value as any).id;
+              if (status === "ACTIVE" && accountId) {
+                connectedMap.set(key.toLowerCase(), accountId);
+              }
+            }
+
+            const { toolkits } = get();
+            set({
+              toolkits: toolkits.map((t) => {
+                // Try multiple variations to match
+                const variations = [
+                  t.key,
+                  t.key.toLowerCase(),
+                  t.key.replace(/-/g, "_"),
+                  t.key.replace(/_/g, "-"),
+                ];
+
+                let connectedAccountId: string | undefined;
+                for (const v of variations) {
+                  if (connectedMap.has(v)) {
+                    connectedAccountId = connectedMap.get(v);
+                    break;
+                  }
+                }
+
+                return {
+                  ...t,
+                  isConnected: !!connectedAccountId,
+                  connectedAccountId,
+                };
+              }),
+              error: null,
+            });
+          } catch (err) {
+            const message = err instanceof Error
+              ? (err.name === "AbortError" ? "Connection status request timed out" : err.message)
+              : "Failed to fetch connection status";
+            console.error("[Composio] Failed to fetch connection status:", err);
+            set({ error: message });
+          } finally {
+            clearTimeout(timeoutId);
+            inFlightFetchConnectionStatus = null;
+          }
+        })();
+
+        inFlightFetchConnectionStatus = fetchPromise;
+        return fetchPromise;
       },
 
       createSession: async (apiKey) => {
@@ -323,85 +374,96 @@ export const useComposioStore = create<ComposioState & ComposioActions>()(
           return null;
         }
 
+        // Deduplicate in-flight requests
+        if (inFlightCreateSession) {
+          return inFlightCreateSession;
+        }
+
         set({ isLoading: true, error: null });
 
-        try {
-          // Collect connected account IDs
-          const connectedAccounts: Record<string, string> = {};
-          for (const key of enabledToolkitKeys) {
-            const toolkit = toolkits.find((t) => t.key === key);
-            if (toolkit?.connectedAccountId) {
-              connectedAccounts[key] = toolkit.connectedAccountId;
+        inFlightCreateSession = (async () => {
+          try {
+            // Collect connected account IDs
+            const connectedAccounts: Record<string, string> = {};
+            for (const key of enabledToolkitKeys) {
+              const toolkit = toolkits.find((t) => t.key === key);
+              if (toolkit?.connectedAccountId) {
+                connectedAccounts[key] = toolkit.connectedAccountId;
+              }
             }
+
+            const response = await fetch("/api/composio/session", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-composio-key": apiKey,
+              },
+              body: JSON.stringify({
+                userId: "default",
+                toolkits: enabledToolkitKeys,
+                connectedAccounts: Object.keys(connectedAccounts).length > 0 ? connectedAccounts : undefined,
+              }),
+            });
+
+            if (!response.ok) {
+              const data = await response.json();
+              throw new Error(data.error || "Failed to create session");
+            }
+
+            const { mcp } = await response.json();
+            const now = Date.now();
+            const expiresAt = now + SESSION_TTL_MS;
+
+            set({
+              mcpUrl: mcp.url,
+              mcpHeaders: mcp.headers,
+              sessionExpiresAt: expiresAt,
+              isLoading: false,
+            });
+
+            // Save to IndexedDB for MCP manager
+            const enabledToolkitNames = enabledToolkitKeys
+              .map((key) => toolkits.find((t) => t.key === key)?.name || key)
+              .join(", ");
+
+            const composioToolkits = toolkits
+              .filter((t) => t.isConnected || t.noAuth)
+              .map((t) => ({
+                key: t.key,
+                name: t.name,
+                logo: t.logo,
+                isEnabled: enabledToolkitKeys.includes(t.key),
+              }));
+
+            await db.mcpServers.put({
+              id: "composio-consolidated",
+              name: `Composio (${enabledToolkitKeys.length} apps)`,
+              url: mcp.url,
+              headers: mcp.headers,
+              description: `Connected apps: ${enabledToolkitNames}`,
+              enabled: true,
+              status: "connected",
+              type: "http",
+              collection: "custom",
+              logoUrl: "https://composio.dev/favicon.ico",
+              category: "composio",
+              composioToolkits,
+              sessionExpiresAt: expiresAt,
+              createdAt: now,
+              updatedAt: now,
+            } as any);
+
+            return mcp;
+          } catch (err) {
+            const message = err instanceof Error ? err.message : "Unknown error";
+            set({ error: message, isLoading: false });
+            return null;
+          } finally {
+            inFlightCreateSession = null;
           }
+        })();
 
-          const response = await fetch("/api/composio/session", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-composio-key": apiKey,
-            },
-            body: JSON.stringify({
-              userId: "default",
-              toolkits: enabledToolkitKeys,
-              connectedAccounts: Object.keys(connectedAccounts).length > 0 ? connectedAccounts : undefined,
-            }),
-          });
-
-          if (!response.ok) {
-            const data = await response.json();
-            throw new Error(data.error || "Failed to create session");
-          }
-
-          const { mcp } = await response.json();
-          const now = Date.now();
-          const expiresAt = now + SESSION_TTL_MS;
-
-          set({
-            mcpUrl: mcp.url,
-            mcpHeaders: mcp.headers,
-            sessionExpiresAt: expiresAt,
-            isLoading: false,
-          });
-
-          // Save to IndexedDB for MCP manager
-          const enabledToolkitNames = enabledToolkitKeys
-            .map((key) => toolkits.find((t) => t.key === key)?.name || key)
-            .join(", ");
-
-          const composioToolkits = toolkits
-            .filter((t) => t.isConnected || t.noAuth)
-            .map((t) => ({
-              key: t.key,
-              name: t.name,
-              logo: t.logo,
-              isEnabled: enabledToolkitKeys.includes(t.key),
-            }));
-
-          await db.mcpServers.put({
-            id: "composio-consolidated",
-            name: `Composio (${enabledToolkitKeys.length} apps)`,
-            url: mcp.url,
-            headers: mcp.headers,
-            description: `Connected apps: ${enabledToolkitNames}`,
-            enabled: true,
-            status: "connected",
-            type: "http",
-            collection: "custom",
-            logoUrl: "https://composio.dev/favicon.ico",
-            category: "composio",
-            composioToolkits,
-            sessionExpiresAt: expiresAt,
-            createdAt: now,
-            updatedAt: now,
-          } as any);
-
-          return mcp;
-        } catch (err) {
-          const message = err instanceof Error ? err.message : "Unknown error";
-          set({ error: message, isLoading: false });
-          return null;
-        }
+        return inFlightCreateSession;
       },
 
       clearSession: () => {
@@ -460,10 +522,6 @@ export const useComposioStore = create<ComposioState & ComposioActions>()(
     }),
     {
       name: "composio-store",
-      partialPersist: {
-        // Only persist these fields to localStorage
-        enabledToolkitKeys: true,
-      } as any,
       // Custom storage to only persist enabledToolkitKeys
       storage: {
         getItem: (name) => {

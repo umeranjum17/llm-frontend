@@ -3,7 +3,7 @@
 import { useState, memo, useMemo, useDeferredValue, useCallback, useEffect, useRef } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useLiveQueryWithTimeout } from "@/hooks/use-live-query-with-timeout";
-import { Plug, PlugZap, Check, AlertCircle, Loader2, Box, Search, X, Settings, Zap } from "lucide-react";
+import { Plug, PlugZap, Check, AlertCircle, Loader2, Box, Search, X, Settings, Zap, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
     Dialog,
@@ -18,7 +18,8 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { getMcpServerById, getChatById, updateChat, getAgentById } from "@/lib/db/queries";
 import { useSettingsStore } from "@/stores/settings-store";
-import { useComposioStore, selectConnectedToolkits } from "@/stores/composio-store";
+import { useComposioStore } from "@/stores/composio-store";
+import { useShallow } from "zustand/react/shallow";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -89,13 +90,20 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
     const [open, setOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const searchInputRef = useRef<HTMLInputElement>(null);
-    const hasFetchedRef = useRef(false);
+    const hasFetchedForKeyRef = useRef<string | null>(null);
 
     const deferredSearch = useDeferredValue(searchQuery);
 
     // Composio store - single source of truth
-    const toolkits = useComposioStore(selectConnectedToolkits);
-    const enabledToolkitKeys = useComposioStore((s) => s.enabledToolkitKeys);
+    // Use useShallow to prevent infinite re-renders from array selectors
+    const allToolkits = useComposioStore((s) => s.toolkits);
+    const enabledToolkitKeys = useComposioStore(useShallow((s) => s.enabledToolkitKeys));
+
+    // Filter connected toolkits in useMemo to avoid selector creating new array each render
+    const toolkits = useMemo(() =>
+        allToolkits.filter((t) => t.isConnected || t.noAuth),
+        [allToolkits]
+    );
     const toggleToolkit = useComposioStore((s) => s.toggleToolkit);
     const enableAllToolkits = useComposioStore((s) => s.enableAllToolkits);
     const disableAllToolkits = useComposioStore((s) => s.disableAllToolkits);
@@ -147,25 +155,19 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
 
     /**
      * PERFORMANCE CRITICAL - Lazy-load Composio data when dialog opens
-     * Fetches run in background, don't block render
+     * Tracks per-apiKey to avoid refetching on every dialog open
+     * Uses existing deduplication in store for concurrent requests
      */
     useEffect(() => {
-        if (open && hasComposioKey && composioKey?.key && !hasFetchedRef.current) {
-            hasFetchedRef.current = true;
-            // Fetch in background, don't block
+        if (open && hasComposioKey && composioKey?.key && hasFetchedForKeyRef.current !== composioKey.key) {
+            hasFetchedForKeyRef.current = composioKey.key;
+            // Fetch in background, don't block - uses deduplication
             Promise.all([
                 fetchToolkits(composioKey.key),
                 fetchConnectionStatus(composioKey.key)
             ]).catch(() => {});
         }
     }, [open, hasComposioKey, composioKey?.key, fetchToolkits, fetchConnectionStatus]);
-
-    // Reset fetch flag when dialog closes
-    useEffect(() => {
-        if (!open) {
-            hasFetchedRef.current = false;
-        }
-    }, [open]);
 
     // Settings store for persisting default MCP servers
     const updateDefaultMcpServerIds = useSettingsStore((s) => s.updateDefaultMcpServerIds);
@@ -249,20 +251,19 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
         }
     };
 
-    // Show error state if queries timed out (only when dialog is open)
-    if (open && (composioServerQuery.isTimedOut || chatQuery.isTimedOut)) {
-        return (
-            <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                title="Database timeout - click to retry"
-                onClick={() => window.location.reload()}
-            >
-                <Plug className="h-4 w-4 text-destructive" />
-            </Button>
-        );
-    }
+    // Retry handler for timed out queries
+    const handleRetry = useCallback(() => {
+        if (composioServerQuery.isTimedOut) {
+            composioServerQuery.retry();
+        }
+        if (chatQuery.isTimedOut) {
+            chatQuery.retry();
+        }
+    }, [composioServerQuery, chatQuery]);
+
+    // Check if queries have timed out - only show error if we have no toolkit data to display
+    // The queries can return undefined legitimately when the server doesn't exist yet
+    const isQueryTimedOut = (composioServerQuery.isTimedOut || chatQuery.isTimedOut) && toolkits.length === 0;
 
     // Hide for pipeline agents
     const isPipelineAgent = open && agent?.pipeline?.steps && agent.pipeline.steps.length > 0;
@@ -300,7 +301,7 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
                     )}
                 </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col p-0 overflow-hidden">
+            <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col p-0 overflow-hidden [&>button]:hidden">
                 <DialogHeader className="px-4 pt-4 pb-2">
                     <div className="flex items-center justify-between">
                         <DialogTitle className="flex items-center gap-2">
@@ -308,11 +309,19 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
                             Composio Tools
                             {getStatusIcon()}
                         </DialogTitle>
-                        <div onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                             <Switch
                                 checked={isComposioActive}
                                 onCheckedChange={handleToggleComposio}
                             />
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={() => setOpen(false)}
+                            >
+                                <X className="h-4 w-4" />
+                            </Button>
                         </div>
                     </div>
                     <div className="flex items-center gap-2 mt-1">
@@ -379,8 +388,24 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
                 </div>
 
                 {/* Toolkit List */}
-                <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
-                    {isLoadingToolkits ? (
+                <div className="flex-1 min-h-0 max-h-[50vh] overflow-y-auto px-4 pb-4">
+                    {isQueryTimedOut ? (
+                        <div className="flex flex-col items-center justify-center py-8 gap-3">
+                            <AlertCircle className="h-8 w-8 text-destructive" />
+                            <p className="text-sm text-muted-foreground text-center">
+                                Database connection timed out
+                            </p>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-2"
+                                onClick={handleRetry}
+                            >
+                                <RefreshCw className="h-4 w-4" />
+                                Retry
+                            </Button>
+                        </div>
+                    ) : isLoadingToolkits ? (
                         <div className="flex items-center justify-center py-8">
                             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                         </div>

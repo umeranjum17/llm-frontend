@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useUIStore } from "@/stores/ui-store";
 import { useStreamingStore, type ActiveSkill, type PendingSkillApproval, type ImageGenerationStage, type ContextCompactionState } from "@/stores/streaming-store";
+import { useComposioStore, selectHasValidSession } from "@/stores/composio-store";
 import { addMessage, updateChat, getChatById, updateMessage, getMessagesForBranch, getLastMessage, getMessageById, chatHasBranches, incrementAgentUsage, getMessages, getActiveMcpServersForChat, getAgentById, getSkillById, incrementSkillUsage } from "@/lib/db/queries";
 import { buildContextMessages, formatDynamicContext } from "@/lib/ai/context-builder";
 import { countMessagesTokens, countTokens, estimateCost, calculateCacheSavings } from "@/lib/utils/token-counter";
@@ -25,6 +26,48 @@ function cleanReferencesForLLM(content: string) {
     // Remove agent mentions entirely (they're used to select the agent, not as content)
     .replace(/@agent:[^\[]+\[[^\]]+\]\s*/g, "")
     .trim();
+}
+
+/**
+ * Ensure Composio session is valid before fetching MCP servers.
+ * This lazily creates a new session when toolkits change or session expires.
+ */
+async function ensureComposioSession(activeMcpServerIds?: string[]): Promise<void> {
+  // Only proceed if composio-consolidated is in the active servers
+  if (!activeMcpServerIds?.includes("composio-consolidated")) {
+    return;
+  }
+
+  // Get Composio API key
+  const composioKey = useApiKeysStore.getState().getKeyForProvider("composio");
+  if (!composioKey?.key) {
+    console.warn("[Composio] No API key configured, skipping session creation");
+    return;
+  }
+
+  // Check if session is valid
+  const composioStore = useComposioStore.getState();
+  const hasValidSession = selectHasValidSession(composioStore);
+
+  if (hasValidSession) {
+    return; // Session is valid, no need to create a new one
+  }
+
+  // Check if there are enabled toolkits
+  if (composioStore.enabledToolkitKeys.length === 0) {
+    console.warn("[Composio] No toolkits enabled, skipping session creation");
+    return;
+  }
+
+  console.log("[Composio] Session expired or missing, creating new session...");
+
+  // Create a new session
+  const result = await composioStore.createSession(composioKey.key);
+  if (result) {
+    console.log("[Composio] Session created successfully");
+  } else {
+    console.warn("[Composio] Failed to create session");
+  }
 }
 
 /**
@@ -352,7 +395,7 @@ async function handlePipelineExecution(
         }));
     }
 
-    // Get Composio API key from encrypted store if any step uses Composio
+    // Get Composio API key and enabled toolkits from stores if any step uses Composio
     const hasComposioServer = mcpServers?.some(s => s.id === "composio-consolidated");
     let composioApiKey: string | undefined;
     let composioGlobalToolkits: string[] | undefined;
@@ -361,12 +404,9 @@ async function handlePipelineExecution(
         // Get Composio API key from encrypted store
         const composioKey = useApiKeysStore.getState().getKeyForProvider("composio");
         composioApiKey = composioKey?.key;
-        // Get enabled toolkits from preferences
-        const composioPrefs = localStorage.getItem("composio_preferences");
-        if (composioPrefs) {
-          const parsed = JSON.parse(composioPrefs);
-          composioGlobalToolkits = parsed.enabledToolkits;
-        }
+        // Get enabled toolkits from Composio store (single source of truth)
+        const composioStore = useComposioStore.getState();
+        composioGlobalToolkits = composioStore.enabledToolkitKeys;
       } catch {
         // Ignore errors
       }
@@ -799,6 +839,8 @@ export function useChat(chatId: string | null) {
           ...(agent.mcpServerIds || []),
           ...allStepMcpServerIds
         ])];
+        // Ensure Composio session is valid before fetching MCP servers
+        await ensureComposioSession(uniqueMcpServerIds);
         const mcpServers = await getActiveMcpServersForChat(uniqueMcpServerIds);
 
         // Extract images from message content for vision-enabled pipeline steps
@@ -1129,6 +1171,10 @@ export function useChat(chatId: string | null) {
 
         // Call API route for streaming
         // In incognito mode, don't pass any tools
+        // Ensure Composio session is valid before fetching MCP servers
+        if (!chat.incognitoMode) {
+          await ensureComposioSession(chat.activeMcpServerIds);
+        }
         const mcpServersForRequest = chat.incognitoMode
           ? []
           : await getActiveMcpServersForChat(chat.activeMcpServerIds);

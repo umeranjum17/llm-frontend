@@ -8,9 +8,10 @@
  * while the codebase migrates to the Zustand store.
  */
 
-import { useCallback } from "react";
-import { useComposioStore, selectConnectedToolkits, type ComposioToolkit } from "@/stores/composio-store";
+import { useCallback, useMemo } from "react";
+import { useComposioStore, type ComposioToolkit } from "@/stores/composio-store";
 import { useApiKeysStore } from "@/stores/api-keys-store";
+import { useShallow } from "zustand/react/shallow";
 
 export type { ComposioToolkit };
 
@@ -23,9 +24,9 @@ export function useComposioApps() {
   const apiKey = composioKey?.key || null;
 
   // Get state from Composio store
-  const toolkits = useComposioStore((s) => s.toolkits);
-  const connectedToolkits = useComposioStore(selectConnectedToolkits);
-  const enabledToolkitKeys = useComposioStore((s) => s.enabledToolkitKeys);
+  // Use useShallow for arrays to prevent unnecessary re-renders
+  const toolkits = useComposioStore(useShallow((s) => s.toolkits));
+  const enabledToolkitKeys = useComposioStore(useShallow((s) => s.enabledToolkitKeys));
   const isLoading = useComposioStore((s) => s.isLoading);
   const isLoadingToolkits = useComposioStore((s) => s.isLoadingToolkits);
   const error = useComposioStore((s) => s.error);

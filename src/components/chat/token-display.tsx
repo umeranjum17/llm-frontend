@@ -93,11 +93,6 @@ export function TokenDisplay({
             style={{ width: `${percentage}%` }}
           />
         </div>
-
-        {/* Compact stats */}
-        <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-          {formatTokenCount(usedTokens)} / {formatTokenCount(totalTokens)}
-        </span>
       </button>
 
       {/* Popup with details */}
