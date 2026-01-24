@@ -582,12 +582,8 @@ export function ChatShell() {
       <EmptyState
         icon={MessageSquare}
         title="Database Timeout"
-        description="The database is not responding. This may indicate a stale cache or corrupted database."
+        description="This often happens after an app update. Clear the PWA cache to fix it - your chats are safe."
         action={{
-          label: "Refresh Page",
-          onClick: () => window.location.reload(),
-        }}
-        secondaryAction={{
           label: "Clear Cache & Reload",
           onClick: async () => {
             if ("caches" in window) {
@@ -600,6 +596,10 @@ export function ChatShell() {
             }
             window.location.reload();
           },
+        }}
+        secondaryAction={{
+          label: "Refresh",
+          onClick: () => window.location.reload(),
         }}
         className="h-full"
       />
