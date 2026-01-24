@@ -45,10 +45,10 @@ export function TokenDisplay({
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-1.5 group cursor-pointer"
+        className="flex items-center gap-1.5 group cursor-pointer p-1 -m-1"
         aria-label={expanded ? "Hide context details" : "Show context details"}
       >
-        <div className="h-1 w-12 sm:w-16 bg-muted/40 rounded-full overflow-hidden">
+        <div className="h-1.5 w-16 sm:w-20 bg-muted/60 rounded-full overflow-hidden">
           <div
             className={cn("h-full transition-all duration-500", statusColor)}
             style={{ width: `${percentage}%` }}

@@ -1247,7 +1247,7 @@ export function InputArea({ chatId }: InputAreaProps) {
 
       {/* Token usage display - subtle, below input on all devices */}
       {chatId && chat?.modelId && !isPipelineAgent && (
-        <div className="flex justify-end mt-1.5 sm:mt-2 opacity-60 hover:opacity-100 transition-opacity">
+        <div className="flex justify-end mt-1.5 sm:mt-2">
           <TokenCalculator
             chatId={chatId}
             inputContent={input}
