@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { db } from "@/lib/db/schema";
 import { McpManager } from "@/lib/mcp/mcp-manager";
+import { useApiKeysStore } from "@/stores/api-keys-store";
 
 export interface ComposioToolkit {
   key: string;
@@ -18,9 +19,8 @@ export interface ComposioToolkit {
   connectedAccountId?: string;
 }
 
-// Composio config stored in localStorage
-interface ComposioConfig {
-  apiKey: string;
+// Composio preferences stored in localStorage (non-sensitive)
+interface ComposioPreferences {
   userId: string;
   enabledToolkits: string[];
 }
@@ -76,7 +76,7 @@ const ICON_MAP: Record<string, string> = {
   azure: "https://cdn.simpleicons.org/microsoftazure",
 };
 
-const STORAGE_KEY = "composio_config";
+const PREFERENCES_KEY = "composio_preferences";
 const TOOLKITS_CACHE_KEY = "composio_toolkits_cache";
 const TOOLKITS_CACHE_TTL = 1000 * 60 * 60; // 1 hour
 const SESSION_TTL_MS = 1000 * 60 * 30; // 30 minutes - sessions expire and need refresh
@@ -86,16 +86,13 @@ const SESSION_TTL_MS = 1000 * 60 * 30; // 30 minutes - sessions expire and need 
 // entityId is for sub-user isolation within a single API key (SaaS scenario).
 // For personal/BYOK use, "default" is the standard approach.
 
-function getConfig(): ComposioConfig | null {
+function getPreferences(): ComposioPreferences | null {
   if (typeof window === "undefined") return null;
-  const stored = localStorage.getItem(STORAGE_KEY);
+  const stored = localStorage.getItem(PREFERENCES_KEY);
   if (!stored) return null;
   try {
     const parsed = JSON.parse(stored);
-    // Ensure required fields exist (handle malformed imports)
-    if (!parsed.apiKey) return null;
     return {
-      apiKey: parsed.apiKey,
       userId: parsed.userId || "default",
       enabledToolkits: Array.isArray(parsed.enabledToolkits) ? parsed.enabledToolkits : [],
     };
@@ -104,14 +101,14 @@ function getConfig(): ComposioConfig | null {
   }
 }
 
-function saveConfig(config: ComposioConfig) {
+function savePreferences(prefs: ComposioPreferences) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+  localStorage.setItem(PREFERENCES_KEY, JSON.stringify(prefs));
 }
 
-function clearConfig() {
+function clearPreferences() {
   if (typeof window === "undefined") return;
-  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(PREFERENCES_KEY);
   localStorage.removeItem(TOOLKITS_CACHE_KEY);
 }
 
@@ -173,8 +170,52 @@ function getIconUrl(key: string, logo?: string | null): string | undefined {
   );
 }
 
+// Check if cached session is still valid
+async function getCachedSession(): Promise<{
+  url: string;
+  headers: Record<string, string>;
+  enabledToolkits: string[];
+  expiresAt: number;
+} | null> {
+  try {
+    const existingServer = await db.mcpServers.get("composio-consolidated");
+    if (!existingServer) return null;
+
+    const serverAny = existingServer as any;
+    const sessionExpiresAt = serverAny.sessionExpiresAt;
+
+    // Check if session is expired
+    if (!sessionExpiresAt || Date.now() > sessionExpiresAt) {
+      return null;
+    }
+
+    // Extract enabled toolkits from the cached server
+    const cachedToolkits = serverAny.composioToolkits || [];
+    const enabledToolkits = cachedToolkits
+      .filter((t: any) => t.isEnabled)
+      .map((t: any) => t.key);
+
+    return {
+      url: existingServer.url,
+      headers: existingServer.headers || {},
+      enabledToolkits,
+      expiresAt: sessionExpiresAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Check if toolkits have changed
+function toolkitsChanged(current: string[], cached: string[]): boolean {
+  if (current.length !== cached.length) return true;
+  const sortedCurrent = [...current].sort();
+  const sortedCached = [...cached].sort();
+  return sortedCurrent.some((t, i) => t !== sortedCached[i]);
+}
+
 export function useComposioApps() {
-  const [config, setConfig] = useState<ComposioConfig | null>(null);
+  const [preferences, setPreferences] = useState<ComposioPreferences | null>(null);
   const [availableToolkits, setAvailableToolkits] = useState<ComposioToolkit[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingToolkits, setIsLoadingToolkits] = useState(false);
@@ -185,19 +226,26 @@ export function useComposioApps() {
   const [connectionStatusReady, setConnectionStatusReady] = useState(false);
   const fetchedRef = useRef(false);
   const connectionStatusFetchedRef = useRef(false);
+  const sessionCreationInProgressRef = useRef(false);
 
-  // Load config on mount and clean up legacy entries
+  // Get Composio API key from encrypted store
+  const composioKey = useApiKeysStore((s) => s.getKeyForProvider("composio"));
+  const addKey = useApiKeysStore((s) => s.addKey);
+  const removeKey = useApiKeysStore((s) => s.removeKey);
+  const keysLoaded = useApiKeysStore((s) => s.isLoaded);
+
+  const apiKey = composioKey?.key || null;
+
+  // Load preferences on mount and clean up legacy entries
   useEffect(() => {
-    let loaded = getConfig();
+    let prefs = getPreferences();
 
     // Migrate to "default" userId for better compatibility with existing connections
-    // This ensures connections created under "default" entityId are found
-    if (loaded && loaded.userId !== "default") {
-      loaded = { ...loaded, userId: "default" };
-      saveConfig(loaded);
+    if (prefs && prefs.userId !== "default") {
+      prefs = { ...prefs, userId: "default" };
+      savePreferences(prefs);
 
-      // CRITICAL: Clear existing Composio session since entityId changed
-      // Old session was created with wrong entityId and won't find connections
+      // Clear existing session since entityId changed
       (async () => {
         try {
           await db.mcpServers.delete("composio-consolidated");
@@ -207,13 +255,17 @@ export function useComposioApps() {
       })();
     }
 
-    if (loaded) {
-      setConfig(loaded);
+    if (prefs) {
+      setPreferences(prefs);
+    } else {
+      // Initialize default preferences
+      setPreferences({ userId: "default", enabledToolkits: [] });
     }
+
     // Load cached toolkits initially
     const cached = getCachedToolkits();
     if (cached) {
-      const enabledSet = new Set(loaded?.enabledToolkits || []);
+      const enabledSet = new Set(prefs?.enabledToolkits || []);
       setAvailableToolkits(
         cached.map((t) => ({
           ...t,
@@ -222,29 +274,51 @@ export function useComposioApps() {
       );
     }
 
-    // Clean up legacy entries and check for expired sessions
+    // Clean up legacy entries
     (async () => {
       try {
         await db.mcpServers.delete("composio-tool-router");
-
-        // Check if current Composio session is expired
-        const existingServer = await db.mcpServers.get("composio-consolidated");
-        if (existingServer) {
-          const sessionExpiresAt = (existingServer as any).sessionExpiresAt;
-          if (sessionExpiresAt && Date.now() > sessionExpiresAt) {
-            // Delete the expired entry so a new session gets created
-            await db.mcpServers.delete("composio-consolidated");
-          }
-        }
       } catch {
         // Ignore
       }
     })();
+
+    // Migrate from old localStorage API key to encrypted store
+    migrateFromLocalStorage();
   }, []);
+
+  // Migrate old localStorage config to encrypted store
+  const migrateFromLocalStorage = useCallback(async () => {
+    if (typeof window === "undefined") return;
+
+    const oldConfig = localStorage.getItem("composio_config");
+    if (!oldConfig) return;
+
+    try {
+      const parsed = JSON.parse(oldConfig);
+      if (parsed.apiKey && !composioKey) {
+        // Migrate API key to encrypted store
+        await addKey("composio", parsed.apiKey, "Composio");
+
+        // Keep preferences separate
+        const prefs: ComposioPreferences = {
+          userId: parsed.userId || "default",
+          enabledToolkits: Array.isArray(parsed.enabledToolkits) ? parsed.enabledToolkits : [],
+        };
+        savePreferences(prefs);
+        setPreferences(prefs);
+      }
+
+      // Remove old config
+      localStorage.removeItem("composio_config");
+    } catch {
+      // Ignore migration errors
+    }
+  }, [addKey, composioKey]);
 
   // Fetch available toolkits from Composio API
   const fetchAvailableToolkits = useCallback(async () => {
-    if (!config?.apiKey) return;
+    if (!apiKey) return;
 
     setIsLoadingToolkits(true);
     try {
@@ -252,7 +326,7 @@ export function useComposioApps() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-composio-key": config.apiKey,
+          "x-composio-key": apiKey,
         },
       });
 
@@ -261,7 +335,7 @@ export function useComposioApps() {
       }
 
       const { toolkits } = await response.json();
-      const enabledSet = new Set(config.enabledToolkits || []);
+      const enabledSet = new Set(preferences?.enabledToolkits || []);
 
       // Preserve existing connection status
       setAvailableToolkits((prev) => {
@@ -291,20 +365,20 @@ export function useComposioApps() {
     } finally {
       setIsLoadingToolkits(false);
     }
-  }, [config?.apiKey, config?.enabledToolkits]);
+  }, [apiKey, preferences?.enabledToolkits]);
 
-  // Fetch toolkits when API key is available (connection status fetched separately below)
+  // Fetch toolkits when API key is available
   useEffect(() => {
-    if (config?.apiKey && !fetchedRef.current) {
+    if (apiKey && keysLoaded && !fetchedRef.current) {
       fetchedRef.current = true;
       fetchAvailableToolkits();
     }
-  }, [config?.apiKey, fetchAvailableToolkits]);
+  }, [apiKey, keysLoaded, fetchAvailableToolkits]);
 
-  // Update enabled status when config changes
+  // Update enabled status when preferences change
   useEffect(() => {
-    if (config?.enabledToolkits) {
-      const enabledSet = new Set(config.enabledToolkits);
+    if (preferences?.enabledToolkits) {
+      const enabledSet = new Set(preferences.enabledToolkits);
       setAvailableToolkits((prev) =>
         prev.map((t) => ({
           ...t,
@@ -312,36 +386,46 @@ export function useComposioApps() {
         }))
       );
     }
-  }, [config?.enabledToolkits]);
+  }, [preferences?.enabledToolkits]);
 
-  // Set API key and create initial config
-  const setApiKey = useCallback(async (apiKey: string) => {
-    // Use "default" userId - Composio isolates data by API key, so this is safe
-    const userId = "default";
-    const newConfig: ComposioConfig = {
-      apiKey,
-      userId,
+  // Set API key (stores encrypted in IndexedDB)
+  const setApiKey = useCallback(async (newApiKey: string) => {
+    // Remove old key first if exists
+    if (composioKey) {
+      await removeKey(composioKey.id);
+    }
+
+    // Add new key (encrypted)
+    await addKey("composio", newApiKey, "Composio");
+
+    // Reset preferences
+    const newPrefs: ComposioPreferences = {
+      userId: "default",
       enabledToolkits: [],
     };
-    saveConfig(newConfig);
-    setConfig(newConfig);
+    savePreferences(newPrefs);
+    setPreferences(newPrefs);
     setMcpUrl(null);
+    setMcpHeaders(null);
     fetchedRef.current = false;
     connectionStatusFetchedRef.current = false;
     setConnectionStatusReady(false);
 
-    // Clean up ALL old Composio MCP servers (batch operation)
+    // Clean up old Composio MCP servers
     try {
       await cleanupComposioServers();
     } catch {
       // Ignore cleanup errors
     }
-  }, []);
+  }, [addKey, removeKey, composioKey]);
 
-  // Remove API key and clear config
-  const removeApiKey = useCallback(async () => {
-    clearConfig();
-    setConfig(null);
+  // Remove API key
+  const removeApiKeyHandler = useCallback(async () => {
+    if (composioKey) {
+      await removeKey(composioKey.id);
+    }
+    clearPreferences();
+    setPreferences(null);
     setMcpUrl(null);
     setMcpHeaders(null);
     setAvailableToolkits([]);
@@ -349,20 +433,20 @@ export function useComposioApps() {
     connectionStatusFetchedRef.current = false;
     setConnectionStatusReady(false);
 
-    // Remove ALL Composio MCP servers from database (batch operation)
+    // Remove ALL Composio MCP servers from database
     try {
       await cleanupComposioServers();
     } catch {
       // Ignore if not exists
     }
-  }, []);
+  }, [removeKey, composioKey]);
 
   // Toggle toolkit enabled state
   const toggleToolkit = useCallback(
     async (toolkitKey: string) => {
-      if (!config) return;
+      if (!preferences) return;
 
-      const enabledSet = new Set(config.enabledToolkits);
+      const enabledSet = new Set(preferences.enabledToolkits);
       const isEnabling = !enabledSet.has(toolkitKey);
 
       // Check if toolkit is connected before enabling
@@ -370,7 +454,7 @@ export function useComposioApps() {
         const toolkit = availableToolkits.find(t => t.key === toolkitKey);
         if (toolkit && !toolkit.isConnected && !toolkit.noAuth) {
           console.warn(`[Composio] Cannot enable ${toolkitKey} - not connected`);
-          return; // Don't enable if not connected
+          return;
         }
         enabledSet.add(toolkitKey);
       } else {
@@ -386,13 +470,15 @@ export function useComposioApps() {
         }
       }
 
-      const newConfig = {
-        ...config,
+      const newPrefs = {
+        ...preferences,
         enabledToolkits: Array.from(enabledSet),
       };
-      saveConfig(newConfig);
-      setConfig(newConfig);
-      setMcpUrl(null); // Reset session to recreate with new toolkits (new apps filter)
+      savePreferences(newPrefs);
+      setPreferences(newPrefs);
+
+      // Mark session as needing refresh (toolkits changed)
+      setMcpUrl(null);
       setMcpHeaders(null);
 
       // Invalidate MCP tools cache so new tools are fetched
@@ -402,24 +488,27 @@ export function useComposioApps() {
         // Manager may not be initialized yet
       }
     },
-    [config, availableToolkits]
+    [preferences, availableToolkits]
   );
 
-  // Create a session with enabled toolkits and save a single consolidated MCP server entry
-  // This is optimized: instead of creating one server per toolkit (which causes duplicate connections),
-  // we create a single "Composio" server that serves all enabled toolkits via one session URL
+  // Create a session with enabled toolkits - SMART: reuses valid cached sessions
   const createSession = useCallback(async () => {
-    if (!config?.apiKey) return null;
+    if (!apiKey || !preferences) return null;
 
-    // Always clean up legacy entries first
+    // Prevent concurrent session creation
+    if (sessionCreationInProgressRef.current) {
+      return null;
+    }
+
+    // Clean up legacy entries first
     try {
       await db.mcpServers.delete("composio-tool-router");
     } catch {
       // Ignore
     }
 
-    if (!config.enabledToolkits?.length) {
-      // No toolkits enabled, clean up any existing entries (batch)
+    if (!preferences.enabledToolkits?.length) {
+      // No toolkits enabled, clean up
       try {
         await cleanupComposioServers();
       } catch {
@@ -428,13 +517,23 @@ export function useComposioApps() {
       return null;
     }
 
+    // SMART SESSION MANAGEMENT: Check if we have a valid cached session
+    const cachedSession = await getCachedSession();
+    if (cachedSession && !toolkitsChanged(preferences.enabledToolkits, cachedSession.enabledToolkits)) {
+      // Session is still valid and toolkits haven't changed - reuse it!
+      setMcpUrl(cachedSession.url);
+      setMcpHeaders(cachedSession.headers);
+      return { url: cachedSession.url, headers: cachedSession.headers };
+    }
+
+    sessionCreationInProgressRef.current = true;
     setIsLoading(true);
     setError(null);
 
     try {
       // Collect connected account IDs for enabled toolkits
       const connectedAccounts: Record<string, string> = {};
-      for (const toolkitKey of config.enabledToolkits) {
+      for (const toolkitKey of preferences.enabledToolkits) {
         const toolkit = availableToolkits.find((t) => t.key === toolkitKey);
         if (toolkit?.connectedAccountId) {
           connectedAccounts[toolkitKey] = toolkit.connectedAccountId;
@@ -442,18 +541,16 @@ export function useComposioApps() {
       }
 
       const hasConnectedAccounts = Object.keys(connectedAccounts).length > 0;
-      if (process.env.NODE_ENV === "development") {
-      }
 
       const response = await fetch("/api/composio/session", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-composio-key": config.apiKey,
+          "x-composio-key": apiKey,
         },
         body: JSON.stringify({
-          userId: config.userId,
-          toolkits: config.enabledToolkits,
+          userId: preferences.userId,
+          toolkits: preferences.enabledToolkits,
           connectedAccounts: hasConnectedAccounts ? connectedAccounts : undefined,
         }),
       });
@@ -469,33 +566,28 @@ export function useComposioApps() {
 
       const now = Date.now();
 
-      // Build toolkit metadata for the UI (allows individual toolkit toggling)
+      // Build toolkit metadata for the UI
       const composioToolkits = availableToolkits
-        .filter((t) => t.isConnected || t.noAuth) // Only connected/no-auth toolkits can be enabled
+        .filter((t) => t.isConnected || t.noAuth)
         .map((t) => ({
           key: t.key,
           name: t.name,
           logo: t.logo,
-          isEnabled: config.enabledToolkits.includes(t.key),
+          isEnabled: preferences.enabledToolkits.includes(t.key),
         }));
 
       // Build toolkit names for display
-      const enabledToolkitNames = config.enabledToolkits
+      const enabledToolkitNames = preferences.enabledToolkits
         .map((key) => {
           const toolkit = availableToolkits.find((t) => t.key === key);
           return toolkit?.name || key;
         })
         .join(", ");
 
-      // Create a SINGLE consolidated MCP server entry for all Composio toolkits
-      // This optimizes performance by:
-      // 1. Single connection instead of N connections (one per toolkit)
-      // 2. Single listTools() call instead of N calls
-      // 3. The session already filters to only return tools for enabled toolkits
-      // The composioToolkits field allows the UI to show individual toggles
+      // Create consolidated MCP server entry with session TTL
       const consolidatedServer = {
         id: "composio-consolidated",
-        name: `Composio (${config.enabledToolkits.length} apps)`,
+        name: `Composio (${preferences.enabledToolkits.length} apps)`,
         url: mcp.url,
         headers: mcp.headers,
         description: `Connected apps: ${enabledToolkitNames}`,
@@ -505,13 +597,13 @@ export function useComposioApps() {
         collection: "custom",
         logoUrl: "https://composio.dev/favicon.ico",
         category: "composio",
-        composioToolkits, // Include toolkit metadata for individual toggling in UI
-        sessionExpiresAt: now + SESSION_TTL_MS, // Session TTL for auto-refresh
+        composioToolkits,
+        sessionExpiresAt: now + SESSION_TTL_MS,
         createdAt: now,
         updatedAt: now,
       };
 
-      // Clean up old individual toolkit entries and add the consolidated one
+      // Save and cleanup
       await Promise.all([
         db.mcpServers.put(consolidatedServer as any),
         cleanupComposioServers(["composio-consolidated"]),
@@ -523,34 +615,32 @@ export function useComposioApps() {
       return null;
     } finally {
       setIsLoading(false);
+      sessionCreationInProgressRef.current = false;
     }
-  }, [config, availableToolkits]);
+  }, [apiKey, preferences, availableToolkits]);
 
   // Fetch toolkits with connection status
   const fetchConnectionStatus = useCallback(async () => {
-    if (!config?.apiKey) return;
+    if (!apiKey || !preferences) return;
 
     try {
       const response = await fetch("/api/composio/toolkits", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-composio-key": config.apiKey,
+          "x-composio-key": apiKey,
         },
-        body: JSON.stringify({ userId: config.userId }),
+        body: JSON.stringify({ userId: preferences.userId }),
       });
 
       if (!response.ok) return;
 
       const data = await response.json();
-      const { connectionMap, debug } = data;
-
-      if (process.env.NODE_ENV === "development" && debug) {
-      }
+      const { connectionMap } = data;
 
       if (!connectionMap) return;
 
-      // Build a map of connected toolkit keys to their account IDs (normalize to lowercase)
+      // Build a map of connected toolkit keys to their account IDs
       const connectedMap = new Map<string, string>();
       for (const [key, value] of Object.entries(connectionMap)) {
         const status = ((value as any).status || "").toUpperCase();
@@ -558,9 +648,6 @@ export function useComposioApps() {
         if (status === "ACTIVE" && accountId) {
           connectedMap.set(key.toLowerCase(), accountId);
         }
-      }
-
-      if (process.env.NODE_ENV === "development") {
       }
 
       setAvailableToolkits((prev) => {
@@ -585,37 +672,28 @@ export function useComposioApps() {
             }
           }
 
-          const isConnected = !!connectedAccountId;
-
-          if (process.env.NODE_ENV === "development" && isConnected) {
-          }
-
           return {
             ...t,
-            isConnected,
+            isConnected: !!connectedAccountId,
             connectedAccountId,
           };
         });
 
-        // Also update the cache with connection status
         cacheToolkits(updated);
-
         return updated;
       });
 
-      // Mark connection status as ready
       setConnectionStatusReady(true);
     } catch (err) {
       console.error("[Composio] Failed to fetch connection status:", err);
-      // Still mark as ready even on error so we don't block forever
       setConnectionStatusReady(true);
     }
-  }, [config]);
+  }, [apiKey, preferences]);
 
   // Authorize a toolkit (opens OAuth flow)
   const authorize = useCallback(
     async (toolkit: string) => {
-      if (!config?.apiKey) return null;
+      if (!apiKey || !preferences) return null;
 
       setConnectingToolkit(toolkit);
       setError(null);
@@ -625,10 +703,10 @@ export function useComposioApps() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-composio-key": config.apiKey,
+            "x-composio-key": apiKey,
           },
           body: JSON.stringify({
-            userId: config.userId,
+            userId: preferences.userId,
             toolkit,
           }),
         });
@@ -652,23 +730,23 @@ export function useComposioApps() {
         setConnectingToolkit(null);
       }
     },
-    [config]
+    [apiKey, preferences]
   );
 
-  // Fetch connection status when toolkits are loaded (only once per session)
+  // Fetch connection status when toolkits are loaded
   useEffect(() => {
-    if (config?.apiKey && availableToolkits.length > 0 && !connectionStatusFetchedRef.current) {
+    if (apiKey && availableToolkits.length > 0 && !connectionStatusFetchedRef.current) {
       connectionStatusFetchedRef.current = true;
       fetchConnectionStatus();
     }
-  }, [config?.apiKey, availableToolkits.length, fetchConnectionStatus]);
+  }, [apiKey, availableToolkits.length, fetchConnectionStatus]);
 
-  // Create session when config changes (wait for connection status first)
+  // Create session when needed (wait for connection status first)
   useEffect(() => {
-    if (config?.apiKey && !mcpUrl && (config.enabledToolkits?.length ?? 0) > 0 && connectionStatusReady) {
+    if (apiKey && !mcpUrl && (preferences?.enabledToolkits?.length ?? 0) > 0 && connectionStatusReady) {
       createSession();
     }
-  }, [config?.apiKey, config?.enabledToolkits, mcpUrl, connectionStatusReady, createSession]);
+  }, [apiKey, preferences?.enabledToolkits, mcpUrl, connectionStatusReady, createSession]);
 
   // Get toolkits with proper logo URLs (memoized)
   const toolkitsWithLogos = useMemo(
@@ -684,23 +762,24 @@ export function useComposioApps() {
   const resetMcpServers = useCallback(async () => {
     await clearAllMcpServers();
     setMcpUrl(null);
+    setMcpHeaders(null);
     // If we have enabled toolkits, recreate the session
-    if (config?.enabledToolkits?.length) {
+    if (preferences?.enabledToolkits?.length) {
       await createSession();
     }
-  }, [config?.enabledToolkits?.length, createSession]);
+  }, [preferences?.enabledToolkits?.length, createSession]);
 
   return {
     // Config
-    apiKey: config?.apiKey || null,
-    hasApiKey: !!config?.apiKey,
+    apiKey,
+    hasApiKey: !!apiKey,
     setApiKey,
-    removeApiKey,
+    removeApiKey: removeApiKeyHandler,
 
     // Toolkits
     toolkits: toolkitsWithLogos,
     toggleToolkit,
-    enabledCount: config?.enabledToolkits.length || 0,
+    enabledCount: preferences?.enabledToolkits.length || 0,
 
     // Session
     mcpUrl,
@@ -710,7 +789,6 @@ export function useComposioApps() {
     // Actions
     authorize,
     fetchToolkits: useCallback(() => {
-      // Reset refs to allow re-fetching
       connectionStatusFetchedRef.current = false;
       setConnectionStatusReady(false);
       return fetchAvailableToolkits();
@@ -718,7 +796,7 @@ export function useComposioApps() {
     fetchConnectionStatus: useCallback(() => {
       connectionStatusFetchedRef.current = false;
       setConnectionStatusReady(false);
-      setMcpUrl(null); // Reset session so it recreates with fresh connection data
+      setMcpUrl(null);
       return fetchConnectionStatus();
     }, [fetchConnectionStatus]),
     resetMcpServers,

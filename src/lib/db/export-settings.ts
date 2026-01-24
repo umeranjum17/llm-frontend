@@ -30,7 +30,9 @@ export interface SettingsExport {
     parameterPresets: ParameterPreset[];
     tags: Tag[];
     tagRules: TagRule[];
-    // Additional localStorage configs
+    // Composio preferences (non-sensitive) - API key is now in apiKeys array
+    composioPreferences?: { userId: string; enabledToolkits: string[] } | null;
+    // Legacy field for backwards compatibility (old exports)
     composioConfig?: { apiKey: string } | null;
   };
 }
@@ -96,16 +98,18 @@ export async function exportAllSettings(): Promise<SettingsExport> {
     lastConnectedAt: undefined,
   }));
 
-  // Get Composio config from localStorage (stored separately)
-  let composioConfig: { apiKey: string } | null = null;
+  // Get Composio preferences from localStorage (non-sensitive data)
+  // Note: Composio API key is now in the encrypted apiKeys array
+  let composioPreferences: { userId: string; enabledToolkits: string[] } | null = null;
   if (typeof window !== "undefined") {
     try {
-      const stored = localStorage.getItem("composio_config");
+      const stored = localStorage.getItem("composio_preferences");
       if (stored) {
-        const config = JSON.parse(stored);
-        if (config.apiKey) {
-          composioConfig = { apiKey: config.apiKey };
-        }
+        const prefs = JSON.parse(stored);
+        composioPreferences = {
+          userId: prefs.userId || "default",
+          enabledToolkits: prefs.enabledToolkits || [],
+        };
       }
     } catch {
       // Ignore parse errors
@@ -126,7 +130,7 @@ export async function exportAllSettings(): Promise<SettingsExport> {
       parameterPresets,
       tags,
       tagRules,
-      composioConfig,
+      composioPreferences,
     },
   };
 }

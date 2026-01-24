@@ -408,22 +408,50 @@ export async function importSettings(
       }
     }
 
-    // Import Composio Config (stored in localStorage)
-    if (opts.importApiKeys && exportData.data.composioConfig?.apiKey) {
+    // Import Composio API Key (backwards compatibility with old exports)
+    // Old exports stored composioConfig.apiKey separately, now it's in the apiKeys array
+    if (opts.importApiKeys && (exportData.data as any).composioConfig?.apiKey) {
       try {
-        if (typeof window !== "undefined") {
-          const existingConfig = localStorage.getItem("composio_config");
-          if (opts.mode === "overwrite" || opts.mode === "merge" || !existingConfig) {
-            // Save full config structure (hook expects userId and enabledToolkits)
-            localStorage.setItem("composio_config", JSON.stringify({
-              apiKey: exportData.data.composioConfig.apiKey,
-              userId: "default",
-              enabledToolkits: [],
-            }));
-          }
+        const composioApiKey = (exportData.data as any).composioConfig.apiKey;
+        const existingByProvider = await db.apiKeys
+          .where("provider")
+          .equals("composio")
+          .first();
+
+        if (opts.mode === "overwrite" || opts.mode === "merge" || !existingByProvider) {
+          const keyToStore = isEncryptedKey(composioApiKey)
+            ? composioApiKey
+            : await encryptApiKey(composioApiKey);
+
+          const composioKeyEntry = {
+            id: existingByProvider?.id || crypto.randomUUID(),
+            provider: "composio",
+            key: keyToStore,
+            label: "Composio",
+            createdAt: Date.now(),
+          };
+
+          await db.apiKeys.put(composioKeyEntry);
+          result.imported.apiKeys++;
         }
       } catch (e) {
-        result.errors.push("Failed to import Composio config");
+        result.errors.push("Failed to import Composio API key");
+      }
+    }
+
+    // Import Composio Preferences (non-sensitive data)
+    const composioPrefs = (exportData.data as any).composioPreferences || (exportData.data as any).composioConfig;
+    if (composioPrefs && typeof window !== "undefined") {
+      try {
+        const existingPrefs = localStorage.getItem("composio_preferences");
+        if (opts.mode === "overwrite" || opts.mode === "merge" || !existingPrefs) {
+          localStorage.setItem("composio_preferences", JSON.stringify({
+            userId: composioPrefs.userId || "default",
+            enabledToolkits: composioPrefs.enabledToolkits || [],
+          }));
+        }
+      } catch (e) {
+        result.errors.push("Failed to import Composio preferences");
       }
     }
 

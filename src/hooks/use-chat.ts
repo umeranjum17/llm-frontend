@@ -319,20 +319,23 @@ async function handlePipelineExecution(
         }));
     }
 
-    // Get Composio API key if any step uses Composio (for step-specific session creation)
+    // Get Composio API key from encrypted store if any step uses Composio
     const hasComposioServer = mcpServers?.some(s => s.id === "composio-consolidated");
     let composioApiKey: string | undefined;
     let composioGlobalToolkits: string[] | undefined;
     if (hasComposioServer && typeof window !== "undefined") {
       try {
-        const composioConfig = localStorage.getItem("composio_config");
-        if (composioConfig) {
-          const parsed = JSON.parse(composioConfig);
-          composioApiKey = parsed.apiKey;
+        // Get Composio API key from encrypted store
+        const composioKey = useApiKeysStore.getState().getKeyForProvider("composio");
+        composioApiKey = composioKey?.key;
+        // Get enabled toolkits from preferences
+        const composioPrefs = localStorage.getItem("composio_preferences");
+        if (composioPrefs) {
+          const parsed = JSON.parse(composioPrefs);
           composioGlobalToolkits = parsed.enabledToolkits;
         }
       } catch {
-        // Ignore localStorage errors
+        // Ignore errors
       }
     }
 

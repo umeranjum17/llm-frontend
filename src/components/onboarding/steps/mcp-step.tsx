@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plug, ArrowRight, ArrowLeft, Loader2, CheckCircle2, ExternalLink, Globe, Code, FileText, Server } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useApiKeysStore } from "@/stores/api-keys-store";
 
 interface McpStepProps {
     onComplete: () => void;
@@ -22,37 +23,24 @@ const MCP_FEATURES = [
     { icon: Server, label: "MCP Servers", description: "Add custom tools and integrations", builtin: true },
 ];
 
-// Composio config stored in localStorage (same as settings page)
-const COMPOSIO_STORAGE_KEY = "composio_config";
+// Composio preferences stored in localStorage (non-sensitive data only)
+const COMPOSIO_PREFERENCES_KEY = "composio_preferences";
 
-interface ComposioConfig {
-    apiKey: string;
+interface ComposioPreferences {
     userId: string;
     enabledToolkits: string[];
 }
 
-/**
- * Derive a unique, deterministic userId from the Composio API key.
- * SECURITY: This ensures each user's Composio sessions are isolated.
- */
-function deriveUserIdFromApiKey(apiKey: string): string {
-    let hash = 0x811c9dc5;
-    for (let i = 0; i < apiKey.length; i++) {
-        hash ^= apiKey.charCodeAt(i);
-        hash = (hash * 0x01000193) >>> 0;
-    }
-    return `user_${hash.toString(36)}`;
-}
-
-function saveComposioConfig(config: ComposioConfig) {
+function saveComposioPreferences(prefs: ComposioPreferences) {
     if (typeof window === "undefined") return;
-    localStorage.setItem(COMPOSIO_STORAGE_KEY, JSON.stringify(config));
+    localStorage.setItem(COMPOSIO_PREFERENCES_KEY, JSON.stringify(prefs));
 }
 
 export function McpStep({ onComplete, onBack, onSkip }: McpStepProps) {
     const [composioKey, setComposioKey] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [isSaved, setIsSaved] = useState(false);
+    const addKey = useApiKeysStore((s) => s.addKey);
 
     const handleSaveAndContinue = async () => {
         if (!composioKey.trim()) {
@@ -62,15 +50,17 @@ export function McpStep({ onComplete, onBack, onSkip }: McpStepProps) {
 
         setIsLoading(true);
         try {
-            // Save Composio config to localStorage (same format as settings page)
-            // SECURITY: Derive unique userId from API key to isolate user sessions
+            // Save Composio API key to encrypted store (like other API keys)
             const apiKey = composioKey.trim();
-            const config: ComposioConfig = {
-                apiKey,
-                userId: deriveUserIdFromApiKey(apiKey),
+            await addKey("composio", apiKey, "Composio");
+
+            // Save non-sensitive preferences to localStorage
+            const prefs: ComposioPreferences = {
+                userId: "default",
                 enabledToolkits: [],
             };
-            saveComposioConfig(config);
+            saveComposioPreferences(prefs);
+
             setIsSaved(true);
             setTimeout(() => onComplete(), 800);
         } catch (error) {

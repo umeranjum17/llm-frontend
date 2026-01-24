@@ -34,18 +34,7 @@ const PROVIDERS = [
   { id: "composio", name: "Composio (Tool Router)", url: "https://platform.composio.dev" },
 ] as const;
 
-// Get Composio key from localStorage
-function getComposioKey(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const stored = localStorage.getItem("composio_config");
-    if (!stored) return null;
-    const config = JSON.parse(stored);
-    return config.apiKey || null;
-  } catch {
-    return null;
-  }
-}
+// Composio is now stored in the encrypted api-keys store like other providers
 
 export function ApiKeysSettings() {
   const { keys, addKey, removeKey } = useApiKeysStore();
@@ -55,21 +44,6 @@ export function ApiKeysSettings() {
   const [newBaseUrl, setNewBaseUrl] = useState("");
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [testingKey, setTestingKey] = useState<string | null>(null);
-  const [composioKey, setComposioKey] = useState<string | null>(null);
-
-  // Load Composio key from localStorage
-  useEffect(() => {
-    setComposioKey(getComposioKey());
-    // Listen for storage changes
-    const handleStorage = () => setComposioKey(getComposioKey());
-    window.addEventListener("storage", handleStorage);
-    // Also check periodically since localStorage changes in same tab don't trigger storage event
-    const interval = setInterval(() => setComposioKey(getComposioKey()), 2000);
-    return () => {
-      window.removeEventListener("storage", handleStorage);
-      clearInterval(interval);
-    };
-  }, []);
 
   const handleAddKey = async () => {
     if (!newProvider) {
@@ -171,20 +145,29 @@ export function ApiKeysSettings() {
           <Label>Your API Keys</Label>
           {keys.map((apiKey) => {
             const providerConfig = getProviderConfig(apiKey.provider);
+            const isComposio = apiKey.provider === "composio";
             const providerName =
               providerConfig?.name ||
               (isCustomOpenAIProvider(apiKey.provider) ? (apiKey.label || "Custom (OpenAI-compatible)") : apiKey.provider);
             return (
               <div
                 key={apiKey.id}
-                className="flex items-center gap-3 p-4 border rounded-lg"
+                className={`flex items-center gap-3 p-4 border rounded-lg ${
+                  isComposio ? "border-purple-500/30 bg-purple-500/5" : ""
+                }`}
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="font-medium">
                       {providerName}
                     </span>
-                    {apiKey.label && (
+                    {isComposio && (
+                      <Badge variant="secondary" className="text-xs bg-purple-500/20 text-purple-400">
+                        <Activity className="h-3 w-3 mr-1" />
+                        Tools
+                      </Badge>
+                    )}
+                    {apiKey.label && !isComposio && (
                       <Badge variant="secondary" className="text-xs">
                         {apiKey.label}
                       </Badge>
@@ -239,73 +222,6 @@ export function ApiKeysSettings() {
               </div>
             );
           })}
-
-          {/* Composio Key (stored separately in localStorage) */}
-          {composioKey && (
-            <div className="flex items-center gap-3 p-4 border rounded-lg border-purple-500/30 bg-purple-500/5">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-medium">Composio (Tool Router)</span>
-                  <Badge variant="secondary" className="text-xs bg-purple-500/20 text-purple-400">
-                    <Activity className="h-3 w-3 mr-1" />
-                    Tools
-                  </Badge>
-                </div>
-                <code className="text-xs text-muted-foreground font-mono">
-                  {showKeys["composio"] ? composioKey : maskKey(composioKey)}
-                </code>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => toggleShowKey("composio")}
-                  title={showKeys["composio"] ? "Hide key" : "Show key"}
-                >
-                  {showKeys["composio"] ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Show Composio key even if no other keys */}
-      {keys.length === 0 && composioKey && (
-        <div className="space-y-3">
-          <Label>Your API Keys</Label>
-          <div className="flex items-center gap-3 p-4 border rounded-lg border-purple-500/30 bg-purple-500/5">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="font-medium">Composio (Tool Router)</span>
-                <Badge variant="secondary" className="text-xs bg-purple-500/20 text-purple-400">
-                  <Activity className="h-3 w-3 mr-1" />
-                  Tools
-                </Badge>
-              </div>
-              <code className="text-xs text-muted-foreground font-mono">
-                {showKeys["composio"] ? composioKey : maskKey(composioKey)}
-              </code>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => toggleShowKey("composio")}
-                title={showKeys["composio"] ? "Hide key" : "Show key"}
-              >
-                {showKeys["composio"] ? (
-                  <EyeOff className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
-          </div>
         </div>
       )}
 
