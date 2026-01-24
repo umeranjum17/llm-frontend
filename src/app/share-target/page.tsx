@@ -3,6 +3,7 @@
 import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { SkeletonLoader } from "@/components/ui/skeleton";
 
 function ShareTargetContent() {
   const router = useRouter();
@@ -39,10 +40,7 @@ export default function ShareTargetPage() {
   return (
     <Suspense fallback={
       <div className="flex h-screen items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">Loading...</p>
-        </div>
+        <SkeletonLoader variant="page" />
       </div>
     }>
       <ShareTargetContent />

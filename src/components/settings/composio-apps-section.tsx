@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useComposioApps, type ComposioToolkit } from "@/hooks/use-composio-apps";
 import { useSettingsStore } from "@/stores/settings-store";
+import { SkeletonLoader } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -455,10 +456,7 @@ export function ComposioAppsSection() {
 
               {/* Loading State */}
               {isLoadingToolkits && toolkits.length === 0 && (
-                <div className="flex items-center justify-center py-8 text-muted-foreground">
-                  <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                  Loading toolkits...
-                </div>
+                <SkeletonLoader variant="list" count={6} className="py-2" />
               )}
 
               {/* Virtualized Toolkit List */}

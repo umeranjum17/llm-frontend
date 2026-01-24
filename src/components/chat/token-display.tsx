@@ -99,7 +99,7 @@ export function TokenDisplay({
       {showPopup && (
         <div
           ref={popupRef}
-          className="absolute bottom-full left-0 right-0 mb-2 p-3 rounded-lg border bg-popover shadow-lg z-50 animate-in fade-in-0 zoom-in-95 duration-150"
+          className="absolute bottom-full left-0 mb-2 p-3 rounded-lg border bg-popover shadow-lg z-50 animate-in fade-in-0 zoom-in-95 duration-150 w-64 sm:w-72"
         >
           <div className="space-y-2">
             {/* Header */}

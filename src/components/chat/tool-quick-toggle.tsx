@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { SkeletonLoader } from "@/components/ui/skeleton";
 import { getMcpServerById, getChatById, updateChat, getAgentById } from "@/lib/db/queries";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useComposioStore } from "@/stores/composio-store";
@@ -407,10 +408,7 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
                             </Button>
                         </div>
                     ) : isLoadingToolkits && toolkits.length === 0 ? (
-                        <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            <span className="text-sm">Loading...</span>
-                        </div>
+                        <SkeletonLoader variant="list" count={6} className="py-2" />
                     ) : (
                         <div className="space-y-1">
                             {sortedToolkits.map((toolkit) => (

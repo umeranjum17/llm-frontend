@@ -14,6 +14,7 @@ import {
 import { getAllProjects, ensureDefaultProject, DEFAULT_PROJECT_ID } from "@/lib/db/queries";
 import { ProjectDialog } from "./project-dialog";
 import { Badge } from "@/components/ui/badge";
+import { SkeletonLoader } from "@/components/ui/skeleton";
 
 interface ProjectSelectorProps {
   currentProjectId?: string;
@@ -115,8 +116,8 @@ export function ProjectSelector({
               </DropdownMenuItem>
             ))
           ) : (
-            <div className="px-2 py-4 text-center text-sm text-muted-foreground">
-              Loading...
+            <div className="px-2 py-2">
+              <SkeletonLoader variant="list" count={3} />
             </div>
           )}
           <DropdownMenuSeparator />

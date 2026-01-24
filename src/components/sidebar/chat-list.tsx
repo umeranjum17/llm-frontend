@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { FolderDialog } from "./folder-dialog";
 import { BulkActions } from "./bulk-actions";
 import { EmptyState } from "@/components/ui/empty-state";
+import { SkeletonLoader } from "@/components/ui/skeleton";
 import { Search } from "lucide-react";
 
 import {
@@ -488,25 +489,8 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
             </div>
           </div>
         ) : (
-          <div className="flex-1 p-4 space-y-3">
-            {/* Skeleton UI */}
-            <div className="space-y-2">
-              <div className="h-4 w-24 bg-muted/50 rounded animate-pulse" />
-              <div className="space-y-2">
-                {[...Array(5)].map((_, i) => (
-                  <div key={i} className="flex gap-2 p-2.5 rounded-lg border border-transparent">
-                    <div className="flex-1 space-y-2">
-                      <div className="h-3 bg-muted/50 rounded animate-pulse" style={{ width: `${60 + Math.random() * 30}%` }} />
-                      <div className="h-2 bg-muted/30 rounded animate-pulse" style={{ width: `${40 + Math.random() * 40}%` }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground/60 pt-4">
-              <RefreshCw className="h-3 w-3 animate-spin" />
-              <span>Loading chats...</span>
-            </div>
+          <div className="flex-1 p-4">
+            <SkeletonLoader variant="list" count={6} />
           </div>
         )}
       </div>

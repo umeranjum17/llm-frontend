@@ -17,6 +17,7 @@ import { useModelsStore } from "@/stores/models-store";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
+import { SkeletonLoader } from "@/components/ui/skeleton";
 import { getMostRecentChat, createChat, getChatById } from "@/lib/db/queries";
 import { getDefaultChatConfig } from "@/lib/ai/default-chat";
 import { toast } from "sonner";
@@ -241,7 +242,7 @@ export default function Home() {
   if (!settingsLoaded || !keysLoaded) {
     return (
       <div className="flex h-[100dvh] items-center justify-center">
-        <div className="text-muted-foreground">Loading...</div>
+        <SkeletonLoader variant="page" />
       </div>
     );
   }

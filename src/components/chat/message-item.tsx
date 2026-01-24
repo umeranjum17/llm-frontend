@@ -10,6 +10,7 @@ import { usePrefersReducedMotion } from "@/hooks/use-motion-config";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
+import { SkeletonText } from "@/components/ui/skeleton";
 import type { Message } from "@/lib/db/schema";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
@@ -1163,9 +1164,15 @@ export const MessageItem = memo(function MessageItem({
                   >
                     {isAssistant ? (
                       <>
-                        <MarkdownRenderer content={textContent} isStreaming={isStreaming} />
-                        {isStreaming && (
-                          <span className="inline-block w-2 h-4 ml-0.5 bg-primary/70 cursor-breathing" />
+                        {isStreaming && !textContent ? (
+                          <SkeletonText lines={3} />
+                        ) : (
+                          <>
+                            <MarkdownRenderer content={textContent} isStreaming={isStreaming} />
+                            {isStreaming && (
+                              <span className="inline-block w-2 h-4 ml-0.5 bg-primary/70 cursor-breathing" />
+                            )}
+                          </>
                         )}
                       </>
                     ) : (

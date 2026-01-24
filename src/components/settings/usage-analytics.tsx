@@ -13,6 +13,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   Cell, PieChart, Pie, Sector, AreaChart, Area
 } from "recharts";
+import { SkeletonLoader } from "@/components/ui/skeleton";
 
 export function UsageAnalytics() {
   const [isRecalculating, setIsRecalculating] = useState(false);
@@ -164,8 +165,8 @@ export function UsageAnalytics() {
 
   if (!stats) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <div className="text-muted-foreground">Loading analytics...</div>
+      <div className="p-8">
+        <SkeletonLoader variant="content" />
       </div>
     );
   }
