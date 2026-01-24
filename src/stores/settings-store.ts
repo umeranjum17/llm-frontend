@@ -72,9 +72,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           errorObj?.message?.includes("database");
         
         if (isDBError && retryCount < maxRetries) {
-          // Retry with exponential backoff
+          // Retry with fast backoff (500ms, 1s, 1.5s max)
           retryCount++;
-          const backoffMs = Math.min(1000 * Math.pow(2, retryCount - 1), 3000);
+          const backoffMs = Math.min(500 * retryCount, 1500);
           console.log(`[Settings Store] Retrying in ${backoffMs}ms...`);
           await new Promise(resolve => setTimeout(resolve, backoffMs));
           return attemptLoad(); // Recursive retry

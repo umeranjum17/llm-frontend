@@ -239,9 +239,9 @@ export function useDBHealth() {
     const checkDBHealth = async () => {
       const currentRetryCount = retryCountRef.current;
 
-      // Exponential backoff for retries
+      // Fast backoff for retries (500ms, 1s, 1.5s)
       if (currentRetryCount > 0 && currentRetryCount <= maxRetries) {
-        const backoffMs = Math.min(1000 * Math.pow(2, currentRetryCount - 1), 5000);
+        const backoffMs = Math.min(500 * currentRetryCount, 1500);
         console.log(`[DB Health] Retrying in ${backoffMs}ms (attempt ${currentRetryCount + 1}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, backoffMs));
       }
@@ -252,13 +252,13 @@ export function useDBHealth() {
         const sizeFactor = migrationInfo.needed ? await estimateDbSizeFactor() : 1;
 
         // Calculate adaptive timeout:
-        // - Base: 30s for normal init (increased from 5s)
-        // - Migration: 60s * sizeFactor, up to 120s max
-        // - Retries: additional 30s buffer
+        // - Base: 8s for normal init (fast fail for better UX)
+        // - Migration: 30s * sizeFactor, up to 90s max
+        // - Retries: additional 10s buffer
         const baseTimeout = migrationInfo.needed
-          ? Math.min(120000, 60000 * sizeFactor)
-          : 30000;
-        const timeoutDuration = baseTimeout + (currentRetryCount > 0 ? 30000 : 0);
+          ? Math.min(90000, 30000 * sizeFactor)
+          : 8000;
+        const timeoutDuration = baseTimeout + (currentRetryCount > 0 ? 10000 : 0);
 
         // Set appropriate loading message
         let loadingMessage = "Initializing database";

@@ -39,53 +39,63 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
       try {
         const encryptedKeys = await getAllApiKeys();
 
-        // Decrypt keys and migrate any plaintext keys to encrypted format
+        // Decrypt keys in parallel for faster loading
         const decryptedKeys: ApiKey[] = [];
         const failedDecryptionKeys: { provider: string; code: string; message: string }[] = [];
-
         const keysToDelete: string[] = [];
 
-        for (const storedKey of encryptedKeys) {
-          try {
-            const decryptedKeyValue = await decryptApiKey(storedKey.key);
+        // Process all keys in parallel
+        const decryptionResults = await Promise.all(
+          encryptedKeys.map(async (storedKey) => {
+            try {
+              const decryptedKeyValue = await decryptApiKey(storedKey.key);
 
-            // Migrate plaintext keys to encrypted format
-            if (!isEncryptedKey(storedKey.key)) {
-              const encryptedValue = await encryptApiKey(decryptedKeyValue);
-              await dbUpdateApiKey(storedKey.id, { key: encryptedValue });
-            }
+              // Migrate plaintext keys to encrypted format (don't await, do in background)
+              if (!isEncryptedKey(storedKey.key)) {
+                encryptApiKey(decryptedKeyValue).then(encryptedValue =>
+                  dbUpdateApiKey(storedKey.id, { key: encryptedValue })
+                ).catch(() => {});
+              }
 
-            decryptedKeys.push({
-              ...storedKey,
-              key: decryptedKeyValue, // Store decrypted value in memory
-            });
-          } catch (error) {
-            const isDecryptionError = error instanceof DecryptionError;
-            const errorMessage = error instanceof Error ? error.message : "Unknown error";
-            const errorCode = isDecryptionError ? (error as DecryptionError).code : "UNKNOWN_ERROR";
+              return {
+                success: true as const,
+                key: { ...storedKey, key: decryptedKeyValue },
+              };
+            } catch (error) {
+              const isDecryptionError = error instanceof DecryptionError;
+              const errorMessage = error instanceof Error ? error.message : "Unknown error";
+              const errorCode = isDecryptionError ? (error as DecryptionError).code : "UNKNOWN_ERROR";
 
-            // If it's an encrypted key and decryption failed, mark for deletion
-            if (isEncryptedKey(storedKey.key)) {
+              // If it's an encrypted key and decryption failed, mark for deletion
+              if (isEncryptedKey(storedKey.key)) {
+                console.warn(
+                  `[API Keys] Decryption failed for ${storedKey.provider} (${errorCode}):`,
+                  errorMessage
+                );
+                return {
+                  success: false as const,
+                  storedKey,
+                  error: { provider: storedKey.provider, code: errorCode, message: errorMessage },
+                };
+              }
+
+              // For plaintext keys, include as-is (graceful degradation)
               console.warn(
-                `[API Keys] Decryption failed for ${storedKey.provider} (${errorCode}):`,
+                `[API Keys] Error processing plaintext key for ${storedKey.provider}:`,
                 errorMessage
               );
-              failedDecryptionKeys.push({
-                provider: storedKey.provider,
-                code: errorCode,
-                message: errorMessage,
-              });
-              keysToDelete.push(storedKey.id);
-              continue;
+              return { success: true as const, key: storedKey };
             }
+          })
+        );
 
-            // For plaintext keys, include as-is (graceful degradation)
-            // But log the error for debugging
-            console.warn(
-              `[API Keys] Error processing plaintext key for ${storedKey.provider}:`,
-              errorMessage
-            );
-            decryptedKeys.push(storedKey);
+        // Collect results
+        for (const result of decryptionResults) {
+          if (result.success) {
+            decryptedKeys.push(result.key);
+          } else {
+            failedDecryptionKeys.push(result.error);
+            keysToDelete.push(result.storedKey.id);
           }
         }
 
@@ -135,9 +145,9 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
           errorObj?.message?.includes("database");
 
         if (isDBError && retryCount < maxRetries) {
-          // Retry with exponential backoff
+          // Retry with fast backoff (500ms, 1s, 1.5s max)
           retryCount++;
-          const backoffMs = Math.min(1000 * Math.pow(2, retryCount - 1), 3000);
+          const backoffMs = Math.min(500 * retryCount, 1500);
           console.log(`[API Keys Store] Retrying in ${backoffMs}ms...`);
           await new Promise(resolve => setTimeout(resolve, backoffMs));
           return attemptLoad(); // Recursive retry

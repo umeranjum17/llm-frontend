@@ -44,13 +44,15 @@ export default function Home() {
         console.warn("[Page] Error initializing device secret:", error);
       }
 
-      // Load settings and API keys on mount
+      // Load settings and API keys in parallel for faster startup
+      const loadPromises: Promise<void>[] = [];
       if (!settingsLoaded) {
-        loadSettings();
+        loadPromises.push(loadSettings());
       }
       if (!keysLoaded) {
-        loadKeys();
+        loadPromises.push(loadKeys());
       }
+      await Promise.all(loadPromises);
     };
 
     initAndLoad();
@@ -92,44 +94,46 @@ export default function Home() {
 
   // Handle PWA resume - validate active chat still exists when app comes back to foreground
   useEffect(() => {
-    const handleVisibilityChange = async () => {
+    const handleVisibilityChange = () => {
       if (document.visibilityState !== "visible") return;
 
-      // Wait briefly for DB health hook to validate/reopen connection
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // Run recovery in background - don't block the UI
+      (async () => {
+        // Wait briefly for DB health hook to validate/reopen connection
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
-      // Re-initialize device secret on PWA resume to ensure it's migrated to IndexedDB
-      // This helps prevent "cannot decrypt" errors after PWA backgrounding
-      try {
-        const { initializeDeviceSecret } = await import("@/lib/crypto/api-key-crypto");
-        await initializeDeviceSecret();
-      } catch (error) {
-        console.warn("[Page] Error initializing device secret on resume:", error);
-      }
-
-      // Reload settings and API keys on PWA resume to ensure fresh state
-      // This fixes "No provider" showing after app was backgrounded for a while
-      try {
-        await useSettingsStore.getState().loadSettings();
-        await useApiKeysStore.getState().loadKeys();
-      } catch (error) {
-        console.warn("[Page] Error reloading settings/keys on resume:", error);
-      }
-
-      const activeChatId = useUIStore.getState().activeChatId;
-      if (activeChatId) {
+        // Re-initialize device secret on PWA resume (non-blocking)
         try {
-          // Verify the chat still exists (could have been deleted in another tab)
-          const chat = await getChatById(activeChatId);
-          if (!chat) {
-            // Chat was deleted - load most recent chat instead (efficient query)
-            const mostRecentChat = await getMostRecentChat();
-            useUIStore.getState().setActiveChatId(mostRecentChat?.id || null);
-          }
+          const { initializeDeviceSecret } = await import("@/lib/crypto/api-key-crypto");
+          await initializeDeviceSecret();
         } catch (error) {
-          console.warn("[Page] Error validating chat on visibility change:", error);
+          console.warn("[Page] Error initializing device secret on resume:", error);
         }
-      }
+
+        // Reload settings and API keys in parallel (non-blocking)
+        try {
+          await Promise.all([
+            useSettingsStore.getState().loadSettings(),
+            useApiKeysStore.getState().loadKeys(),
+          ]);
+        } catch (error) {
+          console.warn("[Page] Error reloading settings/keys on resume:", error);
+        }
+
+        // Validate active chat still exists
+        const activeChatId = useUIStore.getState().activeChatId;
+        if (activeChatId) {
+          try {
+            const chat = await getChatById(activeChatId);
+            if (!chat) {
+              const mostRecentChat = await getMostRecentChat();
+              useUIStore.getState().setActiveChatId(mostRecentChat?.id || null);
+            }
+          } catch (error) {
+            console.warn("[Page] Error validating chat on visibility change:", error);
+          }
+        }
+      })();
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
