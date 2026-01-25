@@ -80,6 +80,9 @@ export const TABLE_REGISTRY: TableConfig[] = [
   // Version 20 tables (delta sync internal tables)
   { name: "_pendingChanges", addedInVersion: 20, sync: false, backup: true, indexes: "id, timestamp, deviceId" },
   { name: "_syncMeta", addedInVersion: 20, sync: false, backup: true, indexes: "id" },
+
+  // Version 27 tables (API key sync)
+  { name: "syncedApiKeys", addedInVersion: 27, sync: false, backup: true, indexes: "id, provider, deviceId, version, updatedAt" },
 ];
 
 /**

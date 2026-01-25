@@ -2,7 +2,7 @@ import Dexie, { type EntityTable } from "dexie";
 import { TABLE_REGISTRY, getStoresForVersion } from "./table-registry";
 
 // Current schema version - update this when adding new tables or indexes
-export const DB_SCHEMA_VERSION = 26;
+export const DB_SCHEMA_VERSION = 27;
 
 // Type definitions
 export interface Project {
@@ -120,6 +120,18 @@ export interface ApiKey {
   label?: string;
 }
 
+export interface SyncedApiKey {
+  id: string;                    // Sync key ID (matches ApiKey.id)
+  provider: string;              // Provider name
+  encryptedKey: string;          // Encrypted with sync password (format: v1:{salt}:{iv}:{data})
+  label?: string;                // User-friendly label
+  baseUrl?: string;              // For custom providers
+  version: number;               // Timestamp for conflict resolution
+  deviceId: string;              // Last device that updated this
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface UserSettings {
   id: string; // Always 'default'
   theme: "light" | "dark" | "system";
@@ -157,6 +169,10 @@ export interface UserSettings {
   // Default generation settings
   defaultTemperature?: number;       // Default temperature for new chats (0-2, default: 1)
   defaultMaxTokens?: number;         // Default max tokens for new chats (default: 4096)
+  // API key sync settings
+  apiKeySyncEnabled?: boolean;       // Master toggle for API key sync
+  apiKeySyncHint?: string;           // Optional password hint (NOT the password)
+  lastApiKeySyncAt?: number;         // Last successful sync timestamp
 }
 
 export interface ModelFavorite {
@@ -519,6 +535,7 @@ export class LuminaDB extends Dexie {
   chats!: EntityTable<Chat, "id">;
   messages!: EntityTable<Message, "id">;
   apiKeys!: EntityTable<ApiKey, "id">;
+  syncedApiKeys!: EntityTable<SyncedApiKey, "id">;
   settings!: EntityTable<UserSettings, "id">;
   modelFavorites!: EntityTable<ModelFavorite, "id">;
   userMemories!: EntityTable<UserMemory, "id">;

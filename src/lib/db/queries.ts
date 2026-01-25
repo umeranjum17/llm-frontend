@@ -634,6 +634,32 @@ export async function deleteApiKey(id: string) {
   await db.apiKeys.delete(id);
 }
 
+// ============= SYNCED API KEYS QUERIES =============
+
+export async function getSyncedApiKeys() {
+  return db.syncedApiKeys.toArray();
+}
+
+export async function getSyncedApiKey(id: string) {
+  return db.syncedApiKeys.get(id);
+}
+
+export async function addSyncedApiKey(key: import("./schema").SyncedApiKey) {
+  await db.syncedApiKeys.add(key);
+}
+
+export async function updateSyncedApiKey(id: string, updates: Partial<import("./schema").SyncedApiKey>) {
+  await db.syncedApiKeys.update(id, updates);
+}
+
+export async function deleteSyncedApiKey(id: string) {
+  await db.syncedApiKeys.delete(id);
+}
+
+export async function clearSyncedApiKeys() {
+  await db.syncedApiKeys.clear();
+}
+
 // ============= SETTINGS QUERIES =============
 
 export async function getSettings() {

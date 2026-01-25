@@ -17,6 +17,7 @@ import { Plus, Trash2, Eye, EyeOff, Check, CheckCircle2, XCircle, Shield, Lock, 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { CUSTOM_OPENAI_PREFIX, getProviderConfig, isCustomOpenAIProvider } from "@/lib/providers";
+import { ApiKeySyncSettings } from "./api-key-sync-settings";
 
 const PROVIDERS = [
   { id: "openrouter", name: "OpenRouter", url: "https://openrouter.ai/keys" },
@@ -138,6 +139,9 @@ export function ApiKeysSettings() {
           Manage your API keys for different LLM providers
         </p>
       </div>
+
+      {/* API Key Sync Settings */}
+      <ApiKeySyncSettings />
 
       {/* Existing Keys */}
       {keys.length > 0 && (
