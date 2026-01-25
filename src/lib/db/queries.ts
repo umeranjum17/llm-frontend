@@ -167,29 +167,25 @@ export async function getChatById(id: string) {
 }
 
 /**
- * Get chat with its messages in a single transaction.
+ * Get chat with its messages together.
  * More efficient than separate queries when both are needed.
  */
 export async function getChatWithMessages(chatId: string): Promise<{ chat: Chat | undefined; messages: Message[] }> {
-  return await db.transaction('r', [db.chats, db.messages], async () => {
-    const [chat, messages] = await Promise.all([
-      db.chats.get(chatId),
-      db.messages.where("chatId").equals(chatId).sortBy("createdAt")
-    ]);
-    return { chat, messages };
-  });
+  const [chat, messages] = await Promise.all([
+    db.chats.get(chatId),
+    db.messages.where("chatId").equals(chatId).sortBy("createdAt")
+  ]);
+  return { chat, messages };
 }
 
 /**
- * Get chat with its associated agent in a single transaction.
+ * Get chat with its associated agent.
  * Useful for chat-shell where both are needed together.
  */
 export async function getChatWithAgent(chatId: string): Promise<{ chat: Chat | undefined; agent: Agent | undefined }> {
-  return await db.transaction('r', [db.chats, db.agents], async () => {
-    const chat = await db.chats.get(chatId);
-    const agent = chat?.agentId ? await db.agents.get(chat.agentId) : undefined;
-    return { chat, agent };
-  });
+  const chat = await db.chats.get(chatId);
+  const agent = chat?.agentId ? await db.agents.get(chat.agentId) : undefined;
+  return { chat, agent };
 }
 
 /**
@@ -507,11 +503,9 @@ export async function deleteProject(id: string, cascadeDeleteChats: boolean = tr
     deletedChats = chatIds.length;
   } else if (!cascadeDeleteChats && chatIds.length > 0) {
     // Batch move chats to the default project
-    await db.transaction("rw", db.chats, async () => {
-      for (const chatId of chatIds) {
-        await db.chats.update(chatId, { projectId: DEFAULT_PROJECT_ID });
-      }
-    });
+    for (const chatId of chatIds) {
+      await db.chats.update(chatId, { projectId: DEFAULT_PROJECT_ID });
+    }
   }
 
   // Delete the project
@@ -553,40 +547,38 @@ export async function getChatsWithMessagesByIds(
 ): Promise<Map<string, { chat: Chat; messages: Message[] }>> {
   if (chatIds.length === 0) return new Map();
 
-  return await db.transaction('r', [db.chats, db.messages], async () => {
-    const [chats, allMessages] = await Promise.all([
-      db.chats.where('id').anyOf(chatIds).toArray(),
-      db.messages.where('chatId').anyOf(chatIds).toArray()
-    ]) as [Chat[], Message[]];
+  const [chats, allMessages] = await Promise.all([
+    db.chats.where('id').anyOf(chatIds).toArray(),
+    db.messages.where('chatId').anyOf(chatIds).toArray()
+  ]) as [Chat[], Message[]];
 
-    const chatMap = new Map<string, Chat>(chats.map((c: Chat) => [c.id, c]));
-    const messagesByChat = new Map<string, Message[]>();
+  const chatMap = new Map<string, Chat>(chats.map((c: Chat) => [c.id, c]));
+  const messagesByChat = new Map<string, Message[]>();
 
-    // Group messages by chatId
-    for (const msg of allMessages) {
-      const arr = messagesByChat.get(msg.chatId) || [];
-      arr.push(msg);
-      messagesByChat.set(msg.chatId, arr);
+  // Group messages by chatId
+  for (const msg of allMessages) {
+    const arr = messagesByChat.get(msg.chatId) || [];
+    arr.push(msg);
+    messagesByChat.set(msg.chatId, arr);
+  }
+
+  // Sort messages by createdAt within each chat
+  for (const [, msgs] of messagesByChat) {
+    msgs.sort((a: Message, b: Message) => a.createdAt - b.createdAt);
+  }
+
+  const result = new Map<string, { chat: Chat; messages: Message[] }>();
+  for (const chatId of chatIds) {
+    const chat = chatMap.get(chatId);
+    if (chat) {
+      result.set(chatId, {
+        chat,
+        messages: messagesByChat.get(chatId) || []
+      });
     }
+  }
 
-    // Sort messages by createdAt within each chat
-    for (const [, msgs] of messagesByChat) {
-      msgs.sort((a: Message, b: Message) => a.createdAt - b.createdAt);
-    }
-
-    const result = new Map<string, { chat: Chat; messages: Message[] }>();
-    for (const chatId of chatIds) {
-      const chat = chatMap.get(chatId);
-      if (chat) {
-        result.set(chatId, {
-          chat,
-          messages: messagesByChat.get(chatId) || []
-        });
-      }
-    }
-
-    return result;
-  });
+  return result;
 }
 
 export async function addProjectFile(file: Omit<ProjectFile, "id" | "createdAt">) {
@@ -618,17 +610,15 @@ export async function getRecentModels(limit: number = 5) {
 }
 
 /**
- * Batch query for model picker data - reduces 3 queries to 1 transaction
+ * Batch query for model picker data - reduces 3 queries to 1 call
  */
 export async function getModelPickerData() {
-  return await db.transaction("r", [db.modelFavorites, db.modelAliases], async () => {
-    const [favorites, recent, aliases] = await Promise.all([
-      db.modelFavorites.orderBy("lastUsed").reverse().toArray(),
-      db.modelFavorites.orderBy("lastUsed").reverse().limit(6).toArray(),
-      db.modelAliases.toArray(),
-    ]);
-    return { favorites, recent, aliases };
-  });
+  const [favorites, recent, aliases] = await Promise.all([
+    db.modelFavorites.orderBy("lastUsed").reverse().toArray(),
+    db.modelFavorites.orderBy("lastUsed").reverse().limit(6).toArray(),
+    db.modelAliases.toArray(),
+  ]);
+  return { favorites, recent, aliases };
 }
 
 export async function toggleModelFavorite(modelId: string, category: string) {
@@ -1356,21 +1346,17 @@ export async function deleteFolder(id: string) {
 }
 
 export async function reorderChats(chatIds: string[]) {
-  // Batch update order for all chats in a single transaction
-  await db.transaction("rw", db.chats, async () => {
-    for (let i = 0; i < chatIds.length; i++) {
-      await db.chats.update(chatIds[i], { order: i });
-    }
-  });
+  // Batch update order for all chats
+  for (let i = 0; i < chatIds.length; i++) {
+    await db.chats.update(chatIds[i], { order: i });
+  }
 }
 
 export async function reorderFolders(folderIds: string[]) {
-  // Batch update order for all folders in a single transaction
-  await db.transaction("rw", db.folders, async () => {
-    for (let i = 0; i < folderIds.length; i++) {
-      await db.folders.update(folderIds[i], { order: i });
-    }
-  });
+  // Batch update order for all folders
+  for (let i = 0; i < folderIds.length; i++) {
+    await db.folders.update(folderIds[i], { order: i });
+  }
 }
 
 export async function moveChatToFolder(chatId: string, folderId: string | null) {
