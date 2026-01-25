@@ -2,7 +2,7 @@ import Dexie, { type EntityTable } from "dexie";
 
 // Current schema version - update this when adding new migrations
 // Used by health check to detect migrations and adjust timeouts
-export const DB_SCHEMA_VERSION = 19;
+export const DB_SCHEMA_VERSION = 20;
 
 // Type definitions
 export interface Project {
@@ -478,6 +478,40 @@ export interface ContextSummary {
   };
 }
 
+// Delta Sync Types
+export interface ChangeEntry {
+  id: string;              // Unique change ID
+  deviceId: string;        // Which device made this change
+  timestamp: number;       // When change occurred
+  table: string;           // Which table (chats, messages, etc.)
+  operation: "create" | "update" | "delete";
+  recordId: string;        // ID of the record
+  data?: any;              // Full record for create/update (null for delete)
+  mods?: Record<string, any>;  // Just the modified fields (for update)
+}
+
+export interface SyncMeta {
+  id: "default";           // Always "default"
+  deviceId: string;        // This device's unique ID
+  lastSyncAt: number;      // Last successful sync timestamp
+  s3Config?: {
+    endpoint: string;
+    accessKeyId: string;   // encrypted
+    secretAccessKey: string; // encrypted
+    bucket: string;
+    region?: string;
+  };
+}
+
+export interface SyncManifest {
+  devices: {
+    [deviceId: string]: {
+      lastChangeId: string;
+      lastSyncAt: number;
+    };
+  };
+}
+
 // Database class
 export class LuminaDB extends Dexie {
   projects!: EntityTable<Project, "id">;
@@ -502,6 +536,8 @@ export class LuminaDB extends Dexie {
   mcpServers!: EntityTable<McpServer, "id">;
   deviceSecrets!: EntityTable<DeviceSecret, "id">;
   contextSummaries!: EntityTable<ContextSummary, "id">;
+  _pendingChanges!: EntityTable<ChangeEntry, "id">;
+  _syncMeta!: EntityTable<SyncMeta, "id">;
 
   constructor() {
     super("LuminaDB");
@@ -914,6 +950,37 @@ export class LuminaDB extends Dexie {
       mcpServers: "id, enabled, createdAt",
       deviceSecrets: "id",
       contextSummaries: "id, chatId, modelId, createdAt",
+    });
+
+    // Version 20: Add delta sync tables
+    // _pendingChanges: Local changes waiting to be synced (underscore = excluded from observation)
+    // _syncMeta: Sync metadata (device ID, last sync time, S3 config)
+    this.version(20).stores({
+      projects: "id, name, createdAt, updatedAt",
+      projectFiles: "id, projectId, name, createdAt",
+      chats:
+        "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order, [projectId+updatedAt]",
+      messages: "id, chatId, role, createdAt, parentId, rating, skillId, isPinned, summarizedIntoId, [chatId+createdAt]",
+      apiKeys: "id, provider, createdAt, baseUrl",
+      settings: "id",
+      modelFavorites: "id, category, pinnedOrder, lastUsed",
+      userMemories: "id, category, source, createdAt, isActive",
+      folders: "id, projectId, name, createdAt, order",
+      tags: "id, name, createdAt, usageCount",
+      tagRules: "id, tagId, enabled, createdAt",
+      parameterPresets: "id, name, createdAt, isDefault",
+      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
+      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
+      skills: "id, name, category, isBuiltIn, isEnabled, isFavorite, usageCount, updatedAt",
+      skillEmbeddings: "skillId, modelId",
+      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
+      workflows: "id, name, createdAt, updatedAt",
+      modelAliases: "id, alias, updatedAt",
+      mcpServers: "id, enabled, createdAt",
+      deviceSecrets: "id",
+      contextSummaries: "id, chatId, modelId, createdAt",
+      _pendingChanges: "id, timestamp, deviceId",
+      _syncMeta: "id",
     });
   }
 }
