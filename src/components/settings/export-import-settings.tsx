@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,10 +42,13 @@ import {
   Link2,
   Copy,
   Check,
+  Database,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
-import { db } from "@/lib/db/schema";
+import { db, DB_SCHEMA_VERSION } from "@/lib/db/schema";
 import { deleteAllChats } from "@/lib/db/queries";
+import { checkMigration, forceMigration } from "@/lib/db/migration";
 import {
   exportAllSettings,
   downloadSettingsFile,
@@ -932,6 +935,39 @@ export function ExportImportSettings() {
   const [shareableLinkOpen, setShareableLinkOpen] = useState(false);
   const [importing, setImporting] = useState(false);
 
+  // Migration state
+  const [migrationStatus, setMigrationStatus] = useState<{
+    needsMigration: boolean;
+    currentVersion: number;
+    targetVersion: number;
+    message?: string;
+  } | null>(null);
+  const [isMigrating, setIsMigrating] = useState(false);
+
+  useEffect(() => {
+    checkMigrationStatus();
+  }, []);
+
+  const checkMigrationStatus = async () => {
+    const status = await checkMigration();
+    setMigrationStatus(status);
+  };
+
+  const handleMigration = async () => {
+    setIsMigrating(true);
+    try {
+      await forceMigration();
+      toast.success("Database migrated successfully! Reloading...");
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    } catch (error) {
+      toast.error("Migration failed. Please refresh the page manually.");
+      console.error("[Migration] Error:", error);
+      setIsMigrating(false);
+    }
+  };
+
   const handleExport = async () => {
     try {
       let data: any = {};
@@ -1068,6 +1104,70 @@ export function ExportImportSettings() {
           Backup your data or import from another device
         </p>
       </div>
+
+      {/* Database Migration Status */}
+      {migrationStatus && (
+        <div className={`space-y-4 p-4 border rounded-lg ${migrationStatus.needsMigration ? 'border-yellow-500/50 bg-yellow-500/5' : 'border-green-500/50 bg-green-500/5'}`}>
+          <h4 className="font-medium flex items-center gap-2">
+            <Database className={`h-4 w-4 ${migrationStatus.needsMigration ? 'text-yellow-500' : 'text-green-500'}`} />
+            Database Status
+          </h4>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Current Version:</span>
+              <span className="font-mono font-medium">v{migrationStatus.currentVersion}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Latest Version:</span>
+              <span className="font-mono font-medium">v{migrationStatus.targetVersion}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Status:</span>
+              {migrationStatus.needsMigration ? (
+                <span className="text-yellow-500 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  Migration Required
+                </span>
+              ) : (
+                <span className="text-green-500 flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3" />
+                  Up to Date
+                </span>
+              )}
+            </div>
+
+            {migrationStatus.needsMigration && (
+              <>
+                <p className="text-xs text-muted-foreground pt-2 border-t">
+                  {migrationStatus.message}
+                </p>
+                <Button
+                  onClick={handleMigration}
+                  disabled={isMigrating}
+                  className="w-full"
+                  size="sm"
+                >
+                  {isMigrating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Migrating...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Run Migration
+                    </>
+                  )}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  This will close and reopen the database to apply the migration. Your data will be preserved.
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Export Section */}
       <div className="space-y-4 p-4 border rounded-lg">

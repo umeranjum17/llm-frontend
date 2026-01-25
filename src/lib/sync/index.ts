@@ -34,3 +34,6 @@ export {
   type SyncResult,
   type SyncProgress,
 } from "./sync-manager";
+
+// Re-export migration utilities from db folder (not sync-specific)
+export { checkMigration, forceMigration } from "@/lib/db/migration";

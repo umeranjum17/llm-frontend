@@ -40,7 +40,6 @@ import {
   getSyncStatus,
   type SyncProgress,
 } from "@/lib/sync/sync-manager";
-import { initializeChangeTracking } from "@/lib/sync/change-tracker";
 
 export function SyncSettings() {
   const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false);
@@ -63,13 +62,18 @@ export function SyncSettings() {
   const [showCorsHelp, setShowCorsHelp] = useState(false);
   const [lastSyncError, setLastSyncError] = useState<string | null>(null);
 
-  // Load sync status on mount
+  // Load sync status on mount and poll for updates
   useEffect(() => {
     loadSyncStatus();
     loadS3Config();
+    // Note: Change tracking is initialized in global-hooks, not here
 
-    // Initialize change tracking
-    initializeChangeTracking();
+    // Poll for status updates every 2 seconds to show pending changes
+    const interval = setInterval(() => {
+      loadSyncStatus();
+    }, 2000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const loadSyncStatus = async () => {
@@ -78,14 +82,32 @@ export function SyncSettings() {
   };
 
   const loadS3Config = async () => {
-    const config = await getS3Config();
-    if (config) {
-      setEndpoint(config.endpoint);
-      setAccessKeyId(config.accessKeyId);
-      setSecretAccessKey(config.secretAccessKey);
-      setBucket(config.bucket);
-      setRegion(config.region || "us-east-1");
+    try {
+      const config = await getS3Config();
+      console.log("[SyncSettings] Loaded config:", config ? "exists" : "null");
+      if (config) {
+        setEndpoint(config.endpoint || "");
+        setAccessKeyId(config.accessKeyId || "");
+        setSecretAccessKey(config.secretAccessKey || "");
+        setBucket(config.bucket || "");
+        setRegion(config.region || "auto");
+      } else {
+        // Reset to defaults if no config
+        setEndpoint("");
+        setAccessKeyId("");
+        setSecretAccessKey("");
+        setBucket("");
+        setRegion("auto");
+      }
+    } catch (error) {
+      console.error("[SyncSettings] Error loading config:", error);
     }
+  };
+
+  const handleOpenConfigDialog = async () => {
+    // Reload config from database before opening dialog
+    await loadS3Config();
+    setIsConfigDialogOpen(true);
   };
 
   const handleSaveConfig = async () => {
@@ -211,7 +233,7 @@ export function SyncSettings() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setIsConfigDialogOpen(true)}
+                onClick={handleOpenConfigDialog}
               >
                 <Settings className="h-4 w-4 mr-2" />
                 Configure

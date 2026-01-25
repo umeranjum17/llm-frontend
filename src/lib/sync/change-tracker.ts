@@ -5,6 +5,9 @@ import { getDeviceId } from "./device-id";
 // to avoid logging changes that come from sync
 let isApplyingRemoteChanges = false;
 
+// Track whether change tracking has been initialized
+let isInitialized = false;
+
 /**
  * Set whether we're currently applying remote changes
  * This prevents creating change logs for synced data
@@ -25,10 +28,17 @@ async function queueChange(
 ) {
   // Don't log changes if we're applying remote changes
   if (isApplyingRemoteChanges) {
+    console.log(`[ChangeTracker] Skipping ${operation} on ${table} (applying remote changes)`);
     return;
   }
 
   try {
+    // Check if table exists
+    if (!db._pendingChanges) {
+      console.warn(`[ChangeTracker] Cannot log ${operation} on ${table} - _pendingChanges table doesn't exist (migration needed)`);
+      return;
+    }
+
     const deviceId = await getDeviceId();
     const timestamp = Date.now();
 
@@ -47,8 +57,13 @@ async function queueChange(
     };
 
     await db._pendingChanges.add(change);
+    console.log(`[ChangeTracker] ✓ Logged ${operation} on ${table}/${recordIdStr}`);
   } catch (error) {
-    console.error("Error queueing change:", error);
+    if (error instanceof Error && error.name === "NotFoundError") {
+      console.warn(`[ChangeTracker] Cannot log ${operation} on ${table} - _pendingChanges table not found (migration needed)`);
+      return;
+    }
+    console.error("[ChangeTracker] Error queueing change:", error);
   }
 }
 
@@ -83,47 +98,106 @@ const SYNCED_TABLES = [
  * Initialize change tracking hooks on all synced tables
  */
 export function initializeChangeTracking() {
+  // Prevent multiple initializations
+  if (isInitialized) {
+    console.log("[ChangeTracker] Already initialized, skipping");
+    return;
+  }
+
+  console.log("[ChangeTracker] Initializing change tracking...");
+
   SYNCED_TABLES.forEach((tableName) => {
     const table = db.table(tableName);
+    console.log(`[ChangeTracker] Registering hooks for table: ${tableName}`);
 
     // Hook into creating
-    table.hook("creating", function (primKey, obj) {
-      queueChange("create", tableName, primKey, obj);
+    const createHook = table.hook("creating", function (primKey, obj, trans) {
+      console.log(`[ChangeTracker] 🔵 Hook fired: creating ${tableName}/${primKey}`);
+      // Queue change asynchronously but don't block the transaction
+      queueChange("create", tableName, primKey, obj).catch(err =>
+        console.error("[ChangeTracker] Error in creating hook:", err)
+      );
     });
+    console.log(`[ChangeTracker]   - creating hook registered:`, !!createHook);
 
     // Hook into updating
-    table.hook("updating", function (mods, primKey, obj) {
+    const updateHook = table.hook("updating", function (mods, primKey, obj, trans) {
+      console.log(`[ChangeTracker] 🟡 Hook fired: updating ${tableName}/${primKey}`);
       // Get the full updated object
       const updatedObj = { ...obj, ...mods };
-      queueChange("update", tableName, primKey, updatedObj, mods);
+      queueChange("update", tableName, primKey, updatedObj, mods).catch(err =>
+        console.error("[ChangeTracker] Error in updating hook:", err)
+      );
     });
+    console.log(`[ChangeTracker]   - updating hook registered:`, !!updateHook);
 
     // Hook into deleting
-    table.hook("deleting", function (primKey) {
-      queueChange("delete", tableName, primKey);
+    const deleteHook = table.hook("deleting", function (primKey, obj, trans) {
+      console.log(`[ChangeTracker] 🔴 Hook fired: deleting ${tableName}/${primKey}`);
+      queueChange("delete", tableName, primKey).catch(err =>
+        console.error("[ChangeTracker] Error in deleting hook:", err)
+      );
     });
+    console.log(`[ChangeTracker]   - deleting hook registered:`, !!deleteHook);
   });
 
-  console.log("Change tracking initialized for", SYNCED_TABLES.length, "tables");
+  isInitialized = true;
+  console.log("[ChangeTracker] ✓ Change tracking initialized for", SYNCED_TABLES.length, "tables");
 }
 
 /**
  * Get all pending changes
  */
 export async function getPendingChanges(): Promise<ChangeEntry[]> {
-  return db._pendingChanges.orderBy("timestamp").toArray();
+  try {
+    if (!db._pendingChanges) {
+      console.warn("[ChangeTracker] _pendingChanges table doesn't exist - returning empty array");
+      return [];
+    }
+    return await db._pendingChanges.orderBy("timestamp").toArray();
+  } catch (error) {
+    if (error instanceof Error && error.name === "NotFoundError") {
+      console.warn("[ChangeTracker] _pendingChanges table not found - returning empty array");
+      return [];
+    }
+    console.error("[ChangeTracker] Error getting pending changes:", error);
+    return [];
+  }
 }
 
 /**
  * Clear all pending changes (after successful sync)
  */
 export async function clearPendingChanges(): Promise<void> {
-  await db._pendingChanges.clear();
+  try {
+    if (!db._pendingChanges) {
+      console.warn("[ChangeTracker] _pendingChanges table doesn't exist - cannot clear");
+      return;
+    }
+    await db._pendingChanges.clear();
+  } catch (error) {
+    if (error instanceof Error && error.name === "NotFoundError") {
+      console.warn("[ChangeTracker] _pendingChanges table not found - cannot clear");
+      return;
+    }
+    console.error("[ChangeTracker] Error clearing pending changes:", error);
+  }
 }
 
 /**
  * Get pending changes count
  */
 export async function getPendingChangesCount(): Promise<number> {
-  return db._pendingChanges.count();
+  try {
+    if (!db._pendingChanges) {
+      return 0;
+    }
+    return await db._pendingChanges.count();
+  } catch (error) {
+    if (error instanceof Error && error.name === "NotFoundError") {
+      return 0;
+    }
+    console.error("[ChangeTracker] Error counting pending changes:", error);
+    return 0;
+  }
 }

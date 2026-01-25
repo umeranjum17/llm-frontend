@@ -14,6 +14,7 @@ import { MobileNav } from "@/components/mobile-nav";
 import { InstallPrompt, UpdatePrompt } from "@/components/pwa";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { DbInitOverlay } from "@/components/db/db-init-overlay";
+import { MigrationBanner } from "@/components/migration-banner";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -93,6 +94,7 @@ export default function RootLayout({
             disableTransitionOnChange
           >
             <GlobalHooks />
+            <MigrationBanner />
             {children}
             <CommandPalette />
             <MobileNav />

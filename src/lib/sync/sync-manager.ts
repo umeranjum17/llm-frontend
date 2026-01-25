@@ -146,7 +146,9 @@ export async function sync(
  */
 export async function isSyncConfigured(): Promise<boolean> {
   const s3 = await S3Adapter.fromConfig();
-  return s3 !== null;
+  const isConfigured = s3 !== null;
+  console.log("[SyncManager] isSyncConfigured:", isConfigured);
+  return isConfigured;
 }
 
 /**
