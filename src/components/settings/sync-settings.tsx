@@ -362,7 +362,7 @@ export function SyncSettings() {
                       <div className="text-xs text-yellow-800 dark:text-yellow-300">
                         <p className="font-semibold mb-2">First Time Setup: Configure CORS</p>
                         <p className="mb-2">
-                          If sync fails with "Failed to fetch" or CORS errors, you need to configure CORS on your bucket.
+                          If sync fails with &ldquo;Failed to fetch&rdquo; or CORS errors, you need to configure CORS on your bucket.
                         </p>
                         <div className="mb-2 p-2 bg-yellow-200 dark:bg-yellow-800 rounded text-[11px] space-y-1">
                           <div>
@@ -392,7 +392,7 @@ export function SyncSettings() {
                               <strong>Allowed Headers:</strong> Set to * (asterisk)
                             </li>
                             <li>
-                              <strong>Expose Headers:</strong> Add "ETag" (click Add header if needed)
+                              <strong>Expose Headers:</strong> Add &ldquo;ETag&rdquo; (click Add header if needed)
                             </li>
                             <li>Save the policy</li>
                           </ol>
@@ -476,7 +476,7 @@ export function SyncSettings() {
                             <strong>Access Key ID</strong> and <strong>Secret Access Key</strong> are correct
                           </li>
                           <li>
-                            <strong>Token Permissions:</strong> Must have "Object Read & Write" permissions
+                            <strong>Token Permissions:</strong> Must have &ldquo;Object Read &amp; Write&rdquo; permissions
                           </li>
                           <li>
                             <strong>Bucket Name:</strong> Verify it matches exactly (case-sensitive)
@@ -486,7 +486,7 @@ export function SyncSettings() {
                           </li>
                         </ul>
                         <p className="text-[10px] mt-2">
-                          💡 <strong>Tip:</strong> Try regenerating your R2 API token with "Object Read & Write" permissions
+                          💡 <strong>Tip:</strong> Try regenerating your R2 API token with &ldquo;Object Read &amp; Write&rdquo; permissions
                           and updating the credentials in the configuration.
                         </p>
                       </div>
@@ -544,7 +544,7 @@ export function SyncSettings() {
                 onChange={(e) => setRegion(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                For Cloudflare R2: use "auto". For AWS S3: use your bucket region (e.g., "us-east-1")
+                For Cloudflare R2: use &ldquo;auto&rdquo;. For AWS S3: use your bucket region (e.g., &ldquo;us-east-1&rdquo;)
               </p>
             </div>
 
