@@ -73,7 +73,7 @@ export function setApplyingRemoteChanges(applying: boolean) {
 async function queueChange(
   operation: "create" | "update" | "delete",
   table: string,
-  recordId: string | number | Date | ArrayBuffer | ArrayBufferView,
+  recordId: any, // Accept any type from Dexie hooks
   data?: any,
   mods?: Record<string, any>
 ) {
