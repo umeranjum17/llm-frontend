@@ -30,6 +30,8 @@ import {
   Copy,
   Check,
   Info,
+  AlertTriangle,
+  ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 import { setS3Config, getS3Config } from "@/lib/sync/device-id";
@@ -58,6 +60,8 @@ export function SyncSettings() {
   const [bucket, setBucket] = useState("");
   const [region, setRegion] = useState("us-east-1");
   const [deviceIdCopied, setDeviceIdCopied] = useState(false);
+  const [showCorsHelp, setShowCorsHelp] = useState(false);
+  const [lastSyncError, setLastSyncError] = useState<string | null>(null);
 
   // Load sync status on mount
   useEffect(() => {
@@ -111,6 +115,7 @@ export function SyncSettings() {
   const handleSync = async () => {
     setIsSyncing(true);
     setSyncProgress(null);
+    setLastSyncError(null);
 
     try {
       const result = await sync((progress) => {
@@ -121,14 +126,30 @@ export function SyncSettings() {
         toast.success(
           `Sync complete: ${result.uploaded} uploaded, ${result.downloaded} downloaded, ${result.applied} applied`
         );
+        setLastSyncError(null);
       } else {
         toast.error(`Sync failed: ${result.error}`);
+        setLastSyncError(result.error || "Unknown error");
+
+        // Auto-show CORS help if it's a CORS error
+        if (result.error?.toLowerCase().includes("cors") ||
+            result.error?.toLowerCase().includes("access-control")) {
+          setShowCorsHelp(true);
+        }
       }
 
       loadSyncStatus();
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       toast.error("Sync failed");
       console.error(error);
+      setLastSyncError(errorMessage);
+
+      // Auto-show CORS help if it's a CORS error
+      if (errorMessage.toLowerCase().includes("cors") ||
+          errorMessage.toLowerCase().includes("access-control")) {
+        setShowCorsHelp(true);
+      }
     } finally {
       setIsSyncing(false);
       setSyncProgress(null);
@@ -274,6 +295,104 @@ export function SyncSettings() {
                       between devices. This is much more efficient than
                       full exports.
                     </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* CORS Help */}
+            {syncStatus.configured && (
+              <div className="mt-4">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowCorsHelp(!showCorsHelp)}
+                  className="text-xs"
+                >
+                  <Info className="h-3 w-3 mr-1" />
+                  {showCorsHelp ? "Hide" : "Show"} CORS Setup Instructions
+                </Button>
+
+                {showCorsHelp && (
+                  <div className="mt-2 p-3 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                    <div className="flex gap-2">
+                      <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-500 mt-0.5 shrink-0" />
+                      <div className="text-xs text-yellow-800 dark:text-yellow-300">
+                        <p className="font-semibold mb-2">First Time Setup: Configure CORS</p>
+                        <p className="mb-2">
+                          If sync fails with CORS errors, you need to add a CORS policy to your bucket:
+                        </p>
+
+                        <div className="space-y-2 mb-2">
+                          <p className="font-medium">For Cloudflare R2:</p>
+                          <ol className="list-decimal list-inside space-y-1 ml-2">
+                            <li>Go to R2 Dashboard → Select your bucket</li>
+                            <li>Click <strong>Settings</strong> tab</li>
+                            <li>Find <strong>CORS Policy</strong> section</li>
+                            <li>Add the policy below and save</li>
+                          </ol>
+                        </div>
+
+                        <div className="space-y-2 mb-2">
+                          <p className="font-medium">For AWS S3:</p>
+                          <ol className="list-decimal list-inside space-y-1 ml-2">
+                            <li>Go to S3 Console → Select your bucket</li>
+                            <li>Click <strong>Permissions</strong> tab</li>
+                            <li>Scroll to <strong>CORS configuration</strong></li>
+                            <li>Add the policy below and save</li>
+                          </ol>
+                        </div>
+
+                        <div className="bg-yellow-100 dark:bg-yellow-900 p-2 rounded border border-yellow-300 dark:border-yellow-700 font-mono text-[10px] overflow-x-auto">
+                          <pre>{`[
+  {
+    "AllowedOrigins": [
+      "${window.location.origin}",
+      "http://localhost:3000",
+      "http://localhost:3001"
+    ],
+    "AllowedMethods": [
+      "GET", "PUT", "POST", "DELETE", "HEAD"
+    ],
+    "AllowedHeaders": ["*"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3000
+  }
+]`}</pre>
+                        </div>
+
+                        <p className="mt-2 text-[10px] flex items-center gap-1">
+                          <ExternalLink className="h-3 w-3" />
+                          <a
+                            href="https://developers.cloudflare.com/r2/buckets/cors/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline hover:text-yellow-900 dark:hover:text-yellow-200"
+                          >
+                            Cloudflare R2 CORS Documentation
+                          </a>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Last Error */}
+            {lastSyncError && (
+              <div className="mt-4 p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg">
+                <div className="flex gap-2">
+                  <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                  <div className="text-xs text-red-600 dark:text-red-400">
+                    <p className="font-medium mb-1">Last Sync Error</p>
+                    <p className="font-mono text-[10px]">{lastSyncError}</p>
+                    {(lastSyncError.toLowerCase().includes("cors") ||
+                      lastSyncError.toLowerCase().includes("access-control")) && (
+                      <p className="mt-2">
+                        This is a CORS error. Please configure CORS on your bucket (see instructions above).
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
