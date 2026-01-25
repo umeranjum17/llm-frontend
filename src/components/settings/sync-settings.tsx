@@ -322,9 +322,19 @@ export function SyncSettings() {
                         <p className="mb-2">
                           If sync fails with "Failed to fetch" or CORS errors, you need to configure CORS on your bucket.
                         </p>
-                        <div className="mb-2 p-2 bg-yellow-200 dark:bg-yellow-800 rounded text-[11px]">
-                          <strong>⚠️ Important:</strong> You must include ALL 5 HTTP methods (GET, PUT, POST, DELETE, HEAD)
-                          and the ETag expose header, or sync will fail.
+                        <div className="mb-2 p-2 bg-yellow-200 dark:bg-yellow-800 rounded text-[11px] space-y-1">
+                          <div>
+                            <strong>⚠️ Important:</strong> You must include ALL 5 HTTP methods (GET, PUT, POST, DELETE, HEAD)
+                            and the ETag expose header, or sync will fail.
+                          </div>
+                          <div className="text-[10px]">
+                            <strong>Common issues:</strong>
+                            <ul className="list-disc ml-4 mt-1">
+                              <li>Verify the policy saved without errors (check for red error message)</li>
+                              <li>Wait 10-30 seconds after saving for changes to take effect</li>
+                              <li>Ensure JSON is valid (no syntax errors)</li>
+                            </ul>
+                          </div>
                         </div>
 
                         <div className="space-y-2 mb-2">
@@ -402,11 +412,42 @@ export function SyncSettings() {
                   <div className="text-xs text-red-600 dark:text-red-400">
                     <p className="font-medium mb-1">Last Sync Error</p>
                     <p className="font-mono text-[10px]">{lastSyncError}</p>
+
+                    {/* CORS Error Help */}
                     {(lastSyncError.toLowerCase().includes("cors") ||
                       lastSyncError.toLowerCase().includes("access-control")) && (
                       <p className="mt-2">
                         This is a CORS error. Please configure CORS on your bucket (see instructions above).
                       </p>
+                    )}
+
+                    {/* 401 Unauthorized Error Help */}
+                    {(lastSyncError.includes("401") ||
+                      lastSyncError.toLowerCase().includes("unauthorized") ||
+                      lastSyncError.toLowerCase().includes("403") ||
+                      lastSyncError.toLowerCase().includes("forbidden")) && (
+                      <div className="mt-2 space-y-2">
+                        <p className="font-semibold">Authentication Error (401/403)</p>
+                        <p>Your credentials are incorrect or lack permissions. Please check:</p>
+                        <ul className="list-disc ml-4 text-[10px] space-y-1">
+                          <li>
+                            <strong>Access Key ID</strong> and <strong>Secret Access Key</strong> are correct
+                          </li>
+                          <li>
+                            <strong>Token Permissions:</strong> Must have "Object Read & Write" permissions
+                          </li>
+                          <li>
+                            <strong>Bucket Name:</strong> Verify it matches exactly (case-sensitive)
+                          </li>
+                          <li>
+                            <strong>Endpoint URL:</strong> Should be https://&lt;account-id&gt;.r2.cloudflarestorage.com
+                          </li>
+                        </ul>
+                        <p className="text-[10px] mt-2">
+                          💡 <strong>Tip:</strong> Try regenerating your R2 API token with "Object Read & Write" permissions
+                          and updating the credentials in the configuration.
+                        </p>
+                      </div>
                     )}
                   </div>
                 </div>
