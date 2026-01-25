@@ -19,7 +19,7 @@ export function setApplyingRemoteChanges(applying: boolean) {
 async function queueChange(
   operation: "create" | "update" | "delete",
   table: string,
-  recordId: string,
+  recordId: string | number | Date | ArrayBuffer | ArrayBufferView,
   data?: any,
   mods?: Record<string, any>
 ) {
@@ -32,13 +32,16 @@ async function queueChange(
     const deviceId = await getDeviceId();
     const timestamp = Date.now();
 
+    // Convert recordId to string for storage
+    const recordIdStr = String(recordId);
+
     const change: ChangeEntry = {
       id: `${deviceId}-${timestamp}-${Math.random().toString(36).substring(2)}`,
       deviceId,
       timestamp,
       table,
       operation,
-      recordId,
+      recordId: recordIdStr,
       data,
       mods,
     };
