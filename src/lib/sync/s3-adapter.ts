@@ -114,7 +114,10 @@ export class S3Adapter {
    * PUT an object to S3
    */
   private async putObject(key: string, body: string): Promise<void> {
-    const url = `${this.endpoint}/${this.bucket}/${key}`;
+    // Check if endpoint already includes bucket (for path-style URLs)
+    const url = this.endpoint.includes(this.bucket)
+      ? `${this.endpoint}/${key}`
+      : `${this.endpoint}/${this.bucket}/${key}`;
     const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, "");
     const date = new Date().toUTCString();
 
@@ -145,7 +148,10 @@ export class S3Adapter {
    * GET an object from S3
    */
   private async getObject(key: string): Promise<string> {
-    const url = `${this.endpoint}/${this.bucket}/${key}`;
+    // Check if endpoint already includes bucket (for path-style URLs)
+    const url = this.endpoint.includes(this.bucket)
+      ? `${this.endpoint}/${key}`
+      : `${this.endpoint}/${this.bucket}/${key}`;
     const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, "");
     const date = new Date().toUTCString();
 
@@ -173,7 +179,10 @@ export class S3Adapter {
    * List objects in S3 with a prefix
    */
   private async listObjects(prefix: string): Promise<Array<{ key: string }>> {
-    const url = `${this.endpoint}/${this.bucket}?list-type=2&prefix=${encodeURIComponent(prefix)}`;
+    // Check if endpoint already includes bucket (for path-style URLs)
+    const url = this.endpoint.includes(this.bucket)
+      ? `${this.endpoint}?list-type=2&prefix=${encodeURIComponent(prefix)}`
+      : `${this.endpoint}/${this.bucket}?list-type=2&prefix=${encodeURIComponent(prefix)}`;
     const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, "");
     const date = new Date().toUTCString();
 
