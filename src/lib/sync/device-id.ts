@@ -1,21 +1,62 @@
 import { db } from "@/lib/db/schema";
 
+let tempDeviceId: string | null = null;
+
+// Track if table has been verified to work
+let tableVerified = false;
+
+/**
+ * Check if _syncMeta table exists and is usable.
+ * This performs a multi-layer check:
+ * 1. If we've already verified writes work, trust that (fast path)
+ * 2. Check DB is open
+ * 3. Check IDB has the object store
+ * 4. Check Dexie's internal table reference exists (catches HMR issues)
+ */
+function syncMetaTableExists(): boolean {
+  // Fast path: if we've already verified the table works, trust that
+  if (tableVerified) return true;
+
+  if (!db.isOpen()) return false;
+
+  try {
+    const idb = db.backendDB();
+    if (!idb) return false;
+
+    // Check that IDB has the store
+    if (!idb.objectStoreNames.contains("_syncMeta")) return false;
+
+    // Check that Dexie's internal table reference exists
+    // This catches the case where IDB has the table but Dexie's schema mapping is broken
+    // (common during HMR when the module reloads but IDB connection is stale)
+    if (!db._syncMeta) return false;
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Generate or retrieve a persistent device ID for this browser/device.
  * Stored in the _syncMeta table to persist across sessions.
  */
 export async function getDeviceId(): Promise<string> {
-  try {
-    // Check if table exists (db might not be migrated yet)
-    if (!db._syncMeta) {
-      console.warn("[DeviceID] _syncMeta table doesn't exist yet - database needs migration");
-      // Return a temporary device ID until migration completes
-      return `temp-device-${Date.now()}`;
-    }
+  // Always have a temp ID ready
+  if (!tempDeviceId) {
+    tempDeviceId = `temp-device-${Date.now()}`;
+  }
 
+  // Check if table actually exists before trying to use it
+  if (!syncMetaTableExists()) {
+    return tempDeviceId;
+  }
+
+  try {
     const meta = await db._syncMeta.get("default");
 
     if (meta?.deviceId) {
+      tableVerified = true;
       return meta.deviceId;
     }
 
@@ -29,14 +70,12 @@ export async function getDeviceId(): Promise<string> {
       lastSyncAt: 0,
     });
 
+    tableVerified = true;
     return deviceId;
-  } catch (error) {
-    if (error instanceof Error && error.name === "NotFoundError") {
-      console.warn("[DeviceID] _syncMeta table not found - database needs migration to v20");
-      return `temp-device-${Date.now()}`;
-    }
-    console.error("Error getting device ID:", error);
-    throw error;
+  } catch {
+    // Table access failed - mark as unverified for next check
+    tableVerified = false;
+    return tempDeviceId;
   }
 }
 
@@ -50,16 +89,25 @@ function generateDeviceId(): string {
 }
 
 /**
+ * Reset device ID state.
+ * Call this after a successful migration to re-enable sync meta access.
+ */
+export function resetDeviceIdState() {
+  tableVerified = false;
+  console.log("[DeviceId] State reset");
+}
+
+/**
  * Get the last sync timestamp for this device
  */
 export async function getLastSyncTime(): Promise<number> {
+  if (!syncMetaTableExists()) return 0;
   try {
-    if (!db._syncMeta) return 0;
     const meta = await db._syncMeta.get("default");
+    tableVerified = true;
     return meta?.lastSyncAt || 0;
-  } catch (error) {
-    if (error instanceof Error && error.name === "NotFoundError") return 0;
-    console.error("[DeviceID] Error getting last sync time:", error);
+  } catch {
+    tableVerified = false;
     return 0;
   }
 }
@@ -68,30 +116,20 @@ export async function getLastSyncTime(): Promise<number> {
  * Update the last sync timestamp
  */
 export async function setLastSyncTime(timestamp: number): Promise<void> {
+  if (!syncMetaTableExists()) return;
   try {
-    if (!db._syncMeta) {
-      console.warn("[DeviceID] Cannot set sync time - table doesn't exist");
-      return;
-    }
-
     const deviceId = await getDeviceId();
     const meta = await db._syncMeta.get("default");
-
-    // IMPORTANT: Must preserve s3Config when updating timestamp
     await db._syncMeta.put({
       id: "default",
       deviceId,
       lastSyncAt: timestamp,
-      s3Config: meta?.s3Config, // Preserve existing config
+      s3Config: meta?.s3Config,
     });
-
-    console.log("[DeviceID] Updated lastSyncAt, s3Config preserved:", !!meta?.s3Config);
-  } catch (error) {
-    if (error instanceof Error && error.name === "NotFoundError") {
-      console.warn("[DeviceID] Cannot set sync time - table not found");
-      return;
-    }
-    console.error("[DeviceID] Error setting sync time:", error);
+    tableVerified = true;
+  } catch {
+    tableVerified = false;
+    // Silently ignore
   }
 }
 
@@ -99,30 +137,13 @@ export async function setLastSyncTime(timestamp: number): Promise<void> {
  * Get S3 configuration for sync
  */
 export async function getS3Config() {
+  if (!syncMetaTableExists()) return undefined;
   try {
-    if (!db._syncMeta) {
-      console.warn("[DeviceID] _syncMeta table doesn't exist - database needs migration to v20");
-      return undefined;
-    }
-
     const meta = await db._syncMeta.get("default");
-    console.log("[DeviceID] Getting S3 config - meta exists:", !!meta, "config exists:", !!meta?.s3Config);
-    if (meta?.s3Config) {
-      console.log("[DeviceID] Config details:", {
-        endpoint: meta.s3Config.endpoint?.substring(0, 30) + "...",
-        bucket: meta.s3Config.bucket,
-        region: meta.s3Config.region,
-        hasAccessKey: !!meta.s3Config.accessKeyId,
-        hasSecretKey: !!meta.s3Config.secretAccessKey,
-      });
-    }
+    tableVerified = true;
     return meta?.s3Config;
-  } catch (error) {
-    if (error instanceof Error && error.name === "NotFoundError") {
-      console.warn("[DeviceID] _syncMeta table not found - database needs migration to v20");
-      return undefined;
-    }
-    console.error("[DeviceID] Error getting S3 config:", error);
+  } catch {
+    tableVerified = false;
     return undefined;
   }
 }
@@ -137,43 +158,22 @@ export async function setS3Config(config: {
   bucket: string;
   region?: string;
 }) {
-  try {
-    if (!db._syncMeta) {
-      const error = new Error("Database migration required: _syncMeta table doesn't exist. Please refresh the page to complete migration to v20.");
-      console.error("[DeviceID]", error.message);
-      throw error;
-    }
+  if (!syncMetaTableExists()) {
+    throw new Error("Database not ready. Please hard refresh (Ctrl+Shift+R).");
+  }
 
+  try {
     const deviceId = await getDeviceId();
     const meta = await db._syncMeta.get("default");
-
-    console.log("[DeviceID] Saving S3 config:", {
-      endpoint: config.endpoint?.substring(0, 30) + "...",
-      bucket: config.bucket,
-      region: config.region,
-      hasAccessKey: !!config.accessKeyId,
-      hasSecretKey: !!config.secretAccessKey,
-    });
-
     await db._syncMeta.put({
       id: "default",
       deviceId,
       lastSyncAt: meta?.lastSyncAt || 0,
       s3Config: config,
     });
-
-    console.log("[DeviceID] S3 config saved successfully");
-
-    // Verify it was saved
-    const saved = await db._syncMeta.get("default");
-    console.log("[DeviceID] Verification - config exists after save:", !!saved?.s3Config);
+    tableVerified = true;
   } catch (error) {
-    if (error instanceof Error && error.name === "NotFoundError") {
-      const migrationError = new Error("Database migration required: _syncMeta table not found. Please refresh the page to complete migration to v20.");
-      console.error("[DeviceID]", migrationError.message);
-      throw migrationError;
-    }
-    console.error("[DeviceID] Error saving S3 config:", error);
-    throw error;
+    tableVerified = false;
+    throw new Error("Failed to save sync config. Please hard refresh and try again.");
   }
 }

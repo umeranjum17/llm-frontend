@@ -1,8 +1,8 @@
 import Dexie, { type EntityTable } from "dexie";
+import { TABLE_REGISTRY, getStoresForVersion } from "./table-registry";
 
-// Current schema version - update this when adding new migrations
-// Used by health check to detect migrations and adjust timeouts
-export const DB_SCHEMA_VERSION = 20;
+// Current schema version - update this when adding new tables or indexes
+export const DB_SCHEMA_VERSION = 26;
 
 // Type definitions
 export interface Project {
@@ -542,447 +542,49 @@ export class LuminaDB extends Dexie {
   constructor() {
     super("LuminaDB");
 
-    this.version(1).stores({
-      projects: "id, name, createdAt, updatedAt",
-      projectFiles: "id, projectId, name, createdAt",
-      chats:
-        "id, projectId, title, modelId, createdAt, updatedAt, pinned, favorite, folderId",
-      messages: "id, chatId, role, createdAt, parentId",
-      apiKeys: "id, provider, createdAt",
-      settings: "id",
-      modelFavorites: "id, category, pinnedOrder, lastUsed",
-      folders: "id, name, createdAt",
-    });
+    // Define ALL versions from 1 to DB_SCHEMA_VERSION, not just versions where tables were added.
+    // This ensures Dexie can properly upgrade from ANY previous version and avoids version gaps
+    // that can confuse Dexie's internal schema tracking (especially during HMR/hot reload).
+    for (let version = 1; version <= DB_SCHEMA_VERSION; version++) {
+      const schema = this.version(version).stores(getStoresForVersion(version));
 
-    // Version 2: Add tags and tag rules
-    this.version(2).stores({
-      projects: "id, name, createdAt, updatedAt",
-      projectFiles: "id, projectId, name, createdAt",
-      chats:
-        "id, projectId, title, modelId, createdAt, updatedAt, pinned, favorite, folderId",
-      messages: "id, chatId, role, createdAt, parentId",
-      apiKeys: "id, provider, createdAt",
-      settings: "id",
-      modelFavorites: "id, category, pinnedOrder, lastUsed",
-      folders: "id, name, createdAt",
-      tags: "id, name, createdAt, usageCount",
-      tagRules: "id, tagId, enabled, createdAt",
-      parameterPresets: "id, name, createdAt, isDefault",
-    });
+      if (version === DB_SCHEMA_VERSION) {
+        schema.upgrade(async (tx) => {
+          // Ensure all required tables exist by accessing them in the transaction
+          // This is a safety check - Dexie should create them automatically from .stores()
+          const stores = getStoresForVersion(version);
+          const expectedTables = Object.keys(stores);
+          const idb = tx.idbtrans?.db;
 
-    // Version 3: Add agents and prompt library
-    this.version(3).stores({
-      projects: "id, name, createdAt, updatedAt",
-      projectFiles: "id, projectId, name, createdAt",
-      chats:
-        "id, projectId, title, modelId, createdAt, updatedAt, pinned, favorite, folderId",
-      messages: "id, chatId, role, createdAt, parentId",
-      apiKeys: "id, provider, createdAt, baseUrl",
-      settings: "id",
-      modelFavorites: "id, category, pinnedOrder, lastUsed",
-      folders: "id, name, createdAt",
-      tags: "id, name, createdAt, usageCount",
-      tagRules: "id, tagId, enabled, createdAt",
-      parameterPresets: "id, name, createdAt, isDefault",
-      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
-      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
-    });
+          console.log(`[DB] Running v${version} upgrade`);
 
-    // Version 4: API keys can store base URLs (OpenAI-compatible + local)
-    this.version(4).stores({
-      projects: "id, name, createdAt, updatedAt",
-      projectFiles: "id, projectId, name, createdAt",
-      chats:
-        "id, projectId, title, modelId, createdAt, updatedAt, pinned, favorite, folderId",
-      messages: "id, chatId, role, createdAt, parentId",
-      apiKeys: "id, provider, createdAt, baseUrl",
-      settings: "id",
-      modelFavorites: "id, category, pinnedOrder, lastUsed",
-      folders: "id, name, createdAt",
-      tags: "id, name, createdAt, usageCount",
-      tagRules: "id, tagId, enabled, createdAt",
-      parameterPresets: "id, name, createdAt, isDefault",
-      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
-      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
-    });
+          if (!idb) {
+            console.warn("[DB] Upgrade transaction missing IDB handle");
+            return;
+          }
 
-    // Version 5: Add vector documents for RAG
-    this.version(5).stores({
-      projects: "id, name, createdAt, updatedAt",
-      projectFiles: "id, projectId, name, createdAt",
-      chats:
-        "id, projectId, title, modelId, createdAt, updatedAt, pinned, favorite, folderId",
-      messages: "id, chatId, role, createdAt, parentId",
-      apiKeys: "id, provider, createdAt, baseUrl",
-      settings: "id",
-      modelFavorites: "id, category, pinnedOrder, lastUsed",
-      folders: "id, name, createdAt",
-      tags: "id, name, createdAt, usageCount",
-      tagRules: "id, tagId, enabled, createdAt",
-      parameterPresets: "id, name, createdAt, isDefault",
-      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
-      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
-      vectorDocuments: "id",
-    });
+          const existingTables = Array.from(idb.objectStoreNames);
+          console.log(
+            `[DB] Expected tables: ${expectedTables.length}, Existing: ${existingTables.length}`
+          );
 
-    // Version 6: Add order fields for drag & drop
-    this.version(6).stores({
-      projects: "id, name, createdAt, updatedAt",
-      projectFiles: "id, projectId, name, createdAt",
-      chats:
-        "id, projectId, title, modelId, createdAt, updatedAt, pinned, favorite, folderId, order",
-      messages: "id, chatId, role, createdAt, parentId",
-      apiKeys: "id, provider, createdAt, baseUrl",
-      settings: "id",
-      modelFavorites: "id, category, pinnedOrder, lastUsed",
-      folders: "id, name, createdAt, order",
-      tags: "id, name, createdAt, usageCount",
-      tagRules: "id, tagId, enabled, createdAt",
-      parameterPresets: "id, name, createdAt, isDefault",
-      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
-      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
-      vectorDocuments: "id",
-    });
-
-    // Version 7: Add user memories for ChatGPT-like memory feature
-    this.version(7).stores({
-      projects: "id, name, createdAt, updatedAt",
-      projectFiles: "id, projectId, name, createdAt",
-      chats:
-        "id, projectId, title, modelId, createdAt, updatedAt, pinned, favorite, folderId, order",
-      messages: "id, chatId, role, createdAt, parentId",
-      apiKeys: "id, provider, createdAt, baseUrl",
-      settings: "id",
-      modelFavorites: "id, category, pinnedOrder, lastUsed",
-      userMemories: "id, category, source, createdAt, isActive",
-      folders: "id, name, createdAt, order",
-      tags: "id, name, createdAt, usageCount",
-      tagRules: "id, tagId, enabled, createdAt",
-      parameterPresets: "id, name, createdAt, isDefault",
-      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
-      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
-      vectorDocuments: "id",
-    });
-
-    // Version 8: Add indexing for vector documents to improve performance
-    this.version(8).stores({
-      projects: "id, name, createdAt, updatedAt",
-      projectFiles: "id, projectId, name, createdAt",
-      chats:
-        "id, projectId, title, modelId, createdAt, updatedAt, pinned, favorite, folderId, order",
-      messages: "id, chatId, role, createdAt, parentId",
-      apiKeys: "id, provider, createdAt, baseUrl",
-      settings: "id",
-      modelFavorites: "id, category, pinnedOrder, lastUsed",
-      userMemories: "id, category, source, createdAt, isActive",
-      folders: "id, name, createdAt, order",
-      tags: "id, name, createdAt, usageCount",
-      tagRules: "id, tagId, enabled, createdAt",
-      parameterPresets: "id, name, createdAt, isDefault",
-      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
-      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
-      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
-    });
-
-    // Version 9: Add Workflows
-    this.version(9).stores({
-      projects: "id, name, createdAt, updatedAt",
-      projectFiles: "id, projectId, name, createdAt",
-      chats:
-        "id, projectId, title, modelId, createdAt, updatedAt, pinned, favorite, folderId, order",
-      messages: "id, chatId, role, createdAt, parentId",
-      apiKeys: "id, provider, createdAt, baseUrl",
-      settings: "id",
-      modelFavorites: "id, category, pinnedOrder, lastUsed",
-      userMemories: "id, category, source, createdAt, isActive",
-      folders: "id, name, createdAt, order",
-      tags: "id, name, createdAt, usageCount",
-      tagRules: "id, tagId, enabled, createdAt",
-      parameterPresets: "id, name, createdAt, isDefault",
-      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
-      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
-      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
-      workflows: "id, name, createdAt, updatedAt",
-    });
-
-    // Version 10: Add message ratings
-    this.version(10).stores({
-      projects: "id, name, createdAt, updatedAt",
-      projectFiles: "id, projectId, name, createdAt",
-      chats:
-        "id, projectId, title, modelId, createdAt, updatedAt, pinned, favorite, folderId, order",
-      messages: "id, chatId, role, createdAt, parentId, rating",
-      apiKeys: "id, provider, createdAt, baseUrl",
-      settings: "id",
-      modelFavorites: "id, category, pinnedOrder, lastUsed",
-      userMemories: "id, category, source, createdAt, isActive",
-      folders: "id, name, createdAt, order",
-      tags: "id, name, createdAt, usageCount",
-      tagRules: "id, tagId, enabled, createdAt",
-      parameterPresets: "id, name, createdAt, isDefault",
-      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
-      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
-      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
-      workflows: "id, name, createdAt, updatedAt",
-    });
-    // Version 11: Add summary to chats
-    this.version(11).stores({
-      projects: "id, name, createdAt, updatedAt",
-      projectFiles: "id, projectId, name, createdAt",
-      chats:
-        "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order",
-      messages: "id, chatId, role, createdAt, parentId, rating",
-      apiKeys: "id, provider, createdAt, baseUrl",
-      settings: "id",
-      modelFavorites: "id, category, pinnedOrder, lastUsed",
-      userMemories: "id, category, source, createdAt, isActive",
-      folders: "id, name, createdAt, order",
-      tags: "id, name, createdAt, usageCount",
-      tagRules: "id, tagId, enabled, createdAt",
-      parameterPresets: "id, name, createdAt, isDefault",
-      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
-      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
-      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
-      workflows: "id, name, createdAt, updatedAt",
-    });
-    // Version 12: Add model aliases
-    this.version(12).stores({
-      projects: "id, name, createdAt, updatedAt",
-      projectFiles: "id, projectId, name, createdAt",
-      chats:
-        "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order",
-      messages: "id, chatId, role, createdAt, parentId, rating",
-      apiKeys: "id, provider, createdAt, baseUrl",
-      settings: "id",
-      modelFavorites: "id, category, pinnedOrder, lastUsed",
-      userMemories: "id, category, source, createdAt, isActive",
-      folders: "id, name, createdAt, order",
-      tags: "id, name, createdAt, usageCount",
-      tagRules: "id, tagId, enabled, createdAt",
-      parameterPresets: "id, name, createdAt, isDefault",
-      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
-      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
-      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
-      workflows: "id, name, createdAt, updatedAt",
-      modelAliases: "id, alias, updatedAt",
-    });
-
-    // Version 13: Add MCP Servers
-    this.version(13).stores({
-      projects: "id, name, createdAt, updatedAt",
-      projectFiles: "id, projectId, name, createdAt",
-      chats:
-        "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order",
-      messages: "id, chatId, role, createdAt, parentId, rating",
-      apiKeys: "id, provider, createdAt, baseUrl",
-      settings: "id",
-      modelFavorites: "id, category, pinnedOrder, lastUsed",
-      userMemories: "id, category, source, createdAt, isActive",
-      folders: "id, name, createdAt, order",
-      tags: "id, name, createdAt, usageCount",
-      tagRules: "id, tagId, enabled, createdAt",
-      parameterPresets: "id, name, createdAt, isDefault",
-      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
-      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
-      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
-      workflows: "id, name, createdAt, updatedAt",
-      modelAliases: "id, alias, updatedAt",
-      mcpServers: "id, enabled, createdAt",
-    });
-
-    // Version 14: Add Skills system (replaces Prompts with semantic matching)
-    this.version(14).stores({
-      projects: "id, name, createdAt, updatedAt",
-      projectFiles: "id, projectId, name, createdAt",
-      chats:
-        "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order",
-      messages: "id, chatId, role, createdAt, parentId, rating, skillId",
-      apiKeys: "id, provider, createdAt, baseUrl",
-      settings: "id",
-      modelFavorites: "id, category, pinnedOrder, lastUsed",
-      userMemories: "id, category, source, createdAt, isActive",
-      folders: "id, name, createdAt, order",
-      tags: "id, name, createdAt, usageCount",
-      tagRules: "id, tagId, enabled, createdAt",
-      parameterPresets: "id, name, createdAt, isDefault",
-      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
-      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
-      skills: "id, name, category, isBuiltIn, isEnabled, isFavorite, usageCount, updatedAt",
-      skillEmbeddings: "skillId, modelId",
-      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
-      workflows: "id, name, createdAt, updatedAt",
-      modelAliases: "id, alias, updatedAt",
-      mcpServers: "id, enabled, createdAt",
-    });
-
-    // Version 15: Add projectId to folders
-    this.version(15).stores({
-      projects: "id, name, createdAt, updatedAt",
-      projectFiles: "id, projectId, name, createdAt",
-      chats:
-        "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order",
-      messages: "id, chatId, role, createdAt, parentId, rating, skillId",
-      apiKeys: "id, provider, createdAt, baseUrl",
-      settings: "id",
-      modelFavorites: "id, category, pinnedOrder, lastUsed",
-      userMemories: "id, category, source, createdAt, isActive",
-      folders: "id, projectId, name, createdAt, order",
-      tags: "id, name, createdAt, usageCount",
-      tagRules: "id, tagId, enabled, createdAt",
-      parameterPresets: "id, name, createdAt, isDefault",
-      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
-      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
-      skills: "id, name, category, isBuiltIn, isEnabled, isFavorite, usageCount, updatedAt",
-      skillEmbeddings: "skillId, modelId",
-      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
-      workflows: "id, name, createdAt, updatedAt",
-      modelAliases: "id, alias, updatedAt",
-      mcpServers: "id, enabled, createdAt",
-    });
-
-    // Version 16: Add composite indexes for performance optimization
-    // - [chatId+createdAt] on messages: faster message retrieval for a chat
-    // - [projectId+updatedAt] on chats: faster project-scoped chat queries
-    this.version(16).stores({
-      projects: "id, name, createdAt, updatedAt",
-      projectFiles: "id, projectId, name, createdAt",
-      chats:
-        "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order, [projectId+updatedAt]",
-      messages: "id, chatId, role, createdAt, parentId, rating, skillId, [chatId+createdAt]",
-      apiKeys: "id, provider, createdAt, baseUrl",
-      settings: "id",
-      modelFavorites: "id, category, pinnedOrder, lastUsed",
-      userMemories: "id, category, source, createdAt, isActive",
-      folders: "id, projectId, name, createdAt, order",
-      tags: "id, name, createdAt, usageCount",
-      tagRules: "id, tagId, enabled, createdAt",
-      parameterPresets: "id, name, createdAt, isDefault",
-      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
-      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
-      skills: "id, name, category, isBuiltIn, isEnabled, isFavorite, usageCount, updatedAt",
-      skillEmbeddings: "skillId, modelId",
-      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
-      workflows: "id, name, createdAt, updatedAt",
-      modelAliases: "id, alias, updatedAt",
-      mcpServers: "id, enabled, createdAt",
-    });
-
-    // Version 17: Add deviceSecrets table for PWA persistence
-    // Stores encryption key in IndexedDB alongside encrypted API keys
-    // to ensure they are evicted together (fixes PWA key decryption issue)
-    this.version(17).stores({
-      projects: "id, name, createdAt, updatedAt",
-      projectFiles: "id, projectId, name, createdAt",
-      chats:
-        "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order, [projectId+updatedAt]",
-      messages: "id, chatId, role, createdAt, parentId, rating, skillId, [chatId+createdAt]",
-      apiKeys: "id, provider, createdAt, baseUrl",
-      settings: "id",
-      modelFavorites: "id, category, pinnedOrder, lastUsed",
-      userMemories: "id, category, source, createdAt, isActive",
-      folders: "id, projectId, name, createdAt, order",
-      tags: "id, name, createdAt, usageCount",
-      tagRules: "id, tagId, enabled, createdAt",
-      parameterPresets: "id, name, createdAt, isDefault",
-      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
-      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
-      skills: "id, name, category, isBuiltIn, isEnabled, isFavorite, usageCount, updatedAt",
-      skillEmbeddings: "skillId, modelId",
-      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
-      workflows: "id, name, createdAt, updatedAt",
-      modelAliases: "id, alias, updatedAt",
-      mcpServers: "id, enabled, createdAt",
-      deviceSecrets: "id",
-    });
-
-    // Version 18: Add contextSummaries table and isPinned index for context compaction
-    // - contextSummaries: Stores AI-generated summaries of compacted message groups
-    // - messages: Add isPinned and summarizedIntoId indexes for quick lookups
-    this.version(18).stores({
-      projects: "id, name, createdAt, updatedAt",
-      projectFiles: "id, projectId, name, createdAt",
-      chats:
-        "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order, [projectId+updatedAt]",
-      messages: "id, chatId, role, createdAt, parentId, rating, skillId, isPinned, summarizedIntoId, [chatId+createdAt]",
-      apiKeys: "id, provider, createdAt, baseUrl",
-      settings: "id",
-      modelFavorites: "id, category, pinnedOrder, lastUsed",
-      userMemories: "id, category, source, createdAt, isActive",
-      folders: "id, projectId, name, createdAt, order",
-      tags: "id, name, createdAt, usageCount",
-      tagRules: "id, tagId, enabled, createdAt",
-      parameterPresets: "id, name, createdAt, isDefault",
-      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
-      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
-      skills: "id, name, category, isBuiltIn, isEnabled, isFavorite, usageCount, updatedAt",
-      skillEmbeddings: "skillId, modelId",
-      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
-      workflows: "id, name, createdAt, updatedAt",
-      modelAliases: "id, alias, updatedAt",
-      mcpServers: "id, enabled, createdAt",
-      deviceSecrets: "id",
-      contextSummaries: "id, chatId, createdAt",
-    });
-
-    // Version 19: Add modelId index to contextSummaries for multi-model mode
-    // Each model in multi-model mode maintains its own context summaries
-    this.version(19).stores({
-      projects: "id, name, createdAt, updatedAt",
-      projectFiles: "id, projectId, name, createdAt",
-      chats:
-        "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order, [projectId+updatedAt]",
-      messages: "id, chatId, role, createdAt, parentId, rating, skillId, isPinned, summarizedIntoId, [chatId+createdAt]",
-      apiKeys: "id, provider, createdAt, baseUrl",
-      settings: "id",
-      modelFavorites: "id, category, pinnedOrder, lastUsed",
-      userMemories: "id, category, source, createdAt, isActive",
-      folders: "id, projectId, name, createdAt, order",
-      tags: "id, name, createdAt, usageCount",
-      tagRules: "id, tagId, enabled, createdAt",
-      parameterPresets: "id, name, createdAt, isDefault",
-      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
-      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
-      skills: "id, name, category, isBuiltIn, isEnabled, isFavorite, usageCount, updatedAt",
-      skillEmbeddings: "skillId, modelId",
-      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
-      workflows: "id, name, createdAt, updatedAt",
-      modelAliases: "id, alias, updatedAt",
-      mcpServers: "id, enabled, createdAt",
-      deviceSecrets: "id",
-      contextSummaries: "id, chatId, modelId, createdAt",
-    });
-
-    // Version 20: Add delta sync tables
-    // _pendingChanges: Local changes waiting to be synced (underscore = excluded from observation)
-    // _syncMeta: Sync metadata (device ID, last sync time, S3 config)
-    this.version(20).stores({
-      projects: "id, name, createdAt, updatedAt",
-      projectFiles: "id, projectId, name, createdAt",
-      chats:
-        "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order, [projectId+updatedAt]",
-      messages: "id, chatId, role, createdAt, parentId, rating, skillId, isPinned, summarizedIntoId, [chatId+createdAt]",
-      apiKeys: "id, provider, createdAt, baseUrl",
-      settings: "id",
-      modelFavorites: "id, category, pinnedOrder, lastUsed",
-      userMemories: "id, category, source, createdAt, isActive",
-      folders: "id, projectId, name, createdAt, order",
-      tags: "id, name, createdAt, usageCount",
-      tagRules: "id, tagId, enabled, createdAt",
-      parameterPresets: "id, name, createdAt, isDefault",
-      agents: "id, name, isBuiltIn, isActive, usageCount, updatedAt",
-      prompts: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt",
-      skills: "id, name, category, isBuiltIn, isEnabled, isFavorite, usageCount, updatedAt",
-      skillEmbeddings: "skillId, modelId",
-      vectorDocuments: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId",
-      workflows: "id, name, createdAt, updatedAt",
-      modelAliases: "id, alias, updatedAt",
-      mcpServers: "id, enabled, createdAt",
-      deviceSecrets: "id",
-      contextSummaries: "id, chatId, modelId, createdAt",
-      _pendingChanges: "id, timestamp, deviceId",
-      _syncMeta: "id",
-    });
+          // Log any missing tables for debugging
+          const missing = expectedTables.filter((t) => !existingTables.includes(t));
+          if (missing.length > 0) {
+            console.warn(`[DB] Missing tables detected: ${missing.join(", ")}`);
+            console.warn("[DB] This should not happen - Dexie should create them automatically");
+          } else {
+            console.log("[DB] ✓ All tables present");
+          }
+        });
+      }
+    }
   }
 }
 
 export const db = new LuminaDB();
+
+// Log database version on ready
+db.on('ready', () => {
+  console.log('[DB] Database opened at version', db.verno);
+});

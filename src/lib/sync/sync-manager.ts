@@ -54,6 +54,7 @@ export async function sync(
     });
 
     const localChanges = await getPendingChanges();
+    console.log(`[SyncManager] Found ${localChanges.length} pending local changes:`, localChanges);
 
     // 4. Upload local changes to S3
     if (localChanges.length > 0) {

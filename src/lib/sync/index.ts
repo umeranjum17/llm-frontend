@@ -18,6 +18,7 @@ export {
   clearPendingChanges,
   getPendingChangesCount,
   setApplyingRemoteChanges,
+  resetChangeTrackerState,
 } from "./change-tracker";
 
 // S3 operations

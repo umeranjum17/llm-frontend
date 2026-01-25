@@ -8,6 +8,7 @@ import { useLoadingStore } from "@/stores/loading-store";
 import { withTimeout, withTimeoutFallback } from "@/lib/utils/async-timeout";
 import { operationMutex, LockKeys } from "@/lib/utils/operation-mutex";
 import { broadcastToTabs, CrossTabMessages } from "@/lib/utils/cross-tab";
+import { ensureRequiredTables } from "@/lib/db/migration";
 
 interface DBHealthState {
   isHealthy: boolean;
@@ -278,15 +279,28 @@ export function useDBHealth() {
         db.on("versionchange", () => {
           if (!isMounted) return;
 
+          console.log("[DB Health] Version change detected - closing database immediately");
+
+          // CRITICAL: Close database immediately to unblock upgrade in other tab
+          // Failing to close blocks IndexedDB upgrade and can cause partial schema corruption
+          // See: https://dev.to/ivandotv/handling-indexeddb-upgrade-version-conflict-368a
+          db.close();
+
           // Notify other tabs about version change
           broadcastToTabs(CrossTabMessages.DB_VERSION_CHANGED, {
             timestamp: Date.now(),
           });
 
+          // Show recovery message
           handleRecovery(
             "versionchange",
-            "Database schema changed. Please refresh to update."
+            "Database schema updated. Reloading to apply changes..."
           );
+
+          // Auto-reload after short delay (give user time to see message)
+          setTimeout(() => {
+            window.location.reload();
+          }, 1500);
         });
 
         // Try to open the database with adaptive timeout
@@ -311,6 +325,20 @@ export function useDBHealth() {
         if (timeoutId) {
           clearTimeout(timeoutId);
           timeoutId = null;
+        }
+
+        try {
+          setDbInitializing(true, "Verifying database schema...");
+          await ensureRequiredTables();
+        } catch (migrationError) {
+          console.error("[DB Health] Schema recovery failed:", migrationError);
+          if (!isMounted) return;
+          handleRecovery(
+            "schema_recovery_failed",
+            `Database schema recovery failed: ${(migrationError as Error)?.message}. Please refresh.`,
+            false
+          );
+          return;
         }
 
         // Verify database is actually usable by doing a simple query
