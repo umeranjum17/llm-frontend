@@ -145,6 +145,8 @@ export function SyncSettings() {
           `Sync complete: ${result.uploaded} uploaded, ${result.downloaded} downloaded, ${result.applied} applied`
         );
         setLastSyncError(null);
+        // Reload status to update Last Sync timestamp and clear any errors
+        await loadSyncStatus();
       } else {
         toast.error(`Sync failed: ${result.error}`);
         setLastSyncError(result.error || "Unknown error");
