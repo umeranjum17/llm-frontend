@@ -320,16 +320,29 @@ export function SyncSettings() {
                       <div className="text-xs text-yellow-800 dark:text-yellow-300">
                         <p className="font-semibold mb-2">First Time Setup: Configure CORS</p>
                         <p className="mb-2">
-                          If sync fails with CORS errors, you need to add a CORS policy to your bucket:
+                          If sync fails with "Failed to fetch" or CORS errors, you need to configure CORS on your bucket.
                         </p>
+                        <div className="mb-2 p-2 bg-yellow-200 dark:bg-yellow-800 rounded text-[11px]">
+                          <strong>⚠️ Important:</strong> You must include ALL 5 HTTP methods (GET, PUT, POST, DELETE, HEAD)
+                          and the ETag expose header, or sync will fail.
+                        </div>
 
                         <div className="space-y-2 mb-2">
                           <p className="font-medium">For Cloudflare R2:</p>
-                          <ol className="list-decimal list-inside space-y-1 ml-2">
+                          <ol className="list-decimal list-inside space-y-1 ml-2 text-[11px]">
                             <li>Go to R2 Dashboard → Select your bucket</li>
                             <li>Click <strong>Settings</strong> tab</li>
-                            <li>Find <strong>CORS Policy</strong> section</li>
-                            <li>Add the policy below and save</li>
+                            <li>Find <strong>CORS Policy</strong> section and click <strong>Edit</strong></li>
+                            <li>
+                              <strong>Allowed Methods:</strong> Must include all 5: GET, PUT, POST, DELETE, HEAD
+                            </li>
+                            <li>
+                              <strong>Allowed Headers:</strong> Set to * (asterisk)
+                            </li>
+                            <li>
+                              <strong>Expose Headers:</strong> Add "ETag" (click Add header if needed)
+                            </li>
+                            <li>Save the policy</li>
                           </ol>
                         </div>
 
