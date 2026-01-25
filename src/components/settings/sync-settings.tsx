@@ -58,7 +58,7 @@ export function SyncSettings() {
   const [accessKeyId, setAccessKeyId] = useState("");
   const [secretAccessKey, setSecretAccessKey] = useState("");
   const [bucket, setBucket] = useState("");
-  const [region, setRegion] = useState("us-east-1");
+  const [region, setRegion] = useState("auto");
   const [deviceIdCopied, setDeviceIdCopied] = useState(false);
   const [showCorsHelp, setShowCorsHelp] = useState(false);
   const [lastSyncError, setLastSyncError] = useState<string | null>(null);
@@ -493,13 +493,16 @@ export function SyncSettings() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="region">Region (optional)</Label>
+              <Label htmlFor="region">Region</Label>
               <Input
                 id="region"
-                placeholder="us-east-1"
+                placeholder="auto"
                 value={region}
                 onChange={(e) => setRegion(e.target.value)}
               />
+              <p className="text-xs text-muted-foreground">
+                For Cloudflare R2: use "auto". For AWS S3: use your bucket region (e.g., "us-east-1")
+              </p>
             </div>
 
             <div className="space-y-2">
