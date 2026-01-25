@@ -321,7 +321,7 @@ export class S3Adapter {
 
     const cryptoKey = await crypto.subtle.importKey(
       "raw",
-      keyData,
+      keyData.buffer as ArrayBuffer,
       { name: "HMAC", hash: "SHA-256" },
       false,
       ["sign"]
