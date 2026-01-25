@@ -3,6 +3,7 @@
 import { useComposioCleanup } from "@/hooks/use-composio-cleanup";
 import { useDBHealth } from "@/hooks/use-db-health";
 import { useCacheCleanup } from "@/hooks/use-cache-cleanup";
+import { useSyncInit } from "@/hooks/use-sync-init";
 
 /**
  * Client component to run global initialization hooks.
@@ -17,6 +18,9 @@ export function GlobalHooks() {
 
   // Ensure Composio connections are cleaned up on page unload
   useComposioCleanup();
+
+  // Initialize delta sync change tracking
+  useSyncInit();
 
   // This component doesn't render anything
   return null;

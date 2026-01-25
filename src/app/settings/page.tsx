@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Key, Palette, Keyboard, Download, Settings as SettingsIcon, Bot, Search, Brain, Shield, BarChart3, Loader2, Wand2 } from "lucide-react";
+import { ArrowLeft, Key, Palette, Keyboard, Download, Settings as SettingsIcon, Bot, Search, Brain, Shield, BarChart3, Loader2, Wand2, Cloud } from "lucide-react";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useSettingsStore } from "@/stores/settings-store";
 
@@ -32,6 +32,7 @@ const TrustDashboard = dynamic(() => import("@/components/settings/trust-dashboa
 const UsageAnalytics = dynamic(() => import("@/components/settings/usage-analytics").then(m => ({ default: m.UsageAnalytics })), { loading: LoadingSpinner });
 const ModelAliasSettings = dynamic(() => import("@/components/settings/model-alias-settings").then(m => ({ default: m.ModelAliasSettings })), { loading: LoadingSpinner });
 const ComposioAppsSection = dynamic(() => import("@/components/settings/composio-apps-section").then(m => ({ default: m.ComposioAppsSection })), { loading: LoadingSpinner });
+const SyncSettings = dynamic(() => import("@/components/settings/sync-settings").then(m => ({ default: m.SyncSettings })), { loading: LoadingSpinner });
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("general");
@@ -59,7 +60,7 @@ export default function SettingsPage() {
   useEffect(() => {
     const tabParam = new URLSearchParams(window.location.search).get("tab");
     if (!tabParam) return;
-    const allowedTabs = ["general", "mcp", "api-keys", "memory", "theme", "shortcuts", "data", "agents", "skills", "trust", "analytics", "aliases"];
+    const allowedTabs = ["general", "mcp", "api-keys", "memory", "theme", "shortcuts", "data", "sync", "agents", "skills", "trust", "analytics", "aliases"];
     if (allowedTabs.includes(tabParam)) setActiveTab(tabParam);
   }, []);
 
@@ -143,6 +144,10 @@ export default function SettingsPage() {
                 <Download className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Data</span>
               </TabsTrigger>
+              <TabsTrigger value="sync" className="gap-1.5 text-xs shrink-0 px-2 sm:px-3">
+                <Cloud className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Sync</span>
+              </TabsTrigger>
               <TabsTrigger value="trust" className="gap-1.5 text-xs shrink-0 px-2 sm:px-3">
                 <Shield className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Trust</span>
@@ -191,6 +196,10 @@ export default function SettingsPage() {
 
             <TabsContent value="data" className="space-y-6">
               <ExportImportSettings />
+            </TabsContent>
+
+            <TabsContent value="sync" className="space-y-6">
+              <SyncSettings />
             </TabsContent>
 
             <TabsContent value="trust" className="space-y-6">
