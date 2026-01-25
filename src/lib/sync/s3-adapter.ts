@@ -115,20 +115,23 @@ export class S3Adapter {
    */
   private async putObject(key: string, body: string): Promise<void> {
     const url = `${this.endpoint}/${this.bucket}/${key}`;
+    const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, "");
     const date = new Date().toUTCString();
 
     const response = await fetch(url, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
-        Date: date,
+        "x-amz-date": amzDate,
+        "x-amz-content-sha256": "UNSIGNED-PAYLOAD",
         Authorization: await this.getAuthHeader("PUT", key, date),
       },
       body,
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to upload to S3: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`Failed to upload to S3 (${response.status}): ${errorText || response.statusText}`);
     }
   }
 
@@ -137,12 +140,14 @@ export class S3Adapter {
    */
   private async getObject(key: string): Promise<string> {
     const url = `${this.endpoint}/${this.bucket}/${key}`;
+    const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, "");
     const date = new Date().toUTCString();
 
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Date: date,
+        "x-amz-date": amzDate,
+        "x-amz-content-sha256": "UNSIGNED-PAYLOAD",
         Authorization: await this.getAuthHeader("GET", key, date),
       },
     });
@@ -151,7 +156,8 @@ export class S3Adapter {
       if (response.status === 404) {
         throw new Error("Not found");
       }
-      throw new Error(`Failed to download from S3: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`Failed to download from S3 (${response.status}): ${errorText || response.statusText}`);
     }
 
     return response.text();
@@ -162,18 +168,21 @@ export class S3Adapter {
    */
   private async listObjects(prefix: string): Promise<Array<{ key: string }>> {
     const url = `${this.endpoint}/${this.bucket}?list-type=2&prefix=${encodeURIComponent(prefix)}`;
+    const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, "");
     const date = new Date().toUTCString();
 
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Date: date,
+        "x-amz-date": amzDate,
+        "x-amz-content-sha256": "UNSIGNED-PAYLOAD",
         Authorization: await this.getAuthHeader("GET", "", date, `?list-type=2&prefix=${encodeURIComponent(prefix)}`),
       },
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to list S3 objects: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`Failed to list S3 objects (${response.status}): ${errorText || response.statusText}`);
     }
 
     const text = await response.text();
@@ -196,6 +205,7 @@ export class S3Adapter {
 
   /**
    * Generate AWS Signature Version 4 authorization header
+   * R2 requires SigV4, not the older SigV2
    */
   private async getAuthHeader(
     method: string,
@@ -203,32 +213,113 @@ export class S3Adapter {
     date: string,
     queryString = ""
   ): Promise<string> {
-    // For simplicity, using a basic S3 auth
-    // In production, use AWS SDK or a proper signing library
-    const path = `/${this.bucket}/${key}${queryString}`;
-    const stringToSign = `${method}\n\n\n${date}\n${path}`;
+    const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, "");
+    const dateStamp = amzDate.substring(0, 8);
+    const service = "s3";
 
-    const signature = await this.hmacSha1(this.secretAccessKey, stringToSign);
-    return `AWS ${this.accessKeyId}:${signature}`;
+    // Canonical request
+    const canonicalUri = `/${this.bucket}/${key}`;
+    const canonicalQueryString = queryString.replace(/^\?/, "");
+    const canonicalHeaders = `host:${new URL(this.endpoint).host}\nx-amz-date:${amzDate}\n`;
+    const signedHeaders = "host;x-amz-date";
+    const payloadHash = "UNSIGNED-PAYLOAD";
+
+    const canonicalRequest = [
+      method,
+      canonicalUri,
+      canonicalQueryString,
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash,
+    ].join("\n");
+
+    // String to sign
+    const algorithm = "AWS4-HMAC-SHA256";
+    const credentialScope = `${dateStamp}/${this.region}/${service}/aws4_request`;
+    const canonicalRequestHash = await this.sha256(canonicalRequest);
+    const stringToSign = [
+      algorithm,
+      amzDate,
+      credentialScope,
+      canonicalRequestHash,
+    ].join("\n");
+
+    // Signing key
+    const signingKey = await this.getSignatureKey(
+      this.secretAccessKey,
+      dateStamp,
+      this.region,
+      service
+    );
+
+    // Signature
+    const signature = await this.hmacSha256Hex(signingKey, stringToSign);
+
+    // Authorization header
+    return `${algorithm} Credential=${this.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
   }
 
   /**
-   * HMAC-SHA1 signature
+   * SHA256 hash
    */
-  private async hmacSha1(key: string, message: string): Promise<string> {
+  private async sha256(message: string): Promise<string> {
     const encoder = new TextEncoder();
-    const keyData = encoder.encode(key);
+    const data = encoder.encode(message);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    return Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  /**
+   * HMAC-SHA256
+   */
+  private async hmacSha256(
+    key: string | Uint8Array,
+    message: string
+  ): Promise<Uint8Array> {
+    const encoder = new TextEncoder();
+    const keyData = typeof key === "string" ? encoder.encode(key) : key;
     const messageData = encoder.encode(message);
 
     const cryptoKey = await crypto.subtle.importKey(
       "raw",
       keyData,
-      { name: "HMAC", hash: "SHA-1" },
+      { name: "HMAC", hash: "SHA-256" },
       false,
       ["sign"]
     );
 
     const signature = await crypto.subtle.sign("HMAC", cryptoKey, messageData);
-    return btoa(String.fromCharCode(...new Uint8Array(signature)));
+    return new Uint8Array(signature);
+  }
+
+  /**
+   * HMAC-SHA256 as hex string
+   */
+  private async hmacSha256Hex(
+    key: Uint8Array,
+    message: string
+  ): Promise<string> {
+    const signature = await this.hmacSha256(key, message);
+    return Array.from(signature)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  /**
+   * Get AWS SigV4 signing key
+   */
+  private async getSignatureKey(
+    secretKey: string,
+    dateStamp: string,
+    region: string,
+    service: string
+  ): Promise<Uint8Array> {
+    const kDate = await this.hmacSha256("AWS4" + secretKey, dateStamp);
+    const kRegion = await this.hmacSha256(kDate, region);
+    const kService = await this.hmacSha256(kRegion, service);
+    const kSigning = await this.hmacSha256(kService, "aws4_request");
+    return kSigning;
   }
 }
