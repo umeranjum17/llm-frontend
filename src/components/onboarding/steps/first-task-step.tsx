@@ -112,8 +112,11 @@ export function FirstTaskStep({
               if (data === "[DONE]") continue;
               try {
                 const parsed = JSON.parse(data);
-                if (parsed.type === "text-delta" && parsed.textDelta) {
-                  accumulatedText += parsed.textDelta;
+                // AI SDK v6 + OpenRouter: text-delta uses 'text' property
+                // (v5 used 'textDelta', some providers use 'delta')
+                const textDelta = parsed.text ?? parsed.delta ?? parsed.textDelta;
+                if (parsed.type === "text-delta" && typeof textDelta === "string") {
+                  accumulatedText += textDelta;
                   setResponse(accumulatedText);
                 }
               } catch {
