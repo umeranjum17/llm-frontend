@@ -131,6 +131,12 @@ export class S3Adapter {
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error(`[S3] PUT failed:`, {
+        status: response.status,
+        statusText: response.statusText,
+        url,
+        error: errorText
+      });
       throw new Error(`Failed to upload to S3 (${response.status}): ${errorText || response.statusText}`);
     }
   }
@@ -182,6 +188,12 @@ export class S3Adapter {
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error(`[S3] LIST failed:`, {
+        status: response.status,
+        statusText: response.statusText,
+        url,
+        error: errorText
+      });
       throw new Error(`Failed to list S3 objects (${response.status}): ${errorText || response.statusText}`);
     }
 
@@ -218,7 +230,8 @@ export class S3Adapter {
     const service = "s3";
 
     // Canonical request
-    const canonicalUri = `/${this.bucket}/${key}`;
+    // For bucket-level operations (empty key), don't add trailing slash
+    const canonicalUri = key ? `/${this.bucket}/${key}` : `/${this.bucket}`;
     const canonicalQueryString = queryString.replace(/^\?/, "");
     const canonicalHeaders = `host:${new URL(this.endpoint).host}\nx-amz-date:${amzDate}\n`;
     const signedHeaders = "host;x-amz-date";
