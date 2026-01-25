@@ -360,12 +360,14 @@ export function SyncSettings() {
                           <pre>{`[
   {
     "AllowedOrigins": [
-      "${window.location.origin}",
-      "http://localhost:3000",
-      "http://localhost:3001"
+      "${window.location.origin}"
     ],
     "AllowedMethods": [
-      "GET", "PUT", "POST", "DELETE", "HEAD"
+      "GET",
+      "PUT",
+      "POST",
+      "DELETE",
+      "HEAD"
     ],
     "AllowedHeaders": ["*"],
     "ExposeHeaders": ["ETag"],
