@@ -473,12 +473,13 @@ export function SyncSettings() {
               <Label htmlFor="endpoint">Endpoint</Label>
               <Input
                 id="endpoint"
-                placeholder="https://s3.amazonaws.com"
+                placeholder="https://c3518a6b53ed1623ec0d8a76ad24204e.r2.cloudflarestorage.com"
                 value={endpoint}
                 onChange={(e) => setEndpoint(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                For Cloudflare R2: https://&lt;account-id&gt;.r2.cloudflarestorage.com
+                ⚠️ <strong>Important:</strong> Do NOT include bucket name in endpoint.
+                For R2, use: https://&lt;account-id&gt;.r2.cloudflarestorage.com
               </p>
             </div>
 
