@@ -94,13 +94,31 @@ export function SyncSettings() {
       return;
     }
 
+    // Validate endpoint format
+    if (!endpoint.startsWith("http://") && !endpoint.startsWith("https://")) {
+      toast.error("Endpoint must start with http:// or https://");
+      return;
+    }
+
+    // Check if bucket name is in endpoint (common mistake)
+    if (endpoint.includes(`/${bucket}`)) {
+      toast.error(`Remove "/${bucket}" from endpoint URL. Bucket should be entered separately.`);
+      return;
+    }
+
+    // Validate bucket name (no slashes)
+    if (bucket.includes("/")) {
+      toast.error("Bucket name should not contain slashes (/)");
+      return;
+    }
+
     try {
       await setS3Config({
-        endpoint,
-        accessKeyId,
-        secretAccessKey,
-        bucket,
-        region,
+        endpoint: endpoint.replace(/\/$/, ""), // Remove trailing slash
+        accessKeyId: accessKeyId.trim(),
+        secretAccessKey: secretAccessKey.trim(),
+        bucket: bucket.trim(),
+        region: region.trim() || "auto",
       });
 
       toast.success("S3 configuration saved");
