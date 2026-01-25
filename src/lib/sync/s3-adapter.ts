@@ -231,7 +231,11 @@ export class S3Adapter {
 
     // Canonical request
     // For bucket-level operations (empty key), don't add trailing slash
-    const canonicalUri = key ? `/${this.bucket}/${key}` : `/${this.bucket}`;
+    let canonicalUri = key ? `/${this.bucket}/${key}` : `/${this.bucket}`;
+    // URI encode the path (but not the slashes)
+    canonicalUri = canonicalUri.split('/').map(segment =>
+      segment ? encodeURIComponent(segment) : ''
+    ).join('/');
     const canonicalQueryString = queryString.replace(/^\?/, "");
     const canonicalHeaders = `host:${new URL(this.endpoint).host}\nx-amz-date:${amzDate}\n`;
     const signedHeaders = "host;x-amz-date";
@@ -245,6 +249,17 @@ export class S3Adapter {
       signedHeaders,
       payloadHash,
     ].join("\n");
+
+    // Debug logging
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[S3Auth] Canonical Request:', {
+        method,
+        canonicalUri,
+        canonicalQueryString,
+        amzDate,
+        region: this.region
+      });
+    }
 
     // String to sign
     const algorithm = "AWS4-HMAC-SHA256";
