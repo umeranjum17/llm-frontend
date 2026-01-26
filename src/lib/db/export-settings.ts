@@ -12,8 +12,14 @@ import type {
   TagRule,
 } from "./schema";
 import { decryptApiKey, isEncryptedKey } from "@/lib/crypto/api-key-crypto";
+import { isVaultEncryptedKey } from "@/lib/crypto/api-key-vault";
 
 export const SETTINGS_EXPORT_VERSION = 2; // Bumped for plaintext API key export
+
+export interface ExportAllSettingsOptions {
+  /** When false (default), API keys are excluded to keep them local-only. */
+  includeApiKeys?: boolean;
+}
 
 export interface SettingsExport {
   version: number;
@@ -37,12 +43,26 @@ export interface SettingsExport {
   };
 }
 
+export class ExportSettingsError extends Error {
+  code: "VAULT_LOCKED" | "KEY_DECRYPT_FAILED";
+
+  constructor(message: string, code: ExportSettingsError["code"]) {
+    super(message);
+    this.name = "ExportSettingsError";
+    this.code = code;
+  }
+}
+
 /**
  * Exports all user settings and configurations from the database
  * Excludes conversation data (chats, messages) and built-in items
- * API keys are decrypted before export so they can be re-encrypted on import
+ * API keys are excluded by default to keep them local-only (opt-in via options)
  */
-export async function exportAllSettings(): Promise<SettingsExport> {
+export async function exportAllSettings(
+  options: ExportAllSettingsOptions = {}
+): Promise<SettingsExport> {
+  const includeApiKeys = options.includeApiKeys === true;
+
   // Fetch all relevant data from Dexie tables
   const [
     rawApiKeys,
@@ -56,7 +76,7 @@ export async function exportAllSettings(): Promise<SettingsExport> {
     tags,
     tagRules,
   ] = await Promise.all([
-    db.apiKeys.toArray(),
+    includeApiKeys ? db.apiKeys.toArray() : Promise.resolve([] as ApiKey[]),
     db.mcpServers.toArray(),
     db.agents.toArray(),
     db.prompts.toArray(),
@@ -68,20 +88,76 @@ export async function exportAllSettings(): Promise<SettingsExport> {
     db.tagRules.toArray(),
   ]);
 
-  // Decrypt API keys for export (they'll be re-encrypted on import with new device secret)
   const apiKeys: ApiKey[] = [];
-  for (const key of rawApiKeys) {
-    try {
-      if (isEncryptedKey(key.key)) {
-        const decryptedKey = await decryptApiKey(key.key);
-        apiKeys.push({ ...key, key: decryptedKey });
-      } else {
+  if (includeApiKeys) {
+    const vaultKeyIds = rawApiKeys.filter((key) => isVaultEncryptedKey(key.key)).map((key) => key.id);
+    const hasVaultKeys = vaultKeyIds.length > 0;
+    let vaultKeyById: Map<string, string> | null = null;
+
+    if (hasVaultKeys) {
+      if (typeof window === "undefined") {
+        throw new ExportSettingsError(
+          "Vault-protected API keys require an unlocked session to export.",
+          "VAULT_LOCKED"
+        );
+      }
+
+      const { useApiKeysStore } = await import("@/stores/api-keys-store");
+      const state = useApiKeysStore.getState();
+      if (!state.isLoaded) {
+        await state.loadKeys();
+      }
+
+      const vaultReady = state.vault.meta && state.vault.isUnlocked;
+      if (!vaultReady) {
+        throw new ExportSettingsError(
+          "Unlock the API key vault to include keys in this export.",
+          "VAULT_LOCKED"
+        );
+      }
+
+      vaultKeyById = new Map(state.keys.map((key) => [key.id, key.key]));
+    }
+
+    // Decrypt API keys for export (they'll be re-encrypted on import with new device secret)
+    for (const key of rawApiKeys) {
+      try {
+        if (isVaultEncryptedKey(key.key)) {
+          const decryptedKey = vaultKeyById?.get(key.id);
+          if (!decryptedKey) {
+            throw new ExportSettingsError(
+              "Vault is unlocked but a protected key could not be read. Try unlocking again.",
+              "VAULT_LOCKED"
+            );
+          }
+          apiKeys.push({ ...key, key: decryptedKey });
+          continue;
+        }
+
+        if (isEncryptedKey(key.key)) {
+          const decryptedKey = await decryptApiKey(key.key);
+          apiKeys.push({ ...key, key: decryptedKey });
+          continue;
+        }
+
         // Already plaintext (legacy)
         apiKeys.push(key);
+      } catch (error) {
+        if (error instanceof ExportSettingsError) {
+          throw error;
+        }
+
+        const message =
+          error instanceof Error ? error.message : `Failed to decrypt API key for ${key.provider}`;
+        throw new ExportSettingsError(message, "KEY_DECRYPT_FAILED");
       }
-    } catch (error) {
-      // Skip keys that can't be decrypted (orphaned keys)
-      console.warn(`[Export] Skipping undecryptable key for ${key.provider}`);
+    }
+
+    if (apiKeys.length !== rawApiKeys.length) {
+      throw new ExportSettingsError(
+        "Some API keys could not be exported. Unlock the vault and try again.",
+        "KEY_DECRYPT_FAILED"
+      );
     }
   }
 

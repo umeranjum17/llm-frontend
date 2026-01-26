@@ -8,6 +8,7 @@ const inconsolata = Inconsolata({
   display: "swap",
 });
 import { GlobalHooks } from "@/components/providers/global-hooks";
+import { VaultUnlockDialog } from "@/components/providers/vault-unlock-dialog";
 import { Toaster as SonnerToaster } from "sonner";
 import { CommandPalette } from "@/components/command-palette/command-palette";
 import { MobileNav } from "@/components/mobile-nav";
@@ -94,6 +95,7 @@ export default function RootLayout({
             disableTransitionOnChange
           >
             <GlobalHooks />
+            <VaultUnlockDialog />
             <MigrationBanner />
             {children}
             <CommandPalette />

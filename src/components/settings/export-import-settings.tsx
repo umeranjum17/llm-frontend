@@ -53,6 +53,7 @@ import {
   exportAllSettings,
   downloadSettingsFile,
   getExportSummary,
+  ExportSettingsError,
 } from "@/lib/db/export-settings";
 import {
   importSettings,
@@ -85,6 +86,7 @@ function SecureExportDialog({
   const [confirmPassword, setConfirmPassword] = useState("");
   const [expiration, setExpiration] = useState<ExpirationOption>("7d");
   const [isExporting, setIsExporting] = useState(false);
+  const [includeApiKeys, setIncludeApiKeys] = useState(true);
   const [summary, setSummary] = useState<Awaited<
     ReturnType<typeof getExportSummary>
   > | null>(null);
@@ -92,6 +94,7 @@ function SecureExportDialog({
   const loadSummary = async () => {
     const data = await getExportSummary();
     setSummary(data);
+    setIncludeApiKeys(data.apiKeys > 0);
   };
 
   const handleExport = async () => {
@@ -103,10 +106,14 @@ function SecureExportDialog({
       toast.error("Passwords do not match");
       return;
     }
+    if (includeApiKeys && expiration === "never") {
+      toast.error("API key exports must have an expiration");
+      return;
+    }
 
     setIsExporting(true);
     try {
-      const settings = await exportAllSettings();
+      const settings = await exportAllSettings({ includeApiKeys });
       const expiresAt = getExpirationTimestamp(expiration);
       const encrypted = await encryptSettings(settings, password, expiresAt);
       downloadSettingsFile(encrypted);
@@ -115,8 +122,23 @@ function SecureExportDialog({
       setPassword("");
       setConfirmPassword("");
       setExpiration("7d");
+      setIncludeApiKeys(false);
     } catch (error) {
-      toast.error("Failed to export settings");
+      const message =
+        error instanceof Error ? error.message : "Failed to export settings";
+      const isVaultLocked =
+        error instanceof ExportSettingsError && error.code === "VAULT_LOCKED";
+      toast.error("Failed to export settings", {
+        description: message,
+        action: isVaultLocked
+          ? {
+              label: "API Keys",
+              onClick: () => {
+                window.location.href = "/settings?tab=api-keys";
+              },
+            }
+          : undefined,
+      });
       console.error(error);
     } finally {
       setIsExporting(false);
@@ -131,6 +153,7 @@ function SecureExportDialog({
         else {
           setPassword("");
           setConfirmPassword("");
+          setIncludeApiKeys(false);
         }
         onOpenChange(isOpen);
       }}
@@ -142,8 +165,8 @@ function SecureExportDialog({
             Secure Export
           </DialogTitle>
           <DialogDescription>
-            Export API keys and settings with password protection. Share safely
-            via cloud storage.
+            Export settings with password protection. You can include API keys for
+            device transfer (choose an expiration).
           </DialogDescription>
         </DialogHeader>
 
@@ -155,7 +178,7 @@ function SecureExportDialog({
                 {summary.apiKeys > 0 && (
                   <div className="flex items-center gap-1">
                     <Key className="h-3 w-3" />
-                    {summary.apiKeys} API keys
+                    {summary.apiKeys} API keys {includeApiKeys ? "" : "(excluded)"}
                   </div>
                 )}
                 {summary.mcpServers > 0 && (
@@ -198,6 +221,39 @@ function SecureExportDialog({
             </div>
           )}
 
+          {summary?.apiKeys !== undefined && (
+            <div className="space-y-2">
+              <Label>Include</Label>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={includeApiKeys}
+                  onCheckedChange={(c) => {
+                    const next = !!c;
+                    setIncludeApiKeys(next);
+                    if (next && expiration === "never") {
+                      setExpiration("7d");
+                    }
+                  }}
+                  disabled={summary.apiKeys === 0}
+                />
+                <Key className="h-3 w-3" />
+                API keys {summary.apiKeys > 0 ? `(${summary.apiKeys})` : ""}
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Only enable if you intentionally want to transfer keys to another device.
+              </p>
+            </div>
+          )}
+
+          {includeApiKeys && (
+            <div className="flex items-start gap-2 p-3 border rounded-md bg-yellow-500/10 border-yellow-500/30">
+              <AlertTriangle className="h-4 w-4 mt-0.5 text-yellow-600 shrink-0" />
+              <p className="text-xs text-muted-foreground">
+                This export will contain API keys (encrypted). Use a short expiration and delete the file after you import it.
+              </p>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="export-password">Encryption Password</Label>
             <Input
@@ -235,11 +291,15 @@ function SecureExportDialog({
                 <SelectItem value="1d">24 hours</SelectItem>
                 <SelectItem value="7d">7 days</SelectItem>
                 <SelectItem value="30d">30 days</SelectItem>
-                <SelectItem value="never">Never expires</SelectItem>
+                {!includeApiKeys && (
+                  <SelectItem value="never">Never expires</SelectItem>
+                )}
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Expired backups cannot be imported, even with the correct password
+              {includeApiKeys
+                ? "API key exports must expire. Expired backups cannot be imported, even with the correct password."
+                : "Expired backups cannot be imported, even with the correct password"}
             </p>
           </div>
         </div>
@@ -284,7 +344,6 @@ function SecureImportDialog({
   const [preview, setPreview] = useState<ReturnType<
     typeof getImportPreview
   > | null>(null);
-  const [decryptedData, setDecryptedData] = useState<any>(null);
   const [importMode, setImportMode] = useState<ImportMode>("merge");
   const [importOptions, setImportOptions] = useState({
     importApiKeys: true,
@@ -307,7 +366,6 @@ function SecureImportDialog({
     setPassword("");
     setSelectedFile(null);
     setPreview(null);
-    setDecryptedData(null);
     setStep("select");
     setImportMode("merge");
     setExpirationInfo(null);
@@ -369,8 +427,12 @@ function SecureImportDialog({
         return;
       }
 
-      setDecryptedData(decrypted);
-      setPreview(getImportPreview(decrypted));
+      const previewData = getImportPreview(decrypted);
+      setPreview(previewData);
+      setImportOptions((prev) => ({
+        ...prev,
+        importApiKeys: previewData.apiKeys > 0 ? prev.importApiKeys : false,
+      }));
       setStep("configure");
     } catch (error) {
       toast.error(
@@ -382,11 +444,25 @@ function SecureImportDialog({
   };
 
   const handleImport = async () => {
-    if (!decryptedData) return;
+    if (!selectedFile || !password) return;
 
     setIsImporting(true);
     try {
-      const result = await importSettings(decryptedData, {
+      // Re-decrypt right before import so plaintext API keys aren't kept in React state.
+      const content = await readFileAsText(selectedFile);
+
+      if (!isValidEncryptedFormat(content)) {
+        toast.error("Invalid file format. Please select a valid .lumina file.");
+        return;
+      }
+
+      const decrypted = await decryptSettings(content, password);
+      if (!validateSettingsExport(decrypted)) {
+        toast.error("Decrypted data is invalid or corrupted");
+        return;
+      }
+
+      const result = await importSettings(decrypted, {
         mode: importMode,
         ...importOptions,
       });
@@ -534,6 +610,7 @@ function SecureImportDialog({
                       onCheckedChange={(c) =>
                         setImportOptions((o) => ({ ...o, importApiKeys: !!c }))
                       }
+                      disabled={preview.apiKeys === 0}
                     />
                     API Keys
                   </label>
@@ -568,6 +645,9 @@ function SecureImportDialog({
                     Settings
                   </label>
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  API keys are imported encrypted and stored locally (never cloud-synced).
+                </p>
               </div>
             </>
           )}
@@ -631,7 +711,6 @@ function ShareableLinkDialog({
     ReturnType<typeof getExportSummary>
   > | null>(null);
   const [includeOptions, setIncludeOptions] = useState({
-    apiKeys: true,
     mcpServers: true,
     agents: false,
     settings: false,
@@ -649,7 +728,6 @@ function ShareableLinkDialog({
     setGeneratedUrl(null);
     setCopied(false);
     setIncludeOptions({
-      apiKeys: true,
       mcpServers: true,
       agents: false,
       settings: false,
@@ -676,7 +754,7 @@ function ShareableLinkDialog({
         version: allSettings.version,
         exportedAt: allSettings.exportedAt,
         data: {
-          apiKeys: includeOptions.apiKeys ? allSettings.data.apiKeys : [],
+          apiKeys: [], // API keys are never included in share links (local-only)
           mcpServers: includeOptions.mcpServers ? allSettings.data.mcpServers : [],
           agents: includeOptions.agents ? allSettings.data.agents : [],
           prompts: [], // Always exclude prompts from share links (too large)
@@ -742,7 +820,7 @@ function ShareableLinkDialog({
             Create Shareable Link
           </DialogTitle>
           <DialogDescription>
-            Generate a password-protected link to share your settings. The link expires automatically.
+            Generate a password-protected link to share your settings (API keys are excluded). The link expires automatically.
           </DialogDescription>
         </DialogHeader>
 
@@ -753,16 +831,6 @@ function ShareableLinkDialog({
               <div className="space-y-2">
                 <Label>Include in link</Label>
                 <div className="grid grid-cols-2 gap-2 text-sm">
-                  <label className="flex items-center gap-2">
-                    <Checkbox
-                      checked={includeOptions.apiKeys}
-                      onCheckedChange={(c) =>
-                        setIncludeOptions((o) => ({ ...o, apiKeys: !!c }))
-                      }
-                    />
-                    <Key className="h-3 w-3" />
-                    API Keys {summary && summary.apiKeys > 0 && `(${summary.apiKeys})`}
-                  </label>
                   <label className="flex items-center gap-2">
                     <Checkbox
                       checked={includeOptions.mcpServers}
@@ -895,7 +963,7 @@ function ShareableLinkDialog({
                 disabled={
                   isGenerating ||
                   password.length < 8 ||
-                  (!includeOptions.apiKeys && !includeOptions.mcpServers && !includeOptions.agents && !includeOptions.settings)
+                  (!includeOptions.mcpServers && !includeOptions.agents && !includeOptions.settings)
                 }
               >
                 {isGenerating ? (

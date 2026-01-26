@@ -72,15 +72,30 @@ export function refreshCacheInBackground(query?: string) {
 }
 
 async function getApiKey() {
-    const keyRecord = await db.apiKeys.get("mem0");
+    // Prefer the in-memory decrypted key (supports vault-locked storage)
+    if (typeof window !== "undefined") {
+        try {
+            const { useApiKeysStore } = await import("@/stores/api-keys-store");
+            const mem0Key = useApiKeysStore.getState().getKeyForProvider("mem0")?.key;
+            if (mem0Key) return mem0Key;
+        } catch {
+            // Ignore and fall back to DB lookup
+        }
+    }
+
+    const keyRecord = await db.apiKeys.where("provider").equals("mem0").first();
     if (!keyRecord?.key) return undefined;
 
-    // Keys are stored encrypted in IndexedDB - decrypt before use
+    // Keys may be stored encrypted in IndexedDB - decrypt before use when possible.
     try {
         const { decryptApiKey } = await import("@/lib/crypto/api-key-crypto");
         return await decryptApiKey(keyRecord.key);
     } catch {
-        // If decryption fails, key might be plaintext (legacy)
+        // If the key is vault-encrypted (v2:...), we can't decrypt without unlock.
+        if (typeof keyRecord.key === "string" && keyRecord.key.startsWith("v2:")) {
+            return undefined;
+        }
+        // Legacy plaintext fallback
         return keyRecord.key;
     }
 }

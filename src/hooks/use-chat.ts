@@ -607,7 +607,7 @@ export function useChat(chatId: string | null) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [continuingMessageId, setContinuingMessageId] = useState<string | null>(null);
-  const { keys, getKeyForProvider } = useApiKeysStore();
+  const { keys, getKeyForProvider, isProviderKeyLocked, requestVaultUnlock } = useApiKeysStore();
 
   const { isMultiModelMode, multiModelPanels } = useUIStore();
   const {
@@ -812,7 +812,11 @@ export function useChat(chatId: string | null) {
     }
 
     const apiKey = getKeyForProvider(providerId);
-    if (!apiKey) {
+    if (!apiKey?.key) {
+      if (isProviderKeyLocked(providerId)) {
+        requestVaultUnlock(providerId);
+        throw new Error("Vault is locked. Unlock it to continue.");
+      }
       throw new Error(`Missing API key for ${providerLabel(providerId)}.`);
     }
 
@@ -1852,7 +1856,7 @@ export function useChat(chatId: string | null) {
       // This keeps memories fresh without blocking the current response
       refreshCacheInBackground(userMessageText);
     }
-  }, [chatId, getKeyForProvider, keys, scheduleMemoryExtraction, setStreamingMessage, appendStreamingContent, appendStreamingReasoning, setStreamingToolCalls, setStreamingToolResults, clearStreaming, startPipeline, setStepRunning, setStepComplete, setStepError, setStepRetrying, completePipeline, failPipeline, clearPipeline, setActiveSkill, setImageGenerationProgress, clearImageGenerationProgress, setOptimisticMessage, clearOptimisticMessage, setPendingSkillApproval, setContextCompaction]);
+  }, [chatId, getKeyForProvider, isProviderKeyLocked, requestVaultUnlock, keys, scheduleMemoryExtraction, setStreamingMessage, appendStreamingContent, appendStreamingReasoning, setStreamingToolCalls, setStreamingToolResults, clearStreaming, startPipeline, setStepRunning, setStepComplete, setStepError, setStepRetrying, completePipeline, failPipeline, clearPipeline, setActiveSkill, setImageGenerationProgress, clearImageGenerationProgress, setOptimisticMessage, clearOptimisticMessage, setPendingSkillApproval, setContextCompaction]);
 
   // Process next message in queue after streaming completes
   const processNextInQueue = useCallback(async (targetChatId: string) => {

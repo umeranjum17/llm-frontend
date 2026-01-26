@@ -15,6 +15,11 @@ const IV_LENGTH = 12;
 // Cache the secret in memory to avoid repeated DB reads
 let cachedSecret: string | null = null;
 
+// Cache the derived CryptoKey in memory to avoid repeated PBKDF2 work
+let cachedDerivedKey: CryptoKey | null = null;
+let cachedDerivedKeyPromise: Promise<CryptoKey> | null = null;
+let cachedDerivedKeySecret: string | null = null;
+
 /**
  * Gets or creates a device-specific secret for encryption
  * Stores in IndexedDB to ensure it persists with the API keys (fixes PWA issue)
@@ -87,31 +92,52 @@ async function getDeviceSecret(): Promise<string> {
  */
 async function deriveKey(): Promise<CryptoKey> {
   const secret = await getDeviceSecret();
-  const encoder = new TextEncoder();
 
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    "PBKDF2",
-    false,
-    ["deriveKey"]
-  );
+  if (cachedDerivedKey && cachedDerivedKeySecret === secret) {
+    return cachedDerivedKey;
+  }
 
-  // Use a fixed salt derived from the secret itself (first 16 chars)
-  const salt = encoder.encode(secret.slice(0, 16));
+  if (cachedDerivedKeyPromise && cachedDerivedKeySecret === secret) {
+    return cachedDerivedKeyPromise;
+  }
 
-  return crypto.subtle.deriveKey(
-    {
-      name: "PBKDF2",
-      salt: salt.buffer as ArrayBuffer,
-      iterations: 10000, // Lower iterations since secret is already random
-      hash: "SHA-256",
-    },
-    keyMaterial,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"]
-  );
+  cachedDerivedKeySecret = secret;
+  cachedDerivedKeyPromise = (async () => {
+    const encoder = new TextEncoder();
+
+    const keyMaterial = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(secret),
+      "PBKDF2",
+      false,
+      ["deriveKey"]
+    );
+
+    // Use a fixed salt derived from the secret itself (first 16 chars)
+    const salt = encoder.encode(secret.slice(0, 16));
+
+    const key = await crypto.subtle.deriveKey(
+      {
+        name: "PBKDF2",
+        salt: salt.buffer as ArrayBuffer,
+        iterations: 10000, // Lower iterations since secret is already random
+        hash: "SHA-256",
+      },
+      keyMaterial,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt", "decrypt"]
+    );
+
+    cachedDerivedKey = key;
+    return key;
+  })();
+
+  try {
+    return await cachedDerivedKeyPromise;
+  } finally {
+    cachedDerivedKeyPromise = null;
+  }
 }
 
 /**
@@ -169,6 +195,14 @@ export async function encryptApiKey(plainKey: string): Promise<string> {
  */
 export async function decryptApiKey(storedKey: string): Promise<string> {
   if (!storedKey) return storedKey;
+
+  // Passphrase vault keys require explicit unlock handling.
+  if (storedKey.startsWith("v2:")) {
+    throw new DecryptionError(
+      "This API key is protected by the vault. Unlock the vault to use it.",
+      "VAULT_LOCKED"
+    );
+  }
 
   // Check if it's an encrypted key (starts with version prefix)
   if (!storedKey.startsWith("v1:")) {
@@ -237,7 +271,7 @@ export async function decryptApiKey(storedKey: string): Promise<string> {
  * Custom error class for decryption failures with error codes
  */
 export class DecryptionError extends Error {
-  code: "FORMAT_ERROR" | "DECODE_ERROR" | "SECRET_CHANGED" | "UNKNOWN_ERROR";
+  code: "FORMAT_ERROR" | "DECODE_ERROR" | "SECRET_CHANGED" | "VAULT_LOCKED" | "UNKNOWN_ERROR";
 
   constructor(message: string, code: DecryptionError["code"]) {
     super(message);
@@ -250,7 +284,7 @@ export class DecryptionError extends Error {
  * Checks if a stored key is encrypted
  */
 export function isEncryptedKey(storedKey: string): boolean {
-  return storedKey?.startsWith("v1:");
+  return storedKey?.startsWith("v1:") || storedKey?.startsWith("v2:");
 }
 
 /**

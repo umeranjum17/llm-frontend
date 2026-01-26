@@ -104,7 +104,7 @@ export function SkillsSettings() {
   const [localThreshold, setLocalThreshold] = useState<number | null>(null);
 
   const confirm = useConfirmDialog();
-  const { getKeyForProvider, keys } = useApiKeysStore();
+  const { getKeyForProvider, isProviderKeyLocked, requestVaultUnlock, keys } = useApiKeysStore();
   const {
     embeddingsProvider,
     embeddingsModelId,
@@ -216,6 +216,10 @@ export function SkillsSettings() {
 
     const apiKeyObj = getKeyForProvider(selectedProvider);
     if (!apiKeyObj?.key) {
+      if (isProviderKeyLocked(selectedProvider)) {
+        requestVaultUnlock(selectedProvider);
+        return;
+      }
       toast.error(`Please add an API key for ${selectedProvider}`);
       return;
     }

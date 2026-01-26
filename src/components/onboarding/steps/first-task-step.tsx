@@ -29,7 +29,7 @@ export function FirstTaskStep({
   providerId,
   onComplete,
 }: FirstTaskStepProps) {
-  const { getKeyForProvider } = useApiKeysStore();
+  const { getKeyForProvider, isProviderKeyLocked, requestVaultUnlock } = useApiKeysStore();
   const { defaultModelId, defaultTemperature, defaultMaxTokens } = useSettingsStore();
   const [prompt, setPrompt] = useState(
     PROMPTS_BY_USE_CASE[useCase] || PROMPTS_BY_USE_CASE.chat
@@ -39,10 +39,18 @@ export function FirstTaskStep({
   const [chatId, setChatId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const apiKey = getKeyForProvider(providerId);
-
   const runTask = async () => {
-    if (!prompt.trim() || !apiKey?.key) return;
+    if (!prompt.trim()) return;
+
+    const apiKey = getKeyForProvider(providerId);
+    if (!apiKey?.key) {
+      if (isProviderKeyLocked(providerId)) {
+        requestVaultUnlock(providerId);
+        return;
+      }
+      setError("Please add an API key to continue.");
+      return;
+    }
 
     setIsRunning(true);
     setError(null);

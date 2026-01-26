@@ -38,7 +38,7 @@ export const TABLE_REGISTRY: TableConfig[] = [
   { name: "projectFiles", addedInVersion: 1, sync: true, backup: true, indexes: "id, projectId, name, createdAt" },
   { name: "chats", addedInVersion: 1, sync: true, backup: true, indexes: "id, projectId, title, summary, modelId, createdAt, updatedAt, pinned, favorite, folderId, order, [projectId+updatedAt]" },
   { name: "messages", addedInVersion: 1, sync: true, backup: true, indexes: "id, chatId, role, createdAt, parentId, rating, skillId, isPinned, summarizedIntoId, [chatId+createdAt]" },
-  { name: "apiKeys", addedInVersion: 1, sync: true, backup: true, indexes: "id, provider, createdAt, baseUrl" },
+  { name: "apiKeys", addedInVersion: 1, sync: false, backup: true, indexes: "id, provider, createdAt, baseUrl" },
   { name: "settings", addedInVersion: 1, sync: true, backup: true, indexes: "id" },
   { name: "modelFavorites", addedInVersion: 1, sync: true, backup: true, indexes: "id, category, pinnedOrder, lastUsed" },
   { name: "folders", addedInVersion: 1, sync: true, backup: true, indexes: "id, projectId, name, createdAt, order" },

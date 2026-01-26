@@ -2,6 +2,7 @@ import { getDeviceId, getLastSyncTime, setLastSyncTime } from "./device-id";
 import { getPendingChanges, clearPendingChanges } from "./change-tracker";
 import { S3Adapter } from "./s3-adapter";
 import { applyChanges } from "./apply-change";
+import { getSyncedTables } from "@/lib/db/table-registry";
 
 export interface SyncResult {
   success: boolean;
@@ -28,6 +29,7 @@ export async function sync(
   onProgress?: (progress: SyncProgress) => void
 ): Promise<SyncResult> {
   const startTime = Date.now();
+  const syncedTables = new Set(getSyncedTables());
 
   try {
     // 1. Get device ID
@@ -54,17 +56,22 @@ export async function sync(
     });
 
     const localChanges = await getPendingChanges();
-    console.log(`[SyncManager] Found ${localChanges.length} pending local changes:`, localChanges);
+    const localSyncedChanges = localChanges.filter((c) => syncedTables.has(c.table));
+    const droppedLocal = localChanges.length - localSyncedChanges.length;
+    if (droppedLocal > 0) {
+      console.warn(`[SyncManager] Dropping ${droppedLocal} pending changes for non-synced tables`);
+    }
+    console.log(`[SyncManager] Found ${localSyncedChanges.length} pending local changes`);
 
     // 4. Upload local changes to S3
-    if (localChanges.length > 0) {
+    if (localSyncedChanges.length > 0) {
       onProgress?.({
         phase: "uploading",
-        message: `Uploading ${localChanges.length} changes...`,
-        uploaded: localChanges.length,
+        message: `Uploading ${localSyncedChanges.length} changes...`,
+        uploaded: localSyncedChanges.length,
       });
 
-      await s3.uploadChanges(deviceId, localChanges);
+      await s3.uploadChanges(deviceId, localSyncedChanges);
     }
 
     // 5. Download remote changes
@@ -77,9 +84,9 @@ export async function sync(
     const remoteChanges = await s3.downloadChanges(lastSyncTime);
 
     // Filter out changes from this device
-    const otherDeviceChanges = remoteChanges.filter(
-      (change) => change.deviceId !== deviceId
-    );
+    const otherDeviceChanges = remoteChanges
+      .filter((change) => change.deviceId !== deviceId)
+      .filter((change) => syncedTables.has(change.table));
 
     onProgress?.({
       phase: "downloading",
@@ -107,7 +114,7 @@ export async function sync(
     const manifest = await s3.getManifest();
     manifest.devices[deviceId] = {
       lastChangeId:
-        localChanges[localChanges.length - 1]?.id || `${deviceId}-${Date.now()}`,
+        localSyncedChanges[localSyncedChanges.length - 1]?.id || `${deviceId}-${Date.now()}`,
       lastSyncAt: Date.now(),
     };
     await s3.updateManifest(manifest);
@@ -115,14 +122,14 @@ export async function sync(
     onProgress?.({
       phase: "complete",
       message: "Sync complete",
-      uploaded: localChanges.length,
+      uploaded: localSyncedChanges.length,
       downloaded: otherDeviceChanges.length,
       applied: applyResult.applied,
     });
 
     return {
       success: true,
-      uploaded: localChanges.length,
+      uploaded: localSyncedChanges.length,
       downloaded: otherDeviceChanges.length,
       applied: applyResult.applied,
       failed: applyResult.failed,

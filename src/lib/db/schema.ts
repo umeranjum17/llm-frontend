@@ -173,6 +173,22 @@ export interface UserSettings {
   apiKeySyncEnabled?: boolean;       // Master toggle for API key sync
   apiKeySyncHint?: string;           // Optional password hint (NOT the password)
   lastApiKeySyncAt?: number;         // Last successful sync timestamp
+  // API key vault (passphrase-protected, client-side only)
+  apiKeyVault?: {
+    version: 1;
+    kdf: "PBKDF2-SHA256";
+    iterations: number;
+    salt: string; // base64
+  };
+  apiKeyVaultPasskey?: {
+    version: 1;
+    credentialId: string; // base64
+    salt: string; // base64
+    wrappedKey: string; // base64
+    wrappedKeyIv: string; // base64
+    method: "prf" | "hmac-secret";
+  };
+  apiKeyVaultRememberMs?: number;    // UI preference for unlock duration
 }
 
 export interface ModelFavorite {
