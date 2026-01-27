@@ -7,6 +7,41 @@ import {
 } from "./skill-embeddings";
 
 /**
+ * Check if there are enabled auto-trigger skills that don't have embeddings generated.
+ * Returns count of such skills for warning display.
+ */
+export async function getAutoSkillsMissingEmbeddings(): Promise<{
+  total: number;
+  missing: number;
+  skillNames: string[];
+}> {
+  // Load cache to ensure we have latest embeddings
+  await loadEmbeddingsCache();
+
+  // Get all enabled auto-trigger skills
+  const allSkills = await db.skills
+    .filter((s) => s.isEnabled && s.trigger.type === "auto")
+    .toArray();
+
+  if (allSkills.length === 0) {
+    return { total: 0, missing: 0, skillNames: [] };
+  }
+
+  // Get skills that have embeddings
+  const cachedEmbeddings = getSkillEmbeddingsFromCache();
+  const skillIdsWithEmbeddings = new Set(cachedEmbeddings.map((e) => e.skillId));
+
+  // Find auto skills without embeddings
+  const missingSkills = allSkills.filter((s) => !skillIdsWithEmbeddings.has(s.id));
+
+  return {
+    total: allSkills.length,
+    missing: missingSkills.length,
+    skillNames: missingSkills.map((s) => s.name),
+  };
+}
+
+/**
  * Minimum floor threshold for skill matching
  * This is the absolute minimum - anything below this is considered irrelevant
  * Using Top-1 approach: always match the best skill if above this floor
@@ -176,7 +211,7 @@ export async function matchSkill(
   let bestMatch: SkillMatchResult | null = null;
   let bestScore = 0;
 
-  for (const { skillId, embedding, skill } of eligibleSkills) {
+  for (const { embedding, skill } of eligibleSkills) {
     // PRIMARY: Use trigger phrase embeddings if available
     let primaryScore = 0;
 

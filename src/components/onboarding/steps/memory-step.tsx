@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Brain, ArrowRight, ArrowLeft, Loader2, CheckCircle2, ExternalLink, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getSettings, updateSettings } from "@/lib/db/queries";
+import { useApiKeysStore } from "@/stores/api-keys-store";
 
 interface MemoryStepProps {
     onComplete: () => void;
@@ -21,6 +22,7 @@ export function MemoryStep({ onComplete, onBack, onSkip }: MemoryStepProps) {
     const [memoryEnabled, setMemoryEnabled] = useState(true);
     const [mem0ApiKey, setMem0ApiKey] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const { addKey, getKeyForProvider } = useApiKeysStore();
 
     const handleContinue = async () => {
         setIsLoading(true);
@@ -28,6 +30,15 @@ export function MemoryStep({ onComplete, onBack, onSkip }: MemoryStepProps) {
             await updateSettings({
                 memoryEnabled,
             });
+
+            // Save mem0 API key if provided
+            if (mem0ApiKey.trim()) {
+                const existingKey = getKeyForProvider("mem0");
+                if (!existingKey) {
+                    await addKey("mem0", mem0ApiKey.trim());
+                }
+            }
+
             onComplete();
         } catch (error) {
             console.error("Failed to save memory settings:", error);

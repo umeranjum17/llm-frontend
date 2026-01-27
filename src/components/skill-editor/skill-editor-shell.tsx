@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useSkillEditorForm } from "@/hooks/use-skill-editor-form";
 import { SkillEditorLayout } from "./skill-editor-layout";
 import { SkillEditorHeader } from "./skill-editor-header";
@@ -33,33 +33,38 @@ export function SkillEditorShell({
 }: SkillEditorShellProps) {
   const [saving, setSaving] = useState(false);
   const [embeddingProgress, setEmbeddingProgress] = useState<string | null>(null);
+  const hasInitialized = useRef(false);
 
-  const {
-    currentStep,
-    setStep,
-    validateStep,
-    validateAll,
-    reset,
-    loadSkill,
-    loadPrefillData,
-    name,
-    category,
-    icon,
-    color,
-    activeLabel,
-    triggerPhrases,
-    exclusionQueries,
-    autoTrigger,
-    requireApproval,
-    systemPrompt,
-    userTemplate,
-  } = useSkillEditorForm();
+  const currentStep = useSkillEditorForm((s) => s.currentStep);
+  const setStep = useSkillEditorForm((s) => s.setStep);
+  const validateStep = useSkillEditorForm((s) => s.validateStep);
+  const validateAll = useSkillEditorForm((s) => s.validateAll);
+  const name = useSkillEditorForm((s) => s.name);
+  const category = useSkillEditorForm((s) => s.category);
+  const icon = useSkillEditorForm((s) => s.icon);
+  const color = useSkillEditorForm((s) => s.color);
+  const activeLabel = useSkillEditorForm((s) => s.activeLabel);
+  const triggerPhrases = useSkillEditorForm((s) => s.triggerPhrases);
+  const exclusionQueries = useSkillEditorForm((s) => s.exclusionQueries);
+  const autoTrigger = useSkillEditorForm((s) => s.autoTrigger);
+  const requireApproval = useSkillEditorForm((s) => s.requireApproval);
+  const systemPrompt = useSkillEditorForm((s) => s.systemPrompt);
+  const userTemplate = useSkillEditorForm((s) => s.userTemplate);
 
   const { getKeyForProvider } = useApiKeysStore();
   const { embeddingsProvider, embeddingsModelId } = useSettingsStore();
 
-  // Load existing skill or prefill data on mount
+  // Load existing skill or prefill data on mount (once only)
   useEffect(() => {
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
+
+    // Get store actions directly to avoid stale closures
+    const { reset, loadSkill, loadPrefillData } = useSkillEditorForm.getState();
+
+    // Reset form first
+    reset();
+
     if (mode === "edit" && existingSkill) {
       loadSkill(existingSkill);
     } else {
@@ -71,15 +76,13 @@ export function SkillEditorShell({
           loadPrefillData(data);
         } catch (error) {
           console.error("Failed to parse prefill data:", error);
+        } finally {
+          // Always clear after attempting to read
+          sessionStorage.removeItem(SKILL_PREFILL_KEY);
         }
       }
     }
-
-    return () => {
-      // Cleanup on unmount
-      reset();
-    };
-  }, [mode, existingSkill, loadSkill, loadPrefillData, reset]);
+  }, [mode, existingSkill]);
 
   const handleNext = () => {
     if (validateStep(currentStep)) {
@@ -134,7 +137,75 @@ export function SkillEditorShell({
           exclusionQueries: exclusionQueries.length > 0 ? exclusionQueries : undefined,
           ui,
         });
-        toast.success("Skill updated");
+
+        // Regenerate embeddings if trigger phrases changed
+        if (embeddingsProvider && embeddingsModelId && triggerPhrases.length > 0) {
+          const apiKeyObj = getKeyForProvider(embeddingsProvider);
+          if (apiKeyObj?.key) {
+            try {
+              const { setSkillAutoApplyQueries, setSkillExclusionQueries } = await import(
+                "@/lib/db/queries"
+              );
+              const { generateSkillEmbedding } = await import(
+                "@/lib/skills/skill-embeddings"
+              );
+
+              const totalSteps = 2 + (exclusionQueries.length > 0 ? 1 : 0);
+              let currentStepNum = 0;
+
+              // Generate trigger phrase embeddings
+              currentStepNum++;
+              setEmbeddingProgress(
+                `Updating trigger embeddings (${currentStepNum}/${totalSteps})...`
+              );
+              await setSkillAutoApplyQueries(
+                existingSkill.id,
+                triggerPhrases,
+                apiKeyObj.key,
+                embeddingsProvider,
+                embeddingsModelId
+              );
+
+              // Generate exclusion embeddings if any
+              if (exclusionQueries.length > 0) {
+                currentStepNum++;
+                setEmbeddingProgress(
+                  `Updating exclusion embeddings (${currentStepNum}/${totalSteps})...`
+                );
+                await setSkillExclusionQueries(
+                  existingSkill.id,
+                  exclusionQueries,
+                  apiKeyObj.key,
+                  embeddingsProvider,
+                  embeddingsModelId
+                );
+              }
+
+              // Generate description embedding
+              currentStepNum++;
+              setEmbeddingProgress(`Finalizing (${currentStepNum}/${totalSteps})...`);
+              await generateSkillEmbedding(
+                { ...existingSkill, name: name.trim(), description },
+                apiKeyObj.key,
+                embeddingsProvider,
+                embeddingsModelId
+              );
+
+              setEmbeddingProgress(null);
+              toast.success("Skill and embeddings updated successfully");
+            } catch (error) {
+              setEmbeddingProgress(null);
+              console.error("Failed to update embeddings:", error);
+              toast.warning(
+                "Skill saved, but embeddings failed. You can regenerate them from Settings."
+              );
+            }
+          } else {
+            toast.success("Skill updated (no API key for embeddings)");
+          }
+        } else {
+          toast.success("Skill updated");
+        }
       } else {
         const newSkill = await addSkill({
           name: name.trim(),
@@ -207,7 +278,7 @@ export function SkillEditorShell({
               );
 
               setEmbeddingProgress(null);
-              toast.success("Skill and embeddings generated successfully");
+              toast.success("Skill created with embeddings");
             } catch (error) {
               setEmbeddingProgress(null);
               console.error("Failed to generate embeddings:", error);
@@ -215,10 +286,14 @@ export function SkillEditorShell({
                 "Skill saved, but embeddings failed. You can regenerate them from Settings."
               );
             }
+          } else {
+            toast.success("Skill created (configure API key for auto-matching)");
           }
+        } else if (newSkill && triggerPhrases.length > 0) {
+          toast.success("Skill created (configure embeddings in Settings for auto-matching)");
+        } else {
+          toast.success("Skill created");
         }
-
-        toast.success("Skill created");
       }
 
       // Call onSave callback to navigate away
@@ -247,6 +322,7 @@ export function SkillEditorShell({
           totalSteps={steps.length}
           onBack={onCancel}
           onSave={handleSaveClick}
+          onStepClick={(step) => setStep(step)}
           saving={saving || !!embeddingProgress}
           canSave={canSave}
           isEditMode={mode === "edit"}
@@ -258,8 +334,10 @@ export function SkillEditorShell({
           totalSteps={steps.length}
           onBack={handleBack}
           onNext={handleNext}
-          onFinish={() => setStep(2)}
+          onSave={handleSaveClick}
           canProceed={validateStep(currentStep)}
+          canSave={canSave}
+          saving={saving || !!embeddingProgress}
         />
       }
     >
@@ -275,8 +353,19 @@ export function SkillEditorShell({
         </div>
       )}
 
-      {/* Current Step Content */}
-      {steps[currentStep].component}
+      {/* Desktop: Show all sections at once */}
+      <div className="hidden md:block space-y-8">
+        {steps.map((step, index) => (
+          <section key={step.title} id={`step-${index}`}>
+            {step.component}
+          </section>
+        ))}
+      </div>
+
+      {/* Mobile: Show current step only */}
+      <div className="md:hidden">
+        {steps[currentStep].component}
+      </div>
     </SkillEditorLayout>
   );
 }

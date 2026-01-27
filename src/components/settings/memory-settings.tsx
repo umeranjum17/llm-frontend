@@ -18,11 +18,11 @@ import {
     clearMemoryCache,
     type MemoryItem,
 } from "@/lib/memory";
-import { db } from "@/lib/db/schema";
+import { useApiKeysStore } from "@/stores/api-keys-store";
 
 export function MemorySettings() {
     const settings = useLiveQuery(() => getSettings());
-    const apiKeys = useLiveQuery(() => db.apiKeys.toArray());
+    const { keys: apiKeys, addKey, removeKey, getKeyForProvider } = useApiKeysStore();
 
     // Use proper state for async API calls (not useLiveQuery)
     const [memories, setMemories] = useState<MemoryItem[]>([]);
@@ -138,7 +138,7 @@ export function MemorySettings() {
                                 <div className="flex gap-2">
                                     <Input
                                         type="password"
-                                        value={apiKeys?.find(k => k.provider === "mem0")?.key || ""}
+                                        value={getKeyForProvider("mem0")?.key || ""}
                                         placeholder="m0-xxxxxxxxxxxxxxxxxxxxxxxx"
                                         autoComplete="off"
                                         data-1p-ignore
@@ -146,14 +146,13 @@ export function MemorySettings() {
                                         data-form-type="other"
                                         onChange={async (e) => {
                                             const key = e.target.value;
+                                            const existingKey = getKeyForProvider("mem0");
                                             if (key) {
-                                                await db.apiKeys.put({
-                                                    id: "mem0", // Single key for mem0
-                                                    provider: "mem0",
-                                                    key,
-                                                    createdAt: Date.now(),
-                                                    label: "Mem0 API Key"
-                                                });
+                                                if (existingKey) {
+                                                    // Remove old key first, then add new one
+                                                    await removeKey(existingKey.id);
+                                                }
+                                                await addKey("mem0", key);
                                                 // Reset cache/invalid state so we retry with the new key
                                                 clearMemoryCache();
                                                 // Initialize Mem0 user by adding a seed memory
@@ -165,21 +164,21 @@ export function MemorySettings() {
                                                     console.error("Failed to initialize Mem0 user:", initError);
                                                     // Don't show error toast - the key is saved, initialization might fail for valid keys on existing users
                                                 }
-                                            } else {
-                                                await db.apiKeys.delete("mem0");
+                                            } else if (existingKey) {
+                                                await removeKey(existingKey.id);
                                                 clearMemoryCache();
                                             }
                                         }}
                                     />
                                     <Button
                                         variant="outline"
-                                        onClick={() => window.open("https://mem0.ai", "_blank")}
+                                        onClick={() => window.open("https://app.mem0.ai/dashboard/api-keys", "_blank")}
                                     >
                                         Get Key
                                     </Button>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                    The Free Tier provides 10,000 memories, which is enough for years of typical usage.
+                                    The Free Tier provides 10,000 memories, which is enough for years of typical usage. Manage all API keys in Settings → API Keys.
                                 </p>
                             </div>
 

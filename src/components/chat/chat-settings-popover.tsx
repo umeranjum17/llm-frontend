@@ -15,9 +15,9 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import { getAgentById, getSettings, updateSettings, updateChat, getChatById, getMessages } from "@/lib/db/queries";
-import { db } from "@/lib/db/schema";
 import { toast } from "sonner";
 import { useSettingsStore } from "@/stores/settings-store";
+import { useApiKeysStore } from "@/stores/api-keys-store";
 
 type ReasoningLevel = "low" | "medium" | "high" | "xhigh";
 
@@ -51,7 +51,7 @@ export function ChatSettingsPopover({
   );
   const settings = useLiveQuery(() => getSettings());
   const messages = useLiveQuery(() => chatId ? getMessages(chatId) : undefined, [chatId]);
-  const mem0ApiKey = useLiveQuery(() => db.apiKeys.get("mem0"), []);
+  const mem0ApiKey = useApiKeysStore((state) => state.getKeyForProvider("mem0"));
 
   const hasMem0ApiKey = !!mem0ApiKey?.key;
   const incognitoMode = chat?.incognitoMode ?? false;

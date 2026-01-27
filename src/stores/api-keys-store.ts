@@ -460,8 +460,33 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
           ...decryptedKeys.filter((k) => !vaultKeyIds.includes(k.id)),
         ];
 
+        // Deduplicate keys by provider (keep most recent, delete duplicates from DB)
+        const seenProviders = new Map<string, ApiKey>();
+        const duplicateIds: string[] = [];
+        for (const key of orderedKeys) {
+          const existing = seenProviders.get(key.provider);
+          if (existing) {
+            // Keep the one with higher createdAt, mark the other for deletion
+            if ((key.createdAt || 0) > (existing.createdAt || 0)) {
+              duplicateIds.push(existing.id);
+              seenProviders.set(key.provider, key);
+            } else {
+              duplicateIds.push(key.id);
+            }
+          } else {
+            seenProviders.set(key.provider, key);
+          }
+        }
+        const deduplicatedKeys = orderedKeys.filter((k) => !duplicateIds.includes(k.id));
+
+        // Clean up duplicates from DB in background
+        if (duplicateIds.length > 0) {
+          console.log(`[API Keys] Cleaning up ${duplicateIds.length} duplicate keys...`);
+          Promise.all(duplicateIds.map((id) => dbDeleteApiKey(id).catch(() => {})));
+        }
+
         set({
-          keys: orderedKeys,
+          keys: deduplicatedKeys,
           isLoaded: true,
           vault: {
             meta: vaultMeta,
@@ -531,7 +556,33 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
   },
 
   addKey: async (provider, key, label, baseUrl) => {
-    const { vault } = get();
+    const { vault, keys } = get();
+
+    // System providers that should only have one key
+    const singleKeyProviders = [SYNC_S3_PROVIDER, "mem0", "composio"];
+    const isSingleKeyProvider = singleKeyProviders.includes(provider);
+
+    // Find existing key to replace:
+    // - For system providers: any key with same provider
+    // - For other providers: key with same provider AND same label (or both no label)
+    const existing = keys.find((k) => {
+      if (k.provider !== provider) return false;
+      if (isSingleKeyProvider) return true;
+      // For regular providers, match by label (treat undefined/empty as same)
+      const existingLabel = k.label || "";
+      const newLabel = label || "";
+      return existingLabel === newLabel;
+    });
+
+    if (existing) {
+      // Remove existing key first (will be replaced)
+      await dbDeleteApiKey(existing.id);
+      set({
+        keys: keys.filter((k) => k.id !== existing.id),
+        vaultKeyIds: get().vaultKeyIds.filter((k) => k !== existing.id),
+        lockedKeyIds: get().lockedKeyIds.filter((k) => k !== existing.id),
+      });
+    }
 
     // If vault is configured, require it to be unlocked to add keys.
     if (vault.meta) {

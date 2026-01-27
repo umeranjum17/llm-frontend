@@ -58,7 +58,7 @@ export function BasicsStep() {
             onValueChange={(v) => setField("category", v as Skill["category"])}
           >
             <SelectTrigger id="category">
-              <SelectValue />
+              <SelectValue placeholder="Select category" />
             </SelectTrigger>
             <SelectContent>
               {SKILL_CATEGORY_KEYS.map((c) => (
@@ -79,7 +79,7 @@ export function BasicsStep() {
             <Label htmlFor="icon">Icon</Label>
             <Select value={icon} onValueChange={(v) => setField("icon", v)}>
               <SelectTrigger id="icon">
-                <SelectValue />
+                <SelectValue placeholder="Select icon" />
               </SelectTrigger>
               <SelectContent>
                 {SKILL_ICONS.map((i) => (
@@ -95,7 +95,7 @@ export function BasicsStep() {
             <Label htmlFor="color">Color</Label>
             <Select value={color} onValueChange={(v) => setField("color", v)}>
               <SelectTrigger id="color">
-                <SelectValue />
+                <SelectValue placeholder="Select color" />
               </SelectTrigger>
               <SelectContent>
                 {SKILL_COLOR_OPTIONS.map((c) => (

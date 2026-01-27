@@ -42,6 +42,7 @@ const PROVIDERS = [
   { id: "anyscale", name: "Anyscale (OpenAI-compatible)", url: "https://app.endpoints.anyscale.com/credentials", baseUrl: "https://api.endpoints.anyscale.com/v1" },
   { id: "custom-openai", name: "Custom (OpenAI-compatible)", url: "https://platform.openai.com/docs/api-reference", needsBaseUrl: true },
   { id: "composio", name: "Composio (Tool Router)", url: "https://platform.composio.dev" },
+  { id: "mem0", name: "Mem0 (Memory)", url: "https://app.mem0.ai/dashboard/api-keys" },
 ] as const;
 
 // Composio is now stored in the encrypted api-keys store like other providers
@@ -584,22 +585,43 @@ export function ApiKeysSettings() {
       </Dialog>
 
       {/* Existing Keys */}
-      {keys.filter((k) => k.provider !== SYNC_S3_PROVIDER).length > 0 && (
+      {keys.length > 0 && (
         <div className="space-y-3">
           <Label>Your API Keys</Label>
-          {keys.filter((k) => k.provider !== SYNC_S3_PROVIDER).map((apiKey) => {
+          {keys.map((apiKey) => {
             const providerConfig = getProviderConfig(apiKey.provider);
             const isComposio = apiKey.provider === "composio";
+            const isMem0 = apiKey.provider === "mem0";
+            const isS3 = apiKey.provider === SYNC_S3_PROVIDER;
             const isLocked = lockedKeyIds.includes(apiKey.id);
-            const providerName =
-              providerConfig?.name ||
-              (isCustomOpenAIProvider(apiKey.provider) ? (apiKey.label || "Custom (OpenAI-compatible)") : apiKey.provider);
+
+            // Parse S3 config for display
+            let s3Info: { bucket?: string; endpoint?: string } | null = null;
+            if (isS3 && !isLocked) {
+              try {
+                s3Info = JSON.parse(apiKey.key);
+              } catch {
+                // Invalid JSON, show as regular key
+              }
+            }
+
+            const providerName = isS3
+              ? "S3 Sync"
+              : providerConfig?.name ||
+                (isCustomOpenAIProvider(apiKey.provider) ? (apiKey.label || "Custom (OpenAI-compatible)") : apiKey.provider);
+
+            const borderClass = isComposio
+              ? "border-purple-500/30 bg-purple-500/5"
+              : isMem0
+                ? "border-blue-500/30 bg-blue-500/5"
+                : isS3
+                  ? "border-green-500/30 bg-green-500/5"
+                  : "";
+
             return (
               <div
                 key={apiKey.id}
-                className={`flex items-center gap-3 p-4 border rounded-lg ${
-                  isComposio ? "border-purple-500/30 bg-purple-500/5" : ""
-                }`}
+                className={`flex items-center gap-3 p-4 border rounded-lg ${borderClass}`}
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
@@ -612,7 +634,17 @@ export function ApiKeysSettings() {
                         Tools
                       </Badge>
                     )}
-                    {apiKey.label && !isComposio && (
+                    {isMem0 && (
+                      <Badge variant="secondary" className="text-xs bg-blue-500/20 text-blue-400">
+                        Memory
+                      </Badge>
+                    )}
+                    {isS3 && (
+                      <Badge variant="secondary" className="text-xs bg-green-500/20 text-green-400">
+                        Sync
+                      </Badge>
+                    )}
+                    {apiKey.label && !isComposio && !isMem0 && !isS3 && (
                       <Badge variant="secondary" className="text-xs">
                         {apiKey.label}
                       </Badge>
@@ -623,43 +655,57 @@ export function ApiKeysSettings() {
                       {apiKey.baseUrl}
                     </div>
                   )}
-                  <code className="text-xs text-muted-foreground font-mono">
-                    {isLocked ? (
-                      <span className="text-muted-foreground">Locked</span>
-                    ) : showKeys[apiKey.id] ? (
-                      apiKey.key
-                    ) : (
-                      maskKey(apiKey.key)
-                    )}
-                  </code>
+                  {isS3 && s3Info ? (
+                    <div className="text-xs text-muted-foreground font-mono">
+                      {isLocked ? (
+                        <span>Locked</span>
+                      ) : (
+                        <span>{s3Info.bucket} @ {s3Info.endpoint || "s3.amazonaws.com"}</span>
+                      )}
+                    </div>
+                  ) : (
+                    <code className="text-xs text-muted-foreground font-mono">
+                      {isLocked ? (
+                        <span className="text-muted-foreground">Locked</span>
+                      ) : showKeys[apiKey.id] ? (
+                        apiKey.key
+                      ) : (
+                        maskKey(apiKey.key)
+                      )}
+                    </code>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => toggleShowKey(apiKey.id)}
-                    disabled={isLocked}
-                    title={showKeys[apiKey.id] ? "Hide key" : "Show key"}
-                  >
-                    {showKeys[apiKey.id] ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleTestKey(apiKey.id)}
-                    disabled={isLocked || testingKey === apiKey.id}
-                    title="Test key"
-                  >
-                    {testingKey === apiKey.id ? (
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                    ) : (
-                      <Check className="h-4 w-4" />
-                    )}
-                  </Button>
+                  {!isS3 && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => toggleShowKey(apiKey.id)}
+                      disabled={isLocked}
+                      title={showKeys[apiKey.id] ? "Hide key" : "Show key"}
+                    >
+                      {showKeys[apiKey.id] ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
+                  )}
+                  {!isS3 && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleTestKey(apiKey.id)}
+                      disabled={isLocked || testingKey === apiKey.id}
+                      title="Test key"
+                    >
+                      {testingKey === apiKey.id ? (
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                      ) : (
+                        <Check className="h-4 w-4" />
+                      )}
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="icon"

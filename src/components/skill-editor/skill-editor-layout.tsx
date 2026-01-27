@@ -26,7 +26,7 @@ export function SkillEditorLayout({
       <div className="hidden md:flex flex-1 overflow-hidden">
         {/* Main Content */}
         <main className="flex-1 overflow-y-auto">
-          <div className="container max-w-3xl mx-auto p-6">
+          <div className="container max-w-5xl mx-auto px-6 py-4">
             {children}
           </div>
         </main>
@@ -43,7 +43,7 @@ export function SkillEditorLayout({
 
       {/* Mobile Layout */}
       <div className="md:hidden flex-1 overflow-y-auto">
-        <main className="container max-w-2xl mx-auto p-4">
+        <main className="container max-w-2xl mx-auto p-4 pb-40">
           {children}
         </main>
       </div>

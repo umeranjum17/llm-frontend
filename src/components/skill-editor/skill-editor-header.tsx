@@ -2,13 +2,13 @@
 
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 interface SkillEditorHeaderProps {
   currentStep: number;
   totalSteps: number;
   onBack: () => void;
   onSave: () => void;
+  onStepClick?: (step: number) => void;
   saving?: boolean;
   canSave?: boolean;
   isEditMode?: boolean;
@@ -19,6 +19,7 @@ export function SkillEditorHeader({
   totalSteps,
   onBack,
   onSave,
+  onStepClick,
   saving = false,
   canSave = true,
   isEditMode = false,
@@ -27,7 +28,7 @@ export function SkillEditorHeader({
 
   return (
     <header className="sticky top-0 z-50 bg-background border-b">
-      {/* Desktop header */}
+      {/* Desktop header - simplified, all sections visible */}
       <div className="hidden md:flex items-center justify-between px-6 py-4">
         <Button
           variant="ghost"

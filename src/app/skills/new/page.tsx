@@ -1,31 +1,14 @@
 "use client";
 
-import { useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SkillEditorShell } from "@/components/skill-editor/skill-editor-shell";
-
-const SKILL_PREFILL_KEY = "skillEditorPrefill";
 
 export default function NewSkillPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlReturnTo = searchParams.get("returnTo");
 
-  useEffect(() => {
-    // Read prefill data from sessionStorage
-    const stored = sessionStorage.getItem(SKILL_PREFILL_KEY);
-    if (stored) {
-      try {
-        const { data, returnTo } = JSON.parse(stored);
-        // Data will be loaded by SkillEditorShell
-        // Clear after reading to prevent stale data
-        sessionStorage.removeItem(SKILL_PREFILL_KEY);
-      } catch (error) {
-        console.error("Failed to parse prefill data:", error);
-        sessionStorage.removeItem(SKILL_PREFILL_KEY);
-      }
-    }
-  }, []);
+  // Note: sessionStorage prefill data is read and cleared by SkillEditorShell
 
   const handleCancel = () => {
     // Check if there's a returnTo in URL or sessionStorage

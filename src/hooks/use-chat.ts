@@ -16,8 +16,11 @@ import { isModelIdCompatibleWithProviderId, pickBestProviderId, providerLabel } 
 import { addMemory, refreshCacheInBackground, searchMemories } from "@/lib/memory";
 import { generateAndApplySummary } from "@/lib/ai/summarization";
 import { getSettings } from "@/lib/db/queries";
-import { matchSkill } from "@/lib/skills/skill-matcher";
+import { matchSkill, getAutoSkillsMissingEmbeddings } from "@/lib/skills/skill-matcher";
 import type { UIMessage } from "ai";
+
+// Track if we've shown the missing embeddings warning this session
+let hasShownMissingEmbeddingsWarning = false;
 
 function cleanReferencesForLLM(content: string) {
   return content
@@ -2034,6 +2037,20 @@ export function useChat(chatId: string | null) {
                   }
                 } else {
                   activeSkill = matchResult.skill;
+                }
+              } else if (!hasShownMissingEmbeddingsWarning) {
+                // No skill matched - check if there are auto-skills without embeddings
+                const embeddingStatus = await getAutoSkillsMissingEmbeddings();
+                if (embeddingStatus.missing > 0) {
+                  hasShownMissingEmbeddingsWarning = true;
+                  const skillList = embeddingStatus.skillNames.slice(0, 3).join(", ");
+                  const moreCount = embeddingStatus.skillNames.length > 3
+                    ? ` and ${embeddingStatus.skillNames.length - 3} more`
+                    : "";
+                  toast.warning("Skills need embeddings", {
+                    description: `${embeddingStatus.missing} auto-trigger skill${embeddingStatus.missing > 1 ? "s" : ""} (${skillList}${moreCount}) won't activate until embeddings are generated. Go to Settings > Skills to generate them.`,
+                    duration: 8000,
+                  });
                 }
               }
             }
