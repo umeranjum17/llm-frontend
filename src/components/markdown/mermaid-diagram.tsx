@@ -40,6 +40,11 @@ export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: 
         console.error("Mermaid rendering error:", err);
         setError(err instanceof Error ? err.message : "Failed to render diagram");
         setSvg("");
+      } finally {
+        // Clean up any orphaned Mermaid error elements injected into the DOM
+        document.querySelectorAll('[id^="dmermaid-"], [id^="d"].mermaid, .mermaid-error, #dmermaid').forEach(el => {
+          el.remove();
+        });
       }
     }
 
@@ -67,18 +72,23 @@ export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: 
   };
 
   if (error) {
+    // Extract a clean, short error message
+    const shortError = error.split('\n')[0].slice(0, 200);
+
     return (
-      <div className="my-4 rounded-lg border border-red-500/20 bg-red-500/10 p-4">
+      <div className="my-4 rounded-lg border border-red-500/20 bg-red-500/10 p-4 max-w-full overflow-hidden">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-red-500">Mermaid Diagram Error</span>
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleCopy}>
             {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
           </Button>
         </div>
-        <pre className="text-xs text-red-400 whitespace-pre-wrap">{error}</pre>
+        <p className="text-xs text-red-400 truncate">{shortError}</p>
         <details className="mt-2">
-          <summary className="text-xs text-muted-foreground cursor-pointer">Show source</summary>
-          <pre className="mt-2 text-xs text-muted-foreground overflow-x-auto">{code}</pre>
+          <summary className="text-xs text-muted-foreground cursor-pointer">Show details</summary>
+          <pre className="mt-2 text-xs text-red-400/70 max-h-24 overflow-auto whitespace-pre-wrap break-all">{error}</pre>
+          <p className="mt-2 text-xs text-muted-foreground font-medium">Source:</p>
+          <pre className="mt-1 text-xs text-muted-foreground max-h-32 overflow-auto whitespace-pre-wrap break-all">{code}</pre>
         </details>
       </div>
     );

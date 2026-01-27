@@ -495,6 +495,20 @@
   }
 }
 
+/* Hide orphaned Mermaid error elements that get injected into DOM */
+body > [id^="dmermaid-"],
+body > [id^="d"].mermaid,
+body > .mermaid-error,
+body > #dmermaid,
+body > svg[id*="mermaid"]:not([class]) {
+  display: none !important;
+  position: absolute !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+}
+
 /* Prevent layout shifts during streaming */
 .prose > *:last-child {
   margin-bottom: 0;
