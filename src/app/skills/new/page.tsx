@@ -1,9 +1,10 @@
 "use client";
 
+import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SkillEditorShell } from "@/components/skill-editor/skill-editor-shell";
 
-export default function NewSkillPage() {
+function NewSkillContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlReturnTo = searchParams.get("returnTo");
@@ -34,5 +35,13 @@ export default function NewSkillPage() {
       onCancel={handleCancel}
       onSave={handleSave}
     />
+  );
+}
+
+export default function NewSkillPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading...</div>}>
+      <NewSkillContent />
+    </Suspense>
   );
 }
