@@ -67,6 +67,14 @@ export default function Home() {
         loadPromises.push(loadKeys());
       }
       await Promise.all(loadPromises);
+
+      // Migrate S3 config from old _syncMeta location to API keys vault (if applicable)
+      try {
+        const { migrateS3ConfigToVault } = await import("@/lib/sync/device-id");
+        await migrateS3ConfigToVault();
+      } catch (error) {
+        console.warn("[Page] S3 config migration:", error);
+      }
     };
 
     initAndLoad();

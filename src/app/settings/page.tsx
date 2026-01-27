@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Key, Palette, Keyboard, Download, Settings as SettingsIcon, Bot, Search, Brain, Shield, BarChart3, Loader2, Wand2, Cloud } from "lucide-react";
+import { ArrowLeft, Key, Palette, Keyboard, Download, Settings as SettingsIcon, Bot, Search, Brain, BarChart3, Loader2, Wand2, Cloud, Shield } from "lucide-react";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useSettingsStore } from "@/stores/settings-store";
 

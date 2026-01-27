@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Card,
   CardContent,
@@ -11,14 +10,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   Cloud,
   CloudOff,
@@ -31,41 +22,59 @@ import {
   Check,
   Info,
   AlertTriangle,
-  ExternalLink,
+  Lock,
+  Unlock,
+  Shield,
 } from "lucide-react";
 import { toast } from "sonner";
-import { setS3Config, getS3Config } from "@/lib/sync/device-id";
+import { getAutoSyncMode, getS3Config, setAutoSyncMode, type AutoSyncMode } from "@/lib/sync/device-id";
 import {
   sync,
   getSyncStatus,
   type SyncProgress,
 } from "@/lib/sync/sync-manager";
+import { SyncWizard } from "@/components/settings/sync-wizard/sync-wizard";
+import { S3Adapter } from "@/lib/sync/s3-adapter";
+import { getDeviceId, setDeviceName } from "@/lib/sync/device-id";
+import { useApiKeysStore } from "@/stores/api-keys-store";
 
 export function SyncSettings() {
-  const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false);
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   const [syncStatus, setSyncStatus] = useState({
     configured: false,
+    configLocked: false,
     deviceId: "",
     lastSyncAt: 0,
     pendingChanges: 0,
   });
+  const { vault, requestVaultUnlock } = useApiKeysStore();
+  const [s3Config, setS3ConfigState] = useState<{
+    endpoint: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    bucket: string;
+    region?: string;
+  } | null>(null);
+  const [autoSyncMode, setAutoSyncModeState] = useState<AutoSyncMode>("manual");
+  const [devices, setDevices] = useState<Array<{
+    id: string;
+    name: string;
+    platform?: string;
+    lastSyncAt: number;
+    isCurrent: boolean;
+  }>>([]);
 
-  // S3 config form
-  const [endpoint, setEndpoint] = useState("");
-  const [accessKeyId, setAccessKeyId] = useState("");
-  const [secretAccessKey, setSecretAccessKey] = useState("");
-  const [bucket, setBucket] = useState("");
-  const [region, setRegion] = useState("auto");
   const [deviceIdCopied, setDeviceIdCopied] = useState(false);
-  const [showCorsHelp, setShowCorsHelp] = useState(false);
   const [lastSyncError, setLastSyncError] = useState<string | null>(null);
 
-  // Load sync status on mount and poll for updates
+  // Load sync status on mount, poll for updates, and reload when vault unlocks
   useEffect(() => {
     loadSyncStatus();
     loadS3Config();
+    loadAutoSyncMode();
+    loadDevices();
     // Note: Change tracking is initialized in global-hooks, not here
 
     // Poll for status updates every 2 seconds to show pending changes
@@ -76,80 +85,67 @@ export function SyncSettings() {
     return () => clearInterval(interval);
   }, []);
 
+  // Reload when vault state changes (especially unlocked)
+  useEffect(() => {
+    loadSyncStatus();
+    loadS3Config();
+    loadDevices();
+  }, [vault.isUnlocked]);
+
   const loadSyncStatus = async () => {
     const status = await getSyncStatus();
     setSyncStatus(status);
   };
 
-  const loadS3Config = async () => {
+  const loadS3Config = () => {
     try {
-      const config = await getS3Config();
-      console.log("[SyncSettings] Loaded config:", config ? "exists" : "null");
-      if (config) {
-        setEndpoint(config.endpoint || "");
-        setAccessKeyId(config.accessKeyId || "");
-        setSecretAccessKey(config.secretAccessKey || "");
-        setBucket(config.bucket || "");
-        setRegion(config.region || "auto");
-      } else {
-        // Reset to defaults if no config
-        setEndpoint("");
-        setAccessKeyId("");
-        setSecretAccessKey("");
-        setBucket("");
-        setRegion("auto");
-      }
+      const config = getS3Config();
+      setS3ConfigState(config);
     } catch (error) {
       console.error("[SyncSettings] Error loading config:", error);
     }
   };
 
-  const handleOpenConfigDialog = async () => {
-    // Reload config from database before opening dialog
-    await loadS3Config();
-    setIsConfigDialogOpen(true);
+  const loadAutoSyncMode = async () => {
+    try {
+      const mode = await getAutoSyncMode();
+      setAutoSyncModeState(mode);
+    } catch (error) {
+      console.error("[SyncSettings] Error loading auto-sync mode:", error);
+    }
   };
 
-  const handleSaveConfig = async () => {
-    if (!endpoint || !accessKeyId || !secretAccessKey || !bucket) {
-      toast.error("Please fill in all required fields");
-      return;
-    }
-
-    // Validate endpoint format
-    if (!endpoint.startsWith("http://") && !endpoint.startsWith("https://")) {
-      toast.error("Endpoint must start with http:// or https://");
-      return;
-    }
-
-    // Check if bucket name is in endpoint (common mistake)
-    if (endpoint.includes(`/${bucket}`)) {
-      toast.error(`Remove "/${bucket}" from endpoint URL. Bucket should be entered separately.`);
-      return;
-    }
-
-    // Validate bucket name (no slashes)
-    if (bucket.includes("/")) {
-      toast.error("Bucket name should not contain slashes (/)");
-      return;
-    }
-
+  const loadDevices = async () => {
     try {
-      await setS3Config({
-        endpoint: endpoint.replace(/\/$/, ""), // Remove trailing slash
-        accessKeyId: accessKeyId.trim(),
-        secretAccessKey: secretAccessKey.trim(),
-        bucket: bucket.trim(),
-        region: region.trim() || "auto",
-      });
-
-      toast.success("S3 configuration saved");
-      setIsConfigDialogOpen(false);
-      loadSyncStatus();
+      const adapter = S3Adapter.fromConfig();
+      if (!adapter) return;
+      const manifest = await adapter.getManifest();
+      const currentId = await getDeviceId();
+      const deviceList = Object.entries(manifest.devices).map(([id, info]) => ({
+        id,
+        name: info.deviceName || "Device",
+        platform: info.platform,
+        lastSyncAt: info.lastSyncAt,
+        isCurrent: id === currentId,
+      }));
+      deviceList.sort((a, b) => b.lastSyncAt - a.lastSyncAt);
+      setDevices(deviceList);
     } catch (error) {
-      toast.error("Failed to save S3 configuration");
-      console.error(error);
+      console.error("[SyncSettings] Error loading devices:", error);
     }
+  };
+
+  const handleOpenWizard = () => {
+    // Reload config from store before opening dialog
+    loadS3Config();
+    setIsWizardOpen(true);
+  };
+
+  const handleAutoSyncChange = async (value: string) => {
+    const mode = value as AutoSyncMode;
+    setAutoSyncModeState(mode);
+    await setAutoSyncMode(mode);
+    toast.success("Auto-sync preference saved");
   };
 
   const handleSync = async () => {
@@ -169,15 +165,11 @@ export function SyncSettings() {
         setLastSyncError(null);
         // Reload status to update Last Sync timestamp and clear any errors
         await loadSyncStatus();
+        await loadDevices();
       } else {
         toast.error(`Sync failed: ${result.error}`);
         setLastSyncError(result.error || "Unknown error");
 
-        // Auto-show CORS help if it's a CORS error
-        if (result.error?.toLowerCase().includes("cors") ||
-            result.error?.toLowerCase().includes("access-control")) {
-          setShowCorsHelp(true);
-        }
       }
 
       loadSyncStatus();
@@ -186,16 +178,41 @@ export function SyncSettings() {
       toast.error("Sync failed");
       console.error(error);
       setLastSyncError(errorMessage);
-
-      // Auto-show CORS help if it's a CORS error
-      if (errorMessage.toLowerCase().includes("cors") ||
-          errorMessage.toLowerCase().includes("access-control")) {
-        setShowCorsHelp(true);
-      }
     } finally {
       setIsSyncing(false);
       setSyncProgress(null);
     }
+  };
+
+  const handleRenameDevice = async (deviceId: string, currentName: string) => {
+    const nextName = window.prompt("Enter a new device name", currentName);
+    if (!nextName || nextName.trim() === currentName) return;
+    const adapter = S3Adapter.fromConfig();
+    if (!adapter) return;
+    const manifest = await adapter.getManifest();
+    if (!manifest.devices[deviceId]) return;
+    manifest.devices[deviceId].deviceName = nextName.trim();
+    await adapter.updateManifest(manifest);
+    const localId = await getDeviceId();
+    if (deviceId === localId) {
+      await setDeviceName(nextName.trim());
+    }
+    await loadDevices();
+    toast.success("Device name updated");
+  };
+
+  const handleRevokeDevice = async (deviceId: string) => {
+    if (!confirm("Remove this device from the sync list? It will need to reconnect to sync again.")) {
+      return;
+    }
+    const adapter = S3Adapter.fromConfig();
+    if (!adapter) return;
+    const manifest = await adapter.getManifest();
+    if (!manifest.devices[deviceId]) return;
+    delete manifest.devices[deviceId];
+    await adapter.updateManifest(manifest);
+    await loadDevices();
+    toast.success("Device removed");
   };
 
   const copyDeviceId = () => {
@@ -233,7 +250,7 @@ export function SyncSettings() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleOpenConfigDialog}
+                onClick={handleOpenWizard}
               >
                 <Settings className="h-4 w-4 mr-2" />
                 Configure
@@ -241,25 +258,53 @@ export function SyncSettings() {
               <Button
                 size="sm"
                 onClick={handleSync}
-                disabled={!syncStatus.configured || isSyncing}
+                disabled={!syncStatus.configured || syncStatus.configLocked || isSyncing}
               >
                 {isSyncing ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : syncStatus.configLocked ? (
+                  <Lock className="h-4 w-4 mr-2" />
                 ) : (
                   <RefreshCw className="h-4 w-4 mr-2" />
                 )}
-                Sync Now
+                {syncStatus.configLocked ? "Locked" : "Sync Now"}
               </Button>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
+            {/* Vault Locked Warning */}
+            {syncStatus.configLocked && (
+              <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 p-4">
+                <Lock className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-amber-900 dark:text-amber-100">Vault Locked</div>
+                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                    S3 credentials are protected by your vault passphrase. Unlock to sync.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => requestVaultUnlock()}
+                  className="shrink-0"
+                >
+                  <Unlock className="h-4 w-4 mr-2" />
+                  Unlock
+                </Button>
+              </div>
+            )}
+
             {/* Status */}
             <div className="flex items-center justify-between py-2 border-b">
               <span className="text-sm text-muted-foreground">Status</span>
               <div className="flex items-center gap-2">
-                {syncStatus.configured ? (
+                {syncStatus.configLocked ? (
+                  <>
+                    <Lock className="h-4 w-4 text-amber-500" />
+                    <span className="text-sm font-medium">Locked</span>
+                  </>
+                ) : syncStatus.configured ? (
                   <>
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
                     <span className="text-sm font-medium">Configured</span>
@@ -315,6 +360,29 @@ export function SyncSettings() {
               </span>
             </div>
 
+            {/* Auto-Sync */}
+            <div className="flex items-center justify-between py-2 border-t">
+              <div>
+                <div className="text-sm font-medium">Auto-Sync</div>
+                <div className="text-xs text-muted-foreground">
+                  Run sync automatically when enabled
+                </div>
+              </div>
+              <div className="w-40">
+                <Select value={autoSyncMode} onValueChange={handleAutoSyncChange}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="manual">Manual</SelectItem>
+                    <SelectItem value="focus">On focus</SelectItem>
+                    <SelectItem value="5m">Every 5 min</SelectItem>
+                    <SelectItem value="15m">Every 15 min</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
             {/* Sync Progress */}
             {syncProgress && (
               <div className="mt-4 p-3 bg-muted rounded-lg">
@@ -342,110 +410,6 @@ export function SyncSettings() {
               </div>
             )}
 
-            {/* CORS Help */}
-            {syncStatus.configured && (
-              <div className="mt-4">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowCorsHelp(!showCorsHelp)}
-                  className="text-xs"
-                >
-                  <Info className="h-3 w-3 mr-1" />
-                  {showCorsHelp ? "Hide" : "Show"} CORS Setup Instructions
-                </Button>
-
-                {showCorsHelp && (
-                  <div className="mt-2 p-3 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                    <div className="flex gap-2">
-                      <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-500 mt-0.5 shrink-0" />
-                      <div className="text-xs text-yellow-800 dark:text-yellow-300">
-                        <p className="font-semibold mb-2">First Time Setup: Configure CORS</p>
-                        <p className="mb-2">
-                          If sync fails with &ldquo;Failed to fetch&rdquo; or CORS errors, you need to configure CORS on your bucket.
-                        </p>
-                        <div className="mb-2 p-2 bg-yellow-200 dark:bg-yellow-800 rounded text-[11px] space-y-1">
-                          <div>
-                            <strong>⚠️ Important:</strong> You must include ALL 5 HTTP methods (GET, PUT, POST, DELETE, HEAD)
-                            and the ETag expose header, or sync will fail.
-                          </div>
-                          <div className="text-[10px]">
-                            <strong>Common issues:</strong>
-                            <ul className="list-disc ml-4 mt-1">
-                              <li>Verify the policy saved without errors (check for red error message)</li>
-                              <li>Wait 10-30 seconds after saving for changes to take effect</li>
-                              <li>Ensure JSON is valid (no syntax errors)</li>
-                            </ul>
-                          </div>
-                        </div>
-
-                        <div className="space-y-2 mb-2">
-                          <p className="font-medium">For Cloudflare R2:</p>
-                          <ol className="list-decimal list-inside space-y-1 ml-2 text-[11px]">
-                            <li>Go to R2 Dashboard → Select your bucket</li>
-                            <li>Click <strong>Settings</strong> tab</li>
-                            <li>Find <strong>CORS Policy</strong> section and click <strong>Edit</strong></li>
-                            <li>
-                              <strong>Allowed Methods:</strong> Must include all 5: GET, PUT, POST, DELETE, HEAD
-                            </li>
-                            <li>
-                              <strong>Allowed Headers:</strong> Set to * (asterisk)
-                            </li>
-                            <li>
-                              <strong>Expose Headers:</strong> Add &ldquo;ETag&rdquo; (click Add header if needed)
-                            </li>
-                            <li>Save the policy</li>
-                          </ol>
-                        </div>
-
-                        <div className="space-y-2 mb-2">
-                          <p className="font-medium">For AWS S3:</p>
-                          <ol className="list-decimal list-inside space-y-1 ml-2">
-                            <li>Go to S3 Console → Select your bucket</li>
-                            <li>Click <strong>Permissions</strong> tab</li>
-                            <li>Scroll to <strong>CORS configuration</strong></li>
-                            <li>Add the policy below and save</li>
-                          </ol>
-                        </div>
-
-                        <div className="bg-yellow-100 dark:bg-yellow-900 p-2 rounded border border-yellow-300 dark:border-yellow-700 font-mono text-[10px] overflow-x-auto">
-                          <pre>{`[
-  {
-    "AllowedOrigins": [
-      "${window.location.origin}"
-    ],
-    "AllowedMethods": [
-      "GET",
-      "PUT",
-      "POST",
-      "DELETE",
-      "HEAD"
-    ],
-    "AllowedHeaders": ["*"],
-    "ExposeHeaders": ["ETag"],
-    "MaxAgeSeconds": 3000
-  }
-]`}</pre>
-                        </div>
-
-                        <p className="mt-2 text-[10px] flex items-center gap-1">
-                          <ExternalLink className="h-3 w-3" />
-                          <a
-                            href="https://developers.cloudflare.com/r2/buckets/cors/"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="underline hover:text-yellow-900 dark:hover:text-yellow-200"
-                          >
-                            Cloudflare R2 CORS Documentation
-                          </a>
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Last Error */}
             {lastSyncError && (
               <div className="mt-4 p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg">
@@ -459,7 +423,7 @@ export function SyncSettings() {
                     {(lastSyncError.toLowerCase().includes("cors") ||
                       lastSyncError.toLowerCase().includes("access-control")) && (
                       <p className="mt-2">
-                        This is a CORS error. Please configure CORS on your bucket (see instructions above).
+                        This is a CORS error. Open the Sync setup wizard to see the CORS guide.
                       </p>
                     )}
 
@@ -499,88 +463,93 @@ export function SyncSettings() {
         </CardContent>
       </Card>
 
-      {/* S3 Configuration Dialog */}
-      <Dialog open={isConfigDialogOpen} onOpenChange={setIsConfigDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>S3 Configuration</DialogTitle>
-            <DialogDescription>
-              Configure S3-compatible storage for delta sync. Supports AWS S3,
-              Cloudflare R2, MinIO, and more.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="endpoint">Endpoint</Label>
-              <Input
-                id="endpoint"
-                placeholder="https://c3518a6b53ed1623ec0d8a76ad24204e.r2.cloudflarestorage.com"
-                value={endpoint}
-                onChange={(e) => setEndpoint(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                ⚠️ <strong>Important:</strong> Do NOT include bucket name in endpoint.
-                For R2, use: https://&lt;account-id&gt;.r2.cloudflarestorage.com
-              </p>
+      {/* Devices */}
+      {syncStatus.configured && devices.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Devices</CardTitle>
+            <CardDescription>Manage devices connected to this sync bucket</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {devices.map((device) => (
+                <div key={device.id} className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      {device.name}
+                      {device.isCurrent && (
+                        <span className="text-xs rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5">
+                          This device
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {device.platform || "Unknown platform"} · Last sync {formatTimestamp(device.lastSyncAt)}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleRenameDevice(device.id, device.name)}
+                    >
+                      Rename
+                    </Button>
+                    {!device.isCurrent && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRevokeDevice(device.id)}
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
+          </CardContent>
+        </Card>
+      )}
+      <SyncWizard
+        open={isWizardOpen}
+        onOpenChange={setIsWizardOpen}
+        initialConfig={s3Config}
+        onSaved={async () => {
+          await loadSyncStatus();
+          await loadDevices();
+        }}
+      />
 
-            <div className="space-y-2">
-              <Label htmlFor="bucket">Bucket Name</Label>
-              <Input
-                id="bucket"
-                placeholder="my-lumina-sync"
-                value={bucket}
-                onChange={(e) => setBucket(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="region">Region</Label>
-              <Input
-                id="region"
-                placeholder="auto"
-                value={region}
-                onChange={(e) => setRegion(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                For Cloudflare R2: use &ldquo;auto&rdquo;. For AWS S3: use your bucket region (e.g., &ldquo;us-east-1&rdquo;)
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="accessKeyId">Access Key ID</Label>
-              <Input
-                id="accessKeyId"
-                placeholder="AKIAIOSFODNN7EXAMPLE"
-                value={accessKeyId}
-                onChange={(e) => setAccessKeyId(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="secretAccessKey">Secret Access Key</Label>
-              <Input
-                id="secretAccessKey"
-                type="password"
-                placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-                value={secretAccessKey}
-                onChange={(e) => setSecretAccessKey(e.target.value)}
-              />
-            </div>
+      {/* What syncs vs local-only info card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Shield className="h-4 w-4" />
+            What syncs vs local-only
+          </CardTitle>
+          <CardDescription>Clear boundaries for your privacy model</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2 text-sm">
+          <div className="space-y-2">
+            <div className="font-medium">Synced (when enabled)</div>
+            <ul className="list-disc ml-4 text-muted-foreground space-y-1">
+              <li>Chats and messages</li>
+              <li>Projects, folders, tags</li>
+              <li>Agents, prompts, settings</li>
+              <li>Model favorites and aliases</li>
+            </ul>
           </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsConfigDialogOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleSaveConfig}>Save Configuration</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <div className="space-y-2">
+            <div className="font-medium">Local-only</div>
+            <ul className="list-disc ml-4 text-muted-foreground space-y-1">
+              <li>API keys and vault passphrase</li>
+              <li>Device secret + sync credentials</li>
+              <li>Usage cache and local sessions</li>
+            </ul>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

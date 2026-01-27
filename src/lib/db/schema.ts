@@ -2,7 +2,7 @@ import Dexie, { type EntityTable } from "dexie";
 import { TABLE_REGISTRY, getStoresForVersion } from "./table-registry";
 
 // Current schema version - update this when adding new tables or indexes
-export const DB_SCHEMA_VERSION = 27;
+export const DB_SCHEMA_VERSION = 28;
 
 // Type definitions
 export interface Project {
@@ -123,7 +123,7 @@ export interface ApiKey {
 export interface SyncedApiKey {
   id: string;                    // Sync key ID (matches ApiKey.id)
   provider: string;              // Provider name
-  encryptedKey: string;          // Encrypted with sync password (format: v1:{salt}:{iv}:{data})
+  encryptedKey: string;          // Encrypted with sync password (v1:{salt}:{iv}:{data})
   label?: string;                // User-friendly label
   baseUrl?: string;              // For custom providers
   version: number;               // Timestamp for conflict resolution
@@ -175,10 +175,11 @@ export interface UserSettings {
   lastApiKeySyncAt?: number;         // Last successful sync timestamp
   // API key vault (passphrase-protected, client-side only)
   apiKeyVault?: {
-    version: 1;
+    version: 1 | 2;
     kdf: "PBKDF2-SHA256";
     iterations: number;
     salt: string; // base64
+    verificationHash?: string; // base64 (v2 only)
   };
   apiKeyVaultPasskey?: {
     version: 1;
@@ -526,6 +527,8 @@ export interface SyncMeta {
   id: "default";           // Always "default"
   deviceId: string;        // This device's unique ID
   lastSyncAt: number;      // Last successful sync timestamp
+  autoSyncMode?: "manual" | "focus" | "5m" | "15m";
+  deviceName?: string;     // User-friendly device name
   s3Config?: {
     endpoint: string;
     accessKeyId: string;   // encrypted
@@ -540,8 +543,33 @@ export interface SyncManifest {
     [deviceId: string]: {
       lastChangeId: string;
       lastSyncAt: number;
+      deviceName?: string;
+      platform?: string;
     };
   };
+}
+
+// Usage Snapshot - daily aggregated analytics that sync across devices
+export interface UsageSnapshot {
+  id: string;                           // Format: "YYYY-MM-DD-{deviceId}"
+  date: string;                         // YYYY-MM-DD format
+  deviceId: string;                     // Which device generated this data
+
+  // Aggregate metrics for this date
+  totalCost: number;                    // Total cost in USD
+  totalCacheSavings: number;            // Total cache savings in USD
+  totalMessages: number;                // Number of messages
+  totalChats: number;                   // Number of active chats
+  totalInputTokens: number;             // Total input tokens
+  totalOutputTokens: number;            // Total output tokens
+  totalCachedTokens: number;            // Total cached tokens
+
+  // Breakdown by model
+  costByModel: Record<string, number>;  // modelId -> cost
+  messagesByModel: Record<string, number>; // modelId -> count
+
+  createdAt: number;
+  updatedAt: number;
 }
 
 // Database class
@@ -569,6 +597,7 @@ export class LuminaDB extends Dexie {
   mcpServers!: EntityTable<McpServer, "id">;
   deviceSecrets!: EntityTable<DeviceSecret, "id">;
   contextSummaries!: EntityTable<ContextSummary, "id">;
+  usageSnapshots!: EntityTable<UsageSnapshot, "id">;
   _pendingChanges!: EntityTable<ChangeEntry, "id">;
   _syncMeta!: EntityTable<SyncMeta, "id">;
 

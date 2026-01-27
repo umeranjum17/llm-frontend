@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -13,10 +20,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useApiKeysStore } from "@/stores/api-keys-store";
-import { Plus, Trash2, Eye, EyeOff, Check, Activity, Lock, Unlock, Timer, Fingerprint } from "lucide-react";
+import { Plus, Trash2, Eye, EyeOff, Check, Activity, Lock, Unlock, Fingerprint, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { CUSTOM_OPENAI_PREFIX, getProviderConfig, isCustomOpenAIProvider } from "@/lib/providers";
 import { isPasskeySupported } from "@/lib/crypto/vault-passkey";
+import { validatePassphraseStrength, type PassphraseStrength } from "@/lib/crypto/passphrase-validator";
+import { ApiKeyTransferDialog, ApiKeyImportDialog } from "./api-key-transfer";
+import { SYNC_S3_PROVIDER } from "@/stores/api-keys-store";
 
 const PROVIDERS = [
   { id: "openrouter", name: "OpenRouter", url: "https://openrouter.ai/keys" },
@@ -61,13 +71,20 @@ export function ApiKeysSettings() {
   const [vaultPassphrase, setVaultPassphrase] = useState("");
   const [vaultPassphraseConfirm, setVaultPassphraseConfirm] = useState("");
   const [vaultBusy, setVaultBusy] = useState(false);
+  const [showRecoveryWarning, setShowRecoveryWarning] = useState(false);
   const [rememberMs, setRememberMs] = useState<number>(vault.rememberMs);
   const [passkeySupported, setPasskeySupported] = useState(false);
+  const [showVaultPrompt, setShowVaultPrompt] = useState(false);
+  const [promptPassphrase, setPromptPassphrase] = useState("");
+  const [promptConfirm, setPromptConfirm] = useState("");
+  const [isPromptBusy, setIsPromptBusy] = useState(false);
+  const [showTransferDialog, setShowTransferDialog] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
 
-  const rememberOptions: Array<{ label: string; value: number }> = [
-    { label: "1 hour", value: 60 * 60 * 1000 },
-    { label: "24 hours", value: 24 * 60 * 60 * 1000 },
-    { label: "7 days", value: 7 * 24 * 60 * 60 * 1000 },
+  const rememberOptions: Array<{ label: string; value: number; description: string }> = [
+    { label: "1 hour", value: 60 * 60 * 1000, description: "Auto-locks in 1 hour" },
+    { label: "24 hours", value: 24 * 60 * 60 * 1000, description: "Auto-locks in 24 hours" },
+    { label: "7 days", value: 7 * 24 * 60 * 60 * 1000, description: "Auto-locks in 7 days" },
   ];
 
   useEffect(() => {
@@ -113,6 +130,10 @@ export function ApiKeysSettings() {
       setNewKey("");
       setNewLabel("");
       setNewBaseUrl("");
+
+      if (!vault.meta && !localStorage.getItem("vaultPromptDismissed")) {
+        setShowVaultPrompt(true);
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to add API key");
     }
@@ -185,9 +206,18 @@ export function ApiKeysSettings() {
     }
   };
 
+  const passphraseStrength = useMemo<PassphraseStrength | null>(() => {
+    if (!vaultPassphrase) return null;
+    return validatePassphraseStrength(vaultPassphrase);
+  }, [vaultPassphrase]);
+
   const handleEnableVault = async () => {
     if (!vaultPassphrase) {
       toast.error("Enter a passphrase");
+      return;
+    }
+    if (vaultPassphrase.length < 8) {
+      toast.error("Passphrase must be at least 8 characters");
       return;
     }
     if (vaultPassphrase !== vaultPassphraseConfirm) {
@@ -195,6 +225,11 @@ export function ApiKeysSettings() {
       return;
     }
 
+    setShowRecoveryWarning(true);
+  };
+
+  const confirmEnableVault = async () => {
+    setShowRecoveryWarning(false);
     setVaultBusy(true);
     try {
       await enableVault(vaultPassphrase, rememberMs);
@@ -204,6 +239,34 @@ export function ApiKeysSettings() {
       toast.error(e instanceof Error ? e.message : "Failed to enable vault");
     } finally {
       setVaultBusy(false);
+    }
+  };
+
+  const handlePromptEnable = async () => {
+    if (!promptPassphrase) {
+      toast.error("Enter a passphrase");
+      return;
+    }
+    if (promptPassphrase.length < 8) {
+      toast.error("Passphrase must be at least 8 characters");
+      return;
+    }
+    if (promptPassphrase !== promptConfirm) {
+      toast.error("Passphrases do not match");
+      return;
+    }
+
+    setIsPromptBusy(true);
+    try {
+      await enableVault(promptPassphrase, rememberMs);
+      setPromptPassphrase("");
+      setPromptConfirm("");
+      setShowVaultPrompt(false);
+      localStorage.setItem("vaultPromptDismissed", "true");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to enable vault");
+    } finally {
+      setIsPromptBusy(false);
     }
   };
 
@@ -218,7 +281,9 @@ export function ApiKeysSettings() {
       await unlockVault(vaultPassphrase, rememberMs);
       setVaultPassphrase("");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to unlock vault");
+      const message = e instanceof Error ? e.message : "Failed to unlock vault";
+      const title = message.toLowerCase().includes("passphrase") ? "Incorrect passphrase" : "Unlock failed";
+      toast.error(title, { description: message });
     } finally {
       setVaultBusy(false);
     }
@@ -229,7 +294,9 @@ export function ApiKeysSettings() {
     try {
       await unlockVaultWithPasskey(rememberMs);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to unlock vault with passkey");
+      const message = e instanceof Error ? e.message : "Failed to unlock vault with passkey";
+      const title = message.toLowerCase().includes("passkey") ? "Passkey failed" : "Unlock failed";
+      toast.error(title, { description: message });
     } finally {
       setVaultBusy(false);
     }
@@ -294,161 +361,233 @@ export function ApiKeysSettings() {
         </p>
       </div>
 
-      {/* Vault */}
-      <div className="space-y-3 p-4 border rounded-lg bg-muted/30">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <Lock className="h-4 w-4 text-muted-foreground" />
-              <h4 className="font-medium">Passphrase Vault</h4>
-              {vault.meta ? (
-                <Badge variant="secondary" className="text-xs">
-                  {vault.isUnlocked ? "Unlocked" : "Locked"}
-                </Badge>
-              ) : (
-                <Badge variant="secondary" className="text-xs">
-                  Off
-                </Badge>
+      {/* Vault advanced settings */}
+      <details className="mt-12 border-t pt-6">
+        <summary className="text-sm text-muted-foreground cursor-pointer">Security settings</summary>
+        <div className="mt-4 space-y-4">
+          <div className="space-y-3 p-4 border rounded-lg bg-muted/30">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <Lock className="h-4 w-4 text-muted-foreground" />
+                  <h4 className="font-medium">Passphrase Vault</h4>
+                  {vault.meta ? (
+                    <Badge variant="secondary" className="text-xs">
+                      {vault.isUnlocked ? "Unlocked" : "Locked"}
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary" className="text-xs">
+                      Off
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Encrypt API keys with a passphrase. We can remember the unlock on this device for the time you choose.
+                </p>
+              </div>
+              {vault.meta && vault.isUnlocked && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={lockVault}
+                  disabled={vaultBusy}
+                  className="shrink-0"
+                  title="Lock vault now"
+                >
+                  <Lock className="h-3.5 w-3.5 mr-2" />
+                  Lock
+                </Button>
               )}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Encrypt API keys with a passphrase. Unlock once per tab and we&apos;ll remember it for the time you choose.
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">Auto-lock after</Label>
+                <Select value={String(rememberMs)} onValueChange={handleVaultRememberChange}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {rememberOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={String(opt.value)}>
+                        <div className="flex flex-col">
+                          <span>{opt.label}</span>
+                          <span className="text-[11px] text-muted-foreground">{opt.description}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {vault.meta && vault.isUnlocked && vault.unlockedUntil && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Unlocked for {formatDuration(rememberMs)} (locks automatically)
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>{vault.meta ? "Passphrase" : "New passphrase"}</Label>
+                <Input
+                  type="password"
+                  value={vaultPassphrase}
+                  onChange={(e) => setVaultPassphrase(e.target.value)}
+                  placeholder="Passphrase (12+ chars recommended)"
+                  autoComplete={passphraseAutoComplete}
+                  name="vault-passphrase"
+                  disabled={vaultBusy}
+                />
+                {!vault.meta && passphraseStrength && vaultPassphrase.length >= 8 && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {vaultPassphrase.length < 12 ? "12+ characters recommended" : "Looks good"}
+                  </p>
+                )}
+              </div>
+
+              {!vault.meta && (
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Confirm passphrase</Label>
+                  <Input
+                    type="password"
+                    value={vaultPassphraseConfirm}
+                    onChange={(e) => setVaultPassphraseConfirm(e.target.value)}
+                    placeholder="Confirm passphrase"
+                    autoComplete="new-password"
+                    name="vault-passphrase-confirm"
+                    disabled={vaultBusy}
+                  />
+                </div>
+              )}
+            </div>
+
+            {vault.meta && passkeySupported && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background/60 px-3 py-2">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Fingerprint className="h-3.5 w-3.5" />
+                  <span>{hasPasskey ? "Passkey enabled" : "Passkey not set up"}</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {!hasPasskey && vault.isUnlocked && (
+                    <Button variant="outline" size="sm" onClick={handleSetupPasskey} disabled={vaultBusy}>
+                      Set up passkey
+                    </Button>
+                  )}
+                  {hasPasskey && vault.isUnlocked && (
+                    <Button variant="outline" size="sm" onClick={handleRemovePasskey} disabled={vaultBusy}>
+                      Remove passkey
+                    </Button>
+                  )}
+                  {hasPasskey && !vault.isUnlocked && (
+                    <Button size="sm" onClick={handleUnlockWithPasskey} disabled={vaultBusy}>
+                      Unlock with passkey
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-end">
+              {!vault.meta ? (
+                <Button onClick={handleEnableVault} disabled={vaultBusy} className="sm:w-auto">
+                  <Unlock className="h-4 w-4 mr-2" />
+                  Enable Vault
+                </Button>
+              ) : vault.isUnlocked ? (
+                <Button variant="destructive" onClick={handleDisableVault} disabled={vaultBusy} className="sm:w-auto">
+                  Disable Vault
+                </Button>
+              ) : (
+                <div className="flex gap-2 sm:ml-auto">
+                  <Button onClick={handleUnlockVault} disabled={vaultBusy} className="flex-1 sm:flex-none">
+                    <Unlock className="h-4 w-4 mr-2" />
+                    Unlock
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleDisableVault}
+                    disabled={vaultBusy}
+                    className="flex-1 sm:flex-none"
+                    title="Disable vault (requires passphrase)"
+                  >
+                    Disable
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <p className="text-[11px] text-muted-foreground">
+              If you forget your passphrase, protected keys can&apos;t be recovered — you&apos;ll need to re-enter them.
             </p>
           </div>
-          {vault.meta && vault.isUnlocked && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={lockVault}
-              disabled={vaultBusy}
-              className="shrink-0"
-              title="Lock vault now"
-            >
-              <Lock className="h-3.5 w-3.5 mr-2" />
-              Lock
-            </Button>
-          )}
         </div>
+      </details>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label className="flex items-center gap-2">
-              <Timer className="h-3.5 w-3.5 text-muted-foreground" />
-              Remember unlock (this tab)
-            </Label>
-            <Select value={String(rememberMs)} onValueChange={handleVaultRememberChange}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {rememberOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={String(opt.value)}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {vault.meta && vault.isUnlocked && vault.unlockedUntil && (
-              <p className="text-[11px] text-muted-foreground">
-                Unlocked for {formatDuration(rememberMs)} in this tab (locks automatically)
-              </p>
-            )}
+      <Dialog open={showRecoveryWarning} onOpenChange={setShowRecoveryWarning}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Lock className="h-4 w-4 text-destructive" />
+              No passphrase recovery
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm text-muted-foreground">
+            <p>
+              If you forget your passphrase, the vault cannot be recovered and you will need to re-enter all API keys.
+            </p>
+            <p>Store your passphrase in a password manager.</p>
           </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRecoveryWarning(false)}>
+              Cancel
+            </Button>
+            <Button onClick={confirmEnableVault}>I understand, enable vault</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-          <div className="space-y-2">
-            <Label>{vault.meta ? "Passphrase" : "New passphrase"}</Label>
+      <Dialog open={showVaultPrompt} onOpenChange={setShowVaultPrompt}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Protect your API key?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Add a passphrase to encrypt your keys locally.
+          </p>
+          <div className="space-y-3">
             <Input
               type="password"
-              value={vaultPassphrase}
-              onChange={(e) => setVaultPassphrase(e.target.value)}
-              placeholder={vault.meta ? "Enter passphrase to unlock" : "Create a passphrase"}
-              autoComplete={passphraseAutoComplete}
-              name="vault-passphrase"
-              disabled={vaultBusy}
+              placeholder="Passphrase (12+ chars recommended)"
+              value={promptPassphrase}
+              onChange={(e) => setPromptPassphrase(e.target.value)}
+            />
+            <Input
+              type="password"
+              placeholder="Confirm"
+              value={promptConfirm}
+              onChange={(e) => setPromptConfirm(e.target.value)}
             />
           </div>
-
-          {!vault.meta && (
-            <div className="space-y-2 sm:col-span-2">
-              <Label>Confirm passphrase</Label>
-              <Input
-                type="password"
-                value={vaultPassphraseConfirm}
-                onChange={(e) => setVaultPassphraseConfirm(e.target.value)}
-                placeholder="Confirm passphrase"
-                autoComplete="new-password"
-                name="vault-passphrase-confirm"
-                disabled={vaultBusy}
-              />
-            </div>
-          )}
-        </div>
-
-        {vault.meta && passkeySupported && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background/60 px-3 py-2">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Fingerprint className="h-3.5 w-3.5" />
-              <span>{hasPasskey ? "Passkey enabled" : "Passkey not set up"}</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {!hasPasskey && vault.isUnlocked && (
-                <Button variant="outline" size="sm" onClick={handleSetupPasskey} disabled={vaultBusy}>
-                  Set up passkey
-                </Button>
-              )}
-              {hasPasskey && vault.isUnlocked && (
-                <Button variant="outline" size="sm" onClick={handleRemovePasskey} disabled={vaultBusy}>
-                  Remove passkey
-                </Button>
-              )}
-              {hasPasskey && !vault.isUnlocked && (
-                <Button size="sm" onClick={handleUnlockWithPasskey} disabled={vaultBusy}>
-                  Unlock with passkey
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
-
-        <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-end">
-          {!vault.meta ? (
-            <Button onClick={handleEnableVault} disabled={vaultBusy} className="sm:w-auto">
-              <Unlock className="h-4 w-4 mr-2" />
-              Enable Vault
+          <DialogFooter className="flex-col gap-2">
+            <Button onClick={handlePromptEnable} disabled={isPromptBusy}>
+              Protect &amp; Save
             </Button>
-          ) : vault.isUnlocked ? (
-            <Button variant="destructive" onClick={handleDisableVault} disabled={vaultBusy} className="sm:w-auto">
-              Disable Vault
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setShowVaultPrompt(false);
+                localStorage.setItem("vaultPromptDismissed", "true");
+              }}
+            >
+              Skip
             </Button>
-          ) : (
-            <div className="flex gap-2 sm:ml-auto">
-              <Button onClick={handleUnlockVault} disabled={vaultBusy} className="flex-1 sm:flex-none">
-                <Unlock className="h-4 w-4 mr-2" />
-                Unlock
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleDisableVault}
-                disabled={vaultBusy}
-                className="flex-1 sm:flex-none"
-                title="Disable vault (requires passphrase)"
-              >
-                Disable
-              </Button>
-            </div>
-          )}
-        </div>
-
-        <p className="text-[11px] text-muted-foreground">
-          If you forget your passphrase, protected keys can&apos;t be recovered — you&apos;ll need to re-enter them.
-        </p>
-      </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Existing Keys */}
-      {keys.length > 0 && (
+      {keys.filter((k) => k.provider !== SYNC_S3_PROVIDER).length > 0 && (
         <div className="space-y-3">
           <Label>Your API Keys</Label>
-          {keys.map((apiKey) => {
+          {keys.filter((k) => k.provider !== SYNC_S3_PROVIDER).map((apiKey) => {
             const providerConfig = getProviderConfig(apiKey.provider);
             const isComposio = apiKey.provider === "composio";
             const isLocked = lockedKeyIds.includes(apiKey.id);
@@ -629,10 +768,50 @@ export function ApiKeysSettings() {
         </div>
       </div>
 
+      {/* Transfer to New Device */}
+      <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 shrink-0">
+            <Smartphone className="h-5 w-5 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h4 className="font-medium">Transfer to New Device</h4>
+            <p className="text-sm text-muted-foreground">
+              Move your API keys securely via QR code, link, or encrypted file
+            </p>
+          </div>
+          <Button
+            onClick={() => setShowTransferDialog(true)}
+            disabled={keys.length === 0 || (!!vault.meta && !vault.isUnlocked)}
+          >
+            Start Transfer
+          </Button>
+        </div>
+        {keys.length === 0 && (
+          <p className="text-xs text-muted-foreground">Add API keys first to enable transfer.</p>
+        )}
+        {vault.meta && !vault.isUnlocked && keys.length > 0 && (
+          <p className="text-xs text-muted-foreground">Unlock the vault to transfer keys.</p>
+        )}
+        <div className="border-t pt-3 mt-3">
+          <Button
+            variant="outline"
+            onClick={() => setShowImportDialog(true)}
+            disabled={!!vault.meta && !vault.isUnlocked}
+            className="w-full"
+          >
+            Import from File
+          </Button>
+        </div>
+      </div>
+
+      <ApiKeyTransferDialog open={showTransferDialog} onOpenChange={setShowTransferDialog} />
+      <ApiKeyImportDialog open={showImportDialog} onOpenChange={setShowImportDialog} />
+
       {/* Help Text */}
       <div className="text-xs text-muted-foreground space-y-1">
         <p>
-          • API keys are stored locally and excluded from cloud sync (optional via encrypted `.lumina` export/import)
+          • API keys are stored locally and excluded from cloud sync
         </p>
         <p>
           • Keys are used only to make requests to the LLM providers

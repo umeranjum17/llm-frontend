@@ -9,6 +9,16 @@ import {
   updateSettings,
 } from "@/lib/db/queries";
 import type { ApiKey } from "@/lib/db/schema";
+
+export const SYNC_S3_PROVIDER = "sync-s3";
+
+export interface S3SyncConfig {
+  endpoint: string;
+  bucket: string;
+  region?: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+}
 import {
   encryptApiKey,
   decryptApiKey,
@@ -18,11 +28,14 @@ import {
 import type { ApiKeyVaultMeta } from "@/lib/crypto/api-key-vault";
 import {
   createApiKeyVaultMeta,
+  createVaultVerificationHash,
   decryptApiKeyWithVault,
   deriveVaultKey,
   encryptApiKeyWithVault,
   isVaultEncryptedKey,
+  verifyVaultKey,
 } from "@/lib/crypto/api-key-vault";
+import { initializeDeviceSecret } from "@/lib/crypto/api-key-crypto";
 import type { ApiKeyVaultPasskey } from "@/lib/crypto/vault-passkey";
 import {
   createVaultPasskey,
@@ -61,23 +74,91 @@ interface ApiKeysState {
   setVaultRememberMs: (rememberMs: number) => Promise<void>;
   setupVaultPasskey: (passphrase?: string) => Promise<void>;
   removeVaultPasskey: () => Promise<void>;
+  resetVault: () => Promise<void>;
+  // S3 sync credentials (stored as special API key)
+  getS3Config: () => S3SyncConfig | null;
+  setS3Config: (config: S3SyncConfig) => Promise<void>;
+  removeS3Config: () => Promise<void>;
+  isS3ConfigLocked: () => boolean;
+  isS3ConfigAvailable: () => boolean;
 }
 
 let cachedVaultKey: CryptoKey | null = null;
 let vaultAutoLockTimeout: ReturnType<typeof setTimeout> | null = null;
+let vaultSessionExpiresAt: number | null = null;
 
 const VAULT_SESSION_STORAGE_KEY = "apiKeyVaultSession";
-const VAULT_SESSION_VERSION = 1;
+const DEFAULT_REMEMBER_MS = 24 * 60 * 60 * 1000;
 
-interface VaultSessionPayload {
-  version: number;
-  meta: ApiKeyVaultMeta;
+interface EncryptedVaultSessionPayload {
+  version: 2;
+  salt: string;
+  iv: string;
+  ciphertext: string;
   expiresAt: number;
-  rawKey: string;
+}
+
+class VaultUnlockError extends Error {
+  code: "WRONG_PASSPHRASE" | "VAULT_CORRUPTED" | "UNKNOWN";
+
+  constructor(message: string, code: VaultUnlockError["code"]) {
+    super(message);
+    this.name = "VaultUnlockError";
+    this.code = code;
+  }
 }
 
 function canUseSessionStorage() {
   return typeof window !== "undefined" && typeof window.sessionStorage !== "undefined";
+}
+
+function clearVaultSession() {
+  vaultSessionExpiresAt = null;
+  if (!canUseSessionStorage()) return;
+  try {
+    window.sessionStorage.removeItem(VAULT_SESSION_STORAGE_KEY);
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+function scheduleVaultAutoLock(lockAt: number, lock: () => void) {
+  if (vaultAutoLockTimeout) clearTimeout(vaultAutoLockTimeout);
+  const delay = Math.max(0, lockAt - Date.now());
+  vaultAutoLockTimeout = setTimeout(lock, delay);
+}
+
+function normalizeVaultMeta(meta: unknown): ApiKeyVaultMeta | null {
+  if (!meta || typeof meta !== "object") return null;
+  const candidate = meta as {
+    version?: unknown;
+    kdf?: unknown;
+    iterations?: unknown;
+    salt?: unknown;
+    verificationHash?: unknown;
+  };
+  if (candidate.kdf !== "PBKDF2-SHA256") return null;
+  if (candidate.version === 1) {
+    if (typeof candidate.iterations !== "number" || typeof candidate.salt !== "string") return null;
+    return {
+      version: 1,
+      kdf: "PBKDF2-SHA256",
+      iterations: candidate.iterations,
+      salt: candidate.salt,
+    };
+  }
+  if (candidate.version === 2) {
+    if (typeof candidate.iterations !== "number" || typeof candidate.salt !== "string") return null;
+    if (typeof candidate.verificationHash !== "string") return null;
+    return {
+      version: 2,
+      kdf: "PBKDF2-SHA256",
+      iterations: candidate.iterations,
+      salt: candidate.salt,
+      verificationHash: candidate.verificationHash,
+    };
+  }
+  return null;
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -93,86 +174,86 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-function isSameVaultMeta(left: ApiKeyVaultMeta, right: ApiKeyVaultMeta): boolean {
-  return (
-    left.version === right.version &&
-    left.kdf === right.kdf &&
-    left.iterations === right.iterations &&
-    left.salt === right.salt
+async function getSessionEncryptionKey(salt: Uint8Array): Promise<CryptoKey> {
+  await initializeDeviceSecret();
+  const deviceSecret = localStorage.getItem("lumina_device_secret") ?? "";
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(deviceSecret),
+    "PBKDF2",
+    false,
+    ["deriveKey"]
   );
-}
 
-function clearVaultSession() {
-  if (!canUseSessionStorage()) return;
-  try {
-    window.sessionStorage.removeItem(VAULT_SESSION_STORAGE_KEY);
-  } catch {
-    // Ignore storage errors.
-  }
-}
-
-function readVaultSession(): VaultSessionPayload | null {
-  if (!canUseSessionStorage()) return null;
-  try {
-    const stored = window.sessionStorage.getItem(VAULT_SESSION_STORAGE_KEY);
-    if (!stored) return null;
-
-    const parsed = JSON.parse(stored) as VaultSessionPayload;
-    if (
-      !parsed ||
-      parsed.version !== VAULT_SESSION_VERSION ||
-      typeof parsed.expiresAt !== "number" ||
-      typeof parsed.rawKey !== "string" ||
-      !parsed.meta
-    ) {
-      clearVaultSession();
-      return null;
-    }
-    return parsed;
-  } catch {
-    clearVaultSession();
-    return null;
-  }
+  const saltBuffer = new Uint8Array(salt).buffer as ArrayBuffer;
+  return crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt: saltBuffer, iterations: 100000, hash: "SHA-256" },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
 }
 
 async function persistVaultSession(
   vaultKey: CryptoKey,
-  meta: ApiKeyVaultMeta,
   expiresAt: number
-) {
+): Promise<void> {
   if (!canUseSessionStorage()) return;
+
   try {
     const rawKey = await crypto.subtle.exportKey("raw", vaultKey);
-    const payload: VaultSessionPayload = {
-      version: VAULT_SESSION_VERSION,
-      meta,
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const sessionKey = await getSessionEncryptionKey(salt);
+
+    const ciphertext = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: iv.buffer },
+      sessionKey,
+      rawKey
+    );
+
+    const payload: EncryptedVaultSessionPayload = {
+      version: 2,
+      salt: arrayBufferToBase64(salt.buffer),
+      iv: arrayBufferToBase64(iv.buffer),
+      ciphertext: arrayBufferToBase64(ciphertext),
       expiresAt,
-      rawKey: arrayBufferToBase64(rawKey),
     };
+
     window.sessionStorage.setItem(VAULT_SESSION_STORAGE_KEY, JSON.stringify(payload));
+    vaultSessionExpiresAt = expiresAt;
   } catch (error) {
     console.warn("[API Keys] Failed to persist vault session:", error);
   }
 }
 
-async function restoreVaultSession(
-  meta: ApiKeyVaultMeta
-): Promise<{ key: CryptoKey; expiresAt: number } | null> {
+async function restoreVaultSession(): Promise<{ key: CryptoKey; expiresAt: number } | null> {
   if (!canUseSessionStorage()) return null;
 
-  const payload = readVaultSession();
-  if (!payload) return null;
-  if (!isSameVaultMeta(meta, payload.meta)) {
-    clearVaultSession();
-    return null;
-  }
-  if (payload.expiresAt <= Date.now()) {
-    clearVaultSession();
-    return null;
-  }
+  const stored = window.sessionStorage.getItem(VAULT_SESSION_STORAGE_KEY);
+  if (!stored) return null;
 
   try {
-    const rawKey = base64ToArrayBuffer(payload.rawKey);
+    const payload = JSON.parse(stored) as EncryptedVaultSessionPayload;
+    if (payload.version !== 2) {
+      clearVaultSession();
+      return null;
+    }
+
+    if (payload.expiresAt <= Date.now()) {
+      clearVaultSession();
+      return null;
+    }
+
+    const salt = new Uint8Array(base64ToArrayBuffer(payload.salt));
+    const sessionKey = await getSessionEncryptionKey(salt);
+    const rawKey = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: base64ToArrayBuffer(payload.iv) },
+      sessionKey,
+      base64ToArrayBuffer(payload.ciphertext)
+    );
+
     const key = await crypto.subtle.importKey(
       "raw",
       rawKey,
@@ -180,30 +261,13 @@ async function restoreVaultSession(
       false,
       ["encrypt", "decrypt"]
     );
+
     return { key, expiresAt: payload.expiresAt };
   } catch (error) {
     console.warn("[API Keys] Failed to restore vault session:", error);
     clearVaultSession();
     return null;
   }
-}
-
-function updateVaultSessionExpiry(meta: ApiKeyVaultMeta, expiresAt: number) {
-  if (!canUseSessionStorage()) return;
-  const payload = readVaultSession();
-  if (!payload || !isSameVaultMeta(meta, payload.meta)) return;
-  payload.expiresAt = expiresAt;
-  try {
-    window.sessionStorage.setItem(VAULT_SESSION_STORAGE_KEY, JSON.stringify(payload));
-  } catch {
-    // Ignore storage errors.
-  }
-}
-
-function scheduleVaultAutoLock(lockAt: number, lock: () => void) {
-  if (vaultAutoLockTimeout) clearTimeout(vaultAutoLockTimeout);
-  const delay = Math.max(0, lockAt - Date.now());
-  vaultAutoLockTimeout = setTimeout(lock, delay);
 }
 
 export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
@@ -214,7 +278,7 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
     passkey: null,
     isUnlocked: false,
     unlockedUntil: null,
-    rememberMs: 24 * 60 * 60 * 1000,
+    rememberMs: DEFAULT_REMEMBER_MS,
   },
   vaultKeyIds: [],
   lockedKeyIds: [],
@@ -231,7 +295,7 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
           getAllApiKeys(),
         ]);
 
-        const vaultMeta = settings.apiKeyVault ?? null;
+        const vaultMeta = normalizeVaultMeta(settings.apiKeyVault ?? null);
         const vaultPasskey = vaultMeta ? settings.apiKeyVaultPasskey ?? null : null;
         const rememberMs = settings.apiKeyVaultRememberMs ?? get().vault.rememberMs;
 
@@ -240,31 +304,18 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
           clearVaultSession();
         }
 
-        let restoredVault: { key: CryptoKey; expiresAt: number } | null = null;
+        const now = Date.now();
+        let isVaultUnlocked = false;
+        let unlockedUntil: number | null = null;
         if (vaultMeta) {
-          restoredVault = await restoreVaultSession(vaultMeta);
-          if (restoredVault) {
-            cachedVaultKey = restoredVault.key;
+          const session = await restoreVaultSession();
+          if (session && session.expiresAt > now) {
+            cachedVaultKey = session.key;
+            vaultSessionExpiresAt = session.expiresAt;
+            isVaultUnlocked = true;
+            unlockedUntil = session.expiresAt;
           }
         }
-
-        const now = Date.now();
-        const storedUnlockedUntil = get().vault.unlockedUntil;
-        const sessionUnlockedUntil = restoredVault?.expiresAt ?? null;
-        const isSessionUnlocked =
-          typeof sessionUnlockedUntil === "number" && sessionUnlockedUntil > now;
-        const isStoredUnlocked =
-          !!vaultMeta &&
-          get().vault.isUnlocked &&
-          !!cachedVaultKey &&
-          typeof storedUnlockedUntil === "number" &&
-          storedUnlockedUntil > now;
-        const isVaultUnlocked = !!vaultMeta && (isSessionUnlocked || isStoredUnlocked);
-        const unlockedUntil = isSessionUnlocked
-          ? sessionUnlockedUntil
-          : isStoredUnlocked
-            ? storedUnlockedUntil
-            : null;
 
         if (isVaultUnlocked && typeof unlockedUntil === "number") {
           scheduleVaultAutoLock(unlockedUntil, () => get().lockVault());
@@ -531,9 +582,6 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
       const newUnlockedUntil = Date.now() + rememberMs;
       scheduleVaultAutoLock(newUnlockedUntil, () => get().lockVault());
       set({ vault: { ...vaultState, rememberMs, unlockedUntil: newUnlockedUntil } });
-      if (vaultState.meta) {
-        updateVaultSessionExpiry(vaultState.meta, newUnlockedUntil);
-      }
       return;
     }
     set({ vault: { ...vaultState, rememberMs } });
@@ -541,23 +589,59 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
 
   unlockVault: async (passphrase: string, rememberMs?: number) => {
     const settings = await getSettings();
-    const meta = settings.apiKeyVault;
+    const meta = normalizeVaultMeta(settings.apiKeyVault ?? null);
     if (!meta) {
       throw new Error("Vault is not enabled");
     }
 
-    const vaultKey = await deriveVaultKey(passphrase, meta, { extractable: true });
+    let effectiveMeta = meta;
+    const verifyKey = await deriveVaultKey(passphrase, meta, { extractable: true });
+
+    if (meta.version === 2) {
+      const verified = await verifyVaultKey(verifyKey, meta);
+      if (!verified) {
+        throw new VaultUnlockError("Incorrect passphrase. Please try again.", "WRONG_PASSPHRASE");
+      }
+    } else {
+      const testKeyId = get().vaultKeyIds[0];
+      if (testKeyId) {
+        const testKey = get().keys.find((k) => k.id === testKeyId);
+        if (testKey) {
+          try {
+            await decryptApiKeyWithVault(testKey.key, verifyKey);
+          } catch (error) {
+            throw new VaultUnlockError("Incorrect passphrase. Please try again.", "WRONG_PASSPHRASE");
+          }
+        }
+      }
+
+      const verificationHash = await createVaultVerificationHash(verifyKey);
+      effectiveMeta = {
+        ...meta,
+        version: 2,
+        verificationHash,
+      };
+      await updateSettings({ apiKeyVault: effectiveMeta });
+    }
+
+    const vaultKey = await deriveVaultKey(passphrase, effectiveMeta);
     cachedVaultKey = vaultKey;
 
     const allKeys = await getAllApiKeys();
     const vaultKeys = allKeys.filter((k) => isVaultEncryptedKey(k.key));
 
-    const decryptedVaultKeys = await Promise.all(
-      vaultKeys.map(async (k) => {
-        const decrypted = await decryptApiKeyWithVault(k.key, vaultKey);
-        return { ...k, key: decrypted };
-      })
-    );
+    let decryptedVaultKeys: ApiKey[] = [];
+    try {
+      decryptedVaultKeys = await Promise.all(
+        vaultKeys.map(async (k) => {
+          const decrypted = await decryptApiKeyWithVault(k.key, vaultKey);
+          return { ...k, key: decrypted };
+        })
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to decrypt vault keys";
+      throw new VaultUnlockError(message, "VAULT_CORRUPTED");
+    }
 
     const otherKeys = allKeys.filter((k) => !isVaultEncryptedKey(k.key));
     const decryptedOther = await Promise.all(
@@ -571,20 +655,15 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
       })
     );
 
-    const effectiveRememberMs =
-      rememberMs ?? settings.apiKeyVaultRememberMs ?? get().vault.rememberMs;
+    const effectiveRememberMs = rememberMs ?? get().vault.rememberMs ?? DEFAULT_REMEMBER_MS;
     const newUnlockedUntil = Date.now() + effectiveRememberMs;
     scheduleVaultAutoLock(newUnlockedUntil, () => get().lockVault());
-    if (effectiveRememberMs > 0) {
-      await persistVaultSession(vaultKey, meta, newUnlockedUntil);
-    } else {
-      clearVaultSession();
-    }
+    await persistVaultSession(verifyKey, newUnlockedUntil);
 
     set({
       keys: [...decryptedVaultKeys, ...decryptedOther],
       vault: {
-        meta,
+        meta: effectiveMeta,
         passkey: settings.apiKeyVaultPasskey ?? get().vault.passkey,
         isUnlocked: true,
         unlockedUntil: newUnlockedUntil,
@@ -598,7 +677,7 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
 
   unlockVaultWithPasskey: async (rememberMs?: number) => {
     const settings = await getSettings();
-    const meta = settings.apiKeyVault;
+    const meta = normalizeVaultMeta(settings.apiKeyVault ?? null);
     const passkey = settings.apiKeyVaultPasskey;
     if (!meta) {
       throw new Error("Vault is not enabled");
@@ -612,9 +691,20 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
       "raw",
       rawVaultKey,
       { name: "AES-GCM" },
+      false,
+      ["encrypt", "decrypt"]
+    );
+    const exportableVaultKey = await crypto.subtle.importKey(
+      "raw",
+      rawVaultKey,
+      { name: "AES-GCM" },
       true,
       ["encrypt", "decrypt"]
     );
+    const verified = await verifyVaultKey(exportableVaultKey, meta);
+    if (!verified) {
+      throw new VaultUnlockError("Passkey could not unlock this vault", "WRONG_PASSPHRASE");
+    }
     cachedVaultKey = vaultKey;
 
     const allKeys = await getAllApiKeys();
@@ -639,15 +729,10 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
       })
     );
 
-    const effectiveRememberMs =
-      rememberMs ?? settings.apiKeyVaultRememberMs ?? get().vault.rememberMs;
+    const effectiveRememberMs = rememberMs ?? get().vault.rememberMs ?? DEFAULT_REMEMBER_MS;
     const newUnlockedUntil = Date.now() + effectiveRememberMs;
     scheduleVaultAutoLock(newUnlockedUntil, () => get().lockVault());
-    if (effectiveRememberMs > 0) {
-      await persistVaultSession(vaultKey, meta, newUnlockedUntil);
-    } else {
-      clearVaultSession();
-    }
+    await persistVaultSession(exportableVaultKey, newUnlockedUntil);
 
     set({
       keys: [...decryptedVaultKeys, ...decryptedOther],
@@ -683,7 +768,10 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
   enableVault: async (passphrase: string, rememberMs?: number) => {
     const meta = createApiKeyVaultMeta();
     clearVaultSession();
-    const vaultKey = await deriveVaultKey(passphrase, meta, { extractable: true });
+    const verifyKey = await deriveVaultKey(passphrase, meta, { extractable: true });
+    const verificationHash = await createVaultVerificationHash(verifyKey);
+    const hydratedMeta = { ...meta, verificationHash };
+    const vaultKey = await deriveVaultKey(passphrase, hydratedMeta);
     cachedVaultKey = vaultKey;
 
     const allKeys = await getAllApiKeys();
@@ -704,7 +792,7 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
     );
 
     await updateSettings({
-      apiKeyVault: meta,
+      apiKeyVault: hydratedMeta,
       apiKeyVaultRememberMs: rememberMs ?? get().vault.rememberMs,
       apiKeyVaultPasskey: undefined,
     });
@@ -731,19 +819,15 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
       })
     );
 
-    const effectiveRememberMs = rememberMs ?? get().vault.rememberMs;
+    const effectiveRememberMs = rememberMs ?? get().vault.rememberMs ?? DEFAULT_REMEMBER_MS;
     const newUnlockedUntil = Date.now() + effectiveRememberMs;
     scheduleVaultAutoLock(newUnlockedUntil, () => get().lockVault());
-    if (effectiveRememberMs > 0) {
-      await persistVaultSession(vaultKey, meta, newUnlockedUntil);
-    } else {
-      clearVaultSession();
-    }
+    await persistVaultSession(verifyKey, newUnlockedUntil);
 
     set({
       keys: [...decryptedVaultKeys, ...decryptedOther],
       vault: {
-        meta,
+        meta: hydratedMeta,
         passkey: null,
         isUnlocked: true,
         unlockedUntil: newUnlockedUntil,
@@ -758,7 +842,7 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
 
   disableVault: async (passphrase: string) => {
     const settings = await getSettings();
-    const meta = settings.apiKeyVault;
+    const meta = normalizeVaultMeta(settings.apiKeyVault ?? null);
     if (!meta) {
       cachedVaultKey = null;
       clearVaultSession();
@@ -821,7 +905,7 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
 
   setupVaultPasskey: async (passphrase?: string) => {
     const settings = await getSettings();
-    const meta = settings.apiKeyVault;
+    const meta = normalizeVaultMeta(settings.apiKeyVault ?? null);
     if (!meta) {
       throw new Error("Vault is not enabled");
     }
@@ -851,5 +935,138 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
   removeVaultPasskey: async () => {
     await updateSettings({ apiKeyVaultPasskey: undefined });
     set({ vault: { ...get().vault, passkey: null } });
+  },
+
+  resetVault: async () => {
+    const allKeys = await getAllApiKeys();
+    const vaultKeys = allKeys.filter((k) => isVaultEncryptedKey(k.key));
+
+    await Promise.all(vaultKeys.map((k) => dbDeleteApiKey(k.id)));
+    await updateSettings({
+      apiKeyVault: undefined,
+      apiKeyVaultRememberMs: undefined,
+      apiKeyVaultPasskey: undefined,
+    });
+
+    cachedVaultKey = null;
+    clearVaultSession();
+    if (vaultAutoLockTimeout) {
+      clearTimeout(vaultAutoLockTimeout);
+      vaultAutoLockTimeout = null;
+    }
+
+    const refreshed = await getAllApiKeys();
+    const decryptedAll: ApiKey[] = [];
+    for (const k of refreshed) {
+      try {
+        const decrypted = await decryptApiKey(k.key);
+        decryptedAll.push({ ...k, key: decrypted });
+      } catch {
+        decryptedAll.push(k);
+      }
+    }
+
+    set({
+      keys: decryptedAll,
+      vault: {
+        meta: null,
+        passkey: null,
+        isUnlocked: false,
+        unlockedUntil: null,
+        rememberMs: get().vault.rememberMs,
+      },
+      vaultKeyIds: [],
+      lockedKeyIds: [],
+    });
+
+    toast.success("Vault reset. Removed locked keys.");
+  },
+
+  // S3 Sync Config Methods - stored as special "sync-s3" provider
+  getS3Config: () => {
+    const state = get();
+    const s3Key = state.keys.find((k) => k.provider === SYNC_S3_PROVIDER);
+    if (!s3Key || !s3Key.key) return null;
+
+    // Check if it's locked (vault key but vault is locked)
+    if (state.lockedKeyIds.includes(s3Key.id)) return null;
+
+    try {
+      return JSON.parse(s3Key.key) as S3SyncConfig;
+    } catch {
+      return null;
+    }
+  },
+
+  setS3Config: async (config: S3SyncConfig) => {
+    const { vault, keys } = get();
+
+    // If vault is configured, require it to be unlocked
+    if (vault.meta && !vault.isUnlocked) {
+      throw new Error("Vault is locked. Unlock it to save S3 credentials.");
+    }
+
+    const jsonPayload = JSON.stringify(config);
+    const existingS3Key = keys.find((k) => k.provider === SYNC_S3_PROVIDER);
+
+    if (existingS3Key) {
+      // Update existing
+      let encryptedPayload: string;
+      if (vault.meta && cachedVaultKey) {
+        encryptedPayload = await encryptApiKeyWithVault(jsonPayload, cachedVaultKey);
+      } else {
+        encryptedPayload = await encryptApiKey(jsonPayload);
+      }
+      await dbUpdateApiKey(existingS3Key.id, { key: encryptedPayload });
+      // Update in-memory state
+      set({
+        keys: get().keys.map((k) =>
+          k.id === existingS3Key.id ? { ...k, key: jsonPayload } : k
+        ),
+      });
+    } else {
+      // Create new
+      let encryptedPayload: string;
+      if (vault.meta && cachedVaultKey) {
+        encryptedPayload = await encryptApiKeyWithVault(jsonPayload, cachedVaultKey);
+      } else {
+        encryptedPayload = await encryptApiKey(jsonPayload);
+      }
+      const newKey = await dbAddApiKey({
+        provider: SYNC_S3_PROVIDER,
+        key: encryptedPayload,
+        label: "S3 Sync",
+      });
+      const newVaultKeyIds = vault.meta ? [...get().vaultKeyIds, newKey.id] : get().vaultKeyIds;
+      set({
+        keys: [...get().keys, { ...newKey, key: jsonPayload }],
+        vaultKeyIds: newVaultKeyIds,
+      });
+    }
+  },
+
+  removeS3Config: async () => {
+    const { keys } = get();
+    const s3Key = keys.find((k) => k.provider === SYNC_S3_PROVIDER);
+    if (!s3Key) return;
+
+    await dbDeleteApiKey(s3Key.id);
+    set({
+      keys: get().keys.filter((k) => k.id !== s3Key.id),
+      vaultKeyIds: get().vaultKeyIds.filter((id) => id !== s3Key.id),
+      lockedKeyIds: get().lockedKeyIds.filter((id) => id !== s3Key.id),
+    });
+  },
+
+  isS3ConfigLocked: () => {
+    const state = get();
+    const s3Key = state.keys.find((k) => k.provider === SYNC_S3_PROVIDER);
+    if (!s3Key) return false;
+    return state.lockedKeyIds.includes(s3Key.id);
+  },
+
+  isS3ConfigAvailable: () => {
+    const state = get();
+    return state.keys.some((k) => k.provider === SYNC_S3_PROVIDER);
   },
 }));

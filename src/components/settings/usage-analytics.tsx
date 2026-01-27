@@ -2,13 +2,15 @@
 
 import { useLiveQuery } from "dexie-react-hooks";
 import { getAllChats, getMessages, updateMessage, updateChat } from "@/lib/db/queries";
+import { db } from "@/lib/db/schema";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { TrendingUp, DollarSign, MessageSquare, BarChart3, Download, PieChart as PieChartIcon, RefreshCw, Zap } from "lucide-react";
+import { TrendingUp, DollarSign, MessageSquare, BarChart3, Download, PieChart as PieChartIcon, RefreshCw, Zap, Camera, Cloud, Monitor } from "lucide-react";
 import { format, subDays, isSameDay } from "date-fns";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { estimateCost, calculateCacheSavings } from "@/lib/utils/token-counter";
 import { toast } from "sonner";
+import { generateDailySnapshot, generateSnapshotsForPeriod, getAllSnapshots } from "@/lib/usage/snapshot-generator";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   Cell, PieChart, Pie, Sector, AreaChart, Area
@@ -17,6 +19,7 @@ import { SkeletonLoader } from "@/components/ui/skeleton";
 
 export function UsageAnalytics() {
   const [isRecalculating, setIsRecalculating] = useState(false);
+  const [isGeneratingSnapshots, setIsGeneratingSnapshots] = useState(false);
   const chats = useLiveQuery(() => getAllChats(), []);
   const allMessages = useLiveQuery(
     async () => {
@@ -26,6 +29,14 @@ export function UsageAnalytics() {
     },
     [chats]
   );
+
+  // Load synced snapshots from all devices
+  const snapshots = useLiveQuery(() => getAllSnapshots(), []);
+
+  // Auto-generate today's snapshot when component loads
+  useEffect(() => {
+    generateDailySnapshot().catch(console.error);
+  }, []);
 
   const stats = useMemo(() => {
     if (!chats || !allMessages) return null;
@@ -87,6 +98,54 @@ export function UsageAnalytics() {
       pieData,
     };
   }, [chats, allMessages]);
+
+  // Calculate synced stats from all devices
+  const syncedStats = useMemo(() => {
+    if (!snapshots || snapshots.length === 0) return null;
+
+    const deviceIds = [...new Set(snapshots.map(s => s.deviceId))];
+    const totalSyncedCost = snapshots.reduce((sum, s) => sum + s.totalCost, 0);
+    const totalSyncedMessages = snapshots.reduce((sum, s) => sum + s.totalMessages, 0);
+    const totalSyncedCacheSavings = snapshots.reduce((sum, s) => sum + s.totalCacheSavings, 0);
+
+    // Aggregate by device
+    const byDevice: Record<string, { cost: number; messages: number; snapshots: number }> = {};
+    for (const snapshot of snapshots) {
+      if (!byDevice[snapshot.deviceId]) {
+        byDevice[snapshot.deviceId] = { cost: 0, messages: 0, snapshots: 0 };
+      }
+      byDevice[snapshot.deviceId].cost += snapshot.totalCost;
+      byDevice[snapshot.deviceId].messages += snapshot.totalMessages;
+      byDevice[snapshot.deviceId].snapshots++;
+    }
+
+    return {
+      deviceCount: deviceIds.length,
+      snapshotCount: snapshots.length,
+      totalCost: totalSyncedCost,
+      totalMessages: totalSyncedMessages,
+      totalCacheSavings: totalSyncedCacheSavings,
+      byDevice,
+    };
+  }, [snapshots]);
+
+  const handleGenerateSnapshots = async () => {
+    if (isGeneratingSnapshots) return;
+
+    setIsGeneratingSnapshots(true);
+    try {
+      // Generate today's snapshot
+      await generateDailySnapshot();
+      // Generate any missing snapshots for the last 30 days
+      const generated = await generateSnapshotsForPeriod(30);
+      toast.success(`Usage snapshots saved. ${generated > 0 ? `Generated ${generated} new snapshots.` : "All snapshots up to date."}`);
+    } catch (error) {
+      console.error("Failed to generate snapshots:", error);
+      toast.error("Failed to generate usage snapshots");
+    } finally {
+      setIsGeneratingSnapshots(false);
+    }
+  };
 
   const handleRecalculateCosts = async () => {
     if (!chats || !allMessages || isRecalculating) return;
@@ -207,6 +266,17 @@ export function UsageAnalytics() {
           <Button
             variant="outline"
             size="sm"
+            onClick={handleGenerateSnapshots}
+            disabled={isGeneratingSnapshots}
+            className="gap-2"
+            title="Save daily usage snapshot for sync"
+          >
+            <Camera className={`h-4 w-4 ${isGeneratingSnapshots ? "animate-pulse" : ""}`} />
+            {isGeneratingSnapshots ? "Saving..." : "Save Snapshot"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={handleRecalculateCosts}
             disabled={isRecalculating}
             className="gap-2"
@@ -220,6 +290,58 @@ export function UsageAnalytics() {
           </Button>
         </div>
       </div>
+
+      {/* Synced Stats from All Devices */}
+      {syncedStats && syncedStats.deviceCount > 0 && (
+        <Card className="border-blue-500/20 bg-blue-500/5">
+          <CardHeader className="pb-3 px-4 pt-4">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <Cloud className="h-3 w-3 text-blue-500" />
+              Synced Usage (All Devices)
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Aggregated from {syncedStats.snapshotCount} snapshots across {syncedStats.deviceCount} device{syncedStats.deviceCount > 1 ? "s" : ""}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <div className="text-lg font-bold">${syncedStats.totalCost.toFixed(4)}</div>
+                <p className="text-[10px] text-muted-foreground">Total Cost</p>
+              </div>
+              <div>
+                <div className="text-lg font-bold text-green-600 dark:text-green-400">
+                  ${syncedStats.totalCacheSavings.toFixed(4)}
+                </div>
+                <p className="text-[10px] text-muted-foreground">Cache Savings</p>
+              </div>
+              <div>
+                <div className="text-lg font-bold">{syncedStats.totalMessages.toLocaleString()}</div>
+                <p className="text-[10px] text-muted-foreground">Messages</p>
+              </div>
+            </div>
+            {Object.keys(syncedStats.byDevice).length > 1 && (
+              <div className="mt-4 pt-4 border-t border-border/50">
+                <p className="text-[10px] text-muted-foreground mb-2 flex items-center gap-1">
+                  <Monitor className="h-3 w-3" /> Per-Device Breakdown
+                </p>
+                <div className="space-y-2">
+                  {Object.entries(syncedStats.byDevice).map(([deviceId, data]) => (
+                    <div key={deviceId} className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground font-mono truncate max-w-[120px]">
+                        {deviceId.slice(0, 8)}...
+                      </span>
+                      <span className="text-muted-foreground">
+                        ${data.cost.toFixed(4)} / {data.messages} msgs
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Overview Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

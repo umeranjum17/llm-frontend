@@ -12,6 +12,7 @@ import { ChatList } from "./chat-list";
 import { useSidebarKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { getDefaultChatConfig } from "@/lib/ai/default-chat";
 import { createChat, getChatWithMessages, createFolder } from "@/lib/db/queries";
+import { SyncStatusIndicator } from "@/components/sync-status-indicator";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -112,15 +113,18 @@ export function Sidebar({ onNavigate }: SidebarProps) {
             compact
           />
         </div>
-        <Link href="/settings" prefetch title="Settings" onClick={onNavigate}>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
-          >
-            <Settings className="h-4 w-4" />
-          </Button>
-        </Link>
+        <div className="flex items-center gap-1">
+          <SyncStatusIndicator />
+          <Link href="/settings" prefetch title="Settings" onClick={onNavigate}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Action List (ChatGPT style) */}

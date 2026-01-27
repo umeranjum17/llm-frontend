@@ -83,6 +83,9 @@ export const TABLE_REGISTRY: TableConfig[] = [
 
   // Version 27 tables (API key sync)
   { name: "syncedApiKeys", addedInVersion: 27, sync: false, backup: true, indexes: "id, provider, deviceId, version, updatedAt" },
+
+  // Version 28 tables (Usage analytics sync)
+  { name: "usageSnapshots", addedInVersion: 28, sync: true, backup: true, indexes: "id, date, deviceId, createdAt, [date+deviceId]" },
 ];
 
 /**

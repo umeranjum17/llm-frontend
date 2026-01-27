@@ -1,5 +1,19 @@
 import type { ChangeEntry, SyncManifest } from "@/lib/db/schema";
-import { getS3Config } from "./device-id";
+import { getS3Config, isS3ConfigLocked } from "./device-id";
+
+class S3RequestError extends Error {
+  status: number;
+  body: string;
+  operation: "PUT" | "GET" | "LIST" | "DELETE";
+
+  constructor(operation: "PUT" | "GET" | "LIST" | "DELETE", status: number, body: string, message: string) {
+    super(message);
+    this.name = "S3RequestError";
+    this.status = status;
+    this.body = body;
+    this.operation = operation;
+  }
+}
 
 /**
  * S3 adapter for delta sync
@@ -27,14 +41,27 @@ export class S3Adapter {
   }
 
   /**
-   * Create an S3 adapter from stored config
+   * Create an S3 adapter from stored config.
+   * Returns null if not configured or if vault is locked.
    */
-  static async fromConfig(): Promise<S3Adapter | null> {
-    const config = await getS3Config();
+  static fromConfig(): S3Adapter | null {
+    // Check if config is locked behind vault
+    if (isS3ConfigLocked()) {
+      return null;
+    }
+
+    const config = getS3Config();
     if (!config) {
       return null;
     }
     return new S3Adapter(config);
+  }
+
+  /**
+   * Check if S3 is configured but locked behind vault
+   */
+  static isConfigLocked(): boolean {
+    return isS3ConfigLocked();
   }
 
   /**
@@ -105,7 +132,7 @@ export class S3Adapter {
   /**
    * List all change files in S3
    */
-  private async listChangeFiles(): Promise<Array<{ key: string }>> {
+  async listChangeFiles(): Promise<Array<{ key: string }>> {
     const prefix = "changes/";
     return this.listObjects(prefix);
   }
@@ -138,9 +165,44 @@ export class S3Adapter {
         status: response.status,
         statusText: response.statusText,
         url,
-        error: errorText
+        error: errorText,
       });
-      throw new Error(`Failed to upload to S3 (${response.status}): ${errorText || response.statusText}`);
+      throw new S3RequestError(
+        "PUT",
+        response.status,
+        errorText,
+        `Failed to upload to S3 (${response.status}): ${errorText || response.statusText}`
+      );
+    }
+  }
+
+  /**
+   * DELETE an object from S3
+   */
+  async deleteObject(key: string): Promise<void> {
+    const url = this.endpoint.includes(this.bucket)
+      ? `${this.endpoint}/${key}`
+      : `${this.endpoint}/${this.bucket}/${key}`;
+    const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, "");
+    const date = new Date().toUTCString();
+
+    const response = await fetch(url, {
+      method: "DELETE",
+      headers: {
+        "x-amz-date": amzDate,
+        "x-amz-content-sha256": "UNSIGNED-PAYLOAD",
+        Authorization: await this.getAuthHeader("DELETE", key, date),
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new S3RequestError(
+        "DELETE",
+        response.status,
+        errorText,
+        `Failed to delete from S3 (${response.status}): ${errorText || response.statusText}`
+      );
     }
   }
 
@@ -165,11 +227,15 @@ export class S3Adapter {
     });
 
     if (!response.ok) {
-      if (response.status === 404) {
-        throw new Error("Not found");
-      }
       const errorText = await response.text();
-      throw new Error(`Failed to download from S3 (${response.status}): ${errorText || response.statusText}`);
+      throw new S3RequestError(
+        "GET",
+        response.status,
+        errorText,
+        response.status === 404
+          ? "Not found"
+          : `Failed to download from S3 (${response.status}): ${errorText || response.statusText}`
+      );
     }
 
     return response.text();
@@ -201,9 +267,14 @@ export class S3Adapter {
         status: response.status,
         statusText: response.statusText,
         url,
-        error: errorText
+        error: errorText,
       });
-      throw new Error(`Failed to list S3 objects (${response.status}): ${errorText || response.statusText}`);
+      throw new S3RequestError(
+        "LIST",
+        response.status,
+        errorText,
+        `Failed to list S3 objects (${response.status}): ${errorText || response.statusText}`
+      );
     }
 
     const text = await response.text();
@@ -294,6 +365,65 @@ export class S3Adapter {
 
     // Authorization header
     return `${algorithm} Credential=${this.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+  }
+
+  async testConnection(): Promise<{
+    ok: boolean;
+    latencyMs: number;
+    error?: {
+      code: "cors" | "auth" | "not_found" | "invalid" | "unknown";
+      message: string;
+      detail?: string;
+    };
+  }> {
+    const startedAt = performance.now();
+    try {
+      await this.listObjects("changes/");
+      const latencyMs = Math.round(performance.now() - startedAt);
+      return { ok: true, latencyMs };
+    } catch (error) {
+      const latencyMs = Math.round(performance.now() - startedAt);
+      const info = this.normalizeConnectionError(error);
+      return { ok: false, latencyMs, error: info };
+    }
+  }
+
+  private normalizeConnectionError(error: unknown): {
+    code: "cors" | "auth" | "not_found" | "invalid" | "unknown";
+    message: string;
+    detail?: string;
+  } {
+    if (error instanceof S3RequestError) {
+      if (error.status === 401 || error.status === 403) {
+        return {
+          code: "auth",
+          message: "Authentication failed. Check your access keys and bucket permissions.",
+          detail: error.body || error.message,
+        };
+      }
+      if (error.status === 404) {
+        return {
+          code: "not_found",
+          message: "Bucket not found. Check the bucket name and endpoint.",
+          detail: error.body || error.message,
+        };
+      }
+      return {
+        code: "invalid",
+        message: `S3 request failed (${error.status}).`,
+        detail: error.body || error.message,
+      };
+    }
+
+    const message = error instanceof Error ? error.message : "Unknown error";
+    if (message.toLowerCase().includes("failed to fetch") || message.toLowerCase().includes("cors")) {
+      return {
+        code: "cors",
+        message: "CORS blocked the request. Configure bucket CORS for this origin.",
+        detail: message,
+      };
+    }
+    return { code: "unknown", message: "Failed to reach storage endpoint.", detail: message };
   }
 
   /**
