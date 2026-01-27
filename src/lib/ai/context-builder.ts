@@ -1,4 +1,4 @@
-import { getChatById, getAgentById, getAgentsByIds, getProjectFilesByIds, getChatsWithMessagesByIds, getModelAlias, getSettings } from "@/lib/db/queries";
+import { getChatById, getAgentById, getAgentsByIds, getProjectFilesByIds, getChatsWithMessagesByIds, getModelAlias, getSettings, getAllSkills } from "@/lib/db/queries";
 import type { Message, Skill } from "@/lib/db/schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { retrieveContext } from "@/lib/rag/retrieval";
@@ -315,6 +315,7 @@ export async function buildContextMessages(
     // For agent creator/editor skills, inject tool/model context
     const isAgentSkill = options.skill.id === "skill_builtin_agent_creator" ||
                          options.skill.id === "skill_builtin_agent_editor";
+    const isSkillEditorSkill = options.skill.id === "skill_builtin_skill_editor";
 
     if (isAgentSkill && chat) {
       try {
@@ -334,6 +335,44 @@ export async function buildContextMessages(
       } catch (error) {
         console.error("[Context Builder] Failed to fetch agent context:", error);
         // Continue without context - not critical
+      }
+    }
+
+    // For skill editor, inject existing skills context
+    if (isSkillEditorSkill) {
+      try {
+        const allSkills = await getAllSkills();
+        const userSkills = allSkills.filter(s => !s.isBuiltIn);
+
+        let skillContextMsg = "\n\n## Available Skills for Editing\n\n";
+
+        if (userSkills.length > 0) {
+          skillContextMsg += `### User-Created Skills (${userSkills.length})\n`;
+          skillContextMsg += "Use the **id** field when outputting edits.\n\n";
+
+          userSkills.slice(0, 20).forEach(skill => {
+            skillContextMsg += `**${skill.name}** (id: \`${skill.id}\`)\n`;
+            skillContextMsg += `- Category: ${skill.category} | ${skill.isEnabled ? "Enabled" : "Disabled"}\n`;
+            skillContextMsg += `- Triggers: ${(skill.autoApplyQueries || []).slice(0, 3).join(", ") || "None"}\n`;
+            const preview = skill.systemPrompt.slice(0, 100);
+            skillContextMsg += `- Prompt: "${preview}${skill.systemPrompt.length > 100 ? "..." : ""}"\n\n`;
+          });
+        } else {
+          skillContextMsg += "No custom skills found. The user may want to create a new skill instead.\n\n";
+        }
+
+        // Add built-in skills reference
+        const builtInSkills = allSkills.filter(s => s.isBuiltIn);
+        if (builtInSkills.length > 0) {
+          skillContextMsg += `### Built-in Skills (Reference Only)\n`;
+          builtInSkills.forEach(skill => {
+            skillContextMsg += `- **${skill.name}** (\`${skill.id}\`): ${skill.category}\n`;
+          });
+        }
+
+        skillContent += skillContextMsg;
+      } catch (error) {
+        console.error("[Context Builder] Failed to fetch skill context:", error);
       }
     }
 

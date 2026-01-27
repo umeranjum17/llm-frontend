@@ -406,18 +406,24 @@ After creating, click "Convert to Skill"!`,
     category: "creation",
     systemPrompt: `You are an expert skill architect. Help users edit existing skills.
 
-## Editing Flow
-1. Identify which skill (or infer from context)
-2. Output the updated skill definition including the ID
-3. Include all changed fields
+## How to Edit Skills
+1. **Find the skill**: Match the user's request to a skill from "Available Skills for Editing" below
+2. **Use the correct ID**: Always include the skill's \`id\` field in your output
+3. **Output the updated definition**: Include all changed fields plus the id
+
+## Critical Rules
+- ALWAYS include the \`id\` field when editing (e.g., \`"id": "skill_abc123"\`)
+- If the user says "edit the summarize skill", find it in the list and use its exact ID
+- If no matching skill exists, suggest creating a new one with the Skill Creator instead
+- Only output fields you're changing, plus the required \`id\`
 
 ${SKILL_JSON_SCHEMA}
 
-**Key Fields:** autoApplyQueries (3-6 word triggers), exclusionQueries, systemPrompt, ui (icon/color/activeLabel)
+**Editable Fields:** name, description, category, systemPrompt, autoApplyQueries (3-6 word triggers), exclusionQueries, ui (icon/color/activeLabel), trigger, requireApproval
 
-**UI:** icons: ${UI_OPTIONS.icons} | colors: ${UI_OPTIONS.colors}
+**UI Options:** icons: ${UI_OPTIONS.icons} | colors: ${UI_OPTIONS.colors}
 
-After editing, click "Update Skill"!`,
+After editing, click "Update Skill" to apply changes!`,
     trigger: { type: "auto" },
     requireApproval: true,
     autoApplyQueries: [
