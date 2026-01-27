@@ -34,6 +34,9 @@ export interface MultiModelPanel {
 // localStorage key for remembering last used models in multi-model mode
 const MULTI_MODEL_LAST_USED_KEY = "multiModelLastUsed";
 
+// sessionStorage key for skill editor prefill data
+const SKILL_PREFILL_KEY = "skillEditorPrefill";
+
 // Get last used models from localStorage or return defaults
 function getLastUsedModels(defaultModelId: string): string[] {
   if (typeof window === "undefined") return [defaultModelId, "anthropic/claude-3.5-sonnet"];
@@ -99,7 +102,7 @@ interface UIState {
   setIsFocusMode: (enabled: boolean) => void;
   setArtifactsFullscreen: (fullscreen: boolean) => void;
   setSkillEditorOpen: (open: boolean) => void;
-  openSkillEditorWithData: (data: Partial<Skill>, targetId?: string | null) => void;
+  openSkillEditorWithData: (data: Partial<Skill>, targetId?: string | null, returnTo?: string | null) => void;
   clearSkillEditorData: () => void;
   setAgentEditorOpen: (open: boolean) => void;
   openAgentEditorWithData: (data: Partial<Agent>, targetId?: string | null) => void;
@@ -196,12 +199,29 @@ export const useUIStore = create<UIState>((set, get) => ({
   setIsFocusMode: (enabled) => set({ isFocusMode: enabled }),
   setArtifactsFullscreen: (fullscreen) => set({ artifactsFullscreen: fullscreen }),
   setSkillEditorOpen: (open) => set({ skillEditorOpen: open }),
-  openSkillEditorWithData: (data, targetId) => {
-    set({
-      skillEditorOpen: true,
-      skillEditorPrefilledData: data,
-      skillEditorTargetId: targetId || null
-    });
+  openSkillEditorWithData: (data, targetId, returnTo) => {
+    // Store prefill data in sessionStorage for refresh survival
+    if (typeof window !== "undefined") {
+      try {
+        sessionStorage.setItem(
+          SKILL_PREFILL_KEY,
+          JSON.stringify({
+            data,
+            targetId: targetId || null,
+            returnTo: returnTo || null,
+          })
+        );
+
+        // Navigate to the appropriate route
+        const url = targetId ? `/skills/${targetId}/edit` : "/skills/new";
+        const fullUrl = returnTo
+          ? `${url}?returnTo=${encodeURIComponent(returnTo)}`
+          : url;
+        window.location.href = fullUrl;
+      } catch (error) {
+        console.error("Failed to store prefill data:", error);
+      }
+    }
   },
   clearSkillEditorData: () => set({ skillEditorPrefilledData: null, skillEditorTargetId: null }),
   setAgentEditorOpen: (open) => set({ agentEditorOpen: open }),

@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect, useCallback } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -47,7 +48,6 @@ import {
   toggleSkillEnabled,
 } from "@/lib/db/queries";
 import { resetSkillsToDefaults } from "@/lib/db/seed";
-import { SkillEditorDialog } from "@/components/settings/skill-editor-dialog";
 import { SKILL_COLORS, SKILL_CATEGORY_CONFIG } from "@/lib/constants/skills";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -95,10 +95,9 @@ function getSkillIcon(iconName: string, className?: string) {
 }
 
 export function SkillsSettings() {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [localThreshold, setLocalThreshold] = useState<number | null>(null);
@@ -424,10 +423,7 @@ export function SkillsSettings() {
             Reset
           </Button>
           <Button
-            onClick={() => {
-              setEditingSkill(null);
-              setEditorOpen(true);
-            }}
+            onClick={() => router.push("/skills/new")}
             className="gap-2"
           >
             <Plus className="h-4 w-4" />
@@ -599,10 +595,7 @@ export function SkillsSettings() {
               key={skill.id}
               skill={skill}
               hasEmbedding={skillIdsWithEmbeddings?.has(skill.id) ?? false}
-              onEdit={() => {
-                setEditingSkill(skill);
-                setEditorOpen(true);
-              }}
+              onEdit={() => router.push(`/skills/${skill.id}/edit`)}
               onDelete={() => handleDelete(skill)}
               onToggleFavorite={() => handleToggleFavorite(skill)}
               onToggleEnabled={() => handleToggleEnabled(skill)}
@@ -618,12 +611,6 @@ export function SkillsSettings() {
           </div>
         ) : null}
       </div>
-
-      <SkillEditorDialog
-        open={editorOpen}
-        onOpenChange={setEditorOpen}
-        skill={editingSkill}
-      />
     </div>
   );
 }

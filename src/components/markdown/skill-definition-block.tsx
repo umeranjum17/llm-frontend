@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Copy, Check, Wand2, AlertCircle, Zap, Hand } from "lucide-react";
 import { useUIStore } from "@/stores/ui-store";
@@ -99,6 +100,7 @@ export function SkillDefinitionBlock({ code }: SkillDefinitionBlockProps) {
   const [existingSkillId, setExistingSkillId] = useState<string | null>(null);
   const openSkillEditorWithData = useUIStore((state) => state.openSkillEditorWithData);
   const skills = useLiveQuery(() => getAllSkills(), []);
+  const pathname = usePathname();
 
   const parseResult = useMemo(() => parseSkillDefinition(code), [code]);
   
@@ -153,7 +155,8 @@ export function SkillDefinitionBlock({ code }: SkillDefinitionBlockProps) {
       } as SkillUI,
     };
 
-    openSkillEditorWithData(skillData, existingSkillId);
+    // Pass current pathname as returnTo so user returns to chat after save
+    openSkillEditorWithData(skillData, existingSkillId, pathname);
   };
 
   // Error state

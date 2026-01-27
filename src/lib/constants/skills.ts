@@ -630,6 +630,54 @@ Check context for available tools/models. After editing, click "Update Agent"!`,
 ];
 
 /**
+ * Available skill categories
+ */
+export const SKILL_CATEGORIES = [
+  "creation",
+  "visualization",
+  "coding",
+  "analysis",
+  "writing",
+  "search",
+] as const;
+
+/**
+ * Available skill icons (Lucide icon names)
+ */
+export const SKILL_ICONS = [
+  "FileText",
+  "BarChart3",
+  "GitBranch",
+  "Image",
+  "Code",
+  "Bug",
+  "Scale",
+  "Layers",
+  "Sparkles",
+  "Search",
+  "PenLine",
+  "Wand2",
+] as const;
+
+/**
+ * Available skill colors
+ */
+export const SKILL_COLOR_OPTIONS = [
+  "blue",
+  "green",
+  "purple",
+  "pink",
+  "amber",
+  "red",
+  "cyan",
+  "sky",
+  "teal",
+  "orange",
+  "indigo",
+  "emerald",
+] as const;
+
+/**
  * Skill category configurations for UI display
  */
 export const SKILL_CATEGORY_CONFIG: Record<string, { label: string; icon: string }> = {
