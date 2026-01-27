@@ -13,6 +13,29 @@ import { useApiKeysStore } from "@/stores/api-keys-store";
 
 type ImportState = "loading" | "scan" | "password" | "importing" | "done" | "error";
 
+interface V2Payload {
+  keys: Array<{ provider: string; key: string; label?: string; baseUrl?: string }>;
+  exp: number;
+  v: 2;
+}
+
+/**
+ * Try to decode as v2 (unencrypted) payload
+ */
+function tryDecodeV2(payload: string): V2Payload | null {
+  try {
+    // Restore URL-safe base64
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const decoded = JSON.parse(atob(base64));
+    if (decoded.v === 2 && Array.isArray(decoded.keys) && typeof decoded.exp === "number") {
+      return decoded as V2Payload;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export default function ImportKeysPage() {
   const router = useRouter();
   const { addKey, keys: existingKeys, loadKeys, isLoaded } = useApiKeysStore();
@@ -34,6 +57,31 @@ export default function ImportKeysPage() {
     }
   }, [isLoaded, loadKeys]);
 
+  const importKeysDirectly = async (
+    keysToImport: Array<{ provider: string; key: string; label?: string; baseUrl?: string }>
+  ) => {
+    setState("importing");
+    let imported = 0;
+
+    for (const keyData of keysToImport) {
+      try {
+        // Check if key for this provider already exists
+        const existing = existingKeys.find((k) => k.provider === keyData.provider);
+        if (existing) {
+          // Skip if already exists
+          continue;
+        }
+        await addKey(keyData.provider, keyData.key, keyData.label, keyData.baseUrl);
+        imported++;
+      } catch {
+        // Continue with other keys
+      }
+    }
+
+    setImportedCount(imported);
+    setState("done");
+  };
+
   const loadFromHash = async () => {
     const hash = typeof window !== "undefined" ? window.location.hash.replace(/^#/, "") : "";
     if (!hash) {
@@ -49,6 +97,21 @@ export default function ImportKeysPage() {
       return;
     }
 
+    // Try to decode as v2 (unencrypted) first
+    const v2Payload = tryDecodeV2(hash);
+    if (v2Payload) {
+      // Check expiration
+      if (Date.now() > v2Payload.exp) {
+        setError("This transfer has expired. Please generate a new one from your source device.");
+        setState("error");
+        return;
+      }
+      // Auto-import v2 payload (no password needed)
+      await importKeysDirectly(v2Payload.keys);
+      return;
+    }
+
+    // Encrypted payload - need password
     setEncrypted(hash);
     setState("password");
   };
@@ -108,26 +171,40 @@ export default function ImportKeysPage() {
     const trimmed = value.trim();
     if (!trimmed) return;
 
+    let payload: string | null = null;
+
     // Check if it's a full URL to this page
     if (trimmed.includes("/import/keys#")) {
-      const hash = trimmed.split("#")[1];
-      if (hash) {
-        stopScanner();
-        setEncrypted(hash);
-        setState("password");
-        return;
-      }
+      payload = trimmed.split("#")[1] || null;
+    } else if (/^[A-Za-z0-9_-]+$/.test(trimmed) && trimmed.length > 50) {
+      // It's just the hash data
+      payload = trimmed;
     }
 
-    // Check if it's just the hash data
-    if (/^[A-Za-z0-9_-]+$/.test(trimmed) && trimmed.length > 50) {
-      stopScanner();
-      setEncrypted(trimmed);
-      setState("password");
+    if (!payload) {
+      setScanError("QR code does not contain valid API key transfer data.");
       return;
     }
 
-    setScanError("QR code does not contain valid API key transfer data.");
+    stopScanner();
+
+    // Try to decode as v2 (unencrypted) first
+    const v2Payload = tryDecodeV2(payload);
+    if (v2Payload) {
+      // Check expiration
+      if (Date.now() > v2Payload.exp) {
+        setError("This transfer has expired. Please generate a new one from your source device.");
+        setState("error");
+        return;
+      }
+      // Auto-import v2 payload (no password needed)
+      await importKeysDirectly(v2Payload.keys);
+      return;
+    }
+
+    // Encrypted payload - need password
+    setEncrypted(payload);
+    setState("password");
   };
 
   const stopScanner = () => {
@@ -270,23 +347,45 @@ export default function ImportKeysPage() {
                 <div className="text-sm font-medium">Paste Transfer Link</div>
                 <Input
                   placeholder="https://..."
-                  onKeyDown={(e) => {
+                  onKeyDown={async (e) => {
                     if (e.key === "Enter") {
                       const value = (e.target as HTMLInputElement).value;
                       if (value.includes("/import/keys#")) {
                         const hash = value.split("#")[1];
                         if (hash) {
+                          // Try v2 first
+                          const v2Payload = tryDecodeV2(hash);
+                          if (v2Payload) {
+                            if (Date.now() > v2Payload.exp) {
+                              setError("This transfer has expired. Please generate a new one from your source device.");
+                              setState("error");
+                              return;
+                            }
+                            await importKeysDirectly(v2Payload.keys);
+                            return;
+                          }
                           setEncrypted(hash);
                           setState("password");
                         }
                       }
                     }
                   }}
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const value = e.target.value;
                     if (value.includes("/import/keys#")) {
                       const hash = value.split("#")[1];
                       if (hash) {
+                        // Try v2 first
+                        const v2Payload = tryDecodeV2(hash);
+                        if (v2Payload) {
+                          if (Date.now() > v2Payload.exp) {
+                            setError("This transfer has expired. Please generate a new one from your source device.");
+                            setState("error");
+                            return;
+                          }
+                          await importKeysDirectly(v2Payload.keys);
+                          return;
+                        }
                         setEncrypted(hash);
                         setState("password");
                       }

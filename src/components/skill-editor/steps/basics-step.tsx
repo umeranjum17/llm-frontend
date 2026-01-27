@@ -14,7 +14,7 @@ import type { Skill } from "@/lib/db/schema";
 import {
   SKILL_COLORS,
   SKILL_CATEGORY_CONFIG,
-  SKILL_CATEGORIES,
+  SKILL_CATEGORY_KEYS,
   SKILL_ICONS,
   SKILL_COLOR_OPTIONS,
 } from "@/lib/constants/skills";
@@ -61,7 +61,7 @@ export function BasicsStep() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {SKILL_CATEGORIES.map((c) => (
+              {SKILL_CATEGORY_KEYS.map((c) => (
                 <SelectItem key={c} value={c}>
                   {SKILL_CATEGORY_CONFIG[c]?.label || c}
                 </SelectItem>

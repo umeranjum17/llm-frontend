@@ -19,6 +19,17 @@ import QRCode from "qrcode";
 import { useApiKeysStore, SYNC_S3_PROVIDER } from "@/stores/api-keys-store";
 
 /**
+ * Simple base64 encoding for QR transfer (no encryption needed - scanned from own screen)
+ */
+function encodeKeysForQR(
+  keys: Array<{ provider: string; key: string; label?: string; baseUrl?: string }>,
+  expiresAt: number
+): string {
+  const data = JSON.stringify({ keys, exp: expiresAt, v: 2 });
+  return btoa(data).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/**
  * Encrypts API keys for transfer - creates a short-lived encrypted payload
  */
 async function encryptApiKeys(
@@ -145,43 +156,65 @@ export function ApiKeyTransferDialog({
   };
 
   const handleGenerate = async () => {
-    if (password.length < 6) {
-      toast.error("Password must be at least 6 characters");
-      return;
-    }
-    if (password !== confirm) {
-      toast.error("Passwords do not match");
-      return;
+    // Password validation only for link/file methods
+    if (method !== "qr") {
+      if (password.length < 6) {
+        toast.error("Password must be at least 6 characters");
+        return;
+      }
+      if (password !== confirm) {
+        toast.error("Passwords do not match");
+        return;
+      }
     }
 
     setBusy(true);
     try {
-      // Get minimal key data for transfer
-      const keyData = keys.map((k) => ({
-        provider: k.provider,
-        key: k.key,
-        label: k.label,
-        baseUrl: k.baseUrl,
-      }));
-
       const expiresAt = Date.now() + 10 * 60 * 1000; // 10 min expiry
-      const encrypted = await encryptApiKeys(keyData, password, expiresAt);
       const origin = typeof window !== "undefined" ? window.location.origin : "";
 
-      if (method === "qr" || method === "link") {
-        const url = `${origin}/import/keys#${encrypted}`;
+      if (method === "qr") {
+        // QR: Simple encoding, exclude S3 credentials
+        const qrKeys = keys
+          .filter((k) => k.provider !== SYNC_S3_PROVIDER)
+          .map((k) => ({
+            provider: k.provider,
+            key: k.key,
+            label: k.label,
+            baseUrl: k.baseUrl,
+          }));
+
+        const encoded = encodeKeysForQR(qrKeys, expiresAt);
+        const url = `${origin}/import/keys#${encoded}`;
         setShareUrl(url);
 
-        if (method === "qr") {
-          // Generate QR code
-          const qr = await QRCode.toDataURL(url, {
-            width: 400,
-            margin: 2,
-            errorCorrectionLevel: "H",
-          });
-          setQrDataUrl(qr);
-        }
+        const qr = await QRCode.toDataURL(url, {
+          width: 400,
+          margin: 2,
+          errorCorrectionLevel: "M", // Medium error correction for smaller QR
+        });
+        setQrDataUrl(qr);
+      } else if (method === "link") {
+        // Link: Encrypted with password, includes all keys
+        const keyData = keys.map((k) => ({
+          provider: k.provider,
+          key: k.key,
+          label: k.label,
+          baseUrl: k.baseUrl,
+        }));
+        const encrypted = await encryptApiKeys(keyData, password, expiresAt);
+        const url = `${origin}/import/keys#${encrypted}`;
+        setShareUrl(url);
       } else {
+        // File: Encrypted with password, includes all keys
+        const keyData = keys.map((k) => ({
+          provider: k.provider,
+          key: k.key,
+          label: k.label,
+          baseUrl: k.baseUrl,
+        }));
+        const encrypted = await encryptApiKeys(keyData, password, expiresAt);
+
         // Download as .lumina file
         const fileData = JSON.stringify({
           type: "lumina-api-keys",
@@ -222,7 +255,8 @@ export function ApiKeyTransferDialog({
 
   const isVaultLocked = vault.meta && !vault.isUnlocked;
   const hasKeys = keys.length > 0;
-  const canGenerate = hasKeys && !isVaultLocked && password.length >= 6 && password === confirm;
+  // QR method doesn't need password; link/file methods do
+  const canGenerate = hasKeys && !isVaultLocked && (method === "qr" || (password.length >= 6 && password === confirm));
 
   return (
     <Dialog
@@ -263,13 +297,6 @@ export function ApiKeyTransferDialog({
 
             {hasKeys && !isVaultLocked && (
               <>
-                {hasS3Credentials && (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
-                    <Cloud className="h-3.5 w-3.5 text-blue-500" />
-                    <span>Includes S3 sync credentials</span>
-                  </div>
-                )}
-
                 <Tabs value={method} onValueChange={(v) => setMethod(v as TransferMethod)}>
                   <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="qr" className="gap-1.5">
@@ -286,49 +313,77 @@ export function ApiKeyTransferDialog({
                     </TabsTrigger>
                   </TabsList>
 
-                  <TabsContent value="qr" className="mt-3">
+                  <TabsContent value="qr" className="mt-3 space-y-2">
                     <div className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-3">
-                      Generate a QR code to scan with your new device. Opens the import page automatically.
+                      Scan with your new device. No password needed.
                     </div>
+                    {hasS3Credentials && (
+                      <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-500/10 rounded-lg px-3 py-2">
+                        <Cloud className="h-3.5 w-3.5" />
+                        <span>S3 sync credentials require Link or File transfer</span>
+                      </div>
+                    )}
                   </TabsContent>
-                  <TabsContent value="link" className="mt-3">
+                  <TabsContent value="link" className="mt-3 space-y-2">
                     <div className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-3">
                       Copy a shareable link to paste in your new device&apos;s browser.
                     </div>
+                    {hasS3Credentials && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+                        <Cloud className="h-3.5 w-3.5 text-blue-500" />
+                        <span>Includes S3 sync credentials</span>
+                      </div>
+                    )}
                   </TabsContent>
-                  <TabsContent value="file" className="mt-3">
+                  <TabsContent value="file" className="mt-3 space-y-2">
                     <div className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-3">
                       Download an encrypted .lumina file for offline transfer.
                     </div>
+                    {hasS3Credentials && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+                        <Cloud className="h-3.5 w-3.5 text-blue-500" />
+                        <span>Includes S3 sync credentials</span>
+                      </div>
+                    )}
                   </TabsContent>
                 </Tabs>
 
-                <div className="space-y-2">
-                  <Label>Transfer Password</Label>
-                  <Input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="At least 6 characters"
-                  />
-                </div>
+                {method !== "qr" && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Transfer Password</Label>
+                      <Input
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="At least 6 characters"
+                      />
+                    </div>
 
-                <div className="space-y-2">
-                  <Label>Confirm Password</Label>
-                  <Input
-                    type="password"
-                    value={confirm}
-                    onChange={(e) => setConfirm(e.target.value)}
-                    placeholder="Confirm password"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && canGenerate) handleGenerate();
-                    }}
-                  />
-                </div>
+                    <div className="space-y-2">
+                      <Label>Confirm Password</Label>
+                      <Input
+                        type="password"
+                        value={confirm}
+                        onChange={(e) => setConfirm(e.target.value)}
+                        placeholder="Confirm password"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && canGenerate) handleGenerate();
+                        }}
+                      />
+                    </div>
 
-                <div className="text-xs text-muted-foreground">
-                  Expires in 10 minutes. Password required on new device.
-                </div>
+                    <div className="text-xs text-muted-foreground">
+                      Expires in 10 minutes. Password required on new device.
+                    </div>
+                  </>
+                )}
+
+                {method === "qr" && (
+                  <div className="text-xs text-muted-foreground">
+                    Expires in 10 minutes.
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -345,7 +400,7 @@ export function ApiKeyTransferDialog({
 
             <div className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-3 space-y-1">
               <div><strong>Expires:</strong> 10 minutes</div>
-              <div><strong>Password:</strong> Required on new device</div>
+              <div><strong>No password needed</strong> - keys import automatically</div>
             </div>
           </div>
         )}

@@ -1,5 +1,14 @@
 import type { Skill } from "@/lib/db/schema";
-import { SKILL_JSON_SCHEMA, AGENT_PIPELINE_SCHEMA, LUMINA_CAPABILITIES, LUMINA_CAPABILITIES_COMPACT, LUMINA_FULL_KNOWLEDGE, UI_OPTIONS, SKILL_CATEGORIES, AGENT_CAPABILITIES } from "./prompts";
+import {
+  SKILL_JSON_SCHEMA,
+  AGENT_PIPELINE_SCHEMA,
+  LUMINA_CAPABILITIES,
+  LUMINA_CAPABILITIES_COMPACT,
+  LUMINA_FULL_KNOWLEDGE,
+  UI_OPTIONS,
+  SKILL_CATEGORIES,
+  AGENT_CAPABILITIES,
+} from "./prompts";
 
 function now() {
   return Date.now();
@@ -632,7 +641,7 @@ Check context for available tools/models. After editing, click "Update Agent"!`,
 /**
  * Available skill categories
  */
-export const SKILL_CATEGORIES = [
+export const SKILL_CATEGORY_KEYS = [
   "creation",
   "visualization",
   "coding",

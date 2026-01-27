@@ -200,14 +200,14 @@ export async function setDeviceName(deviceName: string): Promise<void> {
 export type AutoSyncMode = "manual" | "focus" | "5m" | "15m";
 
 export async function getAutoSyncMode(): Promise<AutoSyncMode> {
-  if (!syncMetaTableExists()) return "manual";
+  if (!syncMetaTableExists()) return "5m";
   try {
     const meta = await db._syncMeta.get("default");
     tableVerified = true;
-    return (meta?.autoSyncMode as AutoSyncMode) || "manual";
+    return (meta?.autoSyncMode as AutoSyncMode) || "5m";
   } catch {
     tableVerified = false;
-    return "manual";
+    return "5m";
   }
 }
 
