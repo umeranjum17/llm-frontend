@@ -174,15 +174,13 @@ export function ApiKeyTransferDialog({
       const origin = typeof window !== "undefined" ? window.location.origin : "";
 
       if (method === "qr") {
-        // QR: Simple encoding, exclude S3 credentials
-        const qrKeys = keys
-          .filter((k) => k.provider !== SYNC_S3_PROVIDER)
-          .map((k) => ({
-            provider: k.provider,
-            key: k.key,
-            label: k.label,
-            baseUrl: k.baseUrl,
-          }));
+        // QR: Simple encoding, includes all keys
+        const qrKeys = keys.map((k) => ({
+          provider: k.provider,
+          key: k.key,
+          label: k.label,
+          baseUrl: k.baseUrl,
+        }));
 
         const encoded = encodeKeysForQR(qrKeys, expiresAt);
         const url = `${origin}/import/keys#${encoded}`;
@@ -318,9 +316,9 @@ export function ApiKeyTransferDialog({
                       Scan with your new device. No password needed.
                     </div>
                     {hasS3Credentials && (
-                      <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-500/10 rounded-lg px-3 py-2">
-                        <Cloud className="h-3.5 w-3.5" />
-                        <span>S3 sync credentials require Link or File transfer</span>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+                        <Cloud className="h-3.5 w-3.5 text-blue-500" />
+                        <span>Includes S3 sync credentials</span>
                       </div>
                     )}
                   </TabsContent>
