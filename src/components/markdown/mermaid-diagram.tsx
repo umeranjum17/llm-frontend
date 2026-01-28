@@ -136,7 +136,7 @@ export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: 
         >
           {svg ? (
             <div
-              className="w-fit [&>svg]:h-auto"
+              className="w-fit [&>svg]:h-auto [&>svg]:overflow-visible"
               dangerouslySetInnerHTML={{ __html: svg }}
             />
           ) : (
@@ -161,7 +161,7 @@ export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: 
             </Button>
           </div>
           <div
-            className="max-w-full max-h-full overflow-auto [&>svg]:max-w-full [&>svg]:h-auto"
+            className="max-w-full max-h-full overflow-auto [&>svg]:max-w-full [&>svg]:h-auto [&>svg]:overflow-visible"
             dangerouslySetInnerHTML={{ __html: svg }}
             onClick={(e) => e.stopPropagation()}
           />

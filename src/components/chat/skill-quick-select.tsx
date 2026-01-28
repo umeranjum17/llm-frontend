@@ -103,7 +103,17 @@ export function SkillQuickSelect({ onSelect, selectedSkill }: SkillQuickSelectPr
     onSelect(skill);
   };
 
-  const categoryOrder = ["creation", "visualization", "coding", "analysis", "writing", "other"];
+  const categoryOrder = [
+    "creation",
+    "visualization",
+    "coding",
+    "analysis",
+    "writing",
+    "productivity",
+    "research",
+    "business",
+    "other",
+  ];
 
   return (
     <DropdownMenu>

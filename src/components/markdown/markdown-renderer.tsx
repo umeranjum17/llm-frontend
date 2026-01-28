@@ -131,7 +131,18 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
 
             // Handle skill definitions - only render after streaming completes to avoid JSON parse errors
             if (language === "skill") {
+              // During streaming, show JSON unless content appears complete
+              // This handles race conditions where streaming state isn't cleared promptly
               if (isStreaming) {
+                try {
+                  // If we can parse valid JSON with required skill fields, render as skill block
+                  const parsed = JSON.parse(code);
+                  if (parsed && parsed.name && parsed.systemPrompt) {
+                    return <SkillDefinitionBlock code={code} />;
+                  }
+                } catch {
+                  // Invalid JSON - still streaming, show as JSON code block
+                }
                 return <CodeBlock language="json" code={code} filename={null} isStreaming={isStreaming} />;
               }
               return <SkillDefinitionBlock code={code} />;

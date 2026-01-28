@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Send, Loader2, Paperclip, X, FileText, Image as ImageIcon, Mic, Square, Star, Code2, ChevronDown, ChevronUp, Trash2, CornerDownLeft, Pencil, ArrowUp } from "lucide-react";
+import { Send, Loader2, Paperclip, X, FileText, Image as ImageIcon, Mic, Square, Star, Code2, ChevronDown, ChevronUp, Trash2, CornerDownLeft, Pencil, ArrowUp, Zap } from "lucide-react";
 import { useChat } from "@/hooks/use-chat";
 import { useChatKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { TokenDisplay } from "./token-display";
@@ -199,6 +199,7 @@ export function InputArea({ chatId }: InputAreaProps) {
   const [codeSnippets, setCodeSnippets] = useState<CodeSnippet[]>([]);
   const [expandedSnippets, setExpandedSnippets] = useState<Set<string>>(new Set());
   const [inputFocused, setInputFocused] = useState(false);
+  const [dismissedStickySkillId, setDismissedStickySkillId] = useState<string | null>(null);
 
   // Get active skill from streaming store (persists per chat)
   const activeSkillFromStore = useStreamingStore((state) => chatId ? state.chatStreams[chatId]?.activeSkill ?? null : null);
@@ -255,6 +256,24 @@ export function InputArea({ chatId }: InputAreaProps) {
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  // Find the last assistant message's skill for sticky skill banner
+  const lastAssistantSkillId = useLiveQuery(async () => {
+    if (!chatId) return null;
+    const msgs = await getMessages(chatId);
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === "assistant" && msgs[i].skillId) {
+        return msgs[i].skillId;
+      }
+    }
+    return null;
+  }, [chatId]);
+
+  const stickySkill = useLiveQuery(async () => {
+    if (!lastAssistantSkillId) return null;
+    const allSkills = await getAllSkills();
+    return allSkills.find(s => s.id === lastAssistantSkillId) || null;
+  }, [lastAssistantSkillId]);
 
   const chat = useLiveQuery(() => chatId ? getChatById(chatId) : undefined, [chatId]);
   const agents = useLiveQuery(() => getAllAgents(), []);
@@ -1060,6 +1079,22 @@ export function InputArea({ chatId }: InputAreaProps) {
         />
       )}
 
+      {/* Sticky skill banner */}
+      {stickySkill && !selectedSkill && dismissedStickySkillId !== stickySkill.id && (
+        <div className="mb-1.5 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/50 text-xs text-muted-foreground">
+          <Zap className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">Using <span className="font-medium text-foreground">{stickySkill.name}</span></span>
+          <button
+            type="button"
+            onClick={() => setDismissedStickySkillId(stickySkill.id)}
+            className="ml-auto shrink-0 p-0.5 hover:text-foreground transition-colors"
+            aria-label="Dismiss sticky skill"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
       <div className="flex gap-1.5 sm:gap-2 rounded-xl sm:rounded-2xl border border-border/50 bg-background p-1.5 sm:p-2 focus-within:border-border focus-within:ring-1 focus-within:ring-ring/20 transition-all duration-150">
         {/* Controls - always visible to prevent layout shift */}
         <Button
@@ -1098,9 +1133,8 @@ export function InputArea({ chatId }: InputAreaProps) {
           )}
         </Button>
 
-        {/* Skill quick select - hidden on mobile */}
+        {/* Skill quick select */}
         <div
-          className="hidden sm:block"
           onMouseDown={(e) => e.preventDefault()} // Prevent textarea blur
         >
           <SkillQuickSelect

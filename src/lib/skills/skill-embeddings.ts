@@ -1,4 +1,5 @@
 import { db, type SkillEmbedding, type Skill } from "@/lib/db/schema";
+import { getSettings } from "@/lib/db/queries";
 
 /**
  * Error types for embedding operations
@@ -52,6 +53,12 @@ let cacheInitialized = false;
 
 /**
  * Load all skill embeddings into memory cache
+ *
+ * This function includes skills in the cache if they have EITHER:
+ * 1. An entry in skillEmbeddings table (description embedding)
+ * 2. autoApplyEmbeddings stored directly on the skill (trigger phrase embeddings)
+ *
+ * For auto-trigger skills missing BOTH sources, it triggers background generation.
  */
 export async function loadEmbeddingsCache(): Promise<void> {
   try {
@@ -60,7 +67,7 @@ export async function loadEmbeddingsCache(): Promise<void> {
       db.skillEmbeddings.toArray(),
     ]);
 
-    // Create a map of skillId -> embedding
+    // Create a map of skillId -> embedding (from skillEmbeddings table)
     const embeddingMap = new Map<string, number[]>();
     for (const emb of embeddings) {
       embeddingMap.set(emb.skillId, emb.embedding);
@@ -68,16 +75,147 @@ export async function loadEmbeddingsCache(): Promise<void> {
 
     // Build cache with skill data
     embeddingsCache.clear();
+    const skillsMissingEmbeddings: Skill[] = [];
+
     for (const skill of skills) {
-      const embedding = embeddingMap.get(skill.id);
-      if (embedding) {
-        embeddingsCache.set(skill.id, { embedding, skill });
+      const descriptionEmbedding = embeddingMap.get(skill.id);
+      const hasAutoApplyEmbeddings = skill.autoApplyEmbeddings && skill.autoApplyEmbeddings.length > 0;
+
+      // Include skill if it has EITHER embedding source
+      if (descriptionEmbedding || hasAutoApplyEmbeddings) {
+        embeddingsCache.set(skill.id, {
+          embedding: descriptionEmbedding || [],
+          skill
+        });
+      }
+
+      // Track auto-trigger skills missing BOTH embedding sources
+      // These need embeddings generated to work properly
+      if (skill.trigger.type === "auto" && !descriptionEmbedding && !hasAutoApplyEmbeddings) {
+        skillsMissingEmbeddings.push(skill);
       }
     }
 
     cacheInitialized = true;
+
+    // Auto-generate embeddings for missing skills (non-blocking)
+    if (skillsMissingEmbeddings.length > 0) {
+      console.log(`[Skill Embeddings] ${skillsMissingEmbeddings.length} auto-trigger skills need embeddings:`,
+        skillsMissingEmbeddings.map(s => s.name).join(", "));
+      autoGenerateMissingEmbeddings(skillsMissingEmbeddings);
+    }
   } catch (error) {
     console.error("[Skill Embeddings] Failed to load cache:", error);
+  }
+}
+
+/**
+ * Auto-generate embeddings for skills that are missing both description and trigger phrase embeddings.
+ * This runs in the background without blocking and silently fails if no API key is available.
+ *
+ * The function:
+ * 1. Gets the embeddings API key from settings
+ * 2. If no key available, logs and returns (skills with synced autoApplyEmbeddings still work)
+ * 3. Generates both description embedding (skillEmbeddings table) and trigger phrase embeddings (autoApplyEmbeddings)
+ * 4. Updates the cache after each successful generation
+ */
+async function autoGenerateMissingEmbeddings(skills: Skill[]): Promise<void> {
+  try {
+    // Get embeddings settings
+    const settings = await getSettings();
+    const providerId = settings?.embeddingsProvider || "openrouter";
+    const modelId = settings?.embeddingsModelId;
+
+    // Import API keys store dynamically to avoid circular dependencies
+    // This is a client-side module, so we need to check if we're in browser
+    if (typeof window === "undefined") {
+      console.log("[Skill Embeddings] Auto-generation skipped (server-side)");
+      return;
+    }
+
+    // Dynamically import to avoid SSR issues
+    const { useApiKeysStore } = await import("@/stores/api-keys-store");
+    const apiKeyEntry = useApiKeysStore.getState().getKeyForProvider(providerId);
+
+    if (!apiKeyEntry?.key) {
+      console.log(`[Skill Embeddings] No API key for ${providerId}, skipping auto-generation`);
+      return;
+    }
+
+    const apiKey = apiKeyEntry.key;
+    console.log(`[Skill Embeddings] Auto-generating embeddings for ${skills.length} skills...`);
+
+    for (const skill of skills) {
+      try {
+        // Generate description embedding (stored in skillEmbeddings table)
+        const result = await generateSkillEmbedding(skill, apiKey, providerId, modelId);
+
+        if (result.success) {
+          console.log(`[Skill Embeddings] Generated description embedding for "${skill.name}"`);
+        } else {
+          console.warn(`[Skill Embeddings] Failed to generate embedding for "${skill.name}": ${result.error}`);
+        }
+
+        // Also generate trigger phrase embeddings if skill has autoApplyQueries
+        if (skill.autoApplyQueries && skill.autoApplyQueries.length > 0) {
+          const triggerEmbeddings: number[][] = [];
+
+          for (const query of skill.autoApplyQueries) {
+            const embedding = await getEmbedding(query, apiKey, providerId, modelId);
+            if (embedding) {
+              triggerEmbeddings.push(embedding);
+            }
+          }
+
+          if (triggerEmbeddings.length > 0) {
+            await db.skills.update(skill.id, {
+              autoApplyEmbeddings: triggerEmbeddings,
+              updatedAt: Date.now(),
+            });
+
+            // Update cache with new embeddings
+            const cached = embeddingsCache.get(skill.id);
+            if (cached) {
+              // Refresh skill data with new autoApplyEmbeddings
+              const updatedSkill = await db.skills.get(skill.id);
+              if (updatedSkill) {
+                embeddingsCache.set(skill.id, { ...cached, skill: updatedSkill });
+              }
+            }
+
+            console.log(`[Skill Embeddings] Generated ${triggerEmbeddings.length} trigger phrase embeddings for "${skill.name}"`);
+          }
+        }
+
+        // Generate exclusion embeddings if skill has exclusionQueries
+        if (skill.exclusionQueries && skill.exclusionQueries.length > 0) {
+          const exclusionEmbeddings: number[][] = [];
+
+          for (const query of skill.exclusionQueries) {
+            const embedding = await getEmbedding(query, apiKey, providerId, modelId);
+            if (embedding) {
+              exclusionEmbeddings.push(embedding);
+            }
+          }
+
+          if (exclusionEmbeddings.length > 0) {
+            await db.skills.update(skill.id, {
+              exclusionEmbeddings: exclusionEmbeddings,
+              updatedAt: Date.now(),
+            });
+            console.log(`[Skill Embeddings] Generated ${exclusionEmbeddings.length} exclusion embeddings for "${skill.name}"`);
+          }
+        }
+      } catch (skillError) {
+        // Log but continue with next skill
+        console.warn(`[Skill Embeddings] Error generating embeddings for "${skill.name}":`, skillError);
+      }
+    }
+
+    console.log("[Skill Embeddings] Auto-generation complete");
+  } catch (error) {
+    // Silent failure - this is a background operation
+    console.warn("[Skill Embeddings] Auto-generation failed:", error);
   }
 }
 

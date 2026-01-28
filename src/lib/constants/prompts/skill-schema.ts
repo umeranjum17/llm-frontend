@@ -7,7 +7,7 @@ export const SKILL_JSON_SCHEMA = `\`\`\`skill
   "id": "skill_id",  // Only for edits
   "name": "Skill Name",
   "description": "Brief description",
-  "category": "coding|writing|analysis|visualization|creation|search",
+  "category": "coding|writing|analysis|visualization|creation|productivity|research|business|search",
   "systemPrompt": "AI instructions...",
   "trigger": { "type": "auto" },
   "autoApplyQueries": ["trigger phrases 3-6 words"],

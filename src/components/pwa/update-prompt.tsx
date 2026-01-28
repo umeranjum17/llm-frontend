@@ -19,7 +19,7 @@ export function UpdatePrompt() {
       hasShownToast.current = true;
 
       toastIdRef.current = toast("Update Available", {
-        description: "A new version of Lumina is ready. The app will briefly reload after updating.",
+        description: "A new version of Lumina is ready. For best results, close all Lumina tabs and reopen the app.",
         duration: Infinity,
         icon: <RefreshCw className="h-4 w-4" />,
         action: {

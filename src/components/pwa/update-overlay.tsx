@@ -128,9 +128,15 @@ export function UpdateOverlay({
           </div>
         )}
 
-        {status !== "error" && (
+        {status !== "error" && !showWarning && (
           <p className="text-xs text-center text-muted-foreground/60 max-w-xs">
             Please do not close the app. This will only take a moment.
+          </p>
+        )}
+
+        {showWarning && (
+          <p className="text-xs text-center text-muted-foreground max-w-xs">
+            Try closing all Lumina tabs and reopening the app for a cleaner update.
           </p>
         )}
       </div>

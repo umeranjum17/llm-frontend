@@ -93,13 +93,13 @@ export function SkillBadge({ name, icon, color, className }: SkillBadgeProps) {
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border",
+        "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium border",
         colorClasses,
         className
       )}
       title={`Generated with ${name} skill`}
     >
-      <IconComponent className="h-2.5 w-2.5" />
+      <IconComponent className="h-3 w-3" />
       <span>{name}</span>
     </div>
   );

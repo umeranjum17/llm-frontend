@@ -39,6 +39,7 @@ import {
   AlertCircle,
   Shield,
   RotateCcw,
+  ChevronDown,
 } from "lucide-react";
 import type { Skill } from "@/lib/db/schema";
 import {
@@ -638,6 +639,7 @@ function SkillSettingsItem({
   embeddingsProvider,
   embeddingsModelId,
 }: SkillSettingsItemProps) {
+  const [expanded, setExpanded] = useState(false);
   const colorClasses = SKILL_COLORS[skill.ui.color] || SKILL_COLORS.blue;
   const categoryConfig = SKILL_CATEGORY_CONFIG[skill.category];
 
@@ -648,7 +650,10 @@ function SkillSettingsItem({
         !skill.isEnabled && "opacity-50"
       )}
     >
-      <div className="flex items-center justify-between gap-4 p-3">
+      <div
+        className="flex items-center justify-between gap-4 p-3 cursor-pointer"
+        onClick={() => setExpanded(!expanded)}
+      >
         <div className="flex items-center gap-3 min-w-0">
           <div className={cn("rounded p-2 shrink-0", colorClasses)}>
             {getSkillIcon(skill.ui.icon)}
@@ -693,15 +698,17 @@ function SkillSettingsItem({
         </div>
 
         <div className="shrink-0 flex items-center gap-2">
+          <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", expanded && "rotate-180")} />
           <Switch
             checked={skill.isEnabled}
             onCheckedChange={onToggleEnabled}
+            onClick={(e) => e.stopPropagation()}
             title={skill.isEnabled ? "Disable skill" : "Enable skill"}
           />
           <Button
             variant="ghost"
             size="icon"
-            onClick={onToggleFavorite}
+            onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
             title={skill.isFavorite ? "Remove from favorites" : "Add to favorites"}
           >
             <Star
@@ -715,7 +722,7 @@ function SkillSettingsItem({
           <Button
             variant="ghost"
             size="icon"
-            onClick={onEdit}
+            onClick={(e) => { e.stopPropagation(); onEdit(); }}
             title="Edit skill"
           >
             <Pencil className="h-4 w-4" />
@@ -723,7 +730,7 @@ function SkillSettingsItem({
           <Button
             variant="ghost"
             size="icon"
-            onClick={onDelete}
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
             disabled={skill.isBuiltIn}
             title={skill.isBuiltIn ? "Built-in skills cannot be deleted" : "Delete skill"}
           >
@@ -731,6 +738,26 @@ function SkillSettingsItem({
           </Button>
         </div>
       </div>
+
+      {/* Expandable system prompt preview */}
+      {expanded && (
+        <div className="border-t px-3 pb-3 pt-2 space-y-2">
+          {skill.systemPrompt && (
+            <pre className="text-xs font-mono text-muted-foreground bg-muted/50 rounded-md p-2 whitespace-pre-wrap line-clamp-4">
+              {skill.systemPrompt}
+            </pre>
+          )}
+          {skill.autoApplyQueries && skill.autoApplyQueries.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {skill.autoApplyQueries.map((phrase, i) => (
+                <Badge key={i} variant="outline" className="text-[10px]">
+                  {phrase}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

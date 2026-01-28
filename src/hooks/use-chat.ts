@@ -16,11 +16,8 @@ import { isModelIdCompatibleWithProviderId, pickBestProviderId, providerLabel } 
 import { addMemory, refreshCacheInBackground, searchMemories } from "@/lib/memory";
 import { generateAndApplySummary } from "@/lib/ai/summarization";
 import { getSettings } from "@/lib/db/queries";
-import { matchSkill, getAutoSkillsMissingEmbeddings } from "@/lib/skills/skill-matcher";
+import { matchSkill, SKILL_SWITCH_THRESHOLD } from "@/lib/skills/skill-matcher";
 import type { UIMessage } from "ai";
-
-// Track if we've shown the missing embeddings warning this session
-let hasShownMissingEmbeddingsWarning = false;
 
 function cleanReferencesForLLM(content: string) {
   return content
@@ -1983,6 +1980,21 @@ export function useChat(chatId: string | null) {
 
           const threshold = settings?.skillMatchThreshold ?? 0.25;
 
+          // Sticky skill: check if the last assistant message used a skill
+          let stickySkill: Skill | null = null;
+          try {
+            const recentMsgs = await getMessages(actualChatId);
+            const lastAssistantMsg = recentMsgs.filter(m => m.role === 'assistant').pop();
+            if (lastAssistantMsg?.skillId) {
+              const prevSkill = await getSkillById(lastAssistantMsg.skillId);
+              if (prevSkill?.isEnabled) {
+                stickySkill = prevSkill;
+              }
+            }
+          } catch {
+            // Non-critical — continue without sticky skill
+          }
+
           if (embeddingsProvider && embeddingsModelId) {
             const embeddingsApiKey = getKeyForProvider(embeddingsProvider);
 
@@ -2008,7 +2020,17 @@ export function useChat(chatId: string | null) {
                   conversationContext,
                 }
               );
-              if (matchResult) {
+
+              if (stickySkill) {
+                // Sticky skill logic: keep the previous skill unless a *different* skill
+                // matches with high confidence (above SKILL_SWITCH_THRESHOLD)
+                activeSkill = stickySkill;
+                if (matchResult && matchResult.skill.id !== stickySkill.id && matchResult.similarity >= SKILL_SWITCH_THRESHOLD) {
+                  // Confident switch to a different skill
+                  activeSkill = matchResult.skill;
+                }
+              } else if (matchResult) {
+                // No sticky skill — use standard matching flow
                 // Check if skill requires approval
                 if (matchResult.skill.requireApproval) {
                   // Ensure we have a valid chat ID for skill approval
@@ -2038,22 +2060,16 @@ export function useChat(chatId: string | null) {
                 } else {
                   activeSkill = matchResult.skill;
                 }
-              } else if (!hasShownMissingEmbeddingsWarning) {
-                // No skill matched - check if there are auto-skills without embeddings
-                const embeddingStatus = await getAutoSkillsMissingEmbeddings();
-                if (embeddingStatus.missing > 0) {
-                  hasShownMissingEmbeddingsWarning = true;
-                  const skillList = embeddingStatus.skillNames.slice(0, 3).join(", ");
-                  const moreCount = embeddingStatus.skillNames.length > 3
-                    ? ` and ${embeddingStatus.skillNames.length - 3} more`
-                    : "";
-                  toast.warning("Skills need embeddings", {
-                    description: `${embeddingStatus.missing} auto-trigger skill${embeddingStatus.missing > 1 ? "s" : ""} (${skillList}${moreCount}) won't activate until embeddings are generated. Go to Settings > Skills to generate them.`,
-                    duration: 8000,
-                  });
-                }
               }
+              // Note: Missing embeddings warning removed - auto-generation handles this in background
+              // See loadEmbeddingsCache() in skill-embeddings.ts
+            } else if (stickySkill) {
+              // No embeddings API key but we have a sticky skill — keep it
+              activeSkill = stickySkill;
             }
+          } else if (stickySkill) {
+            // No embeddings provider configured but we have a sticky skill — keep it
+            activeSkill = stickySkill;
           }
         } catch (err) {
           // Skill detection is optional - fail silently without showing error to user

@@ -239,7 +239,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
               <details className="text-center">
                 <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-                  Still not working? Try clearing cache
+                  Advanced options
                 </summary>
                 <div className="mt-3 space-y-2">
                   <Button
@@ -257,9 +257,11 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
               </details>
             </div>
 
-            <p className="text-xs text-center text-muted-foreground">
-              If this keeps happening, try closing all Lumina tabs and reopening.
-            </p>
+            <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-center">
+              <p className="text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">Best fix:</span> Close all Lumina tabs and reopen the app for a fresh start.
+              </p>
+            </div>
           </div>
         </div>
       );

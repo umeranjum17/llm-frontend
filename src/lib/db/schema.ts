@@ -364,7 +364,7 @@ export interface Skill {
   id: string;
   name: string;
   description: string;           // Used for embedding-based matching (be descriptive!)
-  category: "creation" | "visualization" | "coding" | "analysis" | "writing" | "search";
+  category: "creation" | "visualization" | "coding" | "analysis" | "writing" | "productivity" | "research" | "business" | "search";
 
   // Core behavior (progressive disclosure: only loaded when skill activates)
   systemPrompt: string;           // Full instructions injected into context

@@ -653,6 +653,9 @@ export const SKILL_CATEGORY_KEYS = [
   "coding",
   "analysis",
   "writing",
+  "productivity",
+  "research",
+  "business",
   "search",
 ] as const;
 
@@ -701,6 +704,9 @@ export const SKILL_CATEGORY_CONFIG: Record<string, { label: string; icon: string
   coding: { label: "Coding", icon: "Code" },
   analysis: { label: "Analysis", icon: "Scale" },
   writing: { label: "Writing", icon: "PenLine" },
+  productivity: { label: "Productivity", icon: "FileText" },
+  research: { label: "Research", icon: "Search" },
+  business: { label: "Business", icon: "Layers" },
   search: { label: "Search", icon: "Search" },
 };
 

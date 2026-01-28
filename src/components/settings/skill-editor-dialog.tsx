@@ -25,7 +25,7 @@ import {
 import type { Skill, SkillTrigger, SkillUI } from "@/lib/db/schema";
 import { addSkill, updateSkill, getSkillById } from "@/lib/db/queries";
 import { buildVariablesFromTemplate } from "@/lib/utils/prompt-variables";
-import { SKILL_COLORS, SKILL_CATEGORY_CONFIG } from "@/lib/constants/skills";
+import { SKILL_COLORS, SKILL_CATEGORY_CONFIG, SKILL_CATEGORY_KEYS } from "@/lib/constants/skills";
 import { toast } from "sonner";
 import { useUIStore } from "@/stores/ui-store";
 import { useApiKeysStore } from "@/stores/api-keys-store";
@@ -34,7 +34,7 @@ import { generateSkillEmbedding } from "@/lib/skills/skill-embeddings";
 import { PREFILL_CLEAR_DELAY_MS, MAX_TRIGGER_PHRASES_IN_DESCRIPTION } from "@/lib/validation/agent-validation";
 import { classifyError, ErrorSeverity, formatErrorMessage } from "@/lib/utils/error-handling";
 
-const CATEGORIES = ["creation", "visualization", "coding", "analysis", "writing", "search"] as const;
+const CATEGORIES = SKILL_CATEGORY_KEYS;
 
 const ICONS = [
   "FileText",

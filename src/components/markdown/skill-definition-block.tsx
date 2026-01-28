@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Copy, Check, Wand2, AlertCircle, Zap, Hand } from "lucide-react";
 import { useUIStore } from "@/stores/ui-store";
 import { cn } from "@/lib/utils";
-import { SKILL_COLORS, SKILL_CATEGORY_CONFIG } from "@/lib/constants/skills";
+import { SKILL_COLORS, SKILL_CATEGORY_CONFIG, SKILL_CATEGORY_KEYS } from "@/lib/constants/skills";
 import * as LucideIcons from "lucide-react";
 import type { Skill, SkillTrigger, SkillUI } from "@/lib/db/schema";
 import { getAllSkills } from "@/lib/db/queries";
@@ -55,7 +55,7 @@ function parseSkillDefinition(code: string): ParseResult {
       errors.push("systemPrompt is required");
     }
 
-    const validCategories = ["creation", "visualization", "coding", "analysis", "writing", "search"];
+    const validCategories = SKILL_CATEGORY_KEYS;
     if (!data.category || !validCategories.includes(data.category)) {
       errors.push(`category must be one of: ${validCategories.join(", ")}`);
     }

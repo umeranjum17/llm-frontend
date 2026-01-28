@@ -50,6 +50,13 @@ export async function getAutoSkillsMissingEmbeddings(): Promise<{
 export const DEFAULT_SIMILARITY_THRESHOLD = 0.25;
 
 /**
+ * Threshold for switching away from a sticky skill to a different skill.
+ * Must be higher than the match floor to prevent accidental skill switches
+ * during an ongoing skill session.
+ */
+export const SKILL_SWITCH_THRESHOLD = 0.45;
+
+/**
  * Weight for exclusion query similarity penalty
  * Applied as a multiplier to the MAX exclusion similarity
  * Keep this low - exclusions should be a gentle nudge, not a hard block
@@ -283,14 +290,29 @@ export async function getAllSkillMatches(
   }
 
   // Calculate similarity for all skills
-  const matches: SkillMatchResult[] = skillEmbeddings.map(({ skill, embedding }) => ({
-    skill,
-    similarity: cosineSimilarity(messageEmbedding, embedding),
-  }));
+  const matches: SkillMatchResult[] = [];
+
+  for (const { skill, embedding } of skillEmbeddings) {
+    let similarity = 0;
+
+    if (skill.autoApplyEmbeddings && skill.autoApplyEmbeddings.length > 0) {
+      for (const queryEmbedding of skill.autoApplyEmbeddings) {
+        const sim = cosineSimilarity(messageEmbedding, queryEmbedding);
+        if (sim > similarity) {
+          similarity = sim;
+        }
+      }
+    } else if (embedding.length > 0) {
+      similarity = cosineSimilarity(messageEmbedding, embedding);
+    } else {
+      continue;
+    }
+
+    matches.push({ skill, similarity });
+  }
 
   // Sort by similarity (highest first)
   matches.sort((a, b) => b.similarity - a.similarity);
 
   return matches;
 }
-

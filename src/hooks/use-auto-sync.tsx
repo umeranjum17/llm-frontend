@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { getAutoSyncMode } from "@/lib/sync/device-id";
+import { getAutoSyncMode, getLastSyncTime } from "@/lib/sync/device-id";
 import { getSyncStatus, sync, isSyncConfigLocked } from "@/lib/sync/sync-manager";
 import { generateDailySnapshot } from "@/lib/usage/snapshot-generator";
 
@@ -67,14 +67,33 @@ export function useAutoSync() {
       }
     };
 
+    // Handle browser tab becoming visible again - intervals are throttled/suspended in background
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState !== "visible") return;
+
+      const mode = await getAutoSyncMode();
+      const intervalMs = getIntervalMs(mode);
+      if (!intervalMs) return;
+
+      // Check if sync is overdue based on last sync time
+      const lastSync = await getLastSyncTime();
+      const timeSinceLastSync = Date.now() - lastSync;
+
+      if (timeSinceLastSync >= intervalMs) {
+        runSync("visibility-resume");
+      }
+    };
+
     setupMode();
     window.addEventListener("focus", handleFocus);
     window.addEventListener("lumina:auto-sync-updated", setupMode);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       isMounted = false;
       window.removeEventListener("focus", handleFocus);
       window.removeEventListener("lumina:auto-sync-updated", setupMode);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, []);
