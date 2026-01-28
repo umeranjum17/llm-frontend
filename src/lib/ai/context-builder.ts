@@ -3,6 +3,7 @@ import type { Message, Skill } from "@/lib/db/schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { retrieveContext } from "@/lib/rag/retrieval";
 import { searchMemories, getAllMemories, type MemoryItem } from "@/lib/memory";
+import { getLuminaGlobalContext } from "@/lib/constants/prompts/capabilities";
 
 /**
  * RAG retrieval result type
@@ -40,20 +41,10 @@ export interface ContextBuilderResult {
 export function formatDynamicContext(dynamicContext: ContextBuilderResult['dynamicContext']): string {
   const parts: string[] = [];
 
-  // Format memory context
+  // Format memory context - ambient, minimal format to avoid model echoing it back
   if (dynamicContext.memory && dynamicContext.memory.length > 0) {
-    parts.push(`## Background Context (Internal Reference Only)
-${dynamicContext.memory.map((m) => `- ${m.memory}`).join("\n")}
-
-IMPORTANT: This is passive background context. Do NOT:
-- Mention these memories in your response
-- Say "I remember..." or "Based on what I know about you..."
-- Reference this context unless the user explicitly asks about their memories/preferences
-
-ONLY use this to:
-- Answer direct questions like "what's my name?" or "what do you know about me?"
-- Subtly tailor technical suggestions when clearly relevant (e.g., use their preferred language)
-- Otherwise, respond as if you have no special knowledge about the user`);
+    const memoryText = dynamicContext.memory.map(m => m.memory).join(', ');
+    parts.push(`[Note: User context - ${memoryText}. Use naturally without explicit reference.]`);
   }
 
   // Format RAG context
@@ -250,6 +241,15 @@ export async function buildContextMessages(
   // OPTIMIZED CONTEXT ORDER FOR PROMPT CACHING
   // Static content first (cached across messages) → Dynamic content last
   // ============================================================
+
+  // 0. Global Lumina context (always present, lightweight)
+  messages.push({
+    id: "system-global-lumina",
+    chatId,
+    role: "system",
+    content: getLuminaGlobalContext(),
+    createdAt: Date.now(),
+  });
 
   // 1. Agent system prompt (constant per chat) - Most cacheable
   if (chat?.agentId) {

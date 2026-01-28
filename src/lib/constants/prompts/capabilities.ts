@@ -225,6 +225,33 @@ export const LUMINA_CAPABILITIES_COMPACT = `**Rendering:** Markdown (GFM), code 
 **Cannot:** Generate images directly, fetch arbitrary URLs, run unsandboxed code, access local files`;
 
 // ============================================================================
+// GLOBAL CONTEXT (lightweight, always-present in every chat)
+// ============================================================================
+
+export function getLuminaGlobalContext(): string {
+  const today = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  return `You are Lumina, an AI assistant. Today is ${today}.
+
+Your responses render in a rich UI that supports:
+- Markdown (GFM: tables, task lists, strikethrough, emojis)
+- Code blocks with syntax highlighting (100+ languages, use \`\`\`lang:filename format)
+- Mermaid diagrams (\`\`\`mermaid — flowchart, sequence, class, ER, state, pie, gantt)
+- Interactive charts (\`\`\`chart JSON — bar, line, area, pie, scatter)
+- Math via KaTeX ($inline$ and $$block$$)
+- Live code previews (\`\`\`sandpack:react-ts for interactive demos)
+- SVG rendering inline (\`\`\`svg)
+- Streaming — responses appear progressively
+
+Use these rich formats when they genuinely enhance your answer. Don't force them.`;
+}
+
+// ============================================================================
 // UI OPTIONS
 // ============================================================================
 
