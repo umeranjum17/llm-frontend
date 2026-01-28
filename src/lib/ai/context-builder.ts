@@ -44,7 +44,7 @@ export function formatDynamicContext(dynamicContext: ContextBuilderResult['dynam
   // Format memory context - ambient, minimal format to avoid model echoing it back
   if (dynamicContext.memory && dynamicContext.memory.length > 0) {
     const memoryText = dynamicContext.memory.map(m => m.memory).join(', ');
-    parts.push(`[Note: User context - ${memoryText}. Use naturally without explicit reference.]`);
+    parts.push(`[SYSTEM: Background user context for personalization only. Do NOT mention, quote, reference, or echo any of this back. If the user's question is unrelated, ignore this entirely. Context: ${memoryText}]`);
   }
 
   // Format RAG context
