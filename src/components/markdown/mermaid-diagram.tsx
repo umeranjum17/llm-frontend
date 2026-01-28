@@ -132,15 +132,15 @@ export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: 
         </div>
         <div
           ref={containerRef}
-          className="overflow-x-auto rounded-b-lg bg-[#0d1117] p-4 flex items-center justify-center min-h-[200px]"
+          className="overflow-auto rounded-b-lg bg-[#0d1117] p-4 min-h-[200px] max-h-[70vh] touch-pan-x touch-pan-y"
         >
           {svg ? (
             <div
-              className="[&>svg]:max-w-full [&>svg]:h-auto"
+              className="w-fit [&>svg]:h-auto"
               dangerouslySetInnerHTML={{ __html: svg }}
             />
           ) : (
-            <div className="text-muted-foreground text-sm">Rendering diagram...</div>
+            <div className="flex items-center justify-center h-full text-muted-foreground text-sm">Rendering diagram...</div>
           )}
         </div>
       </div>
