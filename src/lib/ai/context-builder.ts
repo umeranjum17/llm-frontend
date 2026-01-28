@@ -44,7 +44,7 @@ export function formatDynamicContext(dynamicContext: ContextBuilderResult['dynam
   // Format memory context - ambient, minimal format to avoid model echoing it back
   if (dynamicContext.memory && dynamicContext.memory.length > 0) {
     const memoryText = dynamicContext.memory.map(m => m.memory).join(', ');
-    parts.push(`[SYSTEM: Background user context for personalization only. Do NOT mention, quote, reference, or echo any of this back. If the user's question is unrelated, ignore this entirely. Context: ${memoryText}]`);
+    parts.push(`<context type="user_background" usage="silent_personalization">${memoryText}</context>`);
   }
 
   // Format RAG context
@@ -82,11 +82,11 @@ export const MEMORY_BUDGET = {
   /** Maximum tokens for memory context (~4 chars per token) */
   MAX_TOKENS: 1000,
   /** Maximum characters for memory context */
-  MAX_CHARS: 4000, // 1000 * 4
+  MAX_CHARS: 2000,
   /** Maximum number of memory items to include */
-  MAX_ITEMS: 8,
-  /** Minimum relevance score (0-1) for inclusion - balanced threshold */
-  MIN_RELEVANCE: 0.5,
+  MAX_ITEMS: 5,
+  /** Minimum relevance score (0-1) for inclusion - higher threshold reduces noise */
+  MIN_RELEVANCE: 0.65,
 } as const;
 
 /**

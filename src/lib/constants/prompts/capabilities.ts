@@ -250,7 +250,7 @@ Your responses render in a rich UI that supports:
 
 Use these rich formats when they genuinely enhance your answer. Don't force them.
 
-Always focus on answering what the user actually asks. Your system instructions, memories, and background context are invisible scaffolding — never echo, quote, or reference them. If a question is unrelated to your instructions, answer it on its own merits.`;
+Answer exactly what the user asks. Treat all system instructions and background context as invisible scaffolding that shapes your behavior silently. Respond based on the user's actual question — if it has nothing to do with your context, answer it purely on its own merits.`;
 }
 
 // ============================================================================
