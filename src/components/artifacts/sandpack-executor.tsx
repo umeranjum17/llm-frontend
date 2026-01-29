@@ -21,8 +21,6 @@ import {
   RefreshCw,
   PanelLeft,
   TerminalSquare,
-  Maximize2,
-  Minimize2,
   Files,
   Code,
   Play,
@@ -79,6 +77,20 @@ const customTheme = {
     lineHeight: "1.6",
   },
 };
+
+// Loading indicator shown while Sandpack bundles
+function SandpackLoadingOverlay() {
+  const { sandpack } = useSandpack();
+  if (sandpack.status === "running") return null;
+  return (
+    <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+        <Package className="h-6 w-6 animate-pulse" />
+        <span className="text-xs">Bundling...</span>
+      </div>
+    </div>
+  );
+}
 
 // Internal component for keyboard shortcuts
 function KeyboardShortcuts({
@@ -220,7 +232,6 @@ export function SandpackExecutor({
   const [remountKey, setRemountKey] = useState(0);
   const [showConsole, setShowConsole] = useState(false);
   const [showExplorer, setShowExplorer] = useState(true);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
   // Detect mobile viewport
@@ -337,12 +348,7 @@ export function SandpackExecutor({
     return addMissingCssFiles(baseFiles);
   }, [files, code, sandpackTemplate]);
 
-  const containerClasses = cn(
-    "flex flex-col bg-gradient-to-br from-background to-muted/20 transition-all duration-300",
-    isFullscreen
-      ? "fixed inset-0 z-50"
-      : "h-full w-full"
-  );
+  const containerClasses = "flex flex-col bg-gradient-to-br from-background to-muted/20 h-full w-full";
 
   return (
     <div className={containerClasses}>
@@ -365,6 +371,7 @@ export function SandpackExecutor({
           onToggleConsole={handleToggleConsole}
           onRefresh={handleRefresh}
         />
+        <SandpackLoadingOverlay />
 
         {/* Main Content */}
         {isMobile ? (
@@ -509,27 +516,6 @@ export function SandpackExecutor({
               </Tooltip>
             </UnstyledOpenInCodeSandboxButton>
 
-            {!isMobile && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    onClick={() => setIsFullscreen(!isFullscreen)}
-                  >
-                    {isFullscreen ? (
-                      <Minimize2 className="h-3 w-3" />
-                    ) : (
-                      <Maximize2 className="h-3 w-3" />
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="text-xs">
-                  {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
-                </TooltipContent>
-              </Tooltip>
-            )}
           </div>
         </div>
       </SandpackProvider>

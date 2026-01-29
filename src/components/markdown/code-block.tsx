@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Copy, Check, Maximize2, ChevronRight, Eye, Code, FolderOpen } from "lucide-react";
 import { codeToHtml } from "shiki";
 import { useUIStore } from "@/stores/ui-store";
-import { cn } from "@/lib/utils";
+import { cn, sanitizeSvgHtml } from "@/lib/utils";
 import { CodeBlockContext } from "./markdown-renderer";
 
 // Global cache for highlighted code - survives component unmount/remount
@@ -13,11 +13,8 @@ const highlightCache = new Map<string, string>();
 const MAX_CACHE_SIZE = 200;
 
 function getCacheKey(code: string, language: string): string {
-  // Use length + hash of first/last chars for faster key generation
-  const len = code.length;
-  const prefix = code.slice(0, 50);
-  const suffix = code.slice(-50);
-  return `${language}:${len}:${prefix}:${suffix}`;
+  // Use full code string as key — cache is small (200 entries) so this is fine
+  return `${language}:${code}`;
 }
 
 function getCachedHighlight(code: string, language: string): string | null {
@@ -361,18 +358,24 @@ export function CodeBlock({ language, code, filename, isStreaming = false }: Cod
               <div
                 className="[&>svg]:w-full [&>svg]:h-auto [&>svg]:max-h-[300px] [&>svg]:min-w-[200px]"
                 style={{ width: '100%', maxWidth: '400px' }}
-                dangerouslySetInnerHTML={{ __html: code }}
+                dangerouslySetInnerHTML={{ __html: sanitizeSvgHtml(code) }}
               />
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto flex">
+              {/* Line numbers */}
+              <div className="select-none text-right text-[11px] sm:text-[13px] leading-relaxed font-mono text-[#6a737d] py-3 sm:py-4 pl-3 sm:pl-4 pr-3 border-r border-white/10 shrink-0" aria-hidden="true">
+                {code.split('\n').map((_, i) => (
+                  <div key={i}>{i + 1}</div>
+                ))}
+              </div>
               {highlightedHtml ? (
                 <div
-                  className="[&>pre]:m-0 [&>pre]:rounded-none [&>pre]:rounded-b-lg [&>pre]:bg-transparent [&>pre]:p-3 sm:[&>pre]:p-4 [&>pre]:text-[11px] sm:[&>pre]:text-[13px] [&_code]:text-[11px] sm:[&_code]:text-[13px]"
+                  className="flex-1 min-w-0 [&>pre]:m-0 [&>pre]:rounded-none [&>pre]:rounded-br-lg [&>pre]:bg-transparent [&>pre]:p-3 sm:[&>pre]:p-4 [&>pre]:text-[11px] sm:[&>pre]:text-[13px] [&_code]:text-[11px] sm:[&_code]:text-[13px]"
                   dangerouslySetInnerHTML={{ __html: highlightedHtml }}
                 />
               ) : (
-                <pre className="text-[#e1e4e8] p-3 sm:p-4 m-0 font-mono text-[11px] sm:text-[13px] leading-relaxed whitespace-pre-wrap break-words">
+                <pre className="flex-1 min-w-0 text-[#e1e4e8] p-3 sm:p-4 m-0 font-mono text-[11px] sm:text-[13px] leading-relaxed whitespace-pre-wrap break-words">
                   <code>{code}</code>
                 </pre>
               )}

@@ -8,7 +8,7 @@ import remarkGemoji from "remark-gemoji";
 import remarkBreaks from "remark-breaks";
 import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
-import rehypeSanitize from "rehype-sanitize";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import { CodeBlock } from "./code-block";
@@ -90,10 +90,20 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         ]}
         rehypePlugins={[
           rehypeRaw,
-          rehypeSanitize,
+          rehypeKatex,
+          [rehypeSanitize, {
+            ...defaultSchema,
+            tagNames: [...(defaultSchema.tagNames || []), "span", "math", "semantics", "mrow", "mi", "mo", "mn", "msup", "msub", "mfrac", "munderover", "mover", "munder", "msqrt", "mroot", "mtable", "mtr", "mtd", "mtext", "mspace", "annotation"],
+            attributes: {
+              ...defaultSchema.attributes,
+              "*": [...(defaultSchema.attributes?.["*"] || []), "className", "class", "style", "aria-hidden"],
+              span: [...(defaultSchema.attributes?.["span"] || []), "className", "class", "style", "aria-hidden"],
+              math: ["xmlns"],
+              annotation: ["encoding"],
+            },
+          }],
           rehypeSlug,
           [rehypeAutolinkHeadings, { behavior: "wrap" }],
-          rehypeKatex,
         ]}
         components={{
           pre: ({ children }) => {
@@ -165,11 +175,18 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
               />
             );
           },
-        code: ({ node, className, children, ...props }) => (
-          <code className={className} {...props}>
-            {children}
-          </code>
-        ),
+        code: ({ node, className, children, ...props }) => {
+          // If className contains "language-", it's a fenced code block handled by <pre> — render plain
+          if (className && /language-/.test(className)) {
+            return <code className={className} {...props}>{children}</code>;
+          }
+          // Inline code
+          return (
+            <code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
+              {children}
+            </code>
+          );
+        },
         a: ({ node, children, href, ...props }) => {
           // Block javascript: URLs to prevent XSS
           const isUnsafe = href?.trim().toLowerCase().startsWith("javascript:");

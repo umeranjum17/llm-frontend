@@ -97,18 +97,6 @@ export function E2BExecutor({
     return () => window.removeEventListener("keydown", handleEsc);
   }, [isFullscreen]);
 
-  // Keyboard shortcut to run
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-        e.preventDefault();
-        runCode();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [code, isRunning]);
-
   const runCode = useCallback(async () => {
     if (isRunning || !code.trim()) return;
 
@@ -142,6 +130,18 @@ export function E2BExecutor({
     }
   }, [code, language, isRunning]);
 
+  // Keyboard shortcut to run
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        runCode();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [runCode]);
+
   const handleCodeChange = useCallback((value: string | undefined) => {
     const newCode = value || "";
     setCode(newCode);
@@ -163,7 +163,7 @@ export function E2BExecutor({
         "flex flex-col rounded-lg border bg-background overflow-hidden transition-all duration-200",
         isFullscreen && "fixed inset-4 z-50 shadow-2xl"
       )}
-      style={{ height: isFullscreen ? "calc(100vh - 2rem)" : "500px" }}
+      style={{ height: isFullscreen ? "calc(100vh - 2rem)" : "100%" }}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30">
@@ -357,10 +357,15 @@ export function E2BExecutor({
                 )}
 
                 {r.type === "html" && r.data && (
-                  <div
-                    className="border rounded-lg p-4 bg-white"
-                    dangerouslySetInnerHTML={{ __html: r.data }}
-                  />
+                  <div className="border rounded-lg overflow-hidden bg-white">
+                    <iframe
+                      srcDoc={r.data}
+                      className="w-full border-0"
+                      style={{ minHeight: "200px" }}
+                      sandbox="allow-scripts allow-forms allow-popups allow-modals"
+                      title={`HTML Output ${i + 1}`}
+                    />
+                  </div>
                 )}
 
                 {r.type === "text" && r.text && (

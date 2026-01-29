@@ -22,9 +22,10 @@ import { E2BExecutor } from "@/components/artifacts/e2b-executor";
 import { DataViewer } from "@/components/artifacts/data-viewer";
 import { DocxViewer } from "@/components/artifacts/docx-viewer";
 import { ArtifactErrorBoundary } from "@/components/artifacts/artifact-error-boundary";
+import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn, sanitizeSvgHtml, languageToExtension } from "@/lib/utils";
 import {
     Tooltip,
     TooltipContent,
@@ -89,13 +90,13 @@ export function ArtifactShell() {
         if (activeArtifact) {
             if (isRunnable) {
                 setActiveTab("run");
-            } else if (isData || isDoc || isHtml || isSvg) {
+            } else if (isData || isDoc || isHtml || isSvg || isMarkdown) {
                 setActiveTab("preview");
             } else {
                 setActiveTab("code");
             }
         }
-    }, [activeArtifact, isRunnable, isData, isDoc, isHtml, isSvg]);
+    }, [activeArtifact, isRunnable, isData, isDoc, isHtml, isSvg, isMarkdown]);
 
     // Handle escape key for fullscreen
     useEffect(() => {
@@ -128,7 +129,7 @@ export function ArtifactShell() {
         a.href = url;
         const filename =
             activeArtifact.title || `artifact-${activeArtifact.id.slice(0, 8)}`;
-        a.download = `${filename}.${activeArtifact.language || "txt"}`;
+        a.download = `${filename}.${languageToExtension(activeArtifact.language || "txt")}`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -388,7 +389,7 @@ export function ArtifactShell() {
                                                 ref={iframeRef}
                                                 srcDoc={activeArtifact.code}
                                                 className="absolute inset-0 w-full h-full border-0 bg-white focus:outline-none"
-                                                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+                                                sandbox="allow-scripts allow-forms allow-popups allow-modals"
                                                 title="Preview"
                                                 tabIndex={0}
                                                 onLoad={() => {
@@ -404,8 +405,14 @@ export function ArtifactShell() {
                                             <div
                                                 className="[&>svg]:w-full [&>svg]:h-auto [&>svg]:max-h-[80vh] [&>svg]:min-w-[200px]"
                                                 style={{ width: '100%', maxWidth: '600px' }}
-                                                dangerouslySetInnerHTML={{ __html: activeArtifact.code || "" }}
+                                                dangerouslySetInnerHTML={{ __html: sanitizeSvgHtml(activeArtifact.code || "") }}
                                             />
+                                        </div>
+                                    </ArtifactErrorBoundary>
+                                ) : isMarkdown ? (
+                                    <ArtifactErrorBoundary fallbackTitle="Failed to render markdown">
+                                        <div className="w-full h-full overflow-auto p-6 prose prose-sm dark:prose-invert max-w-none">
+                                            <MarkdownRenderer content={activeArtifact.code || ""} />
                                         </div>
                                     </ArtifactErrorBoundary>
                                 ) : (
