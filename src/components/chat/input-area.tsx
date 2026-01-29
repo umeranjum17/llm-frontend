@@ -5,13 +5,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Send, Loader2, Paperclip, X, FileText, Image as ImageIcon, Mic, Square, Star, Code2, ChevronDown, ChevronUp, Trash2, CornerDownLeft, Pencil, ArrowUp, Zap } from "lucide-react";
+import { Send, Loader2, Paperclip, X, FileText, Image as ImageIcon, Mic, Square, Star, Code2, ChevronDown, ChevronUp, Trash2, CornerDownLeft, Pencil, ArrowUp, BookOpen } from "lucide-react";
 import { useChat } from "@/hooks/use-chat";
 import { useChatKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { TokenDisplay } from "./token-display";
 import { getChatById, getProjectFiles, getChatsByProject, getAllAgents, getAllTags, getMessages, getAllSkills, saveDraft, getDraft, deleteDraft } from "@/lib/db/queries";
 import { countMessagesTokens, countTokens } from "@/lib/utils/token-counter";
 import { getModelById } from "@/lib/constants/models";
+import { getModelCapabilities } from "@/lib/constants/model-capabilities";
+import { extractTextFromFile } from "@/lib/utils/file-extractor";
 import { BUILTIN_AGENTS } from "@/lib/constants/agents";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -48,6 +50,7 @@ interface CodeSnippet {
 }
 
 const MAX_TEXT_ATTACHMENT_BYTES = 1024 * 1024 * 2; // 2MB
+const MAX_PDF_DOCX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB
 const MAX_IMAGE_ATTACHMENT_BYTES = 1024 * 1024 * 5; // 5MB
 const MAX_IMAGE_ATTACHMENTS = 4;
 const MAX_TEXT_ATTACHMENTS = 10;
@@ -217,7 +220,6 @@ export function InputArea({ chatId }: InputAreaProps) {
   const [codeSnippets, setCodeSnippets] = useState<CodeSnippet[]>([]);
   const [expandedSnippets, setExpandedSnippets] = useState<Set<string>>(new Set());
   const [inputFocused, setInputFocused] = useState(false);
-  const [dismissedStickySkillId, setDismissedStickySkillId] = useState<string | null>(null);
 
   // Get active skill from streaming store (persists per chat)
   const activeSkillFromStore = useStreamingStore((state) => chatId ? state.chatStreams[chatId]?.activeSkill ?? null : null);
@@ -275,28 +277,42 @@ export function InputArea({ chatId }: InputAreaProps) {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Find the last assistant message's skill for sticky skill banner
-  const lastAssistantSkillId = useLiveQuery(async () => {
-    if (!chatId) return null;
-    const msgs = await getMessages(chatId);
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      if (msgs[i].role === "assistant" && msgs[i].skillId) {
-        return msgs[i].skillId;
+  // Restore skill from last assistant message when navigating to a chat
+  useEffect(() => {
+    if (!chatId || selectedSkill) return;
+    let cancelled = false;
+    (async () => {
+      const msgs = await getMessages(chatId);
+      if (cancelled) return;
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].role === "assistant" && msgs[i].skillId) {
+          const allSkills = await getAllSkills();
+          if (cancelled) return;
+          const skill = allSkills.find(s => s.id === msgs[i].skillId);
+          if (skill?.isEnabled) {
+            setSelectedSkill(skill);
+          }
+          break;
+        }
       }
-    }
-    return null;
-  }, [chatId]);
-
-  const stickySkill = useLiveQuery(async () => {
-    if (!lastAssistantSkillId) return null;
-    const allSkills = await getAllSkills();
-    return allSkills.find(s => s.id === lastAssistantSkillId) || null;
-  }, [lastAssistantSkillId]);
+    })();
+    return () => { cancelled = true; };
+  }, [chatId]); // Only on chatId change (navigation)
 
   const chat = useLiveQuery(() => chatId ? getChatById(chatId) : undefined, [chatId]);
   const agents = useLiveQuery(() => getAllAgents(), []);
   const tags = useLiveQuery(() => getAllTags(), []);
   const skills = useLiveQuery(() => getAllSkills(), []);
+
+  // Model capabilities for the current chat model
+  const modelCaps = useMemo(() => {
+    if (!chat?.modelId) return null;
+    return getModelCapabilities(chat.modelId);
+  }, [chat?.modelId]);
+
+  const supportsVision = modelCaps?.supportsVision ?? false;
+  const supportedImageFormats = modelCaps?.supportedImageFormats ?? [];
+  const isImageModel = modelCaps?.isImageGeneration ?? false;
 
   // New: Fetch additional mention data
   const files = useLiveQuery(() => (chat?.projectId ? getProjectFiles(chat.projectId) : []), [chat?.projectId]);
@@ -515,6 +531,19 @@ export function InputArea({ chatId }: InputAreaProps) {
   const addImageFile = async (file: File) => {
     if (!file.type.startsWith("image/")) return;
 
+    // Validate vision support
+    if (!supportsVision) {
+      toast.error("This model doesn't support image attachments. Switch to a vision-capable model.");
+      return;
+    }
+
+    // Validate image format against provider-specific supported formats
+    if (supportedImageFormats.length > 0 && !supportedImageFormats.includes(file.type)) {
+      const friendlyFormats = supportedImageFormats.map(f => f.replace("image/", "").toUpperCase()).join(", ");
+      toast.error(`This model doesn't support ${file.type.replace("image/", "").toUpperCase()} images. Supported: ${friendlyFormats}`);
+      return;
+    }
+
     // Check total attachment limit
     const totalAttachments = imageAttachments.length + attachments.length;
     if (totalAttachments >= MAX_TOTAL_ATTACHMENTS) {
@@ -582,8 +611,42 @@ export function InputArea({ chatId }: InputAreaProps) {
         // eslint-disable-next-line no-await-in-loop
         await addImageFile(file);
       } else {
-        // eslint-disable-next-line no-await-in-loop
-        await addTextFile(file);
+        const ext = file.name.split(".").pop()?.toLowerCase();
+        if (ext === "doc") {
+          toast.error(`${file.name}: .doc format is not supported. Please save as .docx instead.`);
+          continue;
+        }
+        if (ext === "pdf" || ext === "docx") {
+          // Check total attachment limit
+          const totalAttachments = imageAttachments.length + attachments.length;
+          if (totalAttachments >= MAX_TOTAL_ATTACHMENTS) {
+            toast.error(`Maximum ${MAX_TOTAL_ATTACHMENTS} total attachments per message`);
+            continue;
+          }
+          if (attachments.length >= MAX_TEXT_ATTACHMENTS) {
+            toast.error(`Maximum ${MAX_TEXT_ATTACHMENTS} file attachments per message`);
+            continue;
+          }
+          // Check 10MB limit for PDF/DOCX
+          if (file.size > MAX_PDF_DOCX_ATTACHMENT_BYTES) {
+            toast.error(`File ${file.name} is too large (max 10MB for PDF/DOCX)`);
+            continue;
+          }
+          // Extract text from PDF/DOCX using client-side extractors
+          try {
+            // eslint-disable-next-line no-await-in-loop
+            const text = await extractTextFromFile(file);
+            setAttachments((prev) => [
+              ...prev,
+              { name: file.name, content: text, size: file.size },
+            ]);
+          } catch {
+            toast.error(`Failed to extract text from ${file.name}`);
+          }
+        } else {
+          // eslint-disable-next-line no-await-in-loop
+          await addTextFile(file);
+        }
       }
     }
   };
@@ -1087,7 +1150,7 @@ export function InputArea({ chatId }: InputAreaProps) {
         ref={fileInputRef}
         className="hidden"
         onChange={handleFileSelect}
-        accept="image/*,.txt,.md,.js,.ts,.tsx,.jsx,.json,.csv,.py,.java,.c,.cpp,.h,.css,.html"
+        accept={`${supportsVision ? supportedImageFormats.join(",") + "," : ""}.txt,.md,.js,.ts,.tsx,.jsx,.json,.csv,.py,.java,.c,.cpp,.h,.css,.html,.pdf,.docx`}
       />
 
       {/* Token usage display - compact bar above input */}
@@ -1100,21 +1163,6 @@ export function InputArea({ chatId }: InputAreaProps) {
         />
       )}
 
-      {/* Sticky skill banner */}
-      {stickySkill && !selectedSkill && dismissedStickySkillId !== stickySkill.id && (
-        <div className="mb-1.5 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/50 text-xs text-muted-foreground">
-          <Zap className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">Using <span className="font-medium text-foreground">{stickySkill.name}</span></span>
-          <button
-            type="button"
-            onClick={() => setDismissedStickySkillId(stickySkill.id)}
-            className="ml-auto shrink-0 p-0.5 hover:text-foreground transition-colors"
-            aria-label="Dismiss sticky skill"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
 
       <div className="flex gap-1.5 sm:gap-2 rounded-xl sm:rounded-2xl border border-border/50 bg-background p-1.5 sm:p-2 focus-within:border-border focus-within:ring-1 focus-within:ring-ring/20 transition-all duration-150">
         {/* Controls - always visible to prevent layout shift */}
@@ -1178,7 +1226,7 @@ export function InputArea({ chatId }: InputAreaProps) {
             onPaste={handlePaste}
             onFocus={() => setInputFocused(true)}
             onBlur={() => setInputFocused(false)}
-            placeholder={inputFocused ? "@ for agents & skills, # for chats" : "Message Lumina..."}
+            placeholder={inputFocused ? "@ for agents & skills, # for chats" : isImageModel ? "Describe the image you want to generate..." : "Message Lumina..."}
             className="w-full resize-none bg-transparent px-2 py-2 pr-10 text-sm leading-6 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 min-h-10 max-h-[200px]"
             rows={1}
           />
@@ -1207,6 +1255,31 @@ export function InputArea({ chatId }: InputAreaProps) {
           )}
         </div>
 
+
+        {/* Knowledge Base mode indicator */}
+        {chat?.ragEnabled && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="flex items-center gap-1 px-2 py-1 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-medium shrink-0 self-center">
+                  <BookOpen className="h-3 w-3" />
+                  KB
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <p>Knowledge base mode — answers grounded in project sources</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+
+        {/* Image mode indicator */}
+        {isImageModel && (
+          <span className="flex items-center gap-1 px-2 py-1 rounded-full bg-purple-500/10 text-purple-500 text-[10px] font-medium shrink-0 self-center">
+            <ImageIcon className="h-3 w-3" />
+            Image
+          </span>
+        )}
 
         {/* Button logic: Show send when user has input (to queue), show stop when streaming with no input */}
         {(() => {

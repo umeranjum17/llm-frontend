@@ -826,8 +826,8 @@ export function useChat(chatId: string | null) {
 
     if (images.length > 0 && !modelCaps.supportsVision) {
       throw new Error(
-        `Selected model (${modelId}) does not support images. ` +
-        `Try a vision-capable model like Claude Sonnet 4.5, GPT-5, or Gemini 3 Flash.`
+        `${modelId} doesn't support image attachments. ` +
+        `Switch to a vision model (e.g., Gemini 3 Flash, Claude Sonnet 4.5, GPT-5) or remove images to send.`
       );
     }
 

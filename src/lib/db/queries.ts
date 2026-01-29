@@ -458,6 +458,18 @@ export async function deleteProject(id: string, cascadeDeleteChats: boolean = tr
     throw new Error("Cannot delete the default Personal project");
   }
 
+  // Delete all vector documents for this project's files (cleanup before deleting files)
+  const projectDocs = await db.vectorDocuments
+    .where("metadata.projectId")
+    .equals(id)
+    .toArray();
+  const docVectorIds = projectDocs
+    .filter((d) => d.metadata?.type === "document")
+    .map((d) => d.id);
+  if (docVectorIds.length > 0) {
+    await db.vectorDocuments.bulkDelete(docVectorIds);
+  }
+
   // Delete all files in this project
   await db.projectFiles.where("projectId").equals(id).delete();
 
@@ -566,6 +578,8 @@ export async function addProjectFile(file: Omit<ProjectFile, "id" | "createdAt">
 }
 
 export async function deleteProjectFile(id: string) {
+  // Clean up any vector documents indexed from this file
+  await db.vectorDocuments.where("metadata.fileId").equals(id).delete();
   await db.projectFiles.delete(id);
 }
 

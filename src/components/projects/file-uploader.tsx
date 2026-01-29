@@ -1,13 +1,17 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Upload, File, X, Loader2 } from "lucide-react";
+import { Upload, File, X, Loader2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { addProjectFile } from "@/lib/db/queries";
 import { extractTextFromFile } from "@/lib/utils/file-extractor";
+import { indexProjectFile } from "@/lib/rag/file-indexer";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 interface FileUploaderProps {
   projectId: string;
@@ -18,6 +22,7 @@ export function FileUploader({ projectId, onUploadComplete }: FileUploaderProps)
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>("");
+  const [indexingFile, setIndexingFile] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const ACCEPTED_TYPES = [
@@ -69,6 +74,11 @@ export function FileUploader({ projectId, onUploadComplete }: FileUploaderProps)
     setIsUploading(true);
 
     for (const file of files) {
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`${file.name} is too large (max 10MB)`);
+        continue;
+      }
+
       try {
         setUploadProgress(`Processing ${file.name}...`);
 
@@ -76,13 +86,23 @@ export function FileUploader({ projectId, onUploadComplete }: FileUploaderProps)
         const extractedText = await extractTextFromFile(file);
 
         // Save to database
-        await addProjectFile({
+        const savedFile = await addProjectFile({
           projectId,
           name: file.name,
           mime: file.type,
           size: file.size,
           text: extractedText,
         });
+
+        // Index for RAG
+        setIndexingFile(file.name);
+        try {
+          await indexProjectFile(savedFile);
+        } catch (indexError) {
+          console.error(`Failed to index ${file.name}:`, indexError);
+          toast.error(`Failed to index ${file.name} for search. Try re-uploading.`);
+        }
+        setIndexingFile(null);
 
         setUploadProgress(`Uploaded ${file.name}`);
       } catch (error) {
@@ -130,11 +150,13 @@ export function FileUploader({ projectId, onUploadComplete }: FileUploaderProps)
         />
       </div>
 
-      {isUploading && (
+      {(isUploading || indexingFile) && (
         <Card className="p-4">
           <div className="flex items-center gap-3">
             <Loader2 className="h-4 w-4 animate-spin" />
-            <span className="text-sm">{uploadProgress}</span>
+            <span className="text-sm">
+              {indexingFile ? `Indexing ${indexingFile}...` : uploadProgress}
+            </span>
           </div>
         </Card>
       )}

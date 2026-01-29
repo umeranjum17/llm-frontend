@@ -74,7 +74,7 @@
     "katex": "^0.16.11",
     "langchain": "^1.2.3",
     "lucide-react": "^0.469.0",
-    "mammoth": "^1.8.0",
+    "mammoth": "^1.11.0",
     "mem0ai": "^2.2.0",
     "mermaid": "^11.4.0",
     "nanoid": "^5.0.0",

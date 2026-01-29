@@ -284,14 +284,17 @@ export const USE_CASE_RECOMMENDATIONS: Record<string, { models: string[]; descri
   },
   "image-generation": {
     models: [
+      "google/gemini-3-pro-image-preview",     // Nano Banana Pro - most advanced
       "black-forest-labs/flux.2-max",          // Best quality
-      "google/gemini-2.5-flash-image", // Nano Banana GA - great text rendering
+      "google/gemini-2.5-flash-image",         // Nano Banana GA - great text rendering
       "openai/gpt-5-image",                    // Native multimodal
+      "sourceful/riverflow-v2-max-preview",    // Frontier quality, up to 4MP
       "black-forest-labs/flux.2-pro",          // Professional quality
       "black-forest-labs/flux.2-flex",         // Text & multi-reference
       "openai/gpt-5-image-mini",               // Budget option
-      "openai/dall-e-3",                       // Reliable classic
+      "bytedance-seed/seedream-4.5",           // Budget - $0.04/image
       "black-forest-labs/flux.2-klein-4b",     // Fast & cheap
+      "openai/dall-e-3",                       // Deprecated May 2026
     ],
     description: "Generate images from text prompts",
   },

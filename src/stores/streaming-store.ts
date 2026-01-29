@@ -365,8 +365,8 @@ export const useStreamingStore = create<StreamingState>((set, get) => {
   clearStreaming: (chatId) =>
     set((state) => {
       const currentState = getOrCreateChatState(state.chatStreams, chatId);
-      // Preserve the message queue when clearing streaming state
-      // This allows queued messages to be processed after streaming completes
+      // Preserve activeSkill so it stays selected for follow-up messages
+      const preservedSkill = currentState.activeSkill;
       if (currentState.messageQueue.length > 0) {
         return {
           chatStreams: updateChatState(state.chatStreams, chatId, {
@@ -376,12 +376,24 @@ export const useStreamingStore = create<StreamingState>((set, get) => {
             streamingToolCalls: [],
             streamingToolResults: [],
             streamingVersion: 0,
-            activeSkill: null,
-            // Keep messageQueue intact
+            activeSkill: preservedSkill,
           }),
         };
       }
-      // No queue - safe to remove the entire chat state
+      // No queue — if there's a persisted skill, keep minimal state; otherwise remove entirely
+      if (preservedSkill) {
+        return {
+          chatStreams: updateChatState(state.chatStreams, chatId, {
+            streamingMessageId: null,
+            streamingContent: "",
+            streamingReasoning: "",
+            streamingToolCalls: [],
+            streamingToolResults: [],
+            streamingVersion: 0,
+            activeSkill: preservedSkill,
+          }),
+        };
+      }
       const { [chatId]: _, ...rest } = state.chatStreams;
       return { chatStreams: rest };
     }),

@@ -1,7 +1,8 @@
-import { getChatById, getAgentById, getAgentsByIds, getProjectFilesByIds, getChatsWithMessagesByIds, getModelAlias, getSettings, getAllSkills } from "@/lib/db/queries";
+import { getChatById, getAgentById, getAgentsByIds, getProjectFilesByIds, getChatsWithMessagesByIds, getModelAlias, getSettings, getAllSkills, getProjectFiles } from "@/lib/db/queries";
 import type { Message, Skill } from "@/lib/db/schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { retrieveContext } from "@/lib/rag/retrieval";
+import { searchSimilar } from "@/lib/rag/vector-store";
 import { searchMemories, getAllMemories, type MemoryItem } from "@/lib/memory";
 import { getLuminaGlobalContext } from "@/lib/constants/prompts/capabilities";
 
@@ -47,12 +48,26 @@ export function formatDynamicContext(dynamicContext: ContextBuilderResult['dynam
     parts.push(`<context type="user_background" usage="silent_personalization">${memoryText}</context>`);
   }
 
-  // Format RAG context
+  // Format RAG context — use source attribution when KB metadata is present
   if (dynamicContext.rag && dynamicContext.rag.length > 0) {
-    const ragContext = dynamicContext.rag
-      .map((result, idx) => `[Context ${idx + 1}]\n${result.text}`)
-      .join("\n\n---\n\n");
-    parts.push(`## Related Context\n${ragContext}`);
+    const isKB = dynamicContext.rag.some(r => r.metadata?.type === "document" && r.metadata?.fileName);
+    if (isKB) {
+      const ragContext = dynamicContext.rag
+        .map((result) => {
+          const fileName = result.metadata?.fileName || "unknown";
+          const chunkIdx = result.metadata?.chunkIndex;
+          const totalChunks = result.metadata?.totalChunks;
+          const chunkLabel = chunkIdx != null && totalChunks != null ? `, chunk ${chunkIdx + 1}/${totalChunks}` : "";
+          return `[Source: ${fileName}${chunkLabel}]\n${result.text}`;
+        })
+        .join("\n\n");
+      parts.push(`Relevant sources (answer based on these):\n\n${ragContext}\n\nAnswer based on the provided sources. Cite which source you used.`);
+    } else {
+      const ragContext = dynamicContext.rag
+        .map((result, idx) => `[Context ${idx + 1}]\n${result.text}`)
+        .join("\n\n---\n\n");
+      parts.push(`## Related Context\n${ragContext}`);
+    }
   }
 
   if (parts.length === 0) {
@@ -406,6 +421,8 @@ export async function buildContextMessages(
   }
 
   // 6. File contents as context (uses batch-fetched files map) - relatively stable
+  // Explicit @file: mentions are always injected, even in KB mode
+  const isKBMode = chat?.ragEnabled === true && !!chat?.projectId;
   for (const fileRef of fileReferences) {
     const file = filesMap.get(fileRef.id);
     if (file && file.text) {
@@ -487,8 +504,36 @@ export async function buildContextMessages(
     }
   }
 
-  // 9. RAG retrieval (DYNAMIC - changes with every query)
-  if (options?.enableRAG) {
+  // 9a. Knowledge Base RAG retrieval (when ragEnabled on chat)
+  if (isKBMode && chat?.projectId) {
+    try {
+      const kbResults = await searchSimilar(cleanContent, 8, 0.4, {
+        projectId: chat.projectId,
+        type: "document",
+      });
+
+      if (kbResults.length > 0) {
+        // Build file name lookup for source attribution
+        const projectFiles = await getProjectFiles(chat.projectId);
+        const fileNameMap = new Map(projectFiles.map(f => [f.id, f.name]));
+
+        // Store as dynamic context only — not in static messages
+        dynamicRag = kbResults.map((r) => {
+          const fileName = r.metadata?.fileId ? fileNameMap.get(r.metadata.fileId) || "unknown" : "unknown";
+          return {
+            text: r.text,
+            similarity: r.similarity,
+            metadata: { ...r.metadata, fileName },
+          };
+        });
+      }
+    } catch (error) {
+      console.error("[Context] Knowledge base RAG retrieval failed:", error);
+    }
+  }
+
+  // 9b. RAG retrieval (DYNAMIC - changes with every query) — skip when KB mode already provided results
+  if (options?.enableRAG && !isKBMode) {
     try {
       const ragResults = await retrieveContext(cleanContent, {
         chatId,

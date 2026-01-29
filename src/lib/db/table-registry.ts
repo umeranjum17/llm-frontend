@@ -53,7 +53,7 @@ export const TABLE_REGISTRY: TableConfig[] = [
   { name: "prompts", addedInVersion: 3, sync: true, backup: true, indexes: "id, title, category, isBuiltIn, isFavorite, usageCount, updatedAt" },
 
   // Version 5 tables
-  { name: "vectorDocuments", addedInVersion: 5, sync: false, backup: false, indexes: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId" },
+  { name: "vectorDocuments", addedInVersion: 5, sync: false, backup: false, indexes: "id, metadata.type, metadata.chatId, metadata.projectId, metadata.memoryId, metadata.fileId" },
 
   // Version 7 tables
   { name: "userMemories", addedInVersion: 7, sync: true, backup: true, indexes: "id, category, source, createdAt, isActive" },

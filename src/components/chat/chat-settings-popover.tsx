@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { SlidersHorizontal, Bot, Brain, DollarSign, Swords, Thermometer, Hash, EyeOff, Layers } from "lucide-react";
+import { SlidersHorizontal, Bot, Brain, DollarSign, Swords, Thermometer, Hash, EyeOff, Layers, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -14,7 +14,8 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
-import { getAgentById, getSettings, updateSettings, updateChat, getChatById, getMessages } from "@/lib/db/queries";
+import { getAgentById, getSettings, updateSettings, updateChat, getChatById, getMessages, getProjectFiles } from "@/lib/db/queries";
+import { reindexProjectFiles } from "@/lib/rag/file-indexer";
 import { toast } from "sonner";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useApiKeysStore } from "@/stores/api-keys-store";
@@ -51,9 +52,15 @@ export function ChatSettingsPopover({
   );
   const settings = useLiveQuery(() => getSettings());
   const messages = useLiveQuery(() => chatId ? getMessages(chatId) : undefined, [chatId]);
+  const projectFiles = useLiveQuery(
+    () => (chat?.projectId ? getProjectFiles(chat.projectId) : Promise.resolve([])),
+    [chat?.projectId]
+  );
   const mem0ApiKey = useApiKeysStore((state) => state.getKeyForProvider("mem0"));
 
   const hasMem0ApiKey = !!mem0ApiKey?.key;
+  const ragEnabled = chat?.ragEnabled ?? false;
+  const hasProjectFiles = (projectFiles?.length ?? 0) > 0;
   const incognitoMode = chat?.incognitoMode ?? false;
   const memoryEnabled = settings?.memoryEnabled !== false && hasMem0ApiKey;
   const reasoningLevel = chat?.reasoningLevel || "medium";
@@ -109,6 +116,23 @@ export function ChatSettingsPopover({
     const newStatus = !smartCompaction;
     if (chatId) {
       await updateChat(chatId, { smartCompaction: newStatus });
+    }
+  };
+
+  const toggleRag = async () => {
+    if (!chatId) return;
+    const enabling = !ragEnabled;
+    await updateChat(chatId, { ragEnabled: enabling });
+
+    // When enabling, ensure existing project files are indexed
+    if (enabling && chat?.projectId) {
+      const files = await getProjectFiles(chat.projectId);
+      const hasUnindexed = files.some(f => !f.indexed);
+      if (hasUnindexed) {
+        reindexProjectFiles(chat.projectId).catch((err) =>
+          console.error("[KB] Failed to index existing project files:", err)
+        );
+      }
     }
   };
 
@@ -245,6 +269,24 @@ export function ChatSettingsPopover({
           <span>Smart Context</span>
           {smartCompaction && !incognitoMode && <span className="ml-auto text-xs">On</span>}
         </button>
+
+        {/* Knowledge Base Mode Toggle — show when files exist OR when ragEnabled (so user can disable) */}
+        {(hasProjectFiles || ragEnabled) && (
+          <button
+            onClick={toggleRag}
+            className={cn(
+              "w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-sm transition-colors",
+              ragEnabled
+                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                : "hover:bg-accent text-muted-foreground"
+            )}
+            title="When enabled, answers are grounded in project source files"
+          >
+            <BookOpen className="h-4 w-4" />
+            <span>Knowledge Base</span>
+            {ragEnabled && <span className="ml-auto text-xs">On</span>}
+          </button>
+        )}
 
         {/* Memory Toggle */}
         <div className="flex items-center justify-between px-2 py-1.5">

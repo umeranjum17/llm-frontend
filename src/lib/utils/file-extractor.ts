@@ -1,36 +1,79 @@
+const MAX_PDF_PAGES = 500;
+const MAX_EXTRACTED_TEXT_CHARS = 200_000;
+
 export async function extractTextFromFile(file: File): Promise<string> {
   const fileType = file.name.split(".").pop()?.toLowerCase();
 
   // Plain text files
-  if (["txt", "md", "csv", "json", "js", "ts", "tsx", "jsx", "py", "java", "c", "cpp", "html", "css"].includes(fileType || "")) {
+  if (["txt", "md", "csv", "json", "js", "ts", "tsx", "jsx", "py", "java", "c", "cpp", "h", "html", "css"].includes(fileType || "")) {
     return await file.text();
   }
 
-  // PDF files
+  // PDF files — client-side extraction via pdf.js
   if (fileType === "pdf") {
     try {
-      // For PDF, we'll use pdf-parse in Node.js environment
-      // In browser, we need a different approach
-      // For now, return a placeholder
-      return `[PDF file: ${file.name}]\n\nPDF text extraction requires server-side processing. Please use a plain text export of this PDF or use the file upload feature in the desktop version.`;
+      const pdfjsLib = await import("pdfjs-dist");
+      // Use CDN worker — import.meta.url is unreliable with Next.js webpack bundling
+      const pdfjsVersion = pdfjsLib.version || "5.4.530";
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.min.mjs`;
+
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const pages: string[] = [];
+
+      const totalPages = pdf.numPages;
+      const pagesToExtract = Math.min(totalPages, MAX_PDF_PAGES);
+
+      for (let i = 1; i <= pagesToExtract; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const text = content.items
+          .map((item: any) => item.str)
+          .join(" ");
+        pages.push(`--- Page ${i} ---\n\n${text}`);
+      }
+
+      // Check if all pages have empty text (scanned/image-only PDF)
+      const hasText = pages.some(p => p.replace(/--- Page \d+ ---/, "").trim().length > 0);
+      if (pages.length === 0 || !hasText) {
+        return `[PDF file: ${file.name}]\n\nNo extractable text found. The PDF may contain only images.`;
+      }
+
+      let result = pages.join("\n\n");
+      if (totalPages > MAX_PDF_PAGES) {
+        result += `\n\n[Truncated — extracted first ${MAX_PDF_PAGES} of ${totalPages} pages]`;
+      }
+      if (result.length > MAX_EXTRACTED_TEXT_CHARS) {
+        result = result.slice(0, MAX_EXTRACTED_TEXT_CHARS) + `\n\n[Truncated — text exceeded ${MAX_EXTRACTED_TEXT_CHARS} characters]`;
+      }
+      return result;
     } catch (error) {
-      throw new Error(`Failed to extract text from PDF: ${error}`);
+      return `[PDF file: ${file.name}]\n\nFailed to extract text: ${error instanceof Error ? error.message : "unknown error"}. Try exporting the PDF as plain text.`;
     }
   }
 
-  // DOCX files
+  // DOCX files — client-side extraction via mammoth
   if (fileType === "docx") {
     try {
-      // Similar to PDF, mammoth requires server-side processing
-      // Return placeholder for now
-      return `[DOCX file: ${file.name}]\n\nWord document text extraction requires server-side processing. Please export this document to TXT or MD format.`;
+      const mammothModule = await import("mammoth");
+      const mammoth = mammothModule.default ?? mammothModule;
+      const arrayBuffer = await file.arrayBuffer();
+      const result = await mammoth.extractRawText({ arrayBuffer });
+      if (!result.value.trim()) {
+        return `[DOCX file: ${file.name}]\n\nNo extractable text found.`;
+      }
+      let text = result.value;
+      if (text.length > MAX_EXTRACTED_TEXT_CHARS) {
+        text = text.slice(0, MAX_EXTRACTED_TEXT_CHARS) + `\n\n[Truncated — text exceeded ${MAX_EXTRACTED_TEXT_CHARS} characters]`;
+      }
+      return text;
     } catch (error) {
-      throw new Error(`Failed to extract text from DOCX: ${error}`);
+      return `[DOCX file: ${file.name}]\n\nFailed to extract text: ${error instanceof Error ? error.message : "unknown error"}. Try exporting the document as plain text.`;
     }
   }
 
-  // Unsupported file type
-  throw new Error(`Unsupported file type: ${fileType}`);
+  // Unsupported file type — including .doc (only .docx is supported)
+  throw new Error(`Unsupported file type: .${fileType}. ${fileType === "doc" ? "Please save as .docx instead." : ""}`);
 }
 
 export function getFileIcon(fileName: string): string {

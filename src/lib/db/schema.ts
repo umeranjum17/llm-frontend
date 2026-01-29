@@ -2,7 +2,7 @@ import Dexie, { type EntityTable } from "dexie";
 import { TABLE_REGISTRY, getStoresForVersion } from "./table-registry";
 
 // Current schema version - update this when adding new tables or indexes
-export const DB_SCHEMA_VERSION = 29;
+export const DB_SCHEMA_VERSION = 30;
 
 // Type definitions
 export interface Project {
@@ -21,6 +21,7 @@ export interface ProjectFile {
   mime: string;
   size: number;
   text?: string; // Extracted text for LLM context
+  indexed?: boolean; // Whether file has been indexed for RAG
   createdAt: number;
 }
 
@@ -52,6 +53,7 @@ export interface Chat {
   memoryDisabled?: boolean; // Per-chat toggle to disable memory injection
   incognitoMode?: boolean; // Disables memory, tools, auto-extraction for privacy
   smartCompaction?: boolean; // Enable intelligent context compaction (default: true)
+  ragEnabled?: boolean; // Knowledge base mode — answers grounded in project sources
 }
 
 export type MessageContentPart =
@@ -421,6 +423,9 @@ export interface VectorDocument {
     type?: "memory" | "document";
     memoryId?: string;
     category?: string;
+    // Document chunk specific
+    chunkIndex?: number;
+    totalChunks?: number;
   };
 }
 

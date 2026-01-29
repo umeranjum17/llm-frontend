@@ -39,7 +39,7 @@ import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { isModelIdCompatibleWithProviderId, pickBestProviderId, providerLabel } from "@/lib/ai/provider-routing";
 import { getRankingService } from "@/lib/models/ranking/ranking-service";
-import { getModelCapabilities } from "@/lib/constants/model-capabilities";
+import { getModelCapabilities, isImageGenerationModel } from "@/lib/constants/model-capabilities";
 import { toast } from "sonner";
 import Fuse from "fuse.js";
 
@@ -699,6 +699,11 @@ export function ModelPickerDialog({
                           <div className="flex items-center gap-2 mb-1">
                             <span className="font-semibold text-sm">{model.name}</span>
                             {model.tier && <TierBadge tier={model.tier} />}
+                            {caps.isImageGeneration && (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded-full border font-medium bg-purple-500/10 text-purple-500 border-purple-500/20">
+                                Image Output
+                              </span>
+                            )}
                             {isSelected && <Check className="h-4 w-4 text-primary" />}
                           </div>
 

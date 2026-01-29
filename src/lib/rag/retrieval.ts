@@ -52,26 +52,36 @@ export async function retrieveContext(
 }
 
 /**
- * Chunk text into smaller pieces for better retrieval
+ * Chunk text into smaller pieces for better retrieval.
+ * Uses sentence splitting with configurable overlap for context continuity.
  */
-function chunkText(text: string, maxChunkSize: number): string[] {
+export function chunkText(text: string, maxChunkSize: number, overlapSize: number = Math.floor(maxChunkSize * 0.12)): string[] {
   const chunks: string[] = [];
-  const sentences = text.split(/(?<=[.!?])\s+/);
-  
+  // Split on sentence boundaries (.!?) and also on double newlines (paragraphs)
+  const sentences = text.split(/(?<=[.!?])\s+|\n{2,}/);
+
   let currentChunk = "";
   for (const sentence of sentences) {
     if (currentChunk.length + sentence.length > maxChunkSize && currentChunk.length > 0) {
-      chunks.push(currentChunk.trim());
-      currentChunk = sentence;
+      const trimmed = currentChunk.trim();
+      if (trimmed) chunks.push(trimmed);
+      // Keep the tail of the previous chunk as overlap for context continuity
+      currentChunk = overlapSize > 0 ? trimmed.slice(-overlapSize) + " " : "";
+    }
+    // Hard-split sentences that exceed maxChunkSize on their own
+    if (sentence.length > maxChunkSize) {
+      for (let i = 0; i < sentence.length; i += maxChunkSize) {
+        chunks.push(sentence.slice(i, i + maxChunkSize));
+      }
     } else {
       currentChunk += (currentChunk ? " " : "") + sentence;
     }
   }
-  
+
   if (currentChunk.trim().length > 0) {
     chunks.push(currentChunk.trim());
   }
-  
+
   return chunks.length > 0 ? chunks : [text];
 }
 

@@ -926,10 +926,67 @@
       ]
     },
     {
+      "id": "google/gemini-3-pro-image-preview",
+      "name": "Gemini 3 Pro Image (Nano Banana Pro)",
+      "provider": "Google",
+      "description": "Google's most advanced image generation. Thinking-based, multi-reference, up to 4K resolution.",
+      "contextLength": 32768,
+      "inputCost": 67.0,
+      "outputCost": 0,
+      "category": [
+        "image-generation"
+      ],
+      "tier": "flagship",
+      "releaseDate": "2026-01",
+      "recommendedFor": [
+        "High-quality images",
+        "Multi-reference editing",
+        "4K image generation"
+      ]
+    },
+    {
+      "id": "bytedance-seed/seedream-4.5",
+      "name": "Seedream 4.5",
+      "provider": "ByteDance",
+      "description": "ByteDance image generation. $0.04/image. Strong editing consistency and style control.",
+      "contextLength": 0,
+      "inputCost": 40.0,
+      "outputCost": 0,
+      "category": [
+        "image-generation"
+      ],
+      "tier": "budget",
+      "releaseDate": "2026-01",
+      "recommendedFor": [
+        "Budget image generation",
+        "Consistent editing",
+        "Style control"
+      ]
+    },
+    {
+      "id": "sourceful/riverflow-v2-max-preview",
+      "name": "Riverflow V2 Max",
+      "provider": "Sourceful",
+      "description": "Frontier quality image generation, up to 4MP. $0.075/image.",
+      "contextLength": 0,
+      "inputCost": 75.0,
+      "outputCost": 0,
+      "category": [
+        "image-generation"
+      ],
+      "tier": "flagship",
+      "releaseDate": "2026-01",
+      "recommendedFor": [
+        "Ultra-high resolution",
+        "Professional images",
+        "Frontier quality"
+      ]
+    },
+    {
       "id": "openai/dall-e-3",
       "name": "DALL-E 3",
       "provider": "OpenAI",
-      "description": "High-quality image generation with excellent prompt following.",
+      "description": "High-quality image generation. DEPRECATED: Shutting down May 12, 2026. Migrate to GPT-5 Image.",
       "contextLength": 0,
       "inputCost": 40.0,
       "outputCost": 0,

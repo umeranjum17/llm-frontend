@@ -38,6 +38,7 @@ export interface ModelCapabilities {
   supportsExplicitCacheParameter: boolean; // OpenAI explicit cache parameter support
   supportsThinking: boolean; // Extended thinking (Claude, o1, o3, etc.)
   toolCallingTier: ToolCallingTier; // How well the model handles tool calling
+  supportedImageFormats: string[]; // Accepted image MIME types (empty = no vision)
 }
 
 // Cache for resolved capabilities
@@ -189,6 +190,18 @@ const ADVANCED_MINI_MODELS = ["gpt-4o-mini", "gpt-5-mini"];
 /**
  * Determine tool calling tier based on model ID
  */
+const PROVIDER_IMAGE_FORMATS: Record<string, string[]> = {
+  anthropic: ["image/jpeg", "image/png", "image/gif", "image/webp"],
+  openai: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+  google: ["image/jpeg", "image/png", "image/webp"],
+};
+const DEFAULT_IMAGE_FORMATS = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+
+function getSupportedImageFormats(provider: string, supportsVision: boolean): string[] {
+  if (!supportsVision) return [];
+  return PROVIDER_IMAGE_FORMATS[provider] || DEFAULT_IMAGE_FORMATS;
+}
+
 function getToolCallingTier(modelId: string, supportsTools: boolean): ToolCallingTier {
   if (!supportsTools) return "none";
 
@@ -260,6 +273,7 @@ export function getModelCapabilities(modelId: string): ModelCapabilities {
       supportsExplicitCacheParameter: false,
       supportsThinking: false,
       toolCallingTier: getToolCallingTier(modelId, supportsTools),
+      supportedImageFormats: [],
     };
   }
 
@@ -295,6 +309,10 @@ export function getModelCapabilities(modelId: string): ModelCapabilities {
     supportsExplicitCacheParameter: (model as any).supportsExplicitCacheParameter ?? false,
     supportsThinking: (model as any).supportsThinking ?? false,
     toolCallingTier: getToolCallingTier(modelId, supportsTools),
+    supportedImageFormats: getSupportedImageFormats(
+      provider,
+      (detected.supportsVision as boolean) ?? (model.supportsVision ?? false),
+    ),
   };
 
   // Cache the result
@@ -325,6 +343,8 @@ export function isImageGenerationModel(modelId: string): boolean {
     "gemini-2.5-flash-image",
     "gemini-3-pro-image",
     "-image-preview",  // Catches preview variants
+    "seedream",
+    "riverflow",
   ];
 
   if (imagePatterns.some((pattern) => lowerModelId.includes(pattern))) {
@@ -359,4 +379,5 @@ export const DEFAULT_CAPABILITIES: ModelCapabilities = {
   supportsExplicitCacheParameter: false,
   supportsThinking: false,
   toolCallingTier: "none",
+  supportedImageFormats: [],
 };

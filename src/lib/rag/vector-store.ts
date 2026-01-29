@@ -35,7 +35,7 @@ export async function storeDocuments(
       embedding: embeddings[index],
     }));
 
-    await db.vectorDocuments.bulkAdd(documentsWithEmbeddings);
+    await db.vectorDocuments.bulkPut(documentsWithEmbeddings);
   } catch (error) {
     console.error("Error storing documents:", error);
     throw error;
@@ -81,6 +81,10 @@ export async function searchSimilar(
           .where("metadata.projectId")
           .equals(filters.projectId)
           .toArray();
+        // Apply type filter if specified (e.g., only "document" vectors)
+        if (filters.type) {
+          documents = documents.filter(doc => doc.metadata?.type === filters.type);
+        }
       } else if (filters.type) {
         // Type-scoped retrieval (e.g. only memories)
         documents = await db.vectorDocuments

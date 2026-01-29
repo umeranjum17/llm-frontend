@@ -761,9 +761,17 @@ export function ChatShell() {
                           className="h-8 gap-1.5 px-2 sm:px-3 text-xs font-medium border-border/50"
                         >
                           <div className="flex flex-col items-start leading-none">
-                            <span className="max-w-[100px] sm:max-w-[180px] truncate text-xs">
-                              {modelAliasMap.get(chat.modelId) || currentModel?.name || "Model"}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="max-w-[100px] sm:max-w-[180px] truncate text-xs">
+                                {modelAliasMap.get(chat.modelId) || currentModel?.name || "Model"}
+                              </span>
+                              {getModelCapabilities(chat.modelId).isImageGeneration && (
+                                <span className="flex items-center gap-0.5 px-1 py-0.5 rounded bg-purple-500/10 text-purple-500 text-[9px] font-medium leading-none">
+                                  <ImageIcon className="h-2.5 w-2.5" />
+                                  Image
+                                </span>
+                              )}
+                            </div>
                             {providerId && (
                               <span className="hidden sm:block text-[10px] text-muted-foreground">
                                 {providerId === "openrouter" ? "OpenRouter" : providerLabel(providerId)}

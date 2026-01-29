@@ -24,6 +24,7 @@ import {
   DEFAULT_PROJECT_ID,
 } from "@/lib/db/queries";
 import { DeleteProjectDialog } from "./delete-project-dialog";
+import { ProjectSources } from "./project-sources";
 
 interface ProjectDialogProps {
   open: boolean;
@@ -200,6 +201,16 @@ export function ProjectDialog({
                 This prompt will be automatically included in all chats within this project
               </p>
             </div>
+
+            {projectId && (
+              <div className="space-y-2">
+                <Label>Source Files</Label>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Upload files to use with Knowledge Base mode
+                </p>
+                <ProjectSources projectId={projectId} />
+              </div>
+            )}
 
             <DialogFooter className="flex items-center justify-between">
               {projectId && !isDefaultProject && (

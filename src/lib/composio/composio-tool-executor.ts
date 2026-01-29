@@ -1511,7 +1511,7 @@ Then call the returned tools using parameters from tool_schemas.
 
 **Quick Decision:** Can I answer from training? Yes → answer directly. Need recent data or user requested search? → Use tools.
 
-After tool use, synthesize results into natural language.
+After tool use, synthesize results into natural language. If results contain source URLs, you may list a few relevant ones at the end for reference.
 
 **Displaying Images:**
 When tool results contain image URLs, display them inline using this format:
