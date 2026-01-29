@@ -1226,6 +1226,7 @@ export function InputArea({ chatId }: InputAreaProps) {
                   transition={{ duration: 0.1 }}
                   className="relative"
                 >
+                  <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -1272,6 +1273,7 @@ export function InputArea({ chatId }: InputAreaProps) {
                       </TooltipContent>
                     ) : null}
                   </Tooltip>
+                  </TooltipProvider>
                   {/* Queue mode badge */}
                   {isCurrentlyStreaming && hasInput && !isLongPressing && (
                     <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground shadow-sm">
