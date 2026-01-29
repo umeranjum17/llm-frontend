@@ -310,7 +310,11 @@ export function MessageList({ chatId, modelId, onSendMessage }: MessageListProps
 
   const scrollToBottom = useCallback(() => {
     if (messageCount > 0) {
-      virtuosoRef.current?.scrollToIndex({ index: messageCount - 1, behavior: "smooth" });
+      virtuosoRef.current?.scrollToIndex({ index: messageCount - 1, align: "end", behavior: "smooth" });
+      // Also use scrollTo as fallback to ensure we reach the absolute bottom
+      setTimeout(() => {
+        virtuosoRef.current?.scrollToIndex({ index: messageCount - 1, align: "end" });
+      }, 300);
       setShowNewMessagesButton(false);
     }
   }, [messageCount]);
