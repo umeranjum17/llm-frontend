@@ -369,6 +369,8 @@ export function MessageList({ chatId, modelId, onSendMessage }: MessageListProps
     return map;
   }, [messages, childrenByParent]);
 
+  const virtuosoContext = useMemo(() => ({ streamingMessageId, streamingContent, streamingVersion }), [streamingMessageId, streamingContent, streamingVersion]);
+
   if (!messages) {
     return (
       <div className="flex h-full flex-col">
@@ -425,8 +427,6 @@ export function MessageList({ chatId, modelId, onSendMessage }: MessageListProps
       </div>
     );
   }
-
-  const virtuosoContext = useMemo(() => ({ streamingMessageId, streamingContent, streamingVersion }), [streamingMessageId, streamingContent, streamingVersion]);
 
   return (
     <div className="relative h-full">
