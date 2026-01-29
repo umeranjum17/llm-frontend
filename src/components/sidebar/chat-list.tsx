@@ -12,7 +12,7 @@ import { useChatSearch } from "@/hooks/use-search";
 import { useLongPress } from "@/hooks/use-long-press";
 import { Button } from "@/components/ui/button";
 import type { Chat, Folder as FolderType, Message } from "@/lib/db/schema";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, isToday, isYesterday, subDays } from "date-fns";
 import { toast } from "sonner";
 import { FolderDialog } from "./folder-dialog";
 import { BulkActions } from "./bulk-actions";
@@ -54,7 +54,7 @@ interface ChatListProps {
 // Stable empty array to avoid creating new references in selectors
 const EMPTY_STREAMING_IDS: string[] = [];
 
-type ListItem = { type: "folder"; folder: FolderType } | { type: "chat"; chat: Chat };
+type ListItem = { type: "folder"; folder: FolderType } | { type: "chat"; chat: Chat } | { type: "date-header"; label: string };
 
 export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatListProps) {
   const activeChatId = useUIStore((state) => state.activeChatId);
@@ -372,9 +372,36 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
       }
     });
 
-    // Add loose chats
+    // Add loose chats with date group headers
     if (looseChats.length > 0 || items.length === 0) {
-      looseChats.forEach(chat => items.push({ type: "chat", chat }));
+      // Only add date headers when not searching
+      if (!searchQuery) {
+        let lastGroup = "";
+        const now = new Date();
+        const sevenDaysAgo = subDays(now, 7);
+
+        for (const chat of looseChats) {
+          const date = new Date(chat.updatedAt);
+          let group: string;
+          if (isToday(date)) {
+            group = "Today";
+          } else if (isYesterday(date)) {
+            group = "Yesterday";
+          } else if (date > sevenDaysAgo) {
+            group = "Last 7 days";
+          } else {
+            group = "Older";
+          }
+
+          if (group !== lastGroup) {
+            items.push({ type: "date-header", label: group });
+            lastGroup = group;
+          }
+          items.push({ type: "chat", chat });
+        }
+      } else {
+        looseChats.forEach(chat => items.push({ type: "chat", chat }));
+      }
     }
 
     return items;
@@ -383,7 +410,7 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
   const items = useMemo(() => {
     if (!chats || !filteredFolders) return [];
     return buildItemsList();
-  }, [filteredChats, filteredFolders, expandedFolders, chats]);
+  }, [filteredChats, filteredFolders, expandedFolders, chats, searchQuery]);
   const chatItemsList = useMemo(() => items.filter(i => i.type === "chat"), [items]);
   const chatIndexById = useMemo(() => {
     const map = new Map<string, number>();
@@ -398,7 +425,12 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
   const rowVirtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => scrollParentRef.current,
-    estimateSize: (index) => (items[index]?.type === "folder" ? 32 : 40),
+    estimateSize: (index) => {
+      const item = items[index];
+      if (item?.type === "folder") return 32;
+      if (item?.type === "date-header") return 28;
+      return 40;
+    },
     overscan: 6,
   });
 
@@ -577,6 +609,28 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
                       onEdit={() => handleEditFolder(item.folder)}
                       onDelete={() => setDeleteFolderId(item.folder.id)}
                     />
+                  </div>
+                );
+              }
+
+              if (item.type === "date-header") {
+                return (
+                  <div
+                    key={virtualItem.key}
+                    ref={rowVirtualizer.measureElement}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      transform: `translateY(${virtualItem.start}px)`,
+                    }}
+                  >
+                    <div className="px-3 pt-3 pb-1">
+                      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                        {item.label}
+                      </span>
+                    </div>
                   </div>
                 );
               }

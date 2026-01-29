@@ -426,6 +426,8 @@ export function MessageList({ chatId, modelId, onSendMessage }: MessageListProps
     );
   }
 
+  const virtuosoContext = useMemo(() => ({ streamingMessageId, streamingContent, streamingVersion }), [streamingMessageId, streamingContent, streamingVersion]);
+
   return (
     <div className="relative h-full">
       <Virtuoso
@@ -435,7 +437,7 @@ export function MessageList({ chatId, modelId, onSendMessage }: MessageListProps
         increaseViewportBy={{ top: 200, bottom: 200 }}
         overscan={100}
         // Pass streaming context to force re-renders when streaming state changes
-        context={{ streamingMessageId, streamingContent, streamingVersion }}
+        context={virtuosoContext}
         itemContent={(index, message, context) => {
           const siblingInfo = siblingInfoMap.get(message.id) || { siblings: [], index: -1 };
           const isMessageStreaming = message.id === context.streamingMessageId;
@@ -483,9 +485,9 @@ export function MessageList({ chatId, modelId, onSendMessage }: MessageListProps
         }}
       />
 
-      {/* New Messages Indicator */}
+      {/* Scroll to Bottom / New Messages */}
       <AnimatePresence>
-        {showNewMessagesButton && !isAtBottom && (
+        {!isAtBottom && (
           <motion.div
             className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10"
             initial={{ opacity: 0, y: 50, scale: 0.9 }}
@@ -496,10 +498,11 @@ export function MessageList({ chatId, modelId, onSendMessage }: MessageListProps
             <Button
               onClick={scrollToBottom}
               size="sm"
+              variant={showNewMessagesButton ? "default" : "secondary"}
               className="shadow-lg gap-2"
             >
               <ArrowDown className="h-4 w-4" />
-              New messages
+              {showNewMessagesButton ? "New messages" : "Scroll to bottom"}
             </Button>
           </motion.div>
         )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, memo, useMemo, useEffect, useRef } from "react";
+import { useState, memo, useMemo, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,8 @@ type ToolCallLike = {
   name?: string;
   toolName?: string;
   args?: unknown;
+  startTime?: number;
+  endTime?: number;
 };
 
 type ToolResultLike = {
@@ -49,6 +51,8 @@ type ToolResultLike = {
   toolName?: string;
   args?: unknown;
   result?: unknown;
+  startTime?: number;
+  endTime?: number;
 };
 
 
@@ -940,10 +944,8 @@ export const MessageItem = memo(function MessageItem({
     const toolCall = toolCalls[i];
     const id = toolCall.id || toolCall.toolCallId;
     const name = toolCall.name || toolCall.toolName || "Tool";
-    // @ts-ignore
     const resultObj = id ? toolResultsById.get(id) : undefined;
     const result = resultObj?.result;
-    // @ts-ignore
     const endTime = resultObj?.endTime;
     const key = id || `tool-call-${i}`;
 
@@ -953,7 +955,6 @@ export const MessageItem = memo(function MessageItem({
       name,
       args: toolCall.args,
       result,
-      // @ts-ignore
       startTime: toolCall.startTime,
       endTime
     });
@@ -972,17 +973,16 @@ export const MessageItem = memo(function MessageItem({
       name,
       args: toolResult.args,
       result: toolResult.result,
-      // @ts-ignore
       endTime: toolResult.endTime
     });
   }
 
-  const handleCopy = async () => {
+  const handleCopy = useCallback(async () => {
     const payload = images.length > 0 ? `${textContent}\n\n${images.join("\n")}` : textContent;
     await navigator.clipboard.writeText(payload);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
+  }, [textContent, images]);
 
   const handleSaveEdit = async () => {
     if (editContent.trim() === textContent) {
@@ -995,20 +995,18 @@ export const MessageItem = memo(function MessageItem({
     }
   };
 
-  const handleRate = async (rating: "up" | "down") => {
+  const handleRate = useCallback(async (rating: "up" | "down") => {
     if (message.rating === rating) {
-      // Toggle off if clicking same rating
-      // @ts-ignore - dexie update allows undefined but typescript might complain if strict
-      await updateMessage(message.id, { rating: undefined });
+      await updateMessage(message.id, { rating: undefined as any });
     } else {
       await updateMessage(message.id, { rating });
     }
-  };
+  }, [message.id, message.rating]);
 
-  const handleTogglePin = async () => {
+  const handleTogglePin = useCallback(async () => {
     const newPinnedState = await toggleMessagePin(message.id);
     onTogglePin?.(message.id, newPinnedState);
-  };
+  }, [message.id, onTogglePin]);
 
   const handleOpenProject = () => {
     if (artifactFiles.length === 0) return;
