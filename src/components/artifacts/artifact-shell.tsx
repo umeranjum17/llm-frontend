@@ -388,7 +388,7 @@ export function ArtifactShell() {
                                             <iframe
                                                 ref={iframeRef}
                                                 srcDoc={activeArtifact.code}
-                                                className="absolute inset-0 w-full h-full border-0 bg-white focus:outline-none"
+                                                className="absolute inset-0 w-full h-full border-0 bg-background focus:outline-none"
                                                 sandbox="allow-scripts allow-forms allow-popups allow-modals"
                                                 title="Preview"
                                                 tabIndex={0}

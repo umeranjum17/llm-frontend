@@ -346,7 +346,7 @@ export function E2BExecutor({
             {result?.results?.map((r, i) => (
               <div key={i} className="space-y-2">
                 {r.type === "image" && r.data && (
-                  <div className="border rounded-lg overflow-hidden bg-white">
+                  <div className="border rounded-lg overflow-hidden bg-card">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={r.format === "svg" ? `data:image/svg+xml;base64,${btoa(r.data)}` : `data:image/${r.format || "png"};base64,${r.data}`}
@@ -357,7 +357,7 @@ export function E2BExecutor({
                 )}
 
                 {r.type === "html" && r.data && (
-                  <div className="border rounded-lg overflow-hidden bg-white">
+                  <div className="border rounded-lg overflow-hidden bg-card">
                     <iframe
                       srcDoc={r.data}
                       className="w-full border-0"

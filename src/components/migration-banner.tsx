@@ -35,7 +35,7 @@ export function MigrationBanner() {
     }
 
     const migrationCheck = await checkMigration();
-    console.log("[MigrationBanner] Migration check result:", migrationCheck);
+    console.warn("[MigrationBanner] Migration check result:", migrationCheck);
     setNeedsMigration(migrationCheck.needsMigration);
     setMigrationInfo(migrationCheck);
     if (migrationCheck.needsMigration) {
@@ -44,11 +44,11 @@ export function MigrationBanner() {
   };
 
   const handleMigration = useCallback(async () => {
-    console.log("[MigrationBanner] Run Migration clicked");
+    console.warn("[MigrationBanner] Run Migration clicked");
     setIsMigrating(true);
     try {
       await forceMigration();
-      console.log("[MigrationBanner] Migration completed, reloading...");
+      console.warn("[MigrationBanner] Migration completed, reloading...");
       // Migration successful - reload the page
       window.location.reload();
     } catch (error) {

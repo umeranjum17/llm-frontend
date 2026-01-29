@@ -93,19 +93,19 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
   handleClearCacheAndReload = async () => {
     try {
-      console.log("[Error Boundary] Starting comprehensive cache clear...");
+      console.warn("[Error Boundary] Starting comprehensive cache clear...");
 
       // 1. Clear all browser caches
       if ("caches" in window) {
         const cacheNames = await caches.keys();
-        console.log("[Error Boundary] Deleting caches:", cacheNames);
+        console.warn("[Error Boundary] Deleting caches:", cacheNames);
         await Promise.all(cacheNames.map((name) => caches.delete(name)));
       }
 
       // 2. Unregister all service workers
       if ("serviceWorker" in navigator) {
         const registrations = await navigator.serviceWorker.getRegistrations();
-        console.log("[Error Boundary] Unregistering service workers:", registrations.length);
+        console.warn("[Error Boundary] Unregistering service workers:", registrations.length);
         await Promise.all(registrations.map((reg) => reg.unregister()));
       }
 
@@ -133,9 +133,9 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
         if (value) localStorage.setItem(key, value);
       });
 
-      console.log("[Error Boundary] Cleared storage (preserved IndexedDB-related keys)");
+      console.warn("[Error Boundary] Cleared storage (preserved IndexedDB-related keys)");
 
-      console.log("[Error Boundary] Cache clear complete, reloading...");
+      console.warn("[Error Boundary] Cache clear complete, reloading...");
 
       // 4. Force reload with cache bypass
       window.location.reload();

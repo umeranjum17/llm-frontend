@@ -389,9 +389,9 @@ export function ApiKeyTransferDialog({
 
         {step === "result" && method === "qr" && qrDataUrl && (
           <div className="space-y-4 py-4">
-            <div className="flex flex-col items-center gap-3 rounded-lg border bg-white p-4">
+            <div className="flex flex-col items-center gap-3 rounded-lg border bg-card p-4">
               <img src={qrDataUrl} alt="API Key Transfer QR" className="h-64 w-64" />
-              <p className="text-sm text-gray-600 text-center">
+              <p className="text-sm text-muted-foreground text-center">
                 Scan with your new device
               </p>
             </div>

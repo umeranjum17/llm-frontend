@@ -1027,10 +1027,10 @@ export function InputArea({ chatId }: InputAreaProps) {
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
                   transition={{ duration: 0.25, ease: [0, 0, 0.2, 1] }}
-                  className="rounded-xl border bg-zinc-950 shadow-sm overflow-hidden"
+                  className="rounded-xl border bg-zinc-100 dark:bg-zinc-950 shadow-sm overflow-hidden"
                 >
                   {/* Header */}
-                  <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-900/80 border-b border-zinc-800">
+                  <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-200/80 dark:bg-zinc-900/80 border-b border-zinc-300 dark:border-zinc-800">
                     <div className="flex items-center gap-2 text-xs text-zinc-400">
                       <Code2 className="h-3.5 w-3.5" />
                       <span>{snippet.language || 'code'}</span>
