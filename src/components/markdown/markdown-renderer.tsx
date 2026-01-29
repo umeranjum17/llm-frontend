@@ -93,7 +93,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
       <ReactMarkdown
         remarkPlugins={[
           remarkGfm,
-          remarkMath,
+          [remarkMath, { singleDollarTextMath: false }],
           remarkGemoji,
           remarkBreaks,
         ]}
