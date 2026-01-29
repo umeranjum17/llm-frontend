@@ -29,6 +29,7 @@ import { BudgetSettingsDialog } from "./budget-settings-dialog";
 import { ChatSettingsPopover } from "./chat-settings-popover";
 import { ToolQuickToggle } from "./tool-quick-toggle";
 import { SkillApprovalDialog } from "./skill-approval-dialog";
+import { ChatSearch } from "./chat-search";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
@@ -175,6 +176,7 @@ export function ChatShell() {
   const [agentPickerOpen, setAgentPickerOpen] = useState(false);
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
   const [headerExpanded, setHeaderExpanded] = useState(false);
+  const [chatSearchOpen, setChatSearchOpen] = useState(false);
 
   // Get streaming count for mobile active chats indicator
   const activeStreamCount = useStreamingStore((state) => state.getActiveStreamCount());
@@ -407,6 +409,12 @@ export function ChatShell() {
     { enableOnFormTags: false },
     [quickSwitchModels, activeChatId]
   );
+
+  // Cmd+F to open in-chat search
+  useHotkeys("mod+f", (e) => {
+    e.preventDefault();
+    setChatSearchOpen(true);
+  }, { enableOnFormTags: ['TEXTAREA', 'INPUT'] as const });
 
   // Use ref to avoid recreating listener on isMultiModelMode changes
   const isMultiModelModeRef = useRef(isMultiModelMode);
@@ -1101,6 +1109,7 @@ export function ChatShell() {
 
             {/* Messages Area */}
             <div className="flex-1 overflow-hidden relative">
+              <ChatSearch chatId={activeChatId} isOpen={chatSearchOpen} onClose={() => setChatSearchOpen(false)} />
               {isWelcomeMode ? (
                 <EmptyStateWelcome
                   onSuggestionClick={handleSuggestionClick}

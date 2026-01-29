@@ -1828,7 +1828,8 @@ export function useChat(chatId: string | null) {
       // Update the assistant message with the error so it's visible in the chat
       const errorText = error instanceof Error ? error.message : "An error occurred";
       await updateMessage(assistantMessage.id, {
-        content: `❌ ${errorText}`,
+        content: fullContent || "",
+        error: errorText,
       });
       throw error; // Re-throw so outer handlers can still process it
     } finally {

@@ -500,6 +500,7 @@ export function MessageList({ chatId, modelId, onSendMessage }: MessageListProps
               size="sm"
               variant={showNewMessagesButton ? "default" : "secondary"}
               className="shadow-lg gap-2"
+              aria-label={showNewMessagesButton ? "Scroll to new messages" : "Scroll to bottom"}
             >
               <ArrowDown className="h-4 w-4" />
               {showNewMessagesButton ? "New messages" : "Scroll to bottom"}

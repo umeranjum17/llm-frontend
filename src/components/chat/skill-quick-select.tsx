@@ -126,6 +126,7 @@ export function SkillQuickSelect({ onSelect, selectedSkill }: SkillQuickSelectPr
             selectedSkill && "ring-2 ring-primary ring-offset-2 ring-offset-background"
           )}
           title={selectedSkill ? `Skill: ${selectedSkill.name}` : "Select a skill"}
+          aria-label={selectedSkill ? `Skill: ${selectedSkill.name}` : "Select a skill"}
         >
           {selectedSkill ? (
             <div className={cn("rounded p-1", SKILL_COLORS[selectedSkill.ui?.color || selectedSkill.color || "blue"])}>

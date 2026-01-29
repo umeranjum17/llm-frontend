@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLiveQueryWithTimeout } from "@/hooks/use-live-query-with-timeout";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { MessageSquare, Pin, Star, Trash2, Folder, ChevronRight, FolderPlus, MoreHorizontal, Edit2, RefreshCw } from "lucide-react";
+import { MessageSquare, Pin, Star, Trash2, Folder, ChevronRight, FolderPlus, MoreHorizontal, Edit2, RefreshCw, ArrowUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { deleteChat, updateChat, createFolder, moveChatToFolder, updateFolder, deleteFolder, getLastMessagesForChats, db } from "@/lib/db/queries";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
@@ -19,6 +19,7 @@ import { BulkActions } from "./bulk-actions";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SkeletonLoader } from "@/components/ui/skeleton";
 import { Search } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import {
   DropdownMenu,
@@ -82,6 +83,7 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const [lastMessagesMap, setLastMessagesMap] = useState<Map<string, Message | undefined>>(new Map());
   const [searchResults, setSearchResults] = useState<Chat[] | null>(null);
+  const [sortBy, setSortBy] = useState<"updated" | "created" | "name">("updated");
 
   const scrollParentRef = useRef<HTMLDivElement>(null);
 
@@ -361,6 +363,14 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
       }
     });
 
+    // Sort loose chats based on user preference
+    if (sortBy === "created") {
+      looseChats.sort((a, b) => b.createdAt - a.createdAt);
+    } else if (sortBy === "name") {
+      looseChats.sort((a, b) => a.title.localeCompare(b.title));
+    }
+    // "updated" is the default sort from getAllChats
+
     const items: ListItem[] = [];
 
     // Add folders
@@ -410,7 +420,7 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
   const items = useMemo(() => {
     if (!chats || !filteredFolders) return [];
     return buildItemsList();
-  }, [filteredChats, filteredFolders, expandedFolders, chats, searchQuery]);
+  }, [filteredChats, filteredFolders, expandedFolders, chats, searchQuery, sortBy]);
   const chatItemsList = useMemo(() => items.filter(i => i.type === "chat"), [items]);
   const chatIndexById = useMemo(() => {
     const map = new Map<string, number>();
@@ -556,8 +566,18 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
   return (
     <>
       <div className="flex h-full min-w-0 flex-col overflow-x-hidden">
-        <div className="px-3 pt-3 pb-2">
+        <div className="px-3 pt-3 pb-2 flex items-center justify-between">
           <span className="text-xs text-muted-foreground/70">Your chats</span>
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
+            <SelectTrigger className="h-7 w-7 p-0 border-0 [&>svg]:hidden" aria-label="Sort chats">
+              <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+            </SelectTrigger>
+            <SelectContent align="end">
+              <SelectItem value="updated">Last updated</SelectItem>
+              <SelectItem value="created">Created date</SelectItem>
+              <SelectItem value="name">Name</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         {selectedChats.size > 0 && (
           <BulkActions

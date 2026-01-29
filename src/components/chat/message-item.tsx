@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download, ThumbsUp, ThumbsDown, Volume2, VolumeX, ChevronDown, ChevronRight, Wrench, Loader2, Brain, RefreshCw, Pin, PinOff } from "lucide-react";
+import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download, ThumbsUp, ThumbsDown, Volume2, VolumeX, ChevronDown, ChevronRight, Wrench, Loader2, Brain, RefreshCw, Pin, PinOff, AlertTriangle } from "lucide-react";
 import { usePrefersReducedMotion } from "@/hooks/use-motion-config";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -1196,7 +1196,7 @@ export const MessageItem = memo(function MessageItem({
               {/* Message Metadata (Tokens/Cost) - Reserve space to prevent layout shift */}
               {!isEditing && isAssistant && (
                 <div className="mt-3" style={{ minHeight: '24px' }}>
-                  {(message.inputTokens || message.outputTokens) && (
+                  {(message.inputTokens || message.outputTokens) ? (
                     <motion.div
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
@@ -1284,7 +1284,7 @@ export const MessageItem = memo(function MessageItem({
                       )}
                       </div>
                     </motion.div>
-                  )}
+                  ) : null}
                 </div>
               )}
 
@@ -1395,6 +1395,27 @@ export const MessageItem = memo(function MessageItem({
                 </div>
               )}
 
+              {/* Error state with retry */}
+              {!isEditing && isAssistant && !isStreaming && message.error && (
+                <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-3 py-2.5 text-sm">
+                  <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-red-700 dark:text-red-300 break-words">{message.error}</p>
+                  </div>
+                  {onRegenerate && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 gap-1.5 border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/50"
+                      onClick={() => onRegenerate(message.id)}
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      Retry
+                    </Button>
+                  )}
+                </div>
+              )}
+
               {/* Incomplete indicator */}
               {isAssistant && message.isIncomplete && !message.canContinue && (
                 <div className="mt-2 text-xs text-muted-foreground italic">
@@ -1432,6 +1453,7 @@ export const MessageItem = memo(function MessageItem({
                     size="icon"
                     className="h-10 w-10 touch-manipulation"
                     onClick={(e) => { e.stopPropagation(); handleCopy(); }}
+                    aria-label="Copy message"
                   >
                     {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
                   </Button>
@@ -1441,6 +1463,7 @@ export const MessageItem = memo(function MessageItem({
                       size="icon"
                       className={cn("h-10 w-10 touch-manipulation", isPlaying && "text-primary")}
                       onClick={(e) => { e.stopPropagation(); isPlaying ? stop() : speak(textContent); }}
+                      aria-label={isPlaying ? "Stop reading" : "Read aloud"}
                     >
                       {isPlaying ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
                     </Button>
@@ -1451,6 +1474,7 @@ export const MessageItem = memo(function MessageItem({
                       size="icon"
                       className="h-10 w-10 touch-manipulation"
                       onClick={(e) => { e.stopPropagation(); onRegenerate?.(message.id); }}
+                      aria-label="Regenerate response"
                     >
                       <RotateCcw className="h-4 w-4" />
                     </Button>
@@ -1461,6 +1485,7 @@ export const MessageItem = memo(function MessageItem({
                       size="icon"
                       className="h-10 w-10 touch-manipulation"
                       onClick={(e) => { e.stopPropagation(); onResend?.(message.id); }}
+                      aria-label="Resend message"
                     >
                       <RefreshCw className="h-4 w-4" />
                     </Button>
@@ -1471,6 +1496,7 @@ export const MessageItem = memo(function MessageItem({
                       size="icon"
                       className="h-10 w-10 touch-manipulation"
                       onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
+                      aria-label="Edit message"
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
@@ -1482,6 +1508,7 @@ export const MessageItem = memo(function MessageItem({
                         size="icon"
                         className="h-10 w-10 touch-manipulation"
                         onClick={(e) => { e.stopPropagation(); handleRate("up"); }}
+                        aria-label="Rate as good response"
                       >
                         <ThumbsUp className={cn("h-4 w-4", message.rating === "up" && "fill-current text-green-500")} />
                       </Button>
@@ -1490,6 +1517,7 @@ export const MessageItem = memo(function MessageItem({
                         size="icon"
                         className="h-10 w-10 touch-manipulation"
                         onClick={(e) => { e.stopPropagation(); handleRate("down"); }}
+                        aria-label="Rate as bad response"
                       >
                         <ThumbsDown className={cn("h-4 w-4", message.rating === "down" && "fill-current text-red-500")} />
                       </Button>
@@ -1499,6 +1527,7 @@ export const MessageItem = memo(function MessageItem({
                         className="h-10 w-10 touch-manipulation"
                         onClick={(e) => { e.stopPropagation(); handleTogglePin(); }}
                         title={message.isPinned ? "Unpin" : "Pin"}
+                        aria-label={message.isPinned ? "Unpin message" : "Pin message"}
                       >
                         {message.isPinned ? (
                           <PinOff className={cn("h-4 w-4 text-amber-500")} />
@@ -1522,6 +1551,7 @@ export const MessageItem = memo(function MessageItem({
                 className="h-8 w-8"
                 onClick={handleCopy}
                 title="Copy message"
+                aria-label="Copy message"
               >
                 {copied ? (
                   <Check className="h-4 w-4 text-green-500" />
@@ -1536,6 +1566,7 @@ export const MessageItem = memo(function MessageItem({
                   className={cn("h-8 w-8 text-muted-foreground", isPlaying && "text-primary")}
                   onClick={() => isPlaying ? stop() : speak(textContent)}
                   title={isPlaying ? "Stop" : "Read aloud"}
+                  aria-label={isPlaying ? "Stop reading" : "Read aloud"}
                 >
                   {isPlaying ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
                 </Button>
@@ -1547,6 +1578,7 @@ export const MessageItem = memo(function MessageItem({
                   className="h-8 w-8"
                   onClick={() => onFork?.(message.id)}
                   title="Fork from here"
+                  aria-label="Fork from here"
                 >
                   <GitBranch className="h-4 w-4" />
                 </Button>
@@ -1558,6 +1590,7 @@ export const MessageItem = memo(function MessageItem({
                   className="h-8 w-8"
                   onClick={() => onRegenerate?.(message.id)}
                   title="Regenerate (new branch)"
+                  aria-label="Regenerate response"
                 >
                   <RotateCcw className="h-4 w-4" />
                 </Button>
@@ -1569,6 +1602,7 @@ export const MessageItem = memo(function MessageItem({
                   className="h-8 w-8"
                   onClick={() => onResend?.(message.id)}
                   title="Resend message"
+                  aria-label="Resend message"
                 >
                   <RefreshCw className="h-4 w-4" />
                 </Button>
@@ -1580,6 +1614,7 @@ export const MessageItem = memo(function MessageItem({
                   className="h-8 w-8"
                   onClick={() => setIsEditing(true)}
                   title="Edit message"
+                  aria-label="Edit message"
                 >
                   <Pencil className="h-4 w-4" />
                 </Button>
@@ -1592,6 +1627,7 @@ export const MessageItem = memo(function MessageItem({
                     className="h-8 w-8"
                     onClick={() => handleRate("up")}
                     title="Good response"
+                    aria-label="Rate as good response"
                   >
                     <ThumbsUp className={cn("h-4 w-4", message.rating === "up" && "fill-current text-green-500")} />
                   </Button>
@@ -1601,6 +1637,7 @@ export const MessageItem = memo(function MessageItem({
                     className="h-8 w-8"
                     onClick={() => handleRate("down")}
                     title="Bad response"
+                    aria-label="Rate as bad response"
                   >
                     <ThumbsDown className={cn("h-4 w-4", message.rating === "down" && "fill-current text-red-500")} />
                   </Button>
@@ -1610,6 +1647,7 @@ export const MessageItem = memo(function MessageItem({
                     className="h-8 w-8"
                     onClick={handleTogglePin}
                     title={message.isPinned ? "Unpin message (will be summarized)" : "Pin message (prevent summarization)"}
+                    aria-label={message.isPinned ? "Unpin message" : "Pin message"}
                   >
                     {message.isPinned ? (
                       <PinOff className="h-4 w-4 text-amber-500" />

@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useApiKeysStore } from "@/stores/api-keys-store";
-import { Plus, Trash2, Eye, EyeOff, Check, Activity, Lock, Unlock, Fingerprint, Smartphone } from "lucide-react";
+import { Plus, Trash2, Eye, EyeOff, Check, X, Activity, Lock, Unlock, Fingerprint, Smartphone, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { CUSTOM_OPENAI_PREFIX, getProviderConfig, isCustomOpenAIProvider } from "@/lib/providers";
 import { isPasskeySupported } from "@/lib/crypto/vault-passkey";
@@ -69,6 +69,7 @@ export function ApiKeysSettings() {
   const [newBaseUrl, setNewBaseUrl] = useState("");
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [testingKey, setTestingKey] = useState<string | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, { ok: boolean; message: string }>>({});
   const [vaultPassphrase, setVaultPassphrase] = useState("");
   const [vaultPassphraseConfirm, setVaultPassphraseConfirm] = useState("");
   const [vaultBusy, setVaultBusy] = useState(false);
@@ -147,6 +148,12 @@ export function ApiKeysSettings() {
 
   const handleTestKey = async (id: string) => {
     setTestingKey(id);
+    // Clear any previous result for this key
+    setTestResults((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     try {
       const key = keys.find((k) => k.id === id);
       if (!key) throw new Error("Key not found");
@@ -163,15 +170,28 @@ export function ApiKeysSettings() {
 
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const msg = typeof payload?.error === "string" ? payload.error : "Failed to validate key";
+        const msg = typeof payload?.suggestion === "string"
+          ? payload.suggestion
+          : typeof payload?.error === "string"
+            ? payload.error
+            : "Failed to validate key";
         throw new Error(msg);
       }
 
-      toast.success("Provider connection looks good");
+      setTestResults((prev) => ({ ...prev, [id]: { ok: true, message: "Connected" } }));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to validate key");
+      const message = e instanceof Error ? e.message : "Failed to validate key";
+      setTestResults((prev) => ({ ...prev, [id]: { ok: false, message } }));
     } finally {
       setTestingKey(null);
+      // Auto-clear result after 5 seconds
+      setTimeout(() => {
+        setTestResults((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+      }, 5000);
     }
   };
 
@@ -692,19 +712,33 @@ export function ApiKeysSettings() {
                     </Button>
                   )}
                   {!isS3 && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleTestKey(apiKey.id)}
-                      disabled={isLocked || testingKey === apiKey.id}
-                      title="Test key"
-                    >
-                      {testingKey === apiKey.id ? (
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                      ) : (
-                        <Check className="h-4 w-4" />
+                    <>
+                      {testResults[apiKey.id] && (
+                        <span className={`flex items-center gap-1 text-xs whitespace-nowrap ${testResults[apiKey.id].ok ? "text-green-500" : "text-red-500"}`}>
+                          {testResults[apiKey.id].ok ? (
+                            <Check className="h-3.5 w-3.5" />
+                          ) : (
+                            <X className="h-3.5 w-3.5" />
+                          )}
+                          <span className="max-w-[120px] truncate">{testResults[apiKey.id].message}</span>
+                        </span>
                       )}
-                    </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleTestKey(apiKey.id)}
+                        disabled={isLocked || testingKey === apiKey.id}
+                        title="Test API key connection"
+                        className="h-8 px-2 text-xs"
+                      >
+                        {testingKey === apiKey.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                        ) : (
+                          <Check className="h-3.5 w-3.5 mr-1" />
+                        )}
+                        Test
+                      </Button>
+                    </>
                   )}
                   <Button
                     variant="ghost"

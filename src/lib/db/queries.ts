@@ -1,4 +1,4 @@
-import { db, type Chat, type Message, type Project, type ProjectFile, type ModelFavorite, type ApiKey, type UserSettings, type Agent, type Prompt, type Skill, type ModelAlias, type McpServer, type Folder, type Tag, type ContextSummary } from "./schema";
+import { db, type Chat, type Message, type Project, type ProjectFile, type ModelFavorite, type ApiKey, type UserSettings, type Agent, type Prompt, type Skill, type ModelAlias, type McpServer, type Folder, type Tag, type ContextSummary, type ChatDraft } from "./schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 
 // Re-export db for direct access when needed (e.g., batch operations)
@@ -92,6 +92,19 @@ function sortChats(chats: Chat[]): Chat[] {
 
 export async function getAllChats() {
   const chats = await db.chats.toArray();
+  return sortChats(chats);
+}
+
+/**
+ * Get chats with pagination for efficient sidebar loading.
+ */
+export async function getChatsPaginated(limit: number, offset: number = 0): Promise<Chat[]> {
+  const chats = await db.chats
+    .orderBy("updatedAt")
+    .reverse()
+    .offset(offset)
+    .limit(limit)
+    .toArray();
   return sortChats(chats);
 }
 
@@ -1528,4 +1541,23 @@ export async function getSummarizedMessages(chatId: string): Promise<Message[]> 
     .equals(chatId)
     .filter((m) => m.isSummarized === true)
     .toArray();
+}
+
+// ============= DRAFT QUERIES =============
+
+export async function saveDraft(chatId: string, content: string): Promise<void> {
+  if (!content.trim()) {
+    await db.drafts.delete(chatId);
+    return;
+  }
+  await db.drafts.put({ chatId, content, updatedAt: Date.now() });
+}
+
+export async function getDraft(chatId: string): Promise<string> {
+  const draft = await db.drafts.get(chatId);
+  return draft?.content || "";
+}
+
+export async function deleteDraft(chatId: string): Promise<void> {
+  await db.drafts.delete(chatId);
 }

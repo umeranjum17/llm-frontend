@@ -2,7 +2,7 @@ import Dexie, { type EntityTable } from "dexie";
 import { TABLE_REGISTRY, getStoresForVersion } from "./table-registry";
 
 // Current schema version - update this when adding new tables or indexes
-export const DB_SCHEMA_VERSION = 28;
+export const DB_SCHEMA_VERSION = 29;
 
 // Type definitions
 export interface Project {
@@ -109,6 +109,7 @@ export interface Message {
   isPinned?: boolean; // User pinned, never summarize
   isSummarized?: boolean; // Message was compressed into summary
   summarizedIntoId?: string; // ID of summary this was compressed into
+  error?: string; // Error message if this response failed
 }
 
 export interface ApiKey {
@@ -572,6 +573,12 @@ export interface UsageSnapshot {
   updatedAt: number;
 }
 
+export interface ChatDraft {
+  chatId: string;
+  content: string;
+  updatedAt: number;
+}
+
 // Database class
 export class LuminaDB extends Dexie {
   projects!: EntityTable<Project, "id">;
@@ -598,6 +605,7 @@ export class LuminaDB extends Dexie {
   deviceSecrets!: EntityTable<DeviceSecret, "id">;
   contextSummaries!: EntityTable<ContextSummary, "id">;
   usageSnapshots!: EntityTable<UsageSnapshot, "id">;
+  drafts!: EntityTable<ChatDraft, "chatId">;
   _pendingChanges!: EntityTable<ChangeEntry, "id">;
   _syncMeta!: EntityTable<SyncMeta, "id">;
 

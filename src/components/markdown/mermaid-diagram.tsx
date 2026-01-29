@@ -1,18 +1,26 @@
 "use client";
 
 import { useEffect, useRef, useState, memo } from "react";
-import mermaid from "mermaid";
 import { Button } from "@/components/ui/button";
 import { Copy, Check, Download, Maximize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// Initialize mermaid with dark theme support
-mermaid.initialize({
-  startOnLoad: false,
-  theme: "dark",
-  securityLevel: "loose",
-  fontFamily: "inherit",
-});
+// Lazy-load mermaid (~300KB) only when a diagram is actually rendered
+let mermaidInstance: typeof import("mermaid").default | null = null;
+
+async function getMermaid() {
+  if (!mermaidInstance) {
+    const m = await import("mermaid");
+    mermaidInstance = m.default;
+    mermaidInstance.initialize({
+      startOnLoad: false,
+      theme: "dark",
+      securityLevel: "loose",
+      fontFamily: "inherit",
+    });
+  }
+  return mermaidInstance;
+}
 
 interface MermaidDiagramProps {
   code: string;
@@ -33,6 +41,7 @@ export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: 
       try {
         // Generate unique ID for this diagram
         const id = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
+        const mermaid = await getMermaid();
         const { svg: renderedSvg } = await mermaid.render(id, code);
         setSvg(renderedSvg);
         setError(null);

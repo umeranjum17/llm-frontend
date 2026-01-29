@@ -11,12 +11,21 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
+import dynamic from "next/dynamic";
 import { CodeBlock } from "./code-block";
-import { MermaidDiagram } from "./mermaid-diagram";
-import { ChartRenderer } from "./chart-renderer";
 import { SkillDefinitionBlock } from "./skill-definition-block";
 import { AgentDefinitionBlock } from "./agent-definition-block";
 import "katex/dist/katex.min.css";
+
+const MermaidDiagram = dynamic(() => import("./mermaid-diagram").then(m => ({ default: m.MermaidDiagram })), {
+  loading: () => <div className="animate-pulse bg-muted rounded-lg h-32 my-4" />,
+  ssr: false,
+});
+
+const ChartRenderer = dynamic(() => import("./chart-renderer").then(m => ({ default: m.ChartRenderer })), {
+  loading: () => <div className="animate-pulse bg-muted rounded-lg h-32 my-4" />,
+  ssr: false,
+});
 
 // Context to collect code blocks for multi-file project detection
 export interface CodeFile {

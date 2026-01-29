@@ -9,7 +9,7 @@ import { Send, Loader2, Paperclip, X, FileText, Image as ImageIcon, Mic, Square,
 import { useChat } from "@/hooks/use-chat";
 import { useChatKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { TokenDisplay } from "./token-display";
-import { getChatById, getProjectFiles, getChatsByProject, getAllAgents, getAllTags, getMessages, getAllSkills } from "@/lib/db/queries";
+import { getChatById, getProjectFiles, getChatsByProject, getAllAgents, getAllTags, getMessages, getAllSkills, saveDraft, getDraft, deleteDraft } from "@/lib/db/queries";
 import { countMessagesTokens, countTokens } from "@/lib/utils/token-counter";
 import { getModelById } from "@/lib/constants/models";
 import { BUILTIN_AGENTS } from "@/lib/constants/agents";
@@ -194,6 +194,24 @@ const EMPTY_QUEUE: never[] = [];
 
 export function InputArea({ chatId }: InputAreaProps) {
   const [input, setInput] = useState("");
+
+  // Load draft on chat change
+  useEffect(() => {
+    if (!chatId) return;
+    getDraft(chatId).then((draft) => {
+      if (draft) setInput(draft);
+    });
+  }, [chatId]);
+
+  // Save draft on input change (debounced)
+  useEffect(() => {
+    if (!chatId) return;
+    const timer = setTimeout(() => {
+      saveDraft(chatId, input);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [chatId, input]);
+
   const [attachments, setAttachments] = useState<TextAttachment[]>([]);
   const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>([]);
   const [codeSnippets, setCodeSnippets] = useState<CodeSnippet[]>([]);
@@ -649,6 +667,7 @@ export function InputArea({ chatId }: InputAreaProps) {
     if (!isStreaming) {
       // Normal send - not currently streaming
       setInput("");
+      deleteDraft(chatId || "");
       setAttachments([]);
       setImageAttachments([]);
       setCodeSnippets([]);
@@ -661,6 +680,7 @@ export function InputArea({ chatId }: InputAreaProps) {
         cancelRequest();
         // Clear input fields immediately
         setInput("");
+        deleteDraft(chatId || "");
         setAttachments([]);
         setImageAttachments([]);
         setCodeSnippets([]);
@@ -680,6 +700,7 @@ export function InputArea({ chatId }: InputAreaProps) {
         });
         // Clear input fields so user knows it queued
         setInput("");
+        deleteDraft(chatId || "");
         setAttachments([]);
         setImageAttachments([]);
         setCodeSnippets([]);
@@ -1205,40 +1226,52 @@ export function InputArea({ chatId }: InputAreaProps) {
                   transition={{ duration: 0.1 }}
                   className="relative"
                 >
-                  <Button
-                    type="submit"
-                    size="icon"
-                    disabled={!hasInput}
-                    className={cn(
-                      "h-10 w-10 sm:h-10 sm:w-10 shrink-0 rounded-xl touch-manipulation",
-                      isLongPressing && "bg-orange-500 hover:bg-orange-600 scale-110",
-                      // Queue mode indicator - subtle ring when streaming
-                      isCurrentlyStreaming && hasInput && !isLongPressing && "ring-2 ring-primary/30"
-                    )}
-                    aria-label={isCurrentlyStreaming ? "Queue message (hold to force send)" : "Send message"}
-                    onTouchStart={(e) => {
-                      if (!isCurrentlyStreaming) return;
-                      longPressTimeout.current = setTimeout(() => {
-                        forceSendRef.current = true;
-                        setIsLongPressing(true);
-                        navigator.vibrate?.(50);
-                      }, 400); // Slightly faster for better responsiveness
-                    }}
-                    onTouchEnd={() => {
-                      if (longPressTimeout.current) {
-                        clearTimeout(longPressTimeout.current);
-                      }
-                    }}
-                    onTouchCancel={() => {
-                      if (longPressTimeout.current) {
-                        clearTimeout(longPressTimeout.current);
-                      }
-                      forceSendRef.current = false;
-                      setIsLongPressing(false);
-                    }}
-                  >
-                    <Send className={cn("h-5 w-5", isLongPressing && "animate-pulse")} />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="submit"
+                        size="icon"
+                        disabled={!hasInput}
+                        className={cn(
+                          "h-10 w-10 sm:h-10 sm:w-10 shrink-0 rounded-xl touch-manipulation",
+                          isLongPressing && "bg-orange-500 hover:bg-orange-600 scale-110",
+                          isCurrentlyStreaming && hasInput && !isLongPressing && "ring-2 ring-primary/30"
+                        )}
+                        aria-label={isCurrentlyStreaming ? "Queue message (hold to force send)" : "Send message"}
+                        onTouchStart={(e) => {
+                          if (!isCurrentlyStreaming) return;
+                          longPressTimeout.current = setTimeout(() => {
+                            forceSendRef.current = true;
+                            setIsLongPressing(true);
+                            navigator.vibrate?.(50);
+                          }, 400);
+                        }}
+                        onTouchEnd={() => {
+                          if (longPressTimeout.current) {
+                            clearTimeout(longPressTimeout.current);
+                          }
+                        }}
+                        onTouchCancel={() => {
+                          if (longPressTimeout.current) {
+                            clearTimeout(longPressTimeout.current);
+                          }
+                          forceSendRef.current = false;
+                          setIsLongPressing(false);
+                        }}
+                      >
+                        <Send className={cn("h-5 w-5", isLongPressing && "animate-pulse")} />
+                      </Button>
+                    </TooltipTrigger>
+                    {!hasInput ? (
+                      <TooltipContent side="top">
+                        <p>{isCurrentlyStreaming ? "Waiting for response..." : "Type a message to send"}</p>
+                      </TooltipContent>
+                    ) : isCurrentlyStreaming ? (
+                      <TooltipContent side="top">
+                        <p>Queue message (Ctrl+Enter to force send)</p>
+                      </TooltipContent>
+                    ) : null}
+                  </Tooltip>
                   {/* Queue mode badge */}
                   {isCurrentlyStreaming && hasInput && !isLongPressing && (
                     <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground shadow-sm">

@@ -1,16 +1,23 @@
 "use client";
 
-import { useState } from "react";
-import { Document, Page, pdfjs } from "react-pdf";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import "react-pdf/dist/Page/AnnotationLayer.css";
-import "react-pdf/dist/Page/TextLayer.css";
+// Lazy-load react-pdf and pdfjs-dist only when a PDF is opened
+let ReactPDF: { Document: React.ComponentType<any>; Page: React.ComponentType<any> } | null = null;
 
-// Set up PDF.js worker
-if (typeof window !== "undefined") {
-  pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+async function loadReactPDF() {
+  if (!ReactPDF) {
+    const reactPdf = await import("react-pdf");
+    // @ts-ignore -- CSS imports have no type declarations
+    await import("react-pdf/dist/Page/AnnotationLayer.css");
+    // @ts-ignore -- CSS imports have no type declarations
+    await import("react-pdf/dist/Page/TextLayer.css");
+    reactPdf.pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${reactPdf.pdfjs.version}/pdf.worker.min.js`;
+    ReactPDF = { Document: reactPdf.Document, Page: reactPdf.Page };
+  }
+  return ReactPDF;
 }
 
 interface PDFViewerProps {
@@ -25,6 +32,14 @@ export function PDFViewer({ file, className }: PDFViewerProps) {
   const [rotation, setRotation] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [pdfComponents, setPdfComponents] = useState<typeof ReactPDF>(null);
+
+  useEffect(() => {
+    loadReactPDF().then(setPdfComponents).catch((err) => {
+      setError(`Failed to load PDF viewer: ${err.message}`);
+      setLoading(false);
+    });
+  }, []);
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
     setNumPages(numPages);
@@ -110,28 +125,34 @@ export function PDFViewer({ file, className }: PDFViewerProps) {
       {/* PDF Content */}
       <ScrollArea className="flex-1">
         <div className="flex justify-center p-4">
-          <Document
-            file={file}
-            onLoadSuccess={onDocumentLoadSuccess}
-            onLoadError={onDocumentLoadError}
-            loading={
-              <div className="flex items-center justify-center p-8">
-                <p className="text-muted-foreground">Loading PDF...</p>
-              </div>
-            }
-          >
-            <Page
-              pageNumber={pageNumber}
-              scale={scale}
-              rotate={rotation}
-              className="shadow-lg"
+          {pdfComponents ? (
+            <pdfComponents.Document
+              file={file}
+              onLoadSuccess={onDocumentLoadSuccess}
+              onLoadError={onDocumentLoadError}
               loading={
                 <div className="flex items-center justify-center p-8">
-                  <p className="text-muted-foreground">Loading page...</p>
+                  <p className="text-muted-foreground">Loading PDF...</p>
                 </div>
               }
-            />
-          </Document>
+            >
+              <pdfComponents.Page
+                pageNumber={pageNumber}
+                scale={scale}
+                rotate={rotation}
+                className="shadow-lg"
+                loading={
+                  <div className="flex items-center justify-center p-8">
+                    <p className="text-muted-foreground">Loading page...</p>
+                  </div>
+                }
+              />
+            </pdfComponents.Document>
+          ) : (
+            <div className="flex items-center justify-center p-8">
+              <p className="text-muted-foreground">Loading PDF viewer...</p>
+            </div>
+          )}
         </div>
       </ScrollArea>
     </div>
