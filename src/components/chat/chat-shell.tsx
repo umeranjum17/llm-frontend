@@ -612,7 +612,7 @@ export function ChatShell() {
       <EmptyState
         icon={MessageSquare}
         title="Database Timeout"
-        description="This often happens after an app update. Clear the PWA cache to fix it - your chats are safe."
+        description="This often happens after an app update or when multiple tabs are open. Close all other tabs with this app, then clear the cache below. Your chats are safe."
         action={{
           label: "Clear Cache & Reload",
           onClick: async () => {

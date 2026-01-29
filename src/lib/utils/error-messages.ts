@@ -165,7 +165,7 @@ const ERROR_MESSAGES: Record<ErrorCode, (context?: Record<string, string>) => Ac
 
   DB_TIMEOUT: () => ({
     title: "Database timeout",
-    description: "This often happens after an app update. Clear the cache to fix it.",
+    description: "This often happens after an app update or with multiple tabs open. Close all other tabs with this app, then clear the cache.",
     action: {
       label: "Clear Cache",
     },

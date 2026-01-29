@@ -272,7 +272,7 @@ export function useDBHealth() {
           if (!isMounted) return;
           handleRecovery(
             "blocked",
-            "Database upgrade is blocked by another tab. Please close other tabs and refresh."
+            "Database upgrade is blocked by another tab. Please close all other tabs with this app open, then refresh this page."
           );
         });
 
@@ -314,7 +314,7 @@ export function useDBHealth() {
             : "";
           handleRecovery(
             "timeout",
-            `Database initialization timed out.${migrationNote} ${canRetry ? "Retrying..." : "This may indicate a stale cache or corrupted database."}`,
+            `Database initialization timed out.${migrationNote} ${canRetry ? "Retrying..." : "Close all other tabs with this app open, then clear cache and refresh."}`,
             canRetry
           );
         }, timeoutDuration);
@@ -381,7 +381,7 @@ export function useDBHealth() {
         if (errorName === "VersionError") {
           handleRecovery(
             "version_error",
-            "Database version mismatch. This usually means the app was updated. Please refresh.",
+            "Database version mismatch. Close all other tabs with this app, then refresh. Your data is safe.",
             false // Version errors need cache clear, not retry
           );
         } else if (errorName === "DatabaseClosedError") {
@@ -393,7 +393,7 @@ export function useDBHealth() {
         } else if (errorName === "InvalidStateError") {
           handleRecovery(
             "invalid_state",
-            "Database is in an invalid state. Please clear cache and refresh.",
+            "Database is in an invalid state. Close all other tabs with this app, clear cache, and refresh.",
             false
           );
         } else if (errorName === "QuotaExceededError") {
