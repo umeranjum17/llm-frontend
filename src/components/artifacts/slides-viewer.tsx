@@ -1,17 +1,19 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
+import { ExportButton } from "@/components/artifacts/export-button";
+import { exportSlidesToPptx, exportToPdf } from "@/lib/utils/export-utils";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface SlidesViewerProps {
   content: string;
 }
 
-function parseSlides(content: string): string[] {
+function parseSlideContent(content: string): string[] {
   return content
     .split(/\n---\n/)
     .map((s) => s.trim())
@@ -19,8 +21,9 @@ function parseSlides(content: string): string[] {
 }
 
 export function SlidesViewer({ content }: SlidesViewerProps) {
-  const slides = parseSlides(content);
+  const slides = parseSlideContent(content);
   const [current, setCurrent] = useState(0);
+  const slideRef = useRef<HTMLDivElement>(null);
   const [direction, setDirection] = useState(0);
 
   const total = slides.length;
@@ -58,7 +61,7 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
     <div className="flex flex-col h-full">
       {/* Slide area — 16:9 aspect ratio */}
       <div className="flex-1 flex items-center justify-center p-4 sm:p-8 overflow-hidden">
-        <div className="relative w-full max-w-4xl" style={{ aspectRatio: "16/9" }}>
+        <div ref={slideRef} className="relative w-full max-w-4xl" style={{ aspectRatio: "16/9" }}>
           <div className="absolute inset-0 rounded-xl border bg-card shadow-lg overflow-hidden">
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
@@ -117,6 +120,21 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
         >
           <ChevronRight className="h-4 w-4" />
         </Button>
+
+        <div className="ml-4 flex items-center gap-1.5">
+          <ExportButton
+            label="PPTX"
+            onClick={() => exportSlidesToPptx(content, "Presentation")}
+          />
+          <ExportButton
+            label="PDF"
+            onClick={async () => {
+              if (slideRef.current) {
+                await exportToPdf(slideRef.current, "Presentation");
+              }
+            }}
+          />
+        </div>
       </div>
     </div>
   );

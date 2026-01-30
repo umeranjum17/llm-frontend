@@ -13,6 +13,8 @@ import {
 } from "@tanstack/react-table";
 import { Input } from "@/components/ui/input";
 import { ArrowUpDown, Search } from "lucide-react";
+import { ExportButton } from "@/components/artifacts/export-button";
+import { exportToXlsx, exportToCsv } from "@/lib/utils/export-utils";
 import { cn } from "@/lib/utils";
 
 interface SpreadsheetViewerProps {
@@ -88,6 +90,16 @@ export function SpreadsheetViewer({ content }: SpreadsheetViewerProps) {
         <span className="text-xs text-muted-foreground">
           {table.getFilteredRowModel().rows.length} of {rows.length} rows
         </span>
+        <div className="flex items-center gap-1.5 ml-auto">
+          <ExportButton
+            label="XLSX"
+            onClick={() => exportToXlsx(content, "Spreadsheet")}
+          />
+          <ExportButton
+            label="CSV"
+            onClick={async () => exportToCsv(content, "Spreadsheet")}
+          />
+        </div>
       </div>
 
       {/* Table */}

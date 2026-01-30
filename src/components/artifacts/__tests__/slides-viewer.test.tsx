@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { SlidesViewer } from "../slides-viewer";
 
@@ -15,6 +15,16 @@ vi.mock("@/components/markdown/markdown-renderer", () => ({
   MarkdownRenderer: ({ content }: { content: string }) => (
     <div data-testid="slide-content">{content}</div>
   ),
+}));
+
+// Mock export button to avoid import issues
+vi.mock("@/components/artifacts/export-button", () => ({
+  ExportButton: () => null,
+}));
+
+vi.mock("@/lib/utils/export-utils", () => ({
+  exportSlidesToPptx: vi.fn(),
+  exportToPdf: vi.fn(),
 }));
 
 const threeSlides = `# Slide 1\nFirst slide content\n---\n# Slide 2\nSecond slide content\n---\n# Slide 3\nThird slide content`;
@@ -34,7 +44,8 @@ describe("SlidesViewer", () => {
   it("navigates to next slide", () => {
     render(<SlidesViewer content={threeSlides} />);
     const buttons = screen.getAllByRole("button");
-    // Last button with ChevronRight is the next button
+    // First button is prev (disabled), then dot indicators, then next
+    // Find the last non-dot button
     const nextBtn = buttons[buttons.length - 1];
     fireEvent.click(nextBtn);
     expect(screen.getByText("2 / 3")).toBeInTheDocument();

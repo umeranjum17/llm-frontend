@@ -2,7 +2,9 @@
 
 import { useState, useMemo, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { List, ChevronRight } from "lucide-react";
+import { List } from "lucide-react";
+import { ExportButton } from "@/components/artifacts/export-button";
+import { exportToPdf, exportToDocx } from "@/lib/utils/export-utils";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
 
@@ -130,17 +132,31 @@ export function DocumentViewer({ content }: DocumentViewerProps) {
                   {frontmatter.date && <span>{frontmatter.date}</span>}
                 </div>
               </div>
-              {headings.length > 0 && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => setShowToc(!showToc)}
-                  title="Toggle table of contents"
-                >
-                  <List className="h-3.5 w-3.5" />
-                </Button>
-              )}
+              <div className="flex items-center gap-1.5">
+                {headings.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => setShowToc(!showToc)}
+                    title="Toggle table of contents"
+                  >
+                    <List className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+                <ExportButton
+                  label="PDF"
+                  onClick={async () => {
+                    if (contentRef.current) {
+                      await exportToPdf(contentRef.current, frontmatter.title || "Document");
+                    }
+                  }}
+                />
+                <ExportButton
+                  label="DOCX"
+                  onClick={() => exportToDocx(body, frontmatter.title || "Document")}
+                />
+              </div>
             </div>
           </div>
         )}
