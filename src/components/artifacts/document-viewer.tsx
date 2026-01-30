@@ -4,7 +4,6 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { List } from "lucide-react";
 import { ExportButton } from "@/components/artifacts/export-button";
-import { exportToPdf, exportToDocx } from "@/lib/utils/export-utils";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
 
@@ -148,13 +147,17 @@ export function DocumentViewer({ content }: DocumentViewerProps) {
                   label="PDF"
                   onClick={async () => {
                     if (contentRef.current) {
+                      const { exportToPdf } = await import("@/lib/utils/export-utils");
                       await exportToPdf(contentRef.current, frontmatter.title || "Document");
                     }
                   }}
                 />
                 <ExportButton
                   label="DOCX"
-                  onClick={() => exportToDocx(body, frontmatter.title || "Document")}
+                  onClick={async () => {
+                    const { exportToDocx } = await import("@/lib/utils/export-utils");
+                    await exportToDocx(body, frontmatter.title || "Document");
+                  }}
                 />
               </div>
             </div>

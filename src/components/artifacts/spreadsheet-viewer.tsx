@@ -14,7 +14,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { ArrowUpDown, Search } from "lucide-react";
 import { ExportButton } from "@/components/artifacts/export-button";
-import { exportToXlsx, exportToCsv } from "@/lib/utils/export-utils";
 import { cn } from "@/lib/utils";
 
 interface SpreadsheetViewerProps {
@@ -93,11 +92,17 @@ export function SpreadsheetViewer({ content }: SpreadsheetViewerProps) {
         <div className="flex items-center gap-1.5 ml-auto">
           <ExportButton
             label="XLSX"
-            onClick={() => exportToXlsx(content, "Spreadsheet")}
+            onClick={async () => {
+              const { exportToXlsx } = await import("@/lib/utils/export-utils");
+              await exportToXlsx(content, "Spreadsheet");
+            }}
           />
           <ExportButton
             label="CSV"
-            onClick={async () => exportToCsv(content, "Spreadsheet")}
+            onClick={async () => {
+              const { exportToCsv } = await import("@/lib/utils/export-utils");
+              exportToCsv(content, "Spreadsheet");
+            }}
           />
         </div>
       </div>

@@ -80,6 +80,32 @@ const nextConfig = {
   experimental: {
     reactCompiler: false,
   },
+  // Handle node: protocol imports from export libraries (pptxgenjs uses node:https)
+  serverExternalPackages: ["pptxgenjs"],
+  webpack: (config, { isServer, webpack }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
+        https: false,
+        http: false,
+        stream: false,
+        crypto: false,
+        zlib: false,
+        path: false,
+        os: false,
+      };
+      // Ignore node: protocol modules on client side
+      config.plugins.push(
+        new webpack.NormalModuleReplacementPlugin(/^node:/, (resource) => {
+          resource.request = resource.request.replace(/^node:/, "");
+        })
+      );
+    }
+    return config;
+  },
   // Security headers
   async headers() {
     return [

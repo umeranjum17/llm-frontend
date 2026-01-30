@@ -6,7 +6,6 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
 import { ExportButton } from "@/components/artifacts/export-button";
-import { exportSlidesToPptx, exportToPdf } from "@/lib/utils/export-utils";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface SlidesViewerProps {
@@ -124,12 +123,16 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
         <div className="ml-4 flex items-center gap-1.5">
           <ExportButton
             label="PPTX"
-            onClick={() => exportSlidesToPptx(content, "Presentation")}
+            onClick={async () => {
+              const { exportSlidesToPptx } = await import("@/lib/utils/export-utils");
+              await exportSlidesToPptx(content, "Presentation");
+            }}
           />
           <ExportButton
             label="PDF"
             onClick={async () => {
               if (slideRef.current) {
+                const { exportToPdf } = await import("@/lib/utils/export-utils");
                 await exportToPdf(slideRef.current, "Presentation");
               }
             }}
