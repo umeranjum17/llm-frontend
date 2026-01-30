@@ -23,12 +23,14 @@ export function parseSlides(content: string): string[] {
     .filter(Boolean);
 }
 
-/** Parse CSV content into header + rows */
+/** Parse CSV content into header + rows using PapaParse for proper handling of quoted fields */
 export function parseCsvContent(content: string): { headers: string[]; rows: string[][] } {
-  const lines = content.trim().split("\n").filter(Boolean);
-  if (lines.length === 0) return { headers: [], rows: [] };
-  const headers = lines[0].split(",").map((h) => h.trim());
-  const rows = lines.slice(1).map((line) => line.split(",").map((c) => c.trim()));
+  // Lazy import to keep this synchronous for tests — PapaParse is already bundled by spreadsheet-viewer
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const Papa = require("papaparse");
+  const result = Papa.parse<string[]>(content.trim(), { skipEmptyLines: true });
+  if (!result.data || result.data.length === 0) return { headers: [], rows: [] };
+  const [headers, ...rows] = result.data;
   return { headers, rows };
 }
 

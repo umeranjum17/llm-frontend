@@ -12,8 +12,18 @@ interface CodeRunnerProps {
   entry?: string;
 }
 
+// Languages routed to Sandpack (browser sandbox)
+export const SANDPACK_LANGUAGES = [
+  "javascript", "js", "jsx", "typescript", "ts", "tsx",
+  "vue", "react", "node",
+  "svelte", "angular", "solid", "astro",
+];
+
 // Languages routed to E2B (remote sandbox)
-const E2B_LANGUAGES = ["python", "py", "bash", "sh", "shell"];
+export const E2B_LANGUAGES = ["python", "py", "bash", "sh", "shell"];
+
+// All runnable languages
+export const RUNNABLE_LANGUAGES = [...SANDPACK_LANGUAGES, ...E2B_LANGUAGES];
 
 // Normalize language aliases
 function normalizeLanguage(lang: string): string {
@@ -34,7 +44,7 @@ export function CodeRunner({
   entry,
 }: CodeRunnerProps) {
   const normalized = normalizeLanguage(language);
-  const useE2B = E2B_LANGUAGES.includes(language?.toLowerCase());
+  const useE2B = E2B_LANGUAGES.includes(normalized);
 
   if (useE2B) {
     return (

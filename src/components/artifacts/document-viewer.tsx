@@ -102,7 +102,9 @@ export function DocumentViewer({ content }: DocumentViewerProps) {
                 className={cn(
                   "block w-full text-left text-xs py-1 px-2 rounded hover:bg-muted/50 truncate transition-colors",
                   h.level === 1 && "font-medium",
-                  h.level >= 2 && `pl-${2 + (h.level - 1) * 2}`,
+                  h.level === 2 && "pl-4",
+                  h.level === 3 && "pl-6",
+                  h.level >= 4 && "pl-8",
                   activeId === h.id
                     ? "text-primary bg-primary/10"
                     : "text-muted-foreground"

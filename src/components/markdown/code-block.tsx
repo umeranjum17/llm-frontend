@@ -7,6 +7,7 @@ import { codeToHtml } from "shiki";
 import { useUIStore } from "@/stores/ui-store";
 import { cn, sanitizeSvgHtml } from "@/lib/utils";
 import { CodeBlockContext } from "./markdown-renderer";
+import { RUNNABLE_LANGUAGES } from "@/components/artifacts/code-runner";
 
 // Global cache for highlighted code - survives component unmount/remount
 const highlightCache = new Map<string, string>();
@@ -248,13 +249,7 @@ export function CodeBlock({ language, code, filename, isStreaming = false }: Cod
 
   // Languages that can be executed
   function isRunnableLanguage(lang: string): boolean {
-    const runnable = [
-      "javascript", "js", "jsx", "typescript", "ts", "tsx",
-      "vue", "react", "node",
-      "python", "py",
-      "bash", "sh", "shell",
-    ];
-    return runnable.includes(lang?.toLowerCase());
+    return RUNNABLE_LANGUAGES.includes(lang?.toLowerCase());
   }
 
   // Check if we can open as project (multiple code blocks available)

@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { useUIStore, Artifact } from "@/stores/ui-store";
 import { MonacoEditor } from "@/components/artifacts/monaco-editor";
-import { CodeRunner } from "@/components/artifacts/code-runner";
+import { CodeRunner, SANDPACK_LANGUAGES, E2B_LANGUAGES } from "@/components/artifacts/code-runner";
 import { DataViewer } from "@/components/artifacts/data-viewer";
 import { DocxViewer } from "@/components/artifacts/docx-viewer";
 import { ArtifactErrorBoundary } from "@/components/artifacts/artifact-error-boundary";
@@ -57,14 +57,6 @@ export function ArtifactShell() {
         activeArtifact?.type === "project" || !!activeArtifact?.files;
 
     const language = activeArtifact?.language?.toLowerCase() || "";
-
-    // All runnable languages
-    const SANDPACK_LANGUAGES = [
-        "javascript", "typescript", "jsx", "tsx",
-        "vue", "react", "node",
-        "svelte", "angular", "solid", "astro",
-    ];
-    const E2B_LANGUAGES = ["python", "py", "bash", "sh", "shell"];
 
     const isSandpackRunnable =
         activeArtifact &&
