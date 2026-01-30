@@ -13,9 +13,8 @@ export async function extractTextFromFile(file: File): Promise<string> {
   if (fileType === "pdf") {
     try {
       const pdfjsLib = await import("pdfjs-dist");
-      // Use CDN worker — import.meta.url is unreliable with Next.js webpack bundling
-      const pdfjsVersion = pdfjsLib.version || "5.4.530";
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsVersion}/build/pdf.worker.min.mjs`;
+      // Use local worker copied to /public — CDN can be unreliable
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.mjs`;
 
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;

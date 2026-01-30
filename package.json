@@ -13,6 +13,7 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest",
+    "postinstall": "cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/pdf.worker.min.mjs",
     "test:run": "vitest run",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage"
