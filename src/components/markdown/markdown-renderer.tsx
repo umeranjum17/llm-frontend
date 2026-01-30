@@ -27,6 +27,16 @@ const ChartRenderer = dynamic(() => import("./chart-renderer").then(m => ({ defa
   ssr: false,
 });
 
+const SlideRenderer = dynamic(() => import("./slide-renderer").then(m => ({ default: m.SlideRenderer })), {
+  loading: () => <div className="animate-pulse bg-muted rounded-lg h-48 my-4" />,
+  ssr: false,
+});
+
+const DocumentRenderer = dynamic(() => import("./document-renderer").then(m => ({ default: m.DocumentRenderer })), {
+  loading: () => <div className="animate-pulse bg-muted rounded-lg h-48 my-4" />,
+  ssr: false,
+});
+
 // Context to collect code blocks for multi-file project detection
 export interface CodeFile {
   language: string;
@@ -173,6 +183,22 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
                 return <CodeBlock language="json" code={code} filename={null} isStreaming={isStreaming} />;
               }
               return <AgentDefinitionBlock code={code} />;
+            }
+
+            // Handle slides - interactive carousel
+            if (language === "slides") {
+              if (isStreaming) {
+                return <CodeBlock language="json" code={code} filename={null} isStreaming={isStreaming} />;
+              }
+              return <SlideRenderer code={code} />;
+            }
+
+            // Handle documents - polished document card
+            if (language === "document") {
+              if (isStreaming) {
+                return <CodeBlock language="markdown" code={code} filename={null} isStreaming={isStreaming} />;
+              }
+              return <DocumentRenderer code={code} />;
             }
 
             return (

@@ -18,12 +18,15 @@ import { extractTextFromFile } from "@/lib/utils/file-extractor";
 import { BUILTIN_AGENTS } from "@/lib/constants/agents";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { MessageContentPart, Skill } from "@/lib/db/schema";
 import { useStreamingStore } from "@/stores/streaming-store";
 import { MentionTextarea } from "@/components/chat/mention-textarea";
 import { MentionItem } from "@/lib/mentions/types";
 import { useVoiceInput } from "@/hooks/use-voice-input";
 import { SkillQuickSelect } from "@/components/chat/skill-quick-select";
+import { SKILL_COLORS } from "@/lib/constants/skills";
+import { Sparkles, Wand2 } from "lucide-react";
 import { MobileNavInline } from "@/components/mobile-nav";
 
 interface InputAreaProps {
@@ -223,15 +226,34 @@ export function InputArea({ chatId }: InputAreaProps) {
   const [kbAddedFiles, setKbAddedFiles] = useState<Set<number>>(new Set()); // indices of attachments added to KB
   const [kbAddingFiles, setKbAddingFiles] = useState<Set<number>>(new Set()); // indices currently being added
   const [inputFocused, setInputFocused] = useState(false);
+  const [previewImage, setPreviewImage] = useState<ImageAttachment | null>(null);
+  const [previewFile, setPreviewFile] = useState<TextAttachment | null>(null);
 
   // Get active skill from streaming store (persists per chat)
   const activeSkillFromStore = useStreamingStore((state) => chatId ? state.chatStreams[chatId]?.activeSkill ?? null : null);
   const setActiveSkillInStore = useStreamingStore((state) => state.setActiveSkill);
 
+  // Pending skill ref for when chatId is not yet available (new chat)
+  const pendingSkillRef = useRef<Skill | null>(null);
+  // Track whether user manually selected a skill (prevents restore effect from overriding)
+  const userSelectedSkillRef = useRef(false);
+
   // Convert store's ActiveSkill to Skill-like object for the component
-  const selectedSkill = activeSkillFromStore;
+  const selectedSkill = activeSkillFromStore ?? (pendingSkillRef.current ? {
+    id: pendingSkillRef.current.id,
+    name: pendingSkillRef.current.name,
+    icon: pendingSkillRef.current.ui?.icon || "sparkles",
+    color: pendingSkillRef.current.ui?.color || "blue",
+    activeLabel: pendingSkillRef.current.ui?.activeLabel || pendingSkillRef.current.name,
+  } : null);
   const setSelectedSkill = useCallback((skill: Skill | null) => {
-    if (!chatId) return; // Can't set skill without a chat ID
+    userSelectedSkillRef.current = !!skill;
+    if (!chatId) {
+      // Store in ref until chatId becomes available
+      pendingSkillRef.current = skill;
+      return;
+    }
+    pendingSkillRef.current = null;
     if (skill) {
       setActiveSkillInStore(chatId, {
         id: skill.id,
@@ -242,6 +264,21 @@ export function InputArea({ chatId }: InputAreaProps) {
       });
     } else {
       setActiveSkillInStore(chatId, null);
+    }
+  }, [chatId, setActiveSkillInStore]);
+
+  // When chatId becomes available, sync pending skill
+  useEffect(() => {
+    if (chatId && pendingSkillRef.current) {
+      const skill = pendingSkillRef.current;
+      pendingSkillRef.current = null;
+      setActiveSkillInStore(chatId, {
+        id: skill.id,
+        name: skill.name,
+        icon: skill.ui?.icon || "sparkles",
+        color: skill.ui?.color || "blue",
+        activeLabel: skill.ui?.activeLabel || skill.name,
+      });
     }
   }, [chatId, setActiveSkillInStore]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -282,7 +319,7 @@ export function InputArea({ chatId }: InputAreaProps) {
 
   // Restore skill from last assistant message when navigating to a chat
   useEffect(() => {
-    if (!chatId || selectedSkill) return;
+    if (!chatId || selectedSkill || userSelectedSkillRef.current) return;
     let cancelled = false;
     (async () => {
       const msgs = await getMessages(chatId);
@@ -292,7 +329,7 @@ export function InputArea({ chatId }: InputAreaProps) {
           const allSkills = await getAllSkills();
           if (cancelled) return;
           const skill = allSkills.find(s => s.id === msgs[i].skillId);
-          if (skill?.isEnabled) {
+          if (skill?.isEnabled && !userSelectedSkillRef.current) {
             setSelectedSkill(skill);
           }
           break;
@@ -301,6 +338,11 @@ export function InputArea({ chatId }: InputAreaProps) {
     })();
     return () => { cancelled = true; };
   }, [chatId]); // Only on chatId change (navigation)
+
+  // Reset user selection flag when chatId changes (navigating to different chat)
+  useEffect(() => {
+    userSelectedSkillRef.current = false;
+  }, [chatId]);
 
   const chat = useLiveQuery(() => chatId ? getChatById(chatId) : undefined, [chatId]);
   const agents = useLiveQuery(() => getAllAgents(), []);
@@ -1074,13 +1116,14 @@ export function InputArea({ chatId }: InputAreaProps) {
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.15 }}
-                    className="relative overflow-hidden rounded-md border bg-background"
+                    className="relative overflow-hidden rounded-md border bg-background cursor-pointer group"
+                    onClick={() => setPreviewImage(img)}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={img.dataUrl}
                       alt={img.name}
-                      className="h-16 w-16 object-cover"
+                      className="h-20 w-20 object-cover group-hover:brightness-90 transition-all"
                       loading="lazy"
                     />
                     <button
@@ -1102,7 +1145,8 @@ export function InputArea({ chatId }: InputAreaProps) {
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.15 }}
-                    className="flex items-center gap-1 bg-background border rounded-md px-2 py-1 text-xs"
+                    className="flex items-center gap-1 bg-background border rounded-md px-2 py-1 text-xs cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => setPreviewFile(file)}
                   >
                     <FileText className="h-3 w-3 text-muted-foreground" />
                     <span className="max-w-[150px] truncate">{file.name}</span>
@@ -1232,7 +1276,35 @@ export function InputArea({ chatId }: InputAreaProps) {
       )}
 
 
-      <div className="flex gap-1.5 sm:gap-2 rounded-xl sm:rounded-2xl border border-border/50 bg-background p-1.5 sm:p-2 focus-within:border-border focus-within:ring-1 focus-within:ring-ring/20 transition-all duration-150">
+      {/* Active skill dismissible bar */}
+      <AnimatePresence>
+        {selectedSkill && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className={cn(
+              "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border mb-1.5",
+              SKILL_COLORS[selectedSkill.color || "blue"]
+            )}>
+              <Wand2 className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">Using skill: {selectedSkill.name}</span>
+              <button
+                type="button"
+                onClick={() => setSelectedSkill(null)}
+                className="ml-auto shrink-0 rounded-sm p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+                aria-label="Dismiss skill"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="flex gap-1.5 sm:gap-2 rounded-xl sm:rounded-2xl border border-border/60 bg-background p-1.5 sm:p-2 focus-within:border-border/80 focus-within:ring-1 focus-within:ring-ring/30 transition-all duration-150">
         {/* Controls - always visible to prevent layout shift */}
         <Button
           type="button"
@@ -1460,8 +1532,44 @@ export function InputArea({ chatId }: InputAreaProps) {
         </div>
       )}
 
+      {/* Image lightbox dialog */}
+      <Dialog open={!!previewImage} onOpenChange={(open) => !open && setPreviewImage(null)}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{previewImage?.name}</DialogTitle>
+          </DialogHeader>
+          {previewImage && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={previewImage.dataUrl}
+              alt={previewImage.name}
+              className="w-full rounded-md object-contain max-h-[70vh]"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* File content preview dialog */}
+      <Dialog open={!!previewFile} onOpenChange={(open) => !open && setPreviewFile(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{previewFile?.name}</DialogTitle>
+            <DialogDescription>
+              {previewFile ? `${(previewFile.size / 1024).toFixed(1)} KB` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          {previewFile && (
+            <pre className="flex-1 overflow-auto rounded-md bg-muted p-4 text-xs font-mono whitespace-pre-wrap break-words">
+              {previewFile.content.length > 5000
+                ? previewFile.content.slice(0, 5000) + "\n..."
+                : previewFile.content}
+            </pre>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Mobile navigation - integrated below input */}
-      <div className="mt-2">
+      <div className="mt-2 pt-1.5 border-t border-border/30 sm:border-0 sm:pt-0">
         <MobileNavInline />
       </div>
     </form>
