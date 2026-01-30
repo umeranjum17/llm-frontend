@@ -24,10 +24,8 @@ export function parseSlides(content: string): string[] {
 }
 
 /** Parse CSV content into header + rows using PapaParse for proper handling of quoted fields */
-export function parseCsvContent(content: string): { headers: string[]; rows: string[][] } {
-  // Lazy import to keep this synchronous for tests — PapaParse is already bundled by spreadsheet-viewer
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const Papa = require("papaparse");
+export async function parseCsvContent(content: string): Promise<{ headers: string[]; rows: string[][] }> {
+  const Papa = (await import("papaparse")).default;
   const result = Papa.parse<string[]>(content.trim(), { skipEmptyLines: true });
   if (!result.data || result.data.length === 0) return { headers: [], rows: [] };
   const [headers, ...rows] = result.data;
@@ -129,7 +127,7 @@ export async function exportToDocx(content: string, title: string = "Document") 
 /** Export data to XLSX using SheetJS */
 export async function exportToXlsx(content: string, title: string = "Spreadsheet") {
   const XLSX = await import("xlsx");
-  const { headers, rows } = parseCsvContent(content);
+  const { headers, rows } = await parseCsvContent(content);
 
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
   const wb = XLSX.utils.book_new();

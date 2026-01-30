@@ -18,16 +18,16 @@ describe("parseSlides", () => {
 });
 
 describe("parseCsvContent", () => {
-  it("parses headers and rows", () => {
+  it("parses headers and rows", async () => {
     const csv = "Name,Age,City\nAlice,30,NYC\nBob,25,London";
-    const { headers, rows } = parseCsvContent(csv);
+    const { headers, rows } = await parseCsvContent(csv);
     expect(headers).toEqual(["Name", "Age", "City"]);
     expect(rows).toHaveLength(2);
     expect(rows[0]).toEqual(["Alice", "30", "NYC"]);
   });
 
-  it("handles empty content", () => {
-    const { headers, rows } = parseCsvContent("");
+  it("handles empty content", async () => {
+    const { headers, rows } = await parseCsvContent("");
     expect(headers).toEqual([]);
     expect(rows).toEqual([]);
   });
