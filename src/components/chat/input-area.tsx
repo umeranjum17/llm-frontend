@@ -1150,7 +1150,7 @@ export function InputArea({ chatId }: InputAreaProps) {
         ref={fileInputRef}
         className="hidden"
         onChange={handleFileSelect}
-        accept={`${supportsVision ? supportedImageFormats.join(",") + "," : ""}.txt,.md,.js,.ts,.tsx,.jsx,.json,.csv,.py,.java,.c,.cpp,.h,.css,.html,.pdf,.docx`}
+        accept="image/*,.txt,.md,.js,.ts,.tsx,.jsx,.json,.csv,.py,.java,.c,.cpp,.h,.css,.html,.pdf,.docx"
       />
 
       {/* Token usage display - compact bar above input */}
