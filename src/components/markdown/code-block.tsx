@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useContext } from "react";
 import { Button } from "@/components/ui/button";
-import { Copy, Check, Maximize2, ChevronRight, Eye, Code, FolderOpen } from "lucide-react";
+import { Copy, Check, Maximize2, ChevronRight, Eye, Code, FolderOpen, Play } from "lucide-react";
 import { codeToHtml } from "shiki";
 import { useUIStore } from "@/stores/ui-store";
 import { cn, sanitizeSvgHtml } from "@/lib/utils";
@@ -246,6 +246,17 @@ export function CodeBlock({ language, code, filename, isStreaming = false }: Cod
     return extMap[lang.toLowerCase()] || lang || "txt";
   }
 
+  // Languages that can be executed
+  function isRunnableLanguage(lang: string): boolean {
+    const runnable = [
+      "javascript", "js", "jsx", "typescript", "ts", "tsx",
+      "vue", "react", "node",
+      "python", "py",
+      "bash", "sh", "shell",
+    ];
+    return runnable.includes(lang?.toLowerCase());
+  }
+
   // Check if we can open as project (multiple code blocks available)
   const canOpenAsProject = codeBlockContext && codeBlockContext.getCodeBlocks().length >= 2;
 
@@ -300,6 +311,17 @@ export function CodeBlock({ language, code, filename, isStreaming = false }: Cod
           )}
         </button>
         <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
+          {isRunnableLanguage(language) && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 sm:h-8 sm:w-8 text-green-500 hover:text-green-600 hover:bg-green-500/10"
+              onClick={handleOpenArtifact}
+              title="Run code"
+            >
+              <Play className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            </Button>
+          )}
           {canOpenAsProject && (
             <Button
               variant="ghost"
