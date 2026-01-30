@@ -105,7 +105,7 @@ export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: 
 
   return (
     <>
-      <div className={cn("group relative my-4", className)}>
+      <div className={cn("group relative my-4 mermaid-container", className)}>
         <div className="flex items-center justify-between rounded-t-lg bg-primary/5 border-b border-white/5 px-4 py-2 text-sm font-medium text-primary">
           <span>mermaid</span>
           <div className="flex items-center gap-1">
@@ -170,7 +170,7 @@ export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: 
             </Button>
           </div>
           <div
-            className="max-w-full max-h-full overflow-auto [&>svg]:max-w-full [&>svg]:h-auto [&>svg]:overflow-visible"
+            className="mermaid-container max-w-full max-h-full overflow-auto [&>svg]:max-w-full [&>svg]:h-auto [&>svg]:overflow-visible"
             dangerouslySetInnerHTML={{ __html: svg }}
             onClick={(e) => e.stopPropagation()}
           />
