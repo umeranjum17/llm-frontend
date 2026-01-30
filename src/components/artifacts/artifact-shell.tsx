@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
+import dynamic from "next/dynamic";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
@@ -22,6 +23,10 @@ import { DataViewer } from "@/components/artifacts/data-viewer";
 import { DocxViewer } from "@/components/artifacts/docx-viewer";
 import { ArtifactErrorBoundary } from "@/components/artifacts/artifact-error-boundary";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
+
+const SlidesViewer = dynamic(() => import("@/components/artifacts/slides-viewer").then(m => ({ default: m.SlidesViewer })), { ssr: false });
+const DocumentViewer = dynamic(() => import("@/components/artifacts/document-viewer").then(m => ({ default: m.DocumentViewer })), { ssr: false });
+const SpreadsheetViewer = dynamic(() => import("@/components/artifacts/spreadsheet-viewer").then(m => ({ default: m.SpreadsheetViewer })), { ssr: false });
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { cn, sanitizeSvgHtml, languageToExtension } from "@/lib/utils";
@@ -82,19 +87,24 @@ export function ArtifactShell() {
     const isHtml = activeArtifact?.language === "html";
     const isSvg = activeArtifact?.language === "svg";
     const isMarkdown = activeArtifact?.language === "markdown";
+    const isSlides = activeArtifact &&
+        ["slides", "presentation"].includes(activeArtifact.language || activeArtifact.type);
+    const isDocument = activeArtifact &&
+        ["document", "doc"].includes(activeArtifact.language || activeArtifact.type);
+    const isSpreadsheet = activeArtifact?.language === "spreadsheet" || activeArtifact?.type === "spreadsheet";
 
     // Switch to appropriate tab on artifact change
     useEffect(() => {
         if (activeArtifact) {
             if (isRunnable) {
                 setActiveTab("run");
-            } else if (isData || isDoc || isHtml || isSvg || isMarkdown) {
+            } else if (isData || isDoc || isHtml || isSvg || isMarkdown || isSlides || isDocument || isSpreadsheet) {
                 setActiveTab("preview");
             } else {
                 setActiveTab("code");
             }
         }
-    }, [activeArtifact, isRunnable, isData, isDoc, isHtml, isSvg, isMarkdown]);
+    }, [activeArtifact, isRunnable, isData, isDoc, isHtml, isSvg, isMarkdown, isSlides, isDocument, isSpreadsheet]);
 
     // Handle escape key for fullscreen
     useEffect(() => {
@@ -302,7 +312,7 @@ export function ArtifactShell() {
                                             Run
                                         </TabsTrigger>
                                     )}
-                                    {(isData || isDoc || isHtml || isSvg || isMarkdown) && (
+                                    {(isData || isDoc || isHtml || isSvg || isMarkdown || isSlides || isDocument || isSpreadsheet) && (
                                         <TabsTrigger
                                             value="preview"
                                             className="h-9 px-2 rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary"
@@ -400,6 +410,18 @@ export function ArtifactShell() {
                                         <div className="w-full h-full overflow-auto p-6 prose prose-sm dark:prose-invert max-w-none">
                                             <MarkdownRenderer content={activeArtifact.code || ""} />
                                         </div>
+                                    </ArtifactErrorBoundary>
+                                ) : isSlides ? (
+                                    <ArtifactErrorBoundary fallbackTitle="Failed to render slides">
+                                        <SlidesViewer content={activeArtifact.code || ""} />
+                                    </ArtifactErrorBoundary>
+                                ) : isDocument ? (
+                                    <ArtifactErrorBoundary fallbackTitle="Failed to render document">
+                                        <DocumentViewer content={activeArtifact.code || ""} />
+                                    </ArtifactErrorBoundary>
+                                ) : isSpreadsheet ? (
+                                    <ArtifactErrorBoundary fallbackTitle="Failed to render spreadsheet">
+                                        <SpreadsheetViewer content={activeArtifact.code || ""} />
                                     </ArtifactErrorBoundary>
                                 ) : (
                                     <div className="h-full flex flex-col items-center justify-center text-center opacity-70 p-8">
