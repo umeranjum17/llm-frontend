@@ -390,12 +390,12 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>{isEditing ? "Edit Skill" : "New Skill"}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="flex-1 overflow-y-auto space-y-5 pr-1">
           {/* Basic Info */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -420,6 +420,70 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          {/* System Prompt - moved up and given more prominence */}
+          <div className="space-y-2 rounded-lg border p-4 bg-muted/20">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">System Prompt</Label>
+              <span className="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
+                {systemPrompt.length} chars
+              </span>
+            </div>
+            <Textarea
+              value={systemPrompt}
+              onChange={(e) => setSystemPrompt(e.target.value)}
+              className="min-h-[200px] font-mono text-sm bg-background resize-y"
+              placeholder="Instructions for the AI when this skill is active...&#10;&#10;Tip: Be specific about the role, approach, output format, and constraints."
+            />
+          </div>
+
+          {/* User Template (Optional) */}
+          <div className="space-y-2">
+            <Label>
+              User Template <span className="text-muted-foreground text-xs">(optional)</span>
+            </Label>
+            <Textarea
+              value={userTemplate}
+              onChange={(e) => setUserTemplate(e.target.value)}
+              className="min-h-[80px] font-mono text-sm resize-y"
+              placeholder="Optional template with {{variables}}"
+            />
+            {variables.length > 0 && (
+              <div className="rounded-lg border p-3 text-sm">
+                <div className="font-medium mb-2">Detected variables</div>
+                <div className="flex flex-wrap gap-2">
+                  {variables.map((v) => (
+                    <span key={v.name} className="rounded bg-muted px-2 py-0.5 text-xs">
+                      {`{{${v.name}}}`}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Trigger Settings */}
+          <div className="space-y-3 rounded-lg border p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Auto-trigger</Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Automatically activate this skill based on message content
+                </p>
+              </div>
+              <Switch checked={autoTrigger} onCheckedChange={setAutoTrigger} />
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t">
+              <div>
+                <Label>Require Approval</Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Show draft and ask for confirmation before using tools
+                </p>
+              </div>
+              <Switch checked={requireApproval} onCheckedChange={setRequireApproval} />
             </div>
           </div>
 
@@ -554,42 +618,6 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
             </div>
           )}
 
-          {/* System Prompt */}
-          <div className="space-y-2">
-            <Label>System Prompt</Label>
-            <Textarea
-              value={systemPrompt}
-              onChange={(e) => setSystemPrompt(e.target.value)}
-              className="min-h-[180px] font-mono text-sm"
-              placeholder="Instructions for the AI when this skill is active..."
-            />
-          </div>
-
-          {/* User Template (Optional) */}
-          <div className="space-y-2">
-            <Label>
-              User Template <span className="text-muted-foreground text-xs">(optional)</span>
-            </Label>
-            <Textarea
-              value={userTemplate}
-              onChange={(e) => setUserTemplate(e.target.value)}
-              className="min-h-[100px] font-mono text-sm"
-              placeholder="Optional template with {{variables}}"
-            />
-            {variables.length > 0 && (
-              <div className="rounded-lg border p-3 text-sm">
-                <div className="font-medium mb-2">Detected variables</div>
-                <div className="flex flex-wrap gap-2">
-                  {variables.map((v) => (
-                    <span key={v.name} className="rounded bg-muted px-2 py-0.5 text-xs">
-                      {`{{${v.name}}}`}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
           {/* UI Settings */}
           <div className="space-y-4 rounded-lg border p-4">
             <h4 className="font-medium text-sm">Appearance</h4>
@@ -637,33 +665,13 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Trigger Settings */}
-          <div className="space-y-3 rounded-lg border p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label>Auto-trigger</Label>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Automatically activate this skill based on message content
-                </p>
-              </div>
-              <Switch checked={autoTrigger} onCheckedChange={setAutoTrigger} />
-            </div>
-
-            <div className="flex items-center justify-between pt-3 border-t">
-              <div>
-                <Label>Require Approval</Label>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Show draft and ask for confirmation before using tools
-                </p>
-              </div>
-              <Switch checked={requireApproval} onCheckedChange={setRequireApproval} />
-            </div>
-          </div>
-
+        {/* Sticky footer with progress + actions */}
+        <div className="flex-shrink-0 border-t pt-4 mt-2">
           {/* Embedding Progress Indicator */}
           {embeddingProgress && (
-            <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 p-3">
+            <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 p-3 mb-3">
               <div className="flex items-center gap-2">
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
                 <span className="text-sm text-blue-700 dark:text-blue-300">{embeddingProgress}</span>
@@ -671,13 +679,12 @@ export function SkillEditorDialog({ open, onOpenChange, skill }: SkillEditorDial
             </div>
           )}
 
-          {/* Actions */}
-          <div className="flex justify-end gap-2 pt-4">
+          <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving || !!embeddingProgress}>
               Cancel
             </Button>
             <Button onClick={handleSave} disabled={saving || !!embeddingProgress}>
-              {saving ? "Saving..." : embeddingProgress ? embeddingProgress : "Save"}
+              {saving ? "Saving..." : embeddingProgress ? embeddingProgress : isEditing ? "Update Skill" : "Create Skill"}
             </Button>
           </div>
         </div>

@@ -32,6 +32,33 @@ export async function indexProjectFile(file: ProjectFile): Promise<void> {
 }
 
 /**
+ * Index a chat-scoped file by chunking its text and storing embeddings.
+ */
+export async function indexChatFile(file: ProjectFile): Promise<void> {
+  if (!file.text || file.text.trim().length === 0) {
+    await db.projectFiles.update(file.id, { indexed: true });
+    return;
+  }
+
+  const chunks = chunkText(file.text, 800);
+
+  const docs = chunks.map((chunk, i) => ({
+    id: `${file.id}-chunk-${i}`,
+    text: chunk,
+    metadata: {
+      chatId: file.chatId,
+      fileId: file.id,
+      type: "document" as const,
+      chunkIndex: i,
+      totalChunks: chunks.length,
+    },
+  }));
+
+  await storeDocuments(docs);
+  await db.projectFiles.update(file.id, { indexed: true });
+}
+
+/**
  * Delete all vector documents for a given file.
  */
 export async function deleteFileIndex(fileId: string): Promise<void> {

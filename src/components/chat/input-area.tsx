@@ -5,11 +5,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Send, Loader2, Paperclip, X, FileText, Image as ImageIcon, Mic, Square, Star, Code2, ChevronDown, ChevronUp, Trash2, CornerDownLeft, Pencil, ArrowUp, BookOpen } from "lucide-react";
+import { Send, Loader2, Paperclip, X, FileText, Image as ImageIcon, Mic, Square, Star, Code2, ChevronDown, ChevronUp, Trash2, CornerDownLeft, Pencil, ArrowUp, BookOpen, Check } from "lucide-react";
 import { useChat } from "@/hooks/use-chat";
 import { useChatKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { TokenDisplay } from "./token-display";
-import { getChatById, getProjectFiles, getChatsByProject, getAllAgents, getAllTags, getMessages, getAllSkills, saveDraft, getDraft, deleteDraft } from "@/lib/db/queries";
+import { getChatById, getProjectFiles, getChatsByProject, getAllAgents, getAllTags, getMessages, getAllSkills, saveDraft, getDraft, deleteDraft, addChatFile, updateChat } from "@/lib/db/queries";
+import { indexChatFile } from "@/lib/rag/file-indexer";
 import { countMessagesTokens, countTokens } from "@/lib/utils/token-counter";
 import { getModelById } from "@/lib/constants/models";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
@@ -219,6 +220,8 @@ export function InputArea({ chatId }: InputAreaProps) {
   const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>([]);
   const [codeSnippets, setCodeSnippets] = useState<CodeSnippet[]>([]);
   const [expandedSnippets, setExpandedSnippets] = useState<Set<string>>(new Set());
+  const [kbAddedFiles, setKbAddedFiles] = useState<Set<number>>(new Set()); // indices of attachments added to KB
+  const [kbAddingFiles, setKbAddingFiles] = useState<Set<number>>(new Set()); // indices currently being added
   const [inputFocused, setInputFocused] = useState(false);
 
   // Get active skill from streaming store (persists per chat)
@@ -676,6 +679,42 @@ export function InputArea({ chatId }: InputAreaProps) {
     });
   };
 
+  const handleAddToKnowledgeBase = async (index: number) => {
+    if (!chatId || kbAddedFiles.has(index) || kbAddingFiles.has(index)) return;
+    const attachment = attachments[index];
+    if (!attachment) return;
+
+    setKbAddingFiles(prev => new Set(prev).add(index));
+    try {
+      const file = await addChatFile({
+        chatId,
+        name: attachment.name,
+        mime: attachment.name.endsWith('.pdf') ? 'application/pdf' : attachment.name.endsWith('.docx') ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'text/plain',
+        size: attachment.size,
+        text: attachment.content,
+      });
+      await indexChatFile(file);
+
+      // Auto-enable ragEnabled on the chat
+      const currentChat = await getChatById(chatId);
+      if (currentChat && !currentChat.ragEnabled) {
+        await updateChat(chatId, { ragEnabled: true });
+      }
+
+      setKbAddedFiles(prev => new Set(prev).add(index));
+      toast.success(`"${attachment.name}" added to Knowledge Base`);
+    } catch (err) {
+      console.error("[KB] Failed to add file:", err);
+      toast.error(`Failed to add "${attachment.name}" to Knowledge Base`);
+    } finally {
+      setKbAddingFiles(prev => {
+        const next = new Set(prev);
+        next.delete(index);
+        return next;
+      });
+    }
+  };
+
   const toggleSnippetExpanded = (id: string) => {
     setExpandedSnippets((prev) => {
       const next = new Set(prev);
@@ -735,6 +774,8 @@ export function InputArea({ chatId }: InputAreaProps) {
       setImageAttachments([]);
       setCodeSnippets([]);
       setExpandedSnippets(new Set());
+      setKbAddedFiles(new Set());
+      setKbAddingFiles(new Set());
       await sendMessage(currentImages.length > 0 ? contentParts : message, currentAttachments, currentSkill);
     } else if (isForceMode) {
       // Force send - interrupt current stream
@@ -748,6 +789,8 @@ export function InputArea({ chatId }: InputAreaProps) {
         setImageAttachments([]);
         setCodeSnippets([]);
         setExpandedSnippets(new Set());
+        setKbAddedFiles(new Set());
+        setKbAddingFiles(new Set());
         // Small delay to let cancel complete
         setTimeout(() => {
           sendMessage(currentImages.length > 0 ? contentParts : message, currentAttachments, currentSkill);
@@ -768,6 +811,8 @@ export function InputArea({ chatId }: InputAreaProps) {
         setImageAttachments([]);
         setCodeSnippets([]);
         setExpandedSnippets(new Set());
+        setKbAddedFiles(new Set());
+        setKbAddingFiles(new Set());
         // Visual feedback via the queue panel - no toast needed
       }
     }
@@ -1061,6 +1106,29 @@ export function InputArea({ chatId }: InputAreaProps) {
                   >
                     <FileText className="h-3 w-3 text-muted-foreground" />
                     <span className="max-w-[150px] truncate">{file.name}</span>
+                    {/* Add to Knowledge Base chip */}
+                    {chatId && (
+                      kbAddedFiles.has(i) ? (
+                        <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-600 dark:text-green-400 text-[10px] font-medium">
+                          <Check className="h-2.5 w-2.5" />
+                          Added
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleAddToKnowledgeBase(i)}
+                          disabled={kbAddingFiles.has(i)}
+                          className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-medium hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+                        >
+                          {kbAddingFiles.has(i) ? (
+                            <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                          ) : (
+                            <BookOpen className="h-2.5 w-2.5" />
+                          )}
+                          Add to Knowledge Base
+                        </button>
+                      )
+                    )}
                     <button
                       type="button"
                       onClick={() => removeAttachment(i)}

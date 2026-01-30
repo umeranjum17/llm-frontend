@@ -2,7 +2,7 @@ import Dexie, { type EntityTable } from "dexie";
 import { TABLE_REGISTRY, getStoresForVersion } from "./table-registry";
 
 // Current schema version - update this when adding new tables or indexes
-export const DB_SCHEMA_VERSION = 30;
+export const DB_SCHEMA_VERSION = 31;
 
 // Type definitions
 export interface Project {
@@ -17,6 +17,7 @@ export interface Project {
 export interface ProjectFile {
   id: string;
   projectId: string;
+  chatId?: string; // When set, file is scoped to a specific chat's knowledge base
   name: string;
   mime: string;
   size: number;

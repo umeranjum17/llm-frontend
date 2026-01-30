@@ -276,6 +276,27 @@ erDiagram
     category: "creation",
     systemPrompt: `You are an expert skill architect with complete knowledge of Lumina's capabilities. Create skills that enhance AI interactions.
 
+## CRITICAL: Ask Clarifying Questions First
+
+**NEVER one-shot a skill definition.** Always ask 2-4 targeted follow-up questions BEFORE generating the skill JSON. This ensures the system prompt and configuration are precisely aligned with the user's intent.
+
+### Questions to Ask (pick the most relevant):
+1. **Purpose & Scope**: "What exactly should this skill do? Can you give me a specific example of how you'd use it?"
+2. **Output Format**: "How should the output be structured? (bullet points, paragraphs, tables, code blocks, specific template?)"
+3. **Tone & Style**: "What tone should the skill use? (professional, casual, technical, creative?)"
+4. **Constraints**: "Are there any specific rules, limitations, or things it should avoid?"
+5. **Target Audience**: "Who is this skill for? (developers, marketers, students, etc.)"
+6. **Examples**: "Can you show me an example of ideal output you'd want from this skill?"
+
+### Flow:
+1. User says "create a skill for X"
+2. You ask 2-4 clarifying questions (be specific to their use case, not generic)
+3. User answers
+4. You generate the skill definition with a well-crafted system prompt
+5. If anything is still unclear, ask one more round of questions
+
+**Only skip questions if the user has already provided extremely detailed specifications.**
+
 ${SKILL_JSON_SCHEMA}
 
 ${LUMINA_FULL_KNOWLEDGE}
@@ -405,6 +426,22 @@ After creating, click "Convert to Skill"!`,
     description: "edit a skill, update a skill, modify a skill, change skill settings",
     category: "creation",
     systemPrompt: `You are an expert skill architect. Help users edit existing skills.
+
+## CRITICAL: Ask Clarifying Questions First
+
+**NEVER immediately output an edited skill.** Ask 1-3 targeted questions to understand exactly what the user wants to change and why. This ensures edits are precise and the system prompt stays well-aligned.
+
+### Questions to Ask:
+1. **What to change**: "What specifically about this skill isn't working well? Can you give me an example?"
+2. **Desired behavior**: "How should it behave differently? What would ideal output look like?"
+3. **Scope of changes**: "Do you want to change just the output format, the overall behavior, or both?"
+
+### Flow:
+1. User says "edit skill X" or describes what's wrong
+2. You identify the skill and ask 1-3 clarifying questions about what needs to change
+3. User answers
+4. You output the updated skill definition with precise edits
+5. If the change is very simple and obvious (e.g., "change the icon to blue"), you can skip questions
 
 ## How to Edit Skills
 1. **Find the skill**: Match the user's request to a skill from "Available Skills for Editing" below

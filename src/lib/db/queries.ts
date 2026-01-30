@@ -214,6 +214,17 @@ export async function updateChat(id: string, updates: Partial<Chat>) {
 }
 
 export async function deleteChat(id: string) {
+  // Delete chat-scoped Knowledge Base files and their vectors
+  const chatFiles = await db.projectFiles.where("chatId").equals(id).toArray();
+  if (chatFiles.length > 0) {
+    const fileIds = chatFiles.map(f => f.id);
+    for (const fid of fileIds) {
+      await db.vectorDocuments.where("metadata.fileId").equals(fid).delete();
+    }
+    await db.projectFiles.where("chatId").equals(id).delete();
+  }
+  // Delete chat-scoped vectors (by chatId metadata)
+  await db.vectorDocuments.where("metadata.chatId").equals(id).delete();
   // Delete all messages in this chat
   await db.messages.where("chatId").equals(id).delete();
   // Delete the chat
@@ -581,6 +592,37 @@ export async function deleteProjectFile(id: string) {
   // Clean up any vector documents indexed from this file
   await db.vectorDocuments.where("metadata.fileId").equals(id).delete();
   await db.projectFiles.delete(id);
+}
+
+// ============= CHAT FILE QUERIES (Chat-level Knowledge Base) =============
+
+export async function getChatFiles(chatId: string) {
+  return await db.projectFiles
+    .where("chatId")
+    .equals(chatId)
+    .sortBy("createdAt")
+    .then((files) => files.reverse());
+}
+
+export async function addChatFile(file: {
+  chatId: string;
+  name: string;
+  mime: string;
+  size: number;
+  text?: string;
+}): Promise<ProjectFile> {
+  const newFile: ProjectFile = {
+    id: crypto.randomUUID(),
+    projectId: "", // No project association for chat-scoped files
+    chatId: file.chatId,
+    name: file.name,
+    mime: file.mime,
+    size: file.size,
+    text: file.text,
+    createdAt: Date.now(),
+  };
+  await db.projectFiles.add(newFile);
+  return newFile;
 }
 
 // ============= MODEL FAVORITES QUERIES =============

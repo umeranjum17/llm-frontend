@@ -1,4 +1,4 @@
-import { getChatById, getAgentById, getAgentsByIds, getProjectFilesByIds, getChatsWithMessagesByIds, getModelAlias, getSettings, getAllSkills, getProjectFiles } from "@/lib/db/queries";
+import { getChatById, getAgentById, getAgentsByIds, getProjectFilesByIds, getChatsWithMessagesByIds, getModelAlias, getSettings, getAllSkills, getProjectFiles, getChatFiles } from "@/lib/db/queries";
 import type { Message, Skill } from "@/lib/db/schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { retrieveContext } from "@/lib/rag/retrieval";
@@ -422,7 +422,10 @@ export async function buildContextMessages(
 
   // 6. File contents as context (uses batch-fetched files map) - relatively stable
   // Explicit @file: mentions are always injected, even in KB mode
-  const isKBMode = chat?.ragEnabled === true && !!chat?.projectId;
+  // Check for chat-level KB files
+  const chatKBFiles = chat ? await getChatFiles(chatId) : [];
+  const hasChatKB = chatKBFiles.length > 0;
+  const isKBMode = chat?.ragEnabled === true && (!!chat?.projectId || hasChatKB);
   for (const fileRef of fileReferences) {
     const file = filesMap.get(fileRef.id);
     if (file && file.text) {
@@ -505,20 +508,46 @@ export async function buildContextMessages(
   }
 
   // 9a. Knowledge Base RAG retrieval (when ragEnabled on chat)
-  if (isKBMode && chat?.projectId) {
+  if (isKBMode) {
     try {
-      const kbResults = await searchSimilar(cleanContent, 8, 0.4, {
-        projectId: chat.projectId,
-        type: "document",
-      });
+      // Search project-level KB files
+      let allKBResults: Array<{ text: string; similarity: number; metadata?: any }> = [];
 
-      if (kbResults.length > 0) {
+      if (chat?.projectId) {
+        const projectResults = await searchSimilar(cleanContent, 8, 0.4, {
+          projectId: chat.projectId,
+          type: "document",
+        });
+        allKBResults.push(...projectResults);
+      }
+
+      // Search chat-level KB files
+      if (hasChatKB) {
+        const chatResults = await searchSimilar(cleanContent, 8, 0.4, {
+          chatId,
+          type: "document",
+        });
+        allKBResults.push(...chatResults);
+      }
+
+      // Deduplicate and sort by similarity
+      if (allKBResults.length > 0) {
+        const seen = new Set<string>();
+        allKBResults = allKBResults.filter(r => {
+          const key = r.metadata?.fileId + '-' + r.metadata?.chunkIndex;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        allKBResults.sort((a, b) => b.similarity - a.similarity);
+        allKBResults = allKBResults.slice(0, 8);
+
         // Build file name lookup for source attribution
-        const projectFiles = await getProjectFiles(chat.projectId);
-        const fileNameMap = new Map(projectFiles.map(f => [f.id, f.name]));
+        const projectFiles = chat?.projectId ? await getProjectFiles(chat.projectId) : [];
+        const allFiles = [...projectFiles, ...chatKBFiles];
+        const fileNameMap = new Map(allFiles.map(f => [f.id, f.name]));
 
-        // Store as dynamic context only — not in static messages
-        dynamicRag = kbResults.map((r) => {
+        dynamicRag = allKBResults.map((r) => {
           const fileName = r.metadata?.fileId ? fileNameMap.get(r.metadata.fileId) || "unknown" : "unknown";
           return {
             text: r.text,

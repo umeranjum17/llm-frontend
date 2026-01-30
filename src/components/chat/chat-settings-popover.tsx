@@ -14,7 +14,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
-import { getAgentById, getSettings, updateSettings, updateChat, getChatById, getMessages, getProjectFiles } from "@/lib/db/queries";
+import { getAgentById, getSettings, updateSettings, updateChat, getChatById, getMessages, getProjectFiles, getChatFiles } from "@/lib/db/queries";
 import { reindexProjectFiles } from "@/lib/rag/file-indexer";
 import { toast } from "sonner";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -55,6 +55,10 @@ export function ChatSettingsPopover({
   const projectFiles = useLiveQuery(
     () => (chat?.projectId ? getProjectFiles(chat.projectId) : Promise.resolve([])),
     [chat?.projectId]
+  );
+  const chatFiles = useLiveQuery(
+    () => (chatId ? getChatFiles(chatId) : Promise.resolve([])),
+    [chatId]
   );
   const mem0ApiKey = useApiKeysStore((state) => state.getKeyForProvider("mem0"));
 
@@ -271,7 +275,7 @@ export function ChatSettingsPopover({
         </button>
 
         {/* Knowledge Base Mode Toggle — show when files exist OR when ragEnabled (so user can disable) */}
-        {(hasProjectFiles || ragEnabled) && (
+        {(hasProjectFiles || (chatFiles?.length ?? 0) > 0 || ragEnabled) && (
           <button
             onClick={toggleRag}
             className={cn(
