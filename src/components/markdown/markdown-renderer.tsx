@@ -27,6 +27,21 @@ const ChartRenderer = dynamic(() => import("./chart-renderer").then(m => ({ defa
   ssr: false,
 });
 
+const SlidesViewer = dynamic(() => import("@/components/artifacts/slides-viewer").then(m => ({ default: m.SlidesViewer })), {
+  loading: () => <div className="animate-pulse bg-muted rounded-lg h-48 my-4" />,
+  ssr: false,
+});
+
+const DocumentViewer = dynamic(() => import("@/components/artifacts/document-viewer").then(m => ({ default: m.DocumentViewer })), {
+  loading: () => <div className="animate-pulse bg-muted rounded-lg h-48 my-4" />,
+  ssr: false,
+});
+
+const SpreadsheetViewer = dynamic(() => import("@/components/artifacts/spreadsheet-viewer").then(m => ({ default: m.SpreadsheetViewer })), {
+  loading: () => <div className="animate-pulse bg-muted rounded-lg h-48 my-4" />,
+  ssr: false,
+});
+
 // Context to collect code blocks for multi-file project detection
 export interface CodeFile {
   language: string;
@@ -173,6 +188,42 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
                 return <CodeBlock language="json" code={code} filename={null} isStreaming={isStreaming} />;
               }
               return <AgentDefinitionBlock code={code} />;
+            }
+
+            // Handle slides/presentation blocks
+            if (language === "slides" || language === "presentation") {
+              if (isStreaming) {
+                return <CodeBlock language="markdown" code={code} filename={null} isStreaming={isStreaming} />;
+              }
+              return (
+                <div className="my-4 border rounded-lg overflow-hidden" style={{ height: "500px" }}>
+                  <SlidesViewer content={code} />
+                </div>
+              );
+            }
+
+            // Handle document blocks
+            if (language === "document" || language === "doc") {
+              if (isStreaming) {
+                return <CodeBlock language="markdown" code={code} filename={null} isStreaming={isStreaming} />;
+              }
+              return (
+                <div className="my-4 border rounded-lg overflow-hidden" style={{ height: "500px" }}>
+                  <DocumentViewer content={code} />
+                </div>
+              );
+            }
+
+            // Handle spreadsheet blocks
+            if (language === "spreadsheet") {
+              if (isStreaming) {
+                return <CodeBlock language="csv" code={code} filename={null} isStreaming={isStreaming} />;
+              }
+              return (
+                <div className="my-4 border rounded-lg overflow-hidden" style={{ height: "400px" }}>
+                  <SpreadsheetViewer content={code} />
+                </div>
+              );
             }
 
             return (
