@@ -501,13 +501,12 @@ export function MessageList({ chatId, modelId, onSendMessage }: MessageListProps
           >
             <Button
               onClick={scrollToBottom}
-              size="sm"
-              variant={showNewMessagesButton ? "default" : "secondary"}
-              className="shadow-lg gap-2"
-              aria-label={showNewMessagesButton ? "Scroll to new messages" : "Scroll to bottom"}
+              size="icon"
+              variant="secondary"
+              className="h-9 w-9 rounded-full shadow-lg"
+              aria-label="Scroll to bottom"
             >
               <ArrowDown className="h-4 w-4" />
-              {showNewMessagesButton ? "New messages" : "Scroll to bottom"}
             </Button>
           </motion.div>
         )}
