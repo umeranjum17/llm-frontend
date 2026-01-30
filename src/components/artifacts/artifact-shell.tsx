@@ -17,8 +17,7 @@ import {
 } from "lucide-react";
 import { useUIStore, Artifact } from "@/stores/ui-store";
 import { MonacoEditor } from "@/components/artifacts/monaco-editor";
-import { SandpackExecutor } from "@/components/artifacts/sandpack-executor";
-import { E2BExecutor } from "@/components/artifacts/e2b-executor";
+import { CodeRunner } from "@/components/artifacts/code-runner";
 import { DataViewer } from "@/components/artifacts/data-viewer";
 import { DocxViewer } from "@/components/artifacts/docx-viewer";
 import { ArtifactErrorBoundary } from "@/components/artifacts/artifact-error-boundary";
@@ -52,28 +51,23 @@ export function ArtifactShell() {
     const isProject =
         activeArtifact?.type === "project" || !!activeArtifact?.files;
 
-    // Languages that run in Sandpack (browser-based JS/TS)
+    const language = activeArtifact?.language?.toLowerCase() || "";
+
+    // All runnable languages
+    const SANDPACK_LANGUAGES = [
+        "javascript", "typescript", "jsx", "tsx",
+        "vue", "react", "node",
+        "svelte", "angular", "solid", "astro",
+    ];
+    const E2B_LANGUAGES = ["python", "py", "bash", "sh", "shell"];
+
     const isSandpackRunnable =
         activeArtifact &&
-        (isProject ||
-            [
-                "javascript",
-                "typescript",
-                "jsx",
-                "tsx",
-                "vue",
-                "react",
-                "node",
-                "svelte",
-                "angular",
-                "solid",
-                "astro",
-            ].includes(activeArtifact.language));
+        (isProject || SANDPACK_LANGUAGES.includes(language));
 
-    // Languages that run in E2B (remote sandbox - Python, Node.js, Bash)
     const isE2BRunnable =
         activeArtifact &&
-        ["python", "py", "bash", "sh", "shell"].includes(activeArtifact.language || "");
+        E2B_LANGUAGES.includes(language);
 
     const isRunnable = isSandpackRunnable || isE2BRunnable;
 
@@ -333,26 +327,14 @@ export function ArtifactShell() {
                                 className="flex-1 m-0 p-0 overflow-hidden h-full"
                             >
                                 <ArtifactErrorBoundary fallbackTitle="Failed to load code executor">
-                                    {isE2BRunnable ? (
-                                        <E2BExecutor
-                                            id={activeArtifact.id}
-                                            code={activeArtifact.code || ""}
-                                            language={
-                                                activeArtifact.language === "py" ? "python" :
-                                                activeArtifact.language === "sh" || activeArtifact.language === "shell" ? "bash" :
-                                                activeArtifact.language as "python" | "javascript" | "bash"
-                                            }
-                                        />
-                                    ) : (
-                                        <SandpackExecutor
-                                            id={activeArtifact.id}
-                                            code={activeArtifact.code || ""}
-                                            language={activeArtifact.language}
-                                            template={activeArtifact.template}
-                                            files={activeArtifact.files}
-                                            entry={activeArtifact.entry}
-                                        />
-                                    )}
+                                    <CodeRunner
+                                        id={activeArtifact.id}
+                                        code={activeArtifact.code || ""}
+                                        language={activeArtifact.language || ""}
+                                        template={activeArtifact.template}
+                                        files={activeArtifact.files}
+                                        entry={activeArtifact.entry}
+                                    />
                                 </ArtifactErrorBoundary>
                             </TabsContent>
 
