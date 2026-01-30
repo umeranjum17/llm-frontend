@@ -261,25 +261,24 @@ export function SandpackExecutor({
         if (pkg.includes("next")) return "nextjs";
         if (pkg.includes("vite")) return "vite";
         if (pkg.includes("vue")) return "vue";
+        if (pkg.includes("svelte")) return "svelte";
+        if (pkg.includes("angular")) return "angular";
+        if (pkg.includes("solid")) return "solid";
+        if (pkg.includes("astro")) return "astro";
       }
       if (Object.keys(files).some((f) => f.endsWith(".vue"))) return "vue";
+      if (Object.keys(files).some((f) => f.endsWith(".svelte"))) return "svelte";
     }
 
     if (template) return template as SandpackPredefinedTemplate;
 
-    if (language === "vue") return "vue";
-    if (
-      language === "typescript" ||
-      language === "ts" ||
-      language === "tsx"
-    )
-      return "react-ts";
-    if (
-      language === "javascript" ||
-      language === "js" ||
-      language === "jsx"
-    )
-      return "react";
+    const lang = language?.toLowerCase();
+    if (lang === "vue") return "vue";
+    if (lang === "svelte") return "svelte";
+    if (lang === "angular") return "angular";
+    if (lang === "solid") return "solid";
+    if (lang === "typescript" || lang === "ts" || lang === "tsx") return "react-ts";
+    if (lang === "javascript" || lang === "js" || lang === "jsx") return "react";
     return "react";
   }, [language, template, files]);
 
@@ -336,6 +335,9 @@ export function SandpackExecutor({
     const isVue = sandpackTemplate.includes("vue");
 
     if (isVue) return { "/src/App.vue": code };
+    if (sandpackTemplate === "svelte") return { "/App.svelte": code };
+    if (sandpackTemplate === "solid") return { "/App.tsx": code };
+    if (sandpackTemplate === "angular") return { "/src/app/app.component.ts": code };
     if (sandpackTemplate === "vanilla") return { "/index.js": code };
     if (sandpackTemplate === "vanilla-ts") return { "/index.ts": code };
 

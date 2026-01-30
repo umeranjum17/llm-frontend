@@ -64,6 +64,10 @@ export function ArtifactShell() {
                 "vue",
                 "react",
                 "node",
+                "svelte",
+                "angular",
+                "solid",
+                "astro",
             ].includes(activeArtifact.language));
 
     // Languages that run in E2B (remote sandbox - Python, Node.js, Bash)
