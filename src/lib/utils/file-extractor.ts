@@ -48,7 +48,7 @@ export async function extractTextFromFile(file: File): Promise<string> {
       }
       return result;
     } catch (error) {
-      return `[PDF file: ${file.name}]\n\nFailed to extract text: ${error instanceof Error ? error.message : "unknown error"}. Try exporting the PDF as plain text.`;
+      throw new Error(`Failed to extract text from ${file.name}: ${error instanceof Error ? error.message : "unknown error"}`);
     }
   }
 
@@ -68,7 +68,7 @@ export async function extractTextFromFile(file: File): Promise<string> {
       }
       return text;
     } catch (error) {
-      return `[DOCX file: ${file.name}]\n\nFailed to extract text: ${error instanceof Error ? error.message : "unknown error"}. Try exporting the document as plain text.`;
+      throw new Error(`Failed to extract text from ${file.name}: ${error instanceof Error ? error.message : "unknown error"}`);
     }
   }
 
