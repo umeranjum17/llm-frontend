@@ -214,7 +214,7 @@ ${LIMITATIONS}`;
 /**
  * Token-efficient version for contexts where full detail isn't needed
  */
-export const LUMINA_CAPABILITIES_COMPACT = `**Rendering:** Markdown (GFM), code blocks (Shiki, 100+ langs, filename:path format), Mermaid diagrams (\`\`\`mermaid - flowchart/sequence/class/ER/state/pie/gantt), Charts (\`\`\`chart JSON - bar/line/area/pie/scatter), Math (KaTeX $inline$ $$block$$), Special blocks (\`\`\`skill, \`\`\`agent)
+export const LUMINA_CAPABILITIES_COMPACT = `**Rendering:** Markdown (GFM), code blocks (Shiki, 100+ langs, filename:path format), Mermaid diagrams (\`\`\`mermaid - flowchart/sequence/class/ER/state/pie/gantt), Charts (\`\`\`chart JSON - bar/line/area/pie/scatter), Math (KaTeX $inline$ $$block$$), Slides (\`\`\`slides - separate with ---, PPTX/PDF export), Documents (\`\`\`document - TOC/frontmatter, PDF/DOCX export), Spreadsheets (\`\`\`spreadsheet - CSV data, sortable/filterable, XLSX export), Special blocks (\`\`\`skill, \`\`\`agent)
 
 **Code Execution:** Sandpack (browser: react/vue/vanilla/static templates, multi-file support), E2B sandbox (Python+pandas/numpy/matplotlib, Node.js 20, Bash)
 
@@ -314,23 +314,23 @@ These skills already exist - don't recreate them, but learn from their patterns:
 - **Output**: \`\`\`mermaid with flowchart/sequence/class/ER/state
 - **Triggers**: "create a diagram", "draw a flowchart", "architecture diagram"
 
-### Create Slides (visualization)
-- **Purpose**: HTML-based presentations with navigation
-- **Pattern**: Creates self-contained HTML slideshows with keyboard/touch navigation
-- **Output**: \`\`\`html with complete slide deck (rendered in iframe artifact)
+### Create Presentation (visualization)
+- **Purpose**: Interactive slide decks with navigation and export
+- **Pattern**: Structures content into slides → outputs \`\`\`slides block
+- **Output**: \`\`\`slides with slides separated by ---
 - **Triggers**: "create a presentation", "make slides", "pitch deck"
 
-### Create Spreadsheet (visualization)
-- **Purpose**: Structured tabular data as CSV
-- **Pattern**: Organizes data into well-formatted CSV tables
-- **Output**: \`\`\`csv rendered as interactive table with sorting/filtering
-- **Triggers**: "create a spreadsheet", "make a data table", "generate CSV"
-
 ### Create Document (writing)
-- **Purpose**: Professional documents in rich Markdown
-- **Pattern**: Structured docs with headers, tables, sections, metadata
-- **Output**: Rich GFM Markdown with tables, task lists, formatting
-- **Triggers**: "create a document", "write a report", "draft a doc"
+- **Purpose**: Rich documents with TOC and frontmatter
+- **Pattern**: Structures content with headings → outputs \`\`\`document block
+- **Output**: \`\`\`document with optional YAML frontmatter (title/author/date)
+- **Triggers**: "create a document", "write a report", "whitepaper"
+
+### Create Spreadsheet (analysis)
+- **Purpose**: Interactive tables from CSV data
+- **Pattern**: Organizes data into rows/columns → outputs \`\`\`spreadsheet block
+- **Output**: \`\`\`spreadsheet with CSV data (headers + rows)
+- **Triggers**: "create a spreadsheet", "comparison table", "dataset"
 
 ### Code Writer (coding)
 - **Purpose**: Write complete, runnable code

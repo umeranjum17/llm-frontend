@@ -27,12 +27,17 @@ const ChartRenderer = dynamic(() => import("./chart-renderer").then(m => ({ defa
   ssr: false,
 });
 
-const SlideRenderer = dynamic(() => import("./slide-renderer").then(m => ({ default: m.SlideRenderer })), {
+const SlidesViewer = dynamic(() => import("@/components/artifacts/slides-viewer").then(m => ({ default: m.SlidesViewer })), {
   loading: () => <div className="animate-pulse bg-muted rounded-lg h-48 my-4" />,
   ssr: false,
 });
 
-const DocumentRenderer = dynamic(() => import("./document-renderer").then(m => ({ default: m.DocumentRenderer })), {
+const DocumentViewer = dynamic(() => import("@/components/artifacts/document-viewer").then(m => ({ default: m.DocumentViewer })), {
+  loading: () => <div className="animate-pulse bg-muted rounded-lg h-48 my-4" />,
+  ssr: false,
+});
+
+const SpreadsheetViewer = dynamic(() => import("@/components/artifacts/spreadsheet-viewer").then(m => ({ default: m.SpreadsheetViewer })), {
   loading: () => <div className="animate-pulse bg-muted rounded-lg h-48 my-4" />,
   ssr: false,
 });
@@ -190,20 +195,40 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
               return <AgentDefinitionBlock code={code} />;
             }
 
-            // Handle slides - interactive carousel
-            if (language === "slides") {
-              if (isStreaming) {
-                return <CodeBlock language="json" code={code} filename={null} isStreaming={isStreaming} />;
-              }
-              return <SlideRenderer code={code} />;
-            }
-
-            // Handle documents - polished document card
-            if (language === "document") {
+            // Handle slides/presentation blocks
+            if (language === "slides" || language === "presentation") {
               if (isStreaming) {
                 return <CodeBlock language="markdown" code={code} filename={null} isStreaming={isStreaming} />;
               }
-              return <DocumentRenderer code={code} />;
+              return (
+                <div className="my-4 border rounded-lg overflow-hidden" style={{ height: "500px" }}>
+                  <SlidesViewer content={code} />
+                </div>
+              );
+            }
+
+            // Handle document blocks
+            if (language === "document" || language === "doc") {
+              if (isStreaming) {
+                return <CodeBlock language="markdown" code={code} filename={null} isStreaming={isStreaming} />;
+              }
+              return (
+                <div className="my-4 border rounded-lg overflow-hidden" style={{ height: "500px" }}>
+                  <DocumentViewer content={code} />
+                </div>
+              );
+            }
+
+            // Handle spreadsheet blocks
+            if (language === "spreadsheet") {
+              if (isStreaming) {
+                return <CodeBlock language="csv" code={code} filename={null} isStreaming={isStreaming} />;
+              }
+              return (
+                <div className="my-4 border rounded-lg overflow-hidden" style={{ height: "400px" }}>
+                  <SpreadsheetViewer content={code} />
+                </div>
+              );
             }
 
             // Handle sandpack:template code fences (e.g., sandpack:react-ts)
@@ -213,19 +238,6 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
                 return <CodeBlock language="typescript" code={code} filename={`sandpack:${filename}`} isStreaming={isStreaming} />;
               }
               return <SandpackInlinePreview code={code} template={filename} />;
-            }
-
-            // Auto-detect skill definitions in json/unlabeled code blocks
-            // (LLM sometimes omits ```skill fence)
-            if (language === "json" || language === "") {
-              try {
-                const parsed = JSON.parse(code);
-                if (parsed && typeof parsed === "object" && parsed.name && parsed.systemPrompt && parsed.category) {
-                  return <SkillDefinitionBlock code={code} />;
-                }
-              } catch {
-                // Not valid JSON or not a skill — fall through
-              }
             }
 
             return (

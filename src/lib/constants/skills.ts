@@ -664,58 +664,208 @@ For data analysis, scripts, and computation — invoked via tool calls:
     updatedAt: now(),
   },
   {
-    id: "skill_builtin_integrations",
-    name: "Integrations Guide",
-    description: "use composio tools, search the web, connect github, send email, slack integration, google calendar, web scraping, external services, API tools",
-    category: "productivity",
-    systemPrompt: `You help users leverage Lumina's integration capabilities. All external tool integrations are powered by Composio.
+    id: "skill_builtin_create_slides",
+    name: "Create Presentation",
+    description: "create a presentation, create slides, make a slide deck, pitch deck, presentation about, create a slideshow",
+    category: "visualization",
+    systemPrompt: `You are a presentation design expert. Create slide decks using the \`\`\`slides format.
 
-## Composio (Tool Provider)
-All external integrations run through Composio's tool proxy. Connected toolkits' actions are dynamically available as callable tools. 150+ toolkits available:
-- **GITHUB**, **GITLAB** — Code repositories
-- **GMAIL**, **OUTLOOK** — Email
-- **SLACK**, **DISCORD** — Messaging
-- **GOOGLECALENDAR**, **OUTLOOK_CALENDAR** — Scheduling
-- **GOOGLEDRIVE**, **DROPBOX** — File storage
-- **LINEAR**, **JIRA**, **ASANA** — Project management
-- **NOTION**, **CODA** — Docs/wikis
-- **TWITTER**, **LINKEDIN** — Social media
-- **FIRECRAWL**, **BROWSERBASE** — Web scraping/automation
+**Format Instructions:**
+Output a \`slides\` code block. Separate slides with \`---\` on its own line. Each slide supports full markdown.
 
-## Image Processing
-- Accepts uploaded images in chat
-- Can describe, analyze, OCR images
-- Cannot generate new images directly (use dedicated image generation agents)
+**Structure Guidelines:**
+1. **Title slide**: Clear title + subtitle or tagline
+2. **Content slides**: One key idea per slide, use bullet points (3-5 max)
+3. **Closing slide**: Summary, call to action, or next steps
 
-## Limitations
-- Cannot run arbitrary system code (only sandboxed E2B execution)
-- Cannot access local files (must be uploaded to chat)
-- Cannot make authenticated API calls without Composio connection
+**Example:**
+\`\`\`slides
+# Project Launch Plan
+### Q1 2025 Roadmap
 
-**Best practices:**
-- For web data: Use Composio tool proxy (web scraping, search toolkits)
-- For images: Create agent with image generation step
-- For code: Use E2B sandbox or Sandpack preview
-- For integrations: Check Composio toolkit availability`,
+---
+
+# Goals
+- Increase user engagement by 25%
+- Launch mobile app v2.0
+- Expand to 3 new markets
+
+---
+
+# Timeline
+| Phase | Date | Milestone |
+|-------|------|-----------|
+| Alpha | Jan | Internal testing |
+| Beta | Feb | Public beta |
+| Launch | Mar | Full release |
+
+---
+
+# Next Steps
+1. Finalize feature spec
+2. Assign team leads
+3. Begin sprint planning
+
+**Questions?**
+\`\`\`
+
+**Key rules:**
+- Keep slides concise — audiences read, not listen
+- Use headers (# or ##) for slide titles
+- Use tables, lists, and bold for emphasis
+- 4-8 slides is ideal for most topics
+- The viewer supports PPTX and PDF export`,
     trigger: { type: "auto" },
     autoApplyQueries: [
-      "search the web",
-      "use github integration",
-      "send an email",
-      "connect to slack",
-      "what tools are available",
-      "web scraping",
+      "create a presentation",
+      "make slides",
+      "slide deck about",
+      "create a slideshow",
+      "pitch deck",
     ],
     exclusionQueries: [
-      "write code for an API",
-      "build a web scraper from scratch",
-      "implement email sending",
-      "create a slack bot",
+      "create a document",
+      "write a report",
+      "create a chart",
+      "write code for slides",
     ],
     ui: {
-      icon: "Puzzle",
+      icon: "Layers",
+      color: "indigo",
+      activeLabel: "Creating slides...",
+    },
+    isBuiltIn: true,
+    isEnabled: true,
+    usageCount: 0,
+    createdAt: now(),
+    updatedAt: now(),
+  },
+  {
+    id: "skill_builtin_create_document",
+    name: "Create Document",
+    description: "create a document, write a report, create a whitepaper, write a formal document, create an article, draft a report",
+    category: "writing",
+    systemPrompt: `You are a professional document writer. Create rich documents using the \`\`\`document format.
+
+**Format Instructions:**
+Output a \`document\` code block. Supports full markdown with an optional YAML frontmatter header.
+
+**Structure Guidelines:**
+1. **Frontmatter** (optional): title, author, date
+2. **Headings**: Use # for sections — these generate a table of contents automatically
+3. **Body**: Rich markdown with tables, lists, bold, code blocks
+
+**Example:**
+\`\`\`document
+---
+title: Quarterly Business Review
+author: Strategy Team
+date: 2025-01-15
+---
+
+# Executive Summary
+This quarter saw strong growth across all key metrics...
+
+## Revenue Performance
+Total revenue increased 18% QoQ, driven by:
+- Enterprise segment: +25%
+- SMB segment: +12%
+- Consumer segment: +8%
+
+## Key Achievements
+| Metric | Target | Actual | Status |
+|--------|--------|--------|--------|
+| Revenue | $10M | $11.2M | ✅ |
+| Users | 50K | 48K | ⚠️ |
+| NPS | 70 | 75 | ✅ |
+
+## Challenges & Risks
+1. **Hiring pipeline**: Engineering headcount behind by 3 roles
+2. **Infrastructure costs**: 15% over budget due to scaling
+
+## Next Quarter Plan
+Focus areas for Q2:
+- Launch self-serve onboarding
+- Reduce infrastructure costs by 10%
+- Hit 60K active users target
+\`\`\`
+
+**Key rules:**
+- Use clear heading hierarchy (# > ## > ###) for the auto-generated table of contents
+- Frontmatter fields (title, author, date) appear in a sticky header
+- The viewer supports PDF and DOCX export
+- Write substantial, well-structured content — this format is for real documents, not short answers`,
+    trigger: { type: "auto" },
+    autoApplyQueries: [
+      "create a document",
+      "write a report",
+      "create a whitepaper",
+      "draft a report",
+      "write an article",
+    ],
+    exclusionQueries: [
+      "create a presentation",
+      "make slides",
+      "summarize this",
+      "write code",
+    ],
+    ui: {
+      icon: "FileText",
       color: "sky",
-      activeLabel: "Using integrations...",
+      activeLabel: "Creating document...",
+    },
+    isBuiltIn: true,
+    isEnabled: true,
+    usageCount: 0,
+    createdAt: now(),
+    updatedAt: now(),
+  },
+  {
+    id: "skill_builtin_create_spreadsheet",
+    name: "Create Spreadsheet",
+    description: "create a spreadsheet, make a table, create a dataset, generate tabular data, create a CSV, comparison table",
+    category: "analysis",
+    systemPrompt: `You are a data organization expert. Create spreadsheets using the \`\`\`spreadsheet format.
+
+**Format Instructions:**
+Output a \`spreadsheet\` code block containing CSV data. First row is headers.
+
+**Example:**
+\`\`\`spreadsheet
+Name,Role,Department,Location,Salary,Start Date
+Alice Smith,Senior Engineer,Engineering,New York,145000,2021-03-15
+Bob Johnson,Product Manager,Product,San Francisco,155000,2020-08-01
+Carol Williams,Designer,Design,Remote,125000,2022-01-10
+David Brown,Data Scientist,Engineering,Boston,140000,2021-11-20
+Eve Davis,Marketing Lead,Marketing,Chicago,130000,2019-06-15
+\`\`\`
+
+**Key rules:**
+- First row must be column headers
+- Use commas to separate fields
+- Quote fields that contain commas: "New York, NY"
+- The viewer renders an interactive table with sorting, filtering, and search
+- Supports XLSX and CSV export
+- Include meaningful, realistic data — at least 5-10 rows for useful tables
+- Use clear, descriptive column headers`,
+    trigger: { type: "auto" },
+    autoApplyQueries: [
+      "create a spreadsheet",
+      "make a table of",
+      "generate a dataset",
+      "create a comparison table",
+      "list of data",
+    ],
+    exclusionQueries: [
+      "create a chart",
+      "markdown table",
+      "create a database",
+      "write code for spreadsheet",
+    ],
+    ui: {
+      icon: "Layers",
+      color: "teal",
+      activeLabel: "Creating spreadsheet...",
     },
     isBuiltIn: true,
     isEnabled: true,

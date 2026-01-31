@@ -7,7 +7,7 @@ export interface Artifact {
   title: string;
   code: string; // Main code or readme
   language: string;
-  type: 'code' | 'image' | 'video' | 'html' | 'markdown' | 'csv' | 'sheet' | 'chart' | 'docx' | 'project';
+  type: 'code' | 'image' | 'video' | 'html' | 'markdown' | 'csv' | 'sheet' | 'chart' | 'docx' | 'project' | 'slides' | 'document' | 'spreadsheet';
   files?: Record<string, string>; // path -> content
   template?: string; // e.g. 'react', 'node', 'vite'
   entry?: string; // e.g. '/App.tsx'
