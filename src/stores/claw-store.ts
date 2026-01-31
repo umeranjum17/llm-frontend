@@ -57,8 +57,14 @@ export const useClawStore = create<ClawState>((set, get) => ({
     }
   },
 
-  disconnect: () => {
+  disconnect: async () => {
     set({ isConnected: false, client: null, status: null, tasks: [], activity: [], schedules: [], config: null, error: null });
+    // Persist disabled state so auto-connect doesn't re-enable on next startup
+    const { useSettingsStore } = await import("@/stores/settings-store");
+    const settings = useSettingsStore.getState();
+    if (settings.clawUrl) {
+      await settings.updateClawSettings(settings.clawUrl, settings.clawSecret ?? "", false);
+    }
   },
 
   refreshAll: async () => {

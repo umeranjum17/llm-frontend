@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -347,6 +347,14 @@ function ConfigTab() {
   const [heartbeat, setHeartbeat] = useState(
     config?.heartbeatIntervalMinutes?.toString() ?? ""
   );
+
+  // Sync local state when config loads asynchronously
+  useEffect(() => {
+    if (config) {
+      setModel(config.openrouterModel ?? "");
+      setHeartbeat(config.heartbeatIntervalMinutes?.toString() ?? "");
+    }
+  }, [config]);
 
   const handleSave = async () => {
     try {
