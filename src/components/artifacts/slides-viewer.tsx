@@ -39,6 +39,24 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
   const prev = useCallback(() => goTo(current - 1), [goTo, current]);
   const next = useCallback(() => goTo(current + 1), [goTo, current]);
 
+  // Touch swipe support
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }, []);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (!touchStartRef.current) return;
+    const dx = e.changedTouches[0].clientX - touchStartRef.current.x;
+    const dy = e.changedTouches[0].clientY - touchStartRef.current.y;
+    touchStartRef.current = null;
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
+      if (dx < 0) next();
+      else prev();
+    }
+  }, [next, prev]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "ArrowLeft") prev();
@@ -59,7 +77,11 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Slide area — 16:9 aspect ratio */}
-      <div className="flex-1 flex items-center justify-center p-4 sm:p-8 overflow-hidden">
+      <div
+        className="flex-1 flex items-center justify-center p-4 sm:p-8 overflow-hidden"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
         <div ref={slideRef} className="relative w-full max-w-4xl" style={{ aspectRatio: "16/9" }}>
           <div className="absolute inset-0 rounded-xl border bg-card shadow-lg overflow-hidden">
             <AnimatePresence mode="wait" initial={false}>
@@ -79,11 +101,11 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
       </div>
 
       {/* Controls */}
-      <div className="shrink-0 flex items-center justify-center gap-4 pb-4 px-4">
+      <div className="shrink-0 flex flex-wrap items-center justify-center gap-3 sm:gap-4 pb-4 px-4">
         <Button
           variant="outline"
           size="icon"
-          className="h-8 w-8"
+          className="h-10 w-10 sm:h-8 sm:w-8"
           onClick={prev}
           disabled={current === 0}
         >
@@ -113,14 +135,14 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
         <Button
           variant="outline"
           size="icon"
-          className="h-8 w-8"
+          className="h-10 w-10 sm:h-8 sm:w-8"
           onClick={next}
           disabled={current === total - 1}
         >
           <ChevronRight className="h-4 w-4" />
         </Button>
 
-        <div className="ml-4 flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 basis-full sm:basis-auto justify-center sm:ml-4">
           <ExportButton
             label="PPTX"
             onClick={async () => {

@@ -84,9 +84,9 @@ export function DocumentViewer({ content }: DocumentViewerProps) {
 
   return (
     <div className="flex h-full">
-      {/* TOC sidebar */}
+      {/* TOC sidebar — hidden on mobile */}
       {showToc && headings.length > 0 && (
-        <div className="w-56 shrink-0 border-r bg-muted/10 overflow-auto p-3">
+        <div className="hidden md:block w-56 shrink-0 border-r bg-muted/10 overflow-auto p-3">
           <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
             Contents
           </div>
@@ -121,11 +121,11 @@ export function DocumentViewer({ content }: DocumentViewerProps) {
       <div ref={contentRef} className="flex-1 overflow-auto">
         {/* Header with frontmatter */}
         {(frontmatter.title || frontmatter.author || frontmatter.date) && (
-          <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-3">
-            <div className="flex items-center justify-between">
-              <div>
+          <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-3 py-2 sm:px-6 sm:py-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
                 {frontmatter.title && (
-                  <h1 className="text-lg font-bold">{frontmatter.title}</h1>
+                  <h1 className="text-base sm:text-lg font-bold truncate">{frontmatter.title}</h1>
                 )}
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   {frontmatter.author && <span>{frontmatter.author}</span>}
@@ -167,7 +167,7 @@ export function DocumentViewer({ content }: DocumentViewerProps) {
         )}
 
         {/* Markdown content */}
-        <div className="p-6 prose prose-sm dark:prose-invert max-w-none">
+        <div className="p-4 sm:p-6 prose prose-sm dark:prose-invert max-w-none">
           <MarkdownRenderer content={body} />
         </div>
       </div>

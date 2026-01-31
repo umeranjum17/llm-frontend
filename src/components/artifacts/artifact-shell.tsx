@@ -98,6 +98,14 @@ export function ArtifactShell() {
         }
     }, [activeArtifact, isRunnable, isData, isDoc, isHtml, isSvg, isMarkdown, isSlides, isDocument, isSpreadsheet]);
 
+    // Auto-enter fullscreen on mobile when artifacts open
+    useEffect(() => {
+        const isMobile = window.matchMedia("(max-width: 768px)").matches;
+        if (isMobile && activeArtifact && !artifactsFullscreen) {
+            setArtifactsFullscreen(true);
+        }
+    }, [activeArtifact]); // eslint-disable-line react-hooks/exhaustive-deps
+
     // Handle escape key for fullscreen
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -186,10 +194,14 @@ export function ArtifactShell() {
                                             <Code className="h-3 w-3 text-muted-foreground shrink-0" />
                                         )}
                                         <span className="truncate">{tab.title}</span>
-                                        <X
-                                            className="h-3 w-3 text-muted-foreground hover:text-foreground shrink-0"
+                                        <span
+                                            role="button"
+                                            className="inline-flex items-center justify-center h-4 w-4 rounded-sm hover:bg-muted"
                                             onClick={(e) => handleCloseTab(e, tab)}
-                                        />
+                                            onPointerDown={(e) => e.stopPropagation()}
+                                        >
+                                            <X className="h-3 w-3 text-muted-foreground hover:text-foreground shrink-0" />
+                                        </span>
                                     </Button>
                                 ))}
                             </div>
@@ -223,7 +235,7 @@ export function ArtifactShell() {
                                         <Button
                                             variant="ghost"
                                             size="icon"
-                                            className="h-8 w-8"
+                                            className="h-8 w-8 hidden sm:inline-flex"
                                             onClick={handleCopyCode}
                                         >
                                             <Copy className="h-4 w-4" />
@@ -236,7 +248,7 @@ export function ArtifactShell() {
                                         <Button
                                             variant="ghost"
                                             size="icon"
-                                            className="h-8 w-8"
+                                            className="h-8 w-8 hidden sm:inline-flex"
                                             onClick={handleDownload}
                                         >
                                             <Download className="h-4 w-4" />

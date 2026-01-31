@@ -76,8 +76,8 @@ export function SpreadsheetViewer({ content }: SpreadsheetViewerProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-b bg-muted/10">
-        <div className="relative flex-1 max-w-xs">
+      <div className="shrink-0 flex flex-wrap items-center gap-2 px-3 py-2 border-b bg-muted/10">
+        <div className="relative flex-1 min-w-0 sm:max-w-xs">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
             placeholder="Search..."
@@ -86,7 +86,7 @@ export function SpreadsheetViewer({ content }: SpreadsheetViewerProps) {
             className="h-8 pl-8 text-xs"
           />
         </div>
-        <span className="text-xs text-muted-foreground">
+        <span className="text-xs text-muted-foreground hidden sm:inline">
           {table.getFilteredRowModel().rows.length} of {rows.length} rows
         </span>
         <div className="flex items-center gap-1.5 ml-auto">
@@ -116,7 +116,7 @@ export function SpreadsheetViewer({ content }: SpreadsheetViewerProps) {
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="text-left px-3 py-2 font-medium text-muted-foreground border-b cursor-pointer hover:bg-muted/80 select-none"
+                    className="text-left px-2 py-1.5 sm:px-3 sm:py-2 font-medium text-muted-foreground border-b cursor-pointer hover:bg-muted/80 select-none whitespace-nowrap"
                     onClick={header.column.getToggleSortingHandler()}
                   >
                     {flexRender(header.column.columnDef.header, header.getContext())}
@@ -135,7 +135,7 @@ export function SpreadsheetViewer({ content }: SpreadsheetViewerProps) {
                 )}
               >
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="px-3 py-1.5 border-b border-border/30">
+                  <td key={cell.id} className="px-2 py-1 sm:px-3 sm:py-1.5 border-b border-border/30 whitespace-nowrap">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
