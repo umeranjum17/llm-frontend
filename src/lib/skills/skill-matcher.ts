@@ -166,6 +166,10 @@ export async function matchSkill(
     threshold?: number;
     excludeManualOnly?: boolean;
     conversationContext?: Array<{ role: string; content: string }>;
+    /** Only match skills whose id starts with this prefix */
+    includePrefix?: string;
+    /** Exclude skills whose id starts with this prefix */
+    excludePrefix?: string;
   }
 ): Promise<SkillMatchResult | null> {
   const {
@@ -174,6 +178,8 @@ export async function matchSkill(
     threshold = DEFAULT_SIMILARITY_THRESHOLD,
     excludeManualOnly = true,
     conversationContext,
+    includePrefix,
+    excludePrefix,
   } = options || {};
 
   try {
@@ -192,9 +198,17 @@ export async function matchSkill(
   }
 
   // Filter out manual-only skills if requested
-  const eligibleSkills = excludeManualOnly
+  let eligibleSkills = excludeManualOnly
     ? skillEmbeddings.filter((se) => se.skill.trigger.type === "auto")
     : skillEmbeddings;
+
+  // Apply prefix filters
+  if (includePrefix) {
+    eligibleSkills = eligibleSkills.filter((se) => se.skill.id.startsWith(includePrefix));
+  }
+  if (excludePrefix) {
+    eligibleSkills = eligibleSkills.filter((se) => !se.skill.id.startsWith(excludePrefix));
+  }
 
   if (eligibleSkills.length === 0) {
     return null;

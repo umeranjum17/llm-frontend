@@ -838,6 +838,36 @@ export function useChat(chatId: string | null) {
 
       const cleanedMessage = cleanReferencesForLLM(getTextFromMessageContent(messageContent));
 
+      // Run skill matching for Claw flow so schedule/delegate/status skills apply
+      let clawSkill: Skill | null = null;
+      try {
+        const settings = await getSettings();
+        const embeddingsProvider = settings?.embeddingsProvider;
+        const embeddingsModelId = settings?.embeddingsModelId;
+        const threshold = settings?.skillMatchThreshold ?? 0.25;
+        if (embeddingsProvider && embeddingsModelId) {
+          const embeddingsApiKey = getKeyForProvider(embeddingsProvider);
+          if (embeddingsApiKey?.key) {
+            const matchResult = await matchSkill(
+              cleanedMessage,
+              embeddingsApiKey.key,
+              {
+                providerId: embeddingsProvider,
+                modelId: embeddingsModelId,
+                threshold,
+                excludeManualOnly: true,
+                includePrefix: "skill_builtin_claw_",
+              }
+            );
+            if (matchResult) {
+              clawSkill = matchResult.skill;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("[Claw] Skill matching failed, continuing without skill:", e);
+      }
+
       if (!clawStore.isConnected) {
         const errMsg = await addMessage({
           chatId: effectiveChatId,
@@ -849,25 +879,87 @@ export function useChat(chatId: string | null) {
         return;
       }
 
+      // Refresh Claw state for fresh context
+      await clawStore.refreshAll();
+      const freshClaw = useClawStore.getState();
+
+      // Build context: Claw state + conversation history
+      const clawContext: string[] = [];
+
+      // Inject Claw state summary
+      clawContext.push("[CLAW STATE]");
+      if (freshClaw.status) {
+        clawContext.push(`Status: ${freshClaw.status.status} | Uptime: ${Math.round((freshClaw.status.uptime || 0) / 60)}m`);
+      }
+      if (freshClaw.tasks.length > 0) {
+        clawContext.push(`Tasks (${freshClaw.tasks.length}):`);
+        for (const t of freshClaw.tasks.slice(0, 10)) {
+          clawContext.push(`  - [${t.status}] ${t.title}${t.id ? ` (id: ${t.id})` : ""}`);
+        }
+      }
+      if (freshClaw.schedules.length > 0) {
+        clawContext.push(`Schedules (${freshClaw.schedules.length}):`);
+        for (const s of freshClaw.schedules.slice(0, 10)) {
+          clawContext.push(`  - ${s.name} (${s.cronExpression}) ${s.enabled ? "enabled" : "disabled"}${s.nextRun ? ` next: ${s.nextRun}` : ""}`);
+        }
+      }
+      if (freshClaw.activity.length > 0) {
+        clawContext.push(`Recent activity:`);
+        for (const a of freshClaw.activity.slice(0, 5)) {
+          clawContext.push(`  - ${a.action}${a.details ? `: ${a.details}` : ""} (${a.timestamp})`);
+        }
+      }
+      clawContext.push("");
+
+      // Inject recent conversation history so Claw has conversational context
       try {
-        const { response, taskId } = await clawStore.chatWithClaw(cleanedMessage);
+        const history = parentUserMessageId
+          ? await getMessagesForBranch(effectiveChatId, parentUserMessageId)
+          : await getMessages(effectiveChatId);
+        const recentHistory = history.slice(-10); // Last 10 messages
+        if (recentHistory.length > 0) {
+          clawContext.push("[CONVERSATION HISTORY]");
+          for (const msg of recentHistory) {
+            const text = getTextFromMessageContent(msg.content);
+            if (text.trim()) {
+              clawContext.push(`${msg.role}: ${text.slice(0, 500)}`);
+            }
+          }
+          clawContext.push("");
+        }
+      } catch (e) {
+        console.warn("[Claw] Failed to load conversation history:", e);
+      }
+
+      // Inject matched skill instructions if a claw skill was auto-detected
+      if (clawSkill?.systemPrompt) {
+        clawContext.push("[SKILL INSTRUCTIONS]");
+        clawContext.push(clawSkill.systemPrompt);
+        clawContext.push("");
+      }
+
+      clawContext.push(`[USER MESSAGE]\n${cleanedMessage}`);
+      const enrichedMessage = clawContext.join("\n");
+
+      // Create placeholder message to show loading skeleton
+      const placeholderMsg = await addMessage({
+        chatId: effectiveChatId,
+        role: "assistant",
+        content: "",
+        parentId: parentUserMessageId,
+      });
+      await updateChat(effectiveChatId, { activeBranchLeafId: placeholderMsg.id });
+      setStreamingMessage(effectiveChatId, placeholderMsg.id);
+
+      try {
+        const { response, taskId } = await clawStore.chatWithClaw(enrichedMessage);
         const content = taskId ? `${response}\n\n*Task ID: ${taskId}*` : response;
-        const assistantMsg = await addMessage({
-          chatId: effectiveChatId,
-          role: "assistant",
-          content,
-          parentId: parentUserMessageId,
-        });
-        await updateChat(effectiveChatId, { activeBranchLeafId: assistantMsg.id });
+        await updateMessage(placeholderMsg.id, { content });
+        clearStreaming(effectiveChatId);
         return;
       } catch (e) {
-        const errMsg = await addMessage({
-          chatId: effectiveChatId,
-          role: "assistant",
-          content: `Claw error: ${(e as Error).message}`,
-          parentId: parentUserMessageId,
-        });
-        await updateChat(effectiveChatId, { activeBranchLeafId: errMsg.id });
+        await updateMessage(placeholderMsg.id, { content: `Claw error: ${(e as Error).message}` });
+        clearStreaming(effectiveChatId);
         return;
       }
     }
@@ -2092,6 +2184,7 @@ export function useChat(chatId: string | null) {
                   threshold,
                   excludeManualOnly: true, // Only match auto-trigger skills
                   conversationContext,
+                  excludePrefix: "skill_builtin_claw_",
                 }
               );
 

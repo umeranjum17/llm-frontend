@@ -2,28 +2,27 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Palette } from "lucide-react";
+import { ChevronLeft, ChevronRight, Palette, Keyboard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExportButton } from "@/components/artifacts/export-button";
-import { Badge } from "@/components/ui/badge";
 
 interface SlidesViewerProps {
   content: string;
 }
 
 const REVEAL_THEMES = [
-  { id: "black", label: "Black" },
-  { id: "white", label: "White" },
-  { id: "moon", label: "Moon" },
-  { id: "night", label: "Night" },
-  { id: "league", label: "League" },
-  { id: "solarized", label: "Solarized" },
-  { id: "dracula", label: "Dracula" },
-  { id: "beige", label: "Beige" },
-  { id: "sky", label: "Sky" },
-  { id: "serif", label: "Serif" },
-  { id: "simple", label: "Simple" },
-  { id: "blood", label: "Blood" },
+  { id: "black", label: "Black", swatch: "#191919", text: "#fff" },
+  { id: "white", label: "White", swatch: "#fff", text: "#222" },
+  { id: "moon", label: "Moon", swatch: "#002b36", text: "#93a1a1" },
+  { id: "night", label: "Night", swatch: "#111", text: "#eee" },
+  { id: "league", label: "League", swatch: "#2b2b2b", text: "#eee" },
+  { id: "solarized", label: "Solarized", swatch: "#fdf6e3", text: "#657b83" },
+  { id: "dracula", label: "Dracula", swatch: "#282a36", text: "#f8f8f2" },
+  { id: "beige", label: "Beige", swatch: "#f7f3de", text: "#333" },
+  { id: "sky", label: "Sky", swatch: "#add9e4", text: "#333" },
+  { id: "serif", label: "Serif", swatch: "#f0edde", text: "#000" },
+  { id: "simple", label: "Simple", swatch: "#fff", text: "#000" },
+  { id: "blood", label: "Blood", swatch: "#222", text: "#a23" },
 ] as const;
 
 function countSlides(content: string): number {
@@ -50,6 +49,7 @@ function buildRevealHtml(content: string, theme: string): string {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.min.css">
 <link id="reveal-theme" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/${theme}.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.min.css">
 <style>
   html, body { margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; }
   .reveal { width: 100%; height: 100%; }
@@ -92,6 +92,7 @@ function buildRevealHtml(content: string, theme: string): string {
     font-size: 0.55em;
     width: 100%;
     box-shadow: none;
+    border-radius: 8px;
   }
   .reveal .slides section blockquote {
     width: 90%;
@@ -114,7 +115,7 @@ function buildRevealHtml(content: string, theme: string): string {
     max-width: 100%;
   }
   .reveal .controls { display: none !important; }
-  .reveal .progress { height: 3px; }
+  .reveal .progress { height: 2px; opacity: 0.7; }
 </style>
 </head>
 <body>
@@ -129,6 +130,7 @@ ${escaped}
 </div>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.min.js"><\/script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/markdown/markdown.min.js"><\/script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.min.js"><\/script>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"><\/script>
 <script>
   mermaid.initialize({
@@ -150,15 +152,20 @@ ${escaped}
     hash: false,
     controls: false,
     progress: true,
+    center: true,
     transition: 'slide',
+    transitionSpeed: 'default',
+    backgroundTransition: 'fade',
     embedded: true,
     keyboardCondition: 'focused',
-    width: '100%',
-    height: '100%',
-    margin: 0,
-    minScale: 0.5,
+    width: 960,
+    height: 700,
+    margin: 0.04,
+    minScale: 0.2,
     maxScale: 2.0,
-    plugins: [RevealMarkdown],
+    autoAnimate: true,
+    autoAnimateDuration: 0.7,
+    plugins: [RevealMarkdown, RevealHighlight],
   }).then(function() {
     // Render mermaid diagrams after reveal.js processes markdown
     document.querySelectorAll('pre code.language-mermaid, pre code.mermaid').forEach(function(block) {
@@ -214,6 +221,7 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
   const [ready, setReady] = useState(false);
   const [theme, setTheme] = useState("black");
   const [showThemes, setShowThemes] = useState(false);
+  const [showKeys, setShowKeys] = useState(false);
 
   const html = useMemo(() => buildRevealHtml(content, theme), [content, theme]);
 
@@ -246,6 +254,9 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
     setShowThemes(false);
   }, [postMessage]);
 
+  // Progress percentage
+  const progress = total > 1 ? (current / (total - 1)) * 100 : 100;
+
   if (total === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -255,47 +266,84 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
   }
 
   return (
-    <div className="flex flex-col h-full bg-black">
+    <div className="flex flex-col h-full" style={{ background: "#0c0c0c" }}>
       {/* Header */}
-      <div className="shrink-0 flex items-center justify-between px-3 py-1.5 bg-black/90 border-b border-white/5">
+      <div className="shrink-0 flex items-center justify-between px-3 py-1.5 border-b border-white/[0.06]" style={{ background: "#111" }}>
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-white/70">Slides</span>
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-normal text-white/50 border-white/10">
-            reveal.js
-          </Badge>
-        </div>
-
-        <div className="flex items-center gap-1">
           {/* Theme picker */}
           <div className="relative">
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 gap-1.5 text-xs text-white/60 hover:text-white hover:bg-white/10"
-              onClick={() => setShowThemes(!showThemes)}
+              className="h-7 gap-1.5 text-xs text-white/50 hover:text-white hover:bg-white/[0.06] rounded-md"
+              onClick={() => { setShowThemes(!showThemes); setShowKeys(false); }}
             >
               <Palette className="h-3 w-3" />
               <span className="hidden sm:inline capitalize">{theme}</span>
             </Button>
             {showThemes && (
-              <div className="absolute right-0 top-full mt-1 z-50 bg-neutral-900 border border-white/10 rounded-lg shadow-xl p-1 min-w-[120px] max-h-[200px] overflow-y-auto">
+              <div
+                className="absolute left-0 top-full mt-1.5 z-50 rounded-xl shadow-2xl p-2 grid grid-cols-3 gap-1 min-w-[240px]"
+                style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.08)" }}
+              >
                 {REVEAL_THEMES.map((t) => (
                   <button
                     key={t.id}
                     className={cn(
-                      "w-full text-left text-xs px-3 py-1.5 rounded hover:bg-white/10 transition-colors",
-                      t.id === theme ? "text-primary bg-white/5" : "text-white/70"
+                      "flex items-center gap-2 text-xs px-2.5 py-2 rounded-lg transition-all",
+                      t.id === theme
+                        ? "ring-1 ring-primary/60 bg-white/[0.06]"
+                        : "hover:bg-white/[0.06]"
                     )}
                     onClick={() => changeTheme(t.id)}
                   >
-                    {t.label}
+                    <span
+                      className="w-4 h-4 rounded-full shrink-0 ring-1 ring-inset ring-black/10"
+                      style={{ background: t.swatch }}
+                    />
+                    <span className={t.id === theme ? "text-white font-medium" : "text-white/60"}>
+                      {t.label}
+                    </span>
                   </button>
                 ))}
               </div>
             )}
           </div>
 
-          {/* Export */}
+          {/* Keyboard hints */}
+          <div className="relative hidden sm:block">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-white/30 hover:text-white/60 hover:bg-white/[0.06]"
+              onClick={() => { setShowKeys(!showKeys); setShowThemes(false); }}
+            >
+              <Keyboard className="h-3 w-3" />
+            </Button>
+            {showKeys && (
+              <div
+                className="absolute left-0 top-full mt-1.5 z-50 rounded-xl shadow-2xl p-3 min-w-[180px] space-y-1.5"
+                style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.08)" }}
+              >
+                <div className="text-[10px] text-white/30 uppercase tracking-wider font-medium mb-2">Keyboard shortcuts</div>
+                {[
+                  ["← →", "Navigate slides"],
+                  ["Space", "Next slide"],
+                  ["Esc", "Overview mode"],
+                  ["F", "Fullscreen"],
+                  ["S", "Speaker notes"],
+                ].map(([key, desc]) => (
+                  <div key={key} className="flex items-center justify-between gap-3">
+                    <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-white/[0.08] text-white/60 font-mono">{key}</kbd>
+                    <span className="text-[10px] text-white/40">{desc}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1">
           <ExportButton
             label="PPTX"
             onClick={async () => {
@@ -327,39 +375,49 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
       </div>
 
       {/* Controls */}
-      <div className="shrink-0 flex items-center justify-center gap-3 sm:gap-4 py-2.5 px-4 bg-black/90 border-t border-white/5">
+      <div className="shrink-0 flex items-center justify-center gap-3 sm:gap-4 py-2 px-4 border-t border-white/[0.06] relative" style={{ background: "#111" }}>
+        {/* Progress bar */}
+        <div className="absolute top-0 left-0 right-0 h-[2px] bg-white/[0.04]">
+          <div
+            className="h-full bg-primary/60 transition-all duration-300 ease-out"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 text-white/60 hover:text-white hover:bg-white/10"
+          className="h-8 w-8 text-white/40 hover:text-white hover:bg-white/[0.06] disabled:opacity-20"
           onClick={prev}
           disabled={!ready || current === 0}
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           {Array.from({ length: total }, (_, i) => (
             <button
               key={i}
               type="button"
               onClick={() => goTo(i)}
               className={cn(
-                "h-2 rounded-full transition-all",
-                i === current ? "w-6 bg-primary" : "w-2 bg-white/20 hover:bg-white/40"
+                "rounded-full transition-all duration-200",
+                i === current
+                  ? "w-5 h-2 bg-primary/80"
+                  : "w-2 h-2 bg-white/15 hover:bg-white/30"
               )}
             />
           ))}
         </div>
 
-        <span className="text-xs text-white/50 tabular-nums min-w-[3rem] text-center">
-          {current + 1} / {total}
+        <span className="text-[11px] text-white/30 tabular-nums min-w-[3rem] text-center font-mono">
+          {current + 1}<span className="text-white/15"> / </span>{total}
         </span>
 
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 text-white/60 hover:text-white hover:bg-white/10"
+          className="h-8 w-8 text-white/40 hover:text-white hover:bg-white/[0.06] disabled:opacity-20"
           onClick={next}
           disabled={!ready || current === total - 1}
         >
@@ -367,9 +425,9 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
         </Button>
       </div>
 
-      {/* Close theme picker on outside click */}
-      {showThemes && (
-        <div className="fixed inset-0 z-40" onClick={() => setShowThemes(false)} />
+      {/* Backdrop for dropdowns */}
+      {(showThemes || showKeys) && (
+        <div className="fixed inset-0 z-40" onClick={() => { setShowThemes(false); setShowKeys(false); }} />
       )}
     </div>
   );

@@ -96,6 +96,9 @@ import { toast } from "sonner";
 import { getActionableError } from "@/lib/utils/error-messages";
 import { EmptyState } from "@/components/ui/empty-state";
 import { EmptyStateWelcome } from "@/components/chat/empty-state-welcome";
+import { ClawAgentEnrichment } from "@/components/chat/claw-agent-enrichment";
+import { useClawStore } from "@/stores/claw-store";
+import { useUnreadCount } from "@/stores/claw-notification-store";
 import { MessageSquare, Eye, Brain, Wrench, Code, Zap, DollarSign, Sparkles, AlertTriangle, ImageIcon } from "lucide-react";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { formatModelCost } from "@/components/model-picker/model-item";
@@ -157,6 +160,12 @@ export function ChatShell() {
   const autoTaggingEnabled = useSettingsStore((state) => state.autoTaggingEnabled);
   const lastProviderIdByModel = useSettingsStore((state) => state.lastProviderIdByModel);
   const updateLastProviderForModel = useSettingsStore((state) => state.updateLastProviderForModel);
+  const clawEnabled = useSettingsStore((state) => state.clawEnabled);
+  const clawIsConnected = useClawStore((s) => s.isConnected);
+  const clawIsConnecting = useClawStore((s) => s.isConnecting);
+  const clawKeysSynced = useClawStore((s) => s.keysSynced);
+  const clawError = useClawStore((s) => s.error);
+  const clawUnreadCount = useUnreadCount();
 
   const llmProviderIds = useMemo(
     () =>
@@ -720,13 +729,20 @@ export function ChatShell() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="hidden sm:flex h-8 gap-1.5 px-3 text-xs font-medium border-border/50"
+                      className="hidden sm:flex h-8 gap-1.5 px-3 text-xs font-medium border-border/50 relative"
                       onClick={() => setAgentPickerOpen(true)}
                     >
                       <div className="flex items-center gap-1.5">
                         {currentAgent ? (
                           <>
-                            <span className="text-sm leading-none">{currentAgent.avatar || "🤖"}</span>
+                            <div className="relative">
+                              <span className="text-sm leading-none">{currentAgent.avatar || "🤖"}</span>
+                              {clawEnabled && (
+                                <span className={`absolute -bottom-0.5 -right-1 h-1.5 w-1.5 rounded-full ring-1 ring-background ${
+                                  clawError ? "bg-red-500" : clawIsConnecting ? "bg-blue-500 animate-pulse" : clawIsConnected && clawKeysSynced ? "bg-emerald-500" : clawIsConnected ? "bg-yellow-500" : "bg-muted-foreground"
+                                }`} />
+                              )}
+                            </div>
                             <div className="flex flex-col items-start leading-none">
                               <span className="max-w-[120px] truncate font-medium">
                                 {currentAgent.name}
@@ -749,8 +765,16 @@ export function ChatShell() {
                           </>
                         )}
                       </div>
+                      {clawEnabled && clawUnreadCount > 0 && (
+                        <span className="flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold leading-none">
+                          {clawUnreadCount > 9 ? "9+" : clawUnreadCount}
+                        </span>
+                      )}
                     </Button>
                   )}
+
+                  {/* Claw status + notifications - only show when no agent is selected */}
+                  {!currentAgent && <ClawAgentEnrichment />}
 
                   {/* Model Selector - simplified on mobile */}
                   {!isMultiModelMode && chat && !(currentAgent?.executionType === "pipeline" && currentAgent.pipeline?.steps?.length) && (

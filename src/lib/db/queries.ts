@@ -954,8 +954,12 @@ export async function incrementPromptUsage(promptId: string) {
 
 // ============= SKILL QUERIES =============
 
+/** Prefix for skills that are internal-only (not shown in UI, only matched in their agent flow) */
+const HIDDEN_SKILL_PREFIX = "skill_builtin_claw_";
+
 export async function getAllSkills() {
-  return await db.skills.orderBy("updatedAt").reverse().toArray();
+  const all = await db.skills.orderBy("updatedAt").reverse().toArray();
+  return all.filter((s) => !s.id.startsWith(HIDDEN_SKILL_PREFIX));
 }
 
 export async function getSkillById(id: string) {
@@ -963,15 +967,15 @@ export async function getSkillById(id: string) {
 }
 
 export async function getEnabledSkills() {
-  return await db.skills.filter((s) => s.isEnabled).toArray();
+  return await db.skills.filter((s) => s.isEnabled && !s.id.startsWith(HIDDEN_SKILL_PREFIX)).toArray();
 }
 
 export async function getAutoTriggerSkills() {
-  return await db.skills.filter((s) => s.isEnabled && s.trigger.type === "auto").toArray();
+  return await db.skills.filter((s) => s.isEnabled && s.trigger.type === "auto" && !s.id.startsWith(HIDDEN_SKILL_PREFIX)).toArray();
 }
 
 export async function getFavoriteSkills() {
-  return await db.skills.filter((s) => s.isFavorite === true).toArray();
+  return await db.skills.filter((s) => s.isFavorite === true && !s.id.startsWith(HIDDEN_SKILL_PREFIX)).toArray();
 }
 
 export async function getSkillsByCategory(category: string) {

@@ -213,8 +213,14 @@ export const useClawStore = create<ClawState>((set, get) => ({
     try {
       const settings = await getSettings();
       if (settings.clawEnabled && settings.clawUrl && settings.clawSecret) {
+        console.log("[Claw] Auto-connecting to", settings.clawUrl);
         await get().connect(settings.clawUrl, settings.clawSecret);
+        console.log("[Claw] Auto-connect result:", get().isConnected ? "connected" : "failed", get().error);
+      } else {
+        console.log("[Claw] Skipping auto-connect — enabled:", settings.clawEnabled, "url:", !!settings.clawUrl, "secret:", !!settings.clawSecret);
       }
-    } catch { /* settings not loaded yet */ }
+    } catch (e) {
+      console.warn("[Claw] initFromSettings error:", e);
+    }
   },
 }));

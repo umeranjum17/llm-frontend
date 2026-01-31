@@ -1281,7 +1281,7 @@ Check context below for available tools/models. After creating, click "Convert t
   {
     id: "skill_builtin_claw_delegate",
     name: "Delegate to Claw",
-    description: "send this to Claw, have Claw handle this, delegate to Claw, create a task for Claw, Claw should do this, ask Claw to do this, background task",
+    description: "delegate a one-off task to Claw — search for something, check emails, look into a topic, handle a background job",
     category: "productivity",
     systemPrompt: `The user wants to delegate a task to Claw, their background AI agent.
 
@@ -1299,15 +1299,25 @@ Rules:
     trigger: { type: "auto" },
     autoApplyQueries: [
       "send this to Claw",
-      "have Claw handle this",
       "delegate to Claw",
-      "create a task for Claw",
-      "Claw should do this",
+      "do this for me in the background",
+      "handle this task",
+      "go do this",
+      "can you take care of this",
+      "run this for me",
+      "search for something and report back",
+      "check my emails",
+      "look into this and let me know",
     ],
     exclusionQueries: [
       "what is Claw",
       "how does Claw work",
       "tell me about Claw",
+      "what are you doing",
+      "show my tasks",
+      "every day",
+      "every hour",
+      "every 30 minutes",
     ],
     ui: {
       icon: "Send",
@@ -1323,7 +1333,7 @@ Rules:
   {
     id: "skill_builtin_claw_schedule",
     name: "Schedule with Claw",
-    description: "schedule a task with Claw, set up a recurring task, every day at 9am, cron job for Claw, remind me daily via Claw, schedule Claw to check",
+    description: "schedule a recurring task — every 30 minutes, daily, hourly, weekly, periodically monitor or search something",
     category: "productivity",
     systemPrompt: `The user wants to create a scheduled/recurring task for Claw, their background AI agent.
 
@@ -1346,16 +1356,26 @@ Rules:
 - After the code fence, confirm: "Schedule created in Claw."`,
     trigger: { type: "auto" },
     autoApplyQueries: [
-      "schedule a task with Claw",
+      "do this every 30 minutes",
+      "search reddit every hour",
+      "check this daily",
+      "every morning at 9am",
+      "run this on a schedule",
       "set up a recurring task",
-      "every day at 9am check",
-      "cron job for Claw",
-      "schedule Claw to",
+      "monitor this every hour",
+      "remind me every day",
+      "do this weekly",
+      "every night check",
+      "periodically search for",
+      "keep checking every",
     ],
     exclusionQueries: [
-      "what are Claw's schedules",
+      "what are my schedules",
       "show my schedules",
+      "list schedules",
       "explain cron syntax",
+      "delete schedule",
+      "what are you doing",
     ],
     ui: {
       icon: "Calendar",
@@ -1371,7 +1391,7 @@ Rules:
   {
     id: "skill_builtin_claw_status",
     name: "Claw Status",
-    description: "what's Claw doing, Claw status, show my Claw tasks, Claw activity, is Claw running, check on Claw, Claw tasks",
+    description: "check status, show tasks, list schedules, see what's running, any updates or activity",
     category: "productivity",
     systemPrompt: `The user wants to check on Claw, their background AI agent.
 
@@ -1393,16 +1413,24 @@ You will receive Claw's current status data injected into the conversation conte
 If no tasks or activity, say so. Be concise.`,
     trigger: { type: "auto" },
     autoApplyQueries: [
-      "what's Claw doing",
-      "Claw status",
-      "show my Claw tasks",
-      "is Claw running",
-      "check on Claw",
+      "what are you doing right now",
+      "show me your tasks",
+      "what's your status",
+      "are you running anything",
+      "what jobs are active",
+      "show my schedules",
+      "list all tasks",
+      "any updates",
+      "what's happening",
+      "check status",
     ],
     exclusionQueries: [
-      "create a task for Claw",
-      "send this to Claw",
-      "schedule with Claw",
+      "do this for me",
+      "search for",
+      "create a task",
+      "schedule this",
+      "every day",
+      "run this",
     ],
     ui: {
       icon: "Activity",

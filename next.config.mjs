@@ -124,7 +124,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https:",
               "font-src 'self' data:",
-              "connect-src 'self' https: wss:",
+              "connect-src 'self' https: wss: http://localhost:* http://100.0.0.0/8",
               "frame-src 'self' https://codesandbox.io https://stackblitz.com",
               "worker-src 'self' blob:",
               "media-src 'self' blob:",
