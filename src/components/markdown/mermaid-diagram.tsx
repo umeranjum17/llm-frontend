@@ -16,7 +16,38 @@ async function getMermaid() {
       startOnLoad: false,
       theme: "dark",
       securityLevel: "loose",
-      fontFamily: "inherit",
+      fontFamily: "ui-sans-serif, system-ui, -apple-system, sans-serif",
+      themeVariables: {
+        darkMode: true,
+        background: "#0d1117",
+        primaryColor: "#1f6feb",
+        primaryTextColor: "#e6edf3",
+        primaryBorderColor: "#388bfd",
+        secondaryColor: "#161b22",
+        secondaryTextColor: "#e6edf3",
+        secondaryBorderColor: "#30363d",
+        tertiaryColor: "#161b22",
+        tertiaryTextColor: "#e6edf3",
+        tertiaryBorderColor: "#30363d",
+        lineColor: "#8b949e",
+        textColor: "#e6edf3",
+        mainBkg: "#1f6feb",
+        nodeBorder: "#388bfd",
+        clusterBkg: "#161b22",
+        clusterBorder: "#30363d",
+        titleColor: "#e6edf3",
+        edgeLabelBackground: "#0d1117",
+        nodeTextColor: "#e6edf3",
+      },
+      flowchart: { useMaxWidth: true, htmlLabels: true, padding: 16, curve: "basis" },
+      sequence: { useMaxWidth: true, wrap: true },
+      gantt: { useMaxWidth: true },
+      class: { useMaxWidth: true },
+      state: { useMaxWidth: true },
+      er: { useMaxWidth: true },
+      pie: { useMaxWidth: true },
+      journey: { useMaxWidth: true },
+      mindmap: { useMaxWidth: true },
     });
   }
   return mermaidInstance;
@@ -145,7 +176,7 @@ export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: 
         >
           {svg ? (
             <div
-              className="w-fit [&>svg]:h-auto [&>svg]:overflow-visible"
+              className="w-full flex justify-center [&>svg]:max-w-full [&>svg]:h-auto"
               dangerouslySetInnerHTML={{ __html: svg }}
             />
           ) : (
@@ -170,7 +201,7 @@ export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: 
             </Button>
           </div>
           <div
-            className="mermaid-container max-w-full max-h-full overflow-auto [&>svg]:max-w-full [&>svg]:h-auto [&>svg]:overflow-visible"
+            className="mermaid-container w-full max-w-[90vw] max-h-[85vh] overflow-auto flex items-center justify-center p-4 [&>svg]:max-w-full [&>svg]:h-auto"
             dangerouslySetInnerHTML={{ __html: svg }}
             onClick={(e) => e.stopPropagation()}
           />

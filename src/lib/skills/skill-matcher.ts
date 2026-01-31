@@ -89,7 +89,9 @@ export function cosineSimilarity(a: number[], b: number[]): number {
     return 0;
   }
 
-  return dotProduct / (normA * normB);
+  const result = dotProduct / (normA * normB);
+  if (!isFinite(result)) return 0;
+  return result;
 }
 
 /**
@@ -214,6 +216,10 @@ export async function matchSkill(
     return null;
   }
 
+  if (messageEmbedding.length === 0) {
+    return null;
+  }
+
   // Find best match using cosine similarity with positive/exclusion adjustments
   let bestMatch: SkillMatchResult | null = null;
   let bestScore = 0;
@@ -225,12 +231,13 @@ export async function matchSkill(
     if (skill.autoApplyEmbeddings && skill.autoApplyEmbeddings.length > 0) {
       // Find best matching trigger phrase (MAX similarity)
       for (const queryEmbedding of skill.autoApplyEmbeddings) {
+        if (queryEmbedding.length !== messageEmbedding.length) continue;
         const sim = cosineSimilarity(messageEmbedding, queryEmbedding);
         if (sim > primaryScore) {
           primaryScore = sim;
         }
       }
-    } else {
+    } else if (embedding.length === messageEmbedding.length) {
       // Fallback: use description embedding for backward compatibility
       primaryScore = cosineSimilarity(messageEmbedding, embedding);
     }
@@ -239,10 +246,17 @@ export async function matchSkill(
     let exclusionPenalty = 0;
     if (skill.exclusionEmbeddings && skill.exclusionEmbeddings.length > 0) {
       let totalExclusion = 0;
+      let countedExclusions = 0;
       for (const queryEmbedding of skill.exclusionEmbeddings) {
+        if (queryEmbedding.length !== messageEmbedding.length) continue;
         totalExclusion += cosineSimilarity(messageEmbedding, queryEmbedding);
+        countedExclusions++;
       }
-      exclusionPenalty = (totalExclusion / skill.exclusionEmbeddings.length) * EXCLUSION_QUERY_WEIGHT;
+      if (countedExclusions === 0) {
+        exclusionPenalty = 0;
+      } else {
+        exclusionPenalty = (totalExclusion / countedExclusions) * EXCLUSION_QUERY_WEIGHT;
+      }
     }
 
     // Final score = primary match - exclusion penalty
@@ -289,6 +303,10 @@ export async function getAllSkillMatches(
     return [];
   }
 
+  if (messageEmbedding.length === 0) {
+    return [];
+  }
+
   // Calculate similarity for all skills
   const matches: SkillMatchResult[] = [];
 
@@ -297,12 +315,13 @@ export async function getAllSkillMatches(
 
     if (skill.autoApplyEmbeddings && skill.autoApplyEmbeddings.length > 0) {
       for (const queryEmbedding of skill.autoApplyEmbeddings) {
+        if (queryEmbedding.length !== messageEmbedding.length) continue;
         const sim = cosineSimilarity(messageEmbedding, queryEmbedding);
         if (sim > similarity) {
           similarity = sim;
         }
       }
-    } else if (embedding.length > 0) {
+    } else if (embedding.length > 0 && embedding.length === messageEmbedding.length) {
       similarity = cosineSimilarity(messageEmbedding, embedding);
     } else {
       continue;

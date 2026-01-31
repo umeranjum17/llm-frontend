@@ -1,5 +1,6 @@
 import { db, type Chat, type Message, type Project, type ProjectFile, type ModelFavorite, type ApiKey, type UserSettings, type Agent, type Prompt, type Skill, type ModelAlias, type McpServer, type Folder, type Tag, type ContextSummary, type ChatDraft } from "./schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
+import { autoGenerateEmbeddingsForSkill } from "@/lib/skills/skill-embeddings";
 
 // Re-export db for direct access when needed (e.g., batch operations)
 export { db };
@@ -977,6 +978,17 @@ export async function getSkillsByCategory(category: string) {
   return await db.skills.where("category").equals(category).toArray();
 }
 
+export async function isSkillNameTaken(
+  name: string,
+  excludeId?: string
+): Promise<boolean> {
+  const normalized = name.trim().toLowerCase();
+  const match = await db.skills
+    .filter(s => s.name.trim().toLowerCase() === normalized && s.id !== (excludeId ?? ""))
+    .first();
+  return !!match;
+}
+
 export async function addSkill(skill: Omit<Skill, "id" | "createdAt" | "updatedAt" | "usageCount">) {
   const now = Date.now();
   const newSkill: Skill = {
@@ -987,15 +999,24 @@ export async function addSkill(skill: Omit<Skill, "id" | "createdAt" | "updatedA
     usageCount: 0,
   };
   await db.skills.add(newSkill);
+  // Auto-generate embeddings in background if needed
+  autoGenerateEmbeddingsForSkill(newSkill);
   return newSkill;
 }
 
 export async function upsertSkill(skill: Skill) {
   await db.skills.put({ ...skill, updatedAt: Date.now() });
+  // Auto-generate embeddings in background if needed
+  autoGenerateEmbeddingsForSkill(skill);
 }
 
 export async function updateSkill(id: string, updates: Partial<Skill>) {
   await db.skills.update(id, { ...updates, updatedAt: Date.now() });
+  // Auto-generate embeddings in background if description/queries changed
+  if (updates.description || updates.autoApplyQueries || updates.exclusionQueries || updates.trigger) {
+    const skill = await db.skills.get(id);
+    if (skill) autoGenerateEmbeddingsForSkill(skill);
+  }
 }
 
 export async function deleteSkill(id: string) {
@@ -1030,10 +1051,15 @@ export async function toggleSkillFavorite(skillId: string) {
 export async function toggleSkillEnabled(skillId: string) {
   const skill = await db.skills.get(skillId);
   if (!skill) return;
+  const nowEnabled = !skill.isEnabled;
   await db.skills.update(skillId, {
-    isEnabled: !skill.isEnabled,
+    isEnabled: nowEnabled,
     updatedAt: Date.now(),
   });
+  // When enabling a skill, auto-generate embeddings if missing
+  if (nowEnabled) {
+    autoGenerateEmbeddingsForSkill({ ...skill, isEnabled: true });
+  }
 }
 
 // ============= SKILL AUTO-APPLY QUERIES =============

@@ -258,7 +258,7 @@ export default function Home() {
   return (
     <div className="h-[100dvh] p-0 sm:p-2">
       <div className={cn(
-        "h-full overflow-hidden rounded-none border-0 bg-background/70 shadow-[0_18px_70px_-40px_rgba(15,23,42,0.6)] backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:rounded-2xl sm:border",
+        "h-full overflow-hidden rounded-none border-0 bg-background/90 shadow-[0_18px_70px_-40px_rgba(15,23,42,0.6)] backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:rounded-2xl sm:border",
         isWideScreen && "max-w-[2560px] mx-auto"
       )}>
         {isMobile || isFocusMode ? (

@@ -89,18 +89,31 @@ export async function loadEmbeddingsCache(): Promise<void> {
         });
       }
 
-      // Track auto-trigger skills missing BOTH embedding sources
-      // These need embeddings generated to work properly
-      if (skill.trigger.type === "auto" && !descriptionEmbedding && !hasAutoApplyEmbeddings) {
+      // Track skills that need any embedding generated:
+      // - Auto-trigger skills missing description embedding
+      // - Skills with autoApplyQueries but no autoApplyEmbeddings
+      // - Skills with exclusionQueries but no exclusionEmbeddings
+      // - Skills whose description hash changed
+      const needsDescriptionEmbedding = skill.trigger.type === "auto" && !descriptionEmbedding;
+      const needsAutoApplyEmbeddings = skill.autoApplyQueries && skill.autoApplyQueries.length > 0 && !hasAutoApplyEmbeddings;
+      const needsExclusionEmbeddings = skill.exclusionQueries && skill.exclusionQueries.length > 0 &&
+        (!skill.exclusionEmbeddings || skill.exclusionEmbeddings.length === 0);
+      const descriptionChanged = descriptionEmbedding && embeddingMap.has(skill.id) &&
+        (() => {
+          const existing = embeddings.find(e => e.skillId === skill.id);
+          return existing && existing.descriptionHash !== hashString(skill.description);
+        })();
+
+      if (needsDescriptionEmbedding || needsAutoApplyEmbeddings || needsExclusionEmbeddings || descriptionChanged) {
         skillsMissingEmbeddings.push(skill);
       }
     }
 
     cacheInitialized = true;
 
-    // Auto-generate embeddings for missing skills (non-blocking)
+    // Auto-generate embeddings for skills with missing/outdated embeddings (non-blocking)
     if (skillsMissingEmbeddings.length > 0) {
-      console.log(`[Skill Embeddings] ${skillsMissingEmbeddings.length} auto-trigger skills need embeddings:`,
+      console.log(`[Skill Embeddings] ${skillsMissingEmbeddings.length} skills need embedding generation:`,
         skillsMissingEmbeddings.map(s => s.name).join(", "));
       autoGenerateMissingEmbeddings(skillsMissingEmbeddings);
     }
@@ -253,6 +266,8 @@ export async function generateSkillEmbedding(
   providerId: string = "openrouter",
   modelId?: string
 ): Promise<GenerateEmbeddingResult> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
   try {
     const response = await fetch("/api/embeddings", {
       method: "POST",
@@ -265,6 +280,7 @@ export async function generateSkillEmbedding(
         providerId,
         modelId,
       }),
+      signal: controller.signal,
     });
 
     if (!response.ok) {
@@ -322,6 +338,8 @@ export async function generateSkillEmbedding(
       error: errorMessage,
       skillName: skill.name
     };
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -436,6 +454,27 @@ export async function regenerateAllEmbeddings(
 }
 
 /**
+ * Auto-generate embeddings for a single skill if needed.
+ * Call this after creating or updating a skill to ensure embeddings stay current.
+ * Runs in the background without blocking.
+ */
+export function autoGenerateEmbeddingsForSkill(skill: Skill): void {
+  if (!skill.isEnabled) return;
+
+  // Check if skill actually needs any embeddings
+  const needsDescription = skill.trigger.type === "auto";
+  const needsAutoApply = skill.autoApplyQueries && skill.autoApplyQueries.length > 0;
+  const needsExclusion = skill.exclusionQueries && skill.exclusionQueries.length > 0;
+
+  if (!needsDescription && !needsAutoApply && !needsExclusion) return;
+
+  // Fire and forget - runs in background
+  autoGenerateMissingEmbeddings([skill]).then(() => {
+    console.log(`[Skill Embeddings] Background generation complete for "${skill.name}"`);
+  });
+}
+
+/**
  * Delete embedding for a skill
  */
 export async function deleteSkillEmbedding(skillId: string): Promise<void> {
@@ -538,6 +577,8 @@ export async function getEmbedding(
   providerId: string = "openrouter",
   modelId?: string
 ): Promise<number[] | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
   try {
     const response = await fetch("/api/embeddings", {
       method: "POST",
@@ -550,6 +591,7 @@ export async function getEmbedding(
         providerId,
         modelId,
       }),
+      signal: controller.signal,
     });
 
     if (!response.ok) {
@@ -575,6 +617,8 @@ export async function getEmbedding(
     const classifiedError = classifyEmbeddingError(0, errorMessage);
     console.warn(`[Skill Embeddings] ${classifiedError.type} error: ${classifiedError.message}`);
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -587,6 +631,8 @@ export async function getEmbeddingWithError(
   providerId: string = "openrouter",
   modelId?: string
 ): Promise<EmbeddingResult> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
   try {
     const response = await fetch("/api/embeddings", {
       method: "POST",
@@ -599,6 +645,7 @@ export async function getEmbeddingWithError(
         providerId,
         modelId,
       }),
+      signal: controller.signal,
     });
 
     if (!response.ok) {
@@ -621,5 +668,7 @@ export async function getEmbeddingWithError(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return { success: false, error: classifyEmbeddingError(0, errorMessage) };
+  } finally {
+    clearTimeout(timeoutId);
   }
 }

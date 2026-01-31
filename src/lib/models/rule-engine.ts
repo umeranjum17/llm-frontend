@@ -155,7 +155,13 @@ export class RuleEngine {
       if (rule.default !== undefined) {
         capabilities[capabilityName] = rule.default;
       } else {
-        capabilities[capabilityName] = this.matchesCapabilityRule(combinedText, model, rule);
+        const ruleMatch = this.matchesCapabilityRule(combinedText, model, rule);
+        if (ruleMatch) {
+          // Rule engine positively detected the capability
+          capabilities[capabilityName] = true;
+        }
+        // If rule engine didn't match, leave undefined so static model data can take precedence
+        // via the ?? fallback in getModelCapabilities()
       }
     }
 

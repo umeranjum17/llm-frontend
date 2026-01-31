@@ -8,30 +8,30 @@
     --background: 0 0% 100%;
     --foreground: 240 10% 3.9%;
 
-    --card: 0 0% 100%;
+    --card: 0 0% 98%;
     --card-foreground: 240 10% 3.9%;
 
-    --popover: 0 0% 100%;
+    --popover: 0 0% 98%;
     --popover-foreground: 240 10% 3.9%;
 
     --primary: 270 95% 75%;
     /* Purple Base */
     --primary-foreground: 0 0% 98%;
 
-    --secondary: 240 4.8% 95.9%;
+    --secondary: 240 4.8% 95%;
     --secondary-foreground: 240 5.9% 10%;
 
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 5% 35%;
+    --muted: 240 4.8% 95%;
+    --muted-foreground: 240 6% 28%;
 
-    --accent: 240 4.8% 95.9%;
+    --accent: 240 4.8% 94%;
     --accent-foreground: 240 5.9% 10%;
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
+    --border: 240 6% 85%;
+    --input: 240 6% 85%;
     --ring: 270 95% 75%;
 
     --radius: 0.75rem;
@@ -495,44 +495,34 @@
   }
 }
 
-/* Isolate Mermaid diagrams from prose styles that wash out SVG rendering */
-.prose .mermaid-container p,
-.prose .mermaid-container span,
-.prose .mermaid-container div {
+/* Isolate Mermaid diagrams from prose styles without stripping mermaid's own SVG styles */
+/* Only reset prose-inherited properties that cause layout issues — never touch
+   background, border, color, or border-radius which mermaid sets internally. */
+.prose .mermaid-container svg,
+.prose .mermaid-container svg * {
   margin: 0;
   padding: 0;
   line-height: normal;
-  color: inherit;
-}
-.prose .mermaid-container a {
-  color: inherit;
   text-decoration: none;
+  font-style: normal;
+  letter-spacing: normal;
+  white-space: normal;
+  list-style: none;
+  box-shadow: none;
+  min-width: 0;
+  min-height: 0;
 }
-.prose .mermaid-container code,
-.prose .mermaid-container pre {
-  background: none;
-  padding: 0;
-  border-radius: 0;
-  font-size: inherit;
-}
-.prose .mermaid-container table,
-.prose .mermaid-container th,
-.prose .mermaid-container td {
-  border: none;
-  padding: 0;
-  background: none;
-}
-.prose .mermaid-container img {
-  margin: 0;
-  border-radius: 0;
-}
+
+/* foreignObject contains HTML labels inside SVG — reset only prose layout props */
 .prose .mermaid-container foreignObject * {
-  margin: 0;
-  padding: 0;
-  line-height: normal;
-  border: none;
-  background: none;
-  color: inherit;
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: normal !important;
+  font-style: normal !important;
+  text-decoration: none !important;
+  box-shadow: none !important;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 /* Hide orphaned Mermaid error elements that get injected into DOM */

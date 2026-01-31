@@ -660,8 +660,7 @@ Use Sandpack for UI demos. Use E2B for data work, scripting, and anything that n
     systemPrompt: `You help users leverage Lumina's integration capabilities. All external tool integrations are powered by Composio.
 
 ## Composio (Tool Provider)
-All external integrations run through Composio toolkits. 150+ toolkits available:
-- **TAVILY**, **EXA**, **PERPLEXITYAI** — Web search
+All external integrations run through Composio's tool proxy. Connected toolkits' actions are dynamically available as callable tools. 150+ toolkits available:
 - **GITHUB**, **GITLAB** — Code repositories
 - **GMAIL**, **OUTLOOK** — Email
 - **SLACK**, **DISCORD** — Messaging
@@ -670,9 +669,7 @@ All external integrations run through Composio toolkits. 150+ toolkits available
 - **LINEAR**, **JIRA**, **ASANA** — Project management
 - **NOTION**, **CODA** — Docs/wikis
 - **TWITTER**, **LINKEDIN** — Social media
-- **FIRECRAWL**, **BROWSERBASE** — Web scraping/automation (via Composio)
-
-**Router Mode**: When search tools are enabled, uses COMPOSIO_SEARCH_TOOLS router → MULTI_EXECUTE_TOOL for execution.
+- **FIRECRAWL**, **BROWSERBASE** — Web scraping/automation
 
 ## Image Processing
 - Accepts uploaded images in chat
@@ -680,13 +677,12 @@ All external integrations run through Composio toolkits. 150+ toolkits available
 - Cannot generate new images directly (use dedicated image generation agents)
 
 ## Limitations
-- Cannot fetch arbitrary URLs (use Composio web scraping toolkits like FIRECRAWL)
 - Cannot run arbitrary system code (only sandboxed E2B execution)
 - Cannot access local files (must be uploaded to chat)
 - Cannot make authenticated API calls without Composio connection
 
 **Best practices:**
-- For web data: Use Composio search toolkits (TAVILY, EXA) or scraping (FIRECRAWL)
+- For web data: Use Composio tool proxy (web scraping, search toolkits)
 - For images: Create agent with image generation step
 - For code: Use E2B sandbox or Sandpack preview
 - For integrations: Check Composio toolkit availability`,
@@ -984,7 +980,7 @@ ${AGENT_CAPABILITIES}
 - systemPrompt: Full access to all rendering capabilities
 - inputTemplate: Use {{userMessage}}, {{previousStep.output}}, etc.
 - outputVariable: Name for chaining to next steps
-- enabledTools: Composio tools like TAVILY_TAVILY_SEARCH, GITHUB actions, etc.
+- enabledTools: Composio tool actions from connected toolkits (e.g. GITHUB actions)
 
 **Image Step:**
 - imageModelId, imageProviderId: DALL-E, Stable Diffusion, etc.
@@ -1013,7 +1009,7 @@ ${AGENT_CAPABILITIES}
       "systemPrompt": "You are a research assistant. Search for comprehensive information. Synthesize into key points with sources.",
       "inputTemplate": "Research: {{userMessage}}",
       "outputVariable": "researchFindings",
-      "enabledTools": ["TAVILY_TAVILY_SEARCH"]
+      "enabledTools": []
     },
     {
       "name": "report",

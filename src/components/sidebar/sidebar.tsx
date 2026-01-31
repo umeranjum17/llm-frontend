@@ -101,7 +101,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   };
 
   return (
-    <div className="flex h-full w-full min-w-0 flex-col border-r border-border/50 bg-background overflow-x-hidden">
+    <div className="flex h-full w-full min-w-0 flex-col border-r border-border/70 bg-background overflow-x-hidden">
       {/* Header - minimal like ChatGPT */}
       <div className="flex items-center justify-between px-3 py-3">
         <div className="flex items-center gap-2">
@@ -129,25 +129,26 @@ export function Sidebar({ onNavigate }: SidebarProps) {
       </div>
 
       {/* Action List (ChatGPT style) */}
-      <div className="px-3 pt-4 pb-4">
+      <div className="px-3 pt-4 pb-3 space-y-1">
         {/* New Chat */}
-        <button
+        <Button
           onClick={handleNewChat}
-          className="flex w-full items-center gap-4 py-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          variant="secondary"
+          className="w-full justify-start gap-3 h-10 px-3"
         >
-          <SquarePen className="h-5 w-5" />
-          <span>New chat</span>
-        </button>
+          <SquarePen className="h-4 w-4" />
+          <span className="text-sm">New chat</span>
+        </Button>
 
         {/* Search */}
         {isSearchOpen ? (
-          <div className="relative py-1">
-            <Search className="absolute left-0 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+          <div className="relative py-1 rounded-md px-2 -mx-2">
+            <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               ref={searchInputRef}
               type="search"
               placeholder="Search chats..."
-              className="pl-9 h-9 text-sm bg-transparent border-border/50 focus:border-border"
+              className="pl-8 h-9 text-sm bg-transparent border-border/60 focus:border-border"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onBlur={handleSearchBlur}
@@ -163,9 +164,9 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         ) : (
           <button
             onClick={() => setIsSearchOpen(true)}
-            className="flex w-full items-center gap-4 py-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            className="mt-1 flex w-full items-center gap-4 rounded-md px-2 -mx-2 py-2.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/30 transition-colors"
           >
-            <Search className="h-5 w-5" />
+            <Search className="h-4 w-4" />
             <span>Search chats</span>
           </button>
         )}
@@ -176,15 +177,19 @@ export function Sidebar({ onNavigate }: SidebarProps) {
             await createFolder("New Folder", undefined, currentProjectId);
             // No toast - folder appears in sidebar
           }}
-          className="flex w-full items-center gap-4 py-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          className="flex w-full items-center gap-4 rounded-md px-2 -mx-2 py-2.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/30 transition-colors"
         >
-          <FolderPlus className="h-5 w-5" />
+          <FolderPlus className="h-4 w-4" />
           <span>New folder</span>
         </button>
       </div>
 
+      <div className="px-3">
+        <div className="h-px bg-border/60" />
+      </div>
+
       {/* Chat List */}
-      <div className="flex-1 min-h-0 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-hidden pt-2">
         <ChatList searchQuery={searchQuery} onChatSelect={onNavigate} currentProjectId={currentProjectId} />
       </div>
     </div>

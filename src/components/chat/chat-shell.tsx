@@ -1179,7 +1179,7 @@ export function ChatShell() {
             </div>
 
             {/* Input */}
-            <div className="border-t border-border/40 bg-background p-2 sm:p-4 safe-area-bottom">
+            <div className="border-t border-border/60 bg-background/95 p-2 sm:p-4 safe-area-bottom">
               <InputArea chatId={activeChatId} />
             </div>
           </div>

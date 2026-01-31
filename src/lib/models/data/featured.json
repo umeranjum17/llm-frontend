@@ -381,11 +381,11 @@
       ],
       "tier": "fast",
       "supportsReasoning": true,
-      "supportsVision": true,
+      "supportsVision": false,
       "supportsThinking": true,
       "supportsPromptCaching": true,
       "supportsExplicitCacheParameter": false,
-      "releaseDate": "2025-12",
+      "releaseDate": "2025-01",
       "recommendedFor": [
         "Complex reasoning",
         "Budget thinking",
@@ -1248,10 +1248,11 @@
       "outputCost": 1.2,
       "category": [
         "balanced",
-        "coding"
+        "coding",
+        "vision"
       ],
       "tier": "budget",
-      "supportsVision": false,
+      "supportsVision": true,
       "releaseDate": "2025-06",
       "recommendedFor": [
         "General tasks",

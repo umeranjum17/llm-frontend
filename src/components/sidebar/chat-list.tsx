@@ -569,8 +569,11 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
         <div className="px-3 pt-3 pb-2 flex items-center justify-between">
           <span className="text-xs text-muted-foreground/70">Your chats</span>
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
-            <SelectTrigger className="h-7 w-7 p-0 border-0 [&>svg]:hidden" aria-label="Sort chats">
-              <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+            <SelectTrigger className="h-7 px-2 border-0 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/40 rounded-md" aria-label="Sort chats">
+              <div className="flex items-center gap-1.5">
+                <span className="hidden sm:inline">Sort</span>
+                <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+              </div>
             </SelectTrigger>
             <SelectContent align="end">
               <SelectItem value="updated">Last updated</SelectItem>
@@ -646,10 +649,13 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
                       transform: `translateY(${virtualItem.start}px)`,
                     }}
                   >
-                    <div className="px-3 pt-3 pb-1">
-                      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
-                        {item.label}
-                      </span>
+                    <div className="px-3 pt-3 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                          {item.label}
+                        </span>
+                        <div className="h-px flex-1 bg-border/60" />
+                      </div>
                     </div>
                   </div>
                 );
@@ -751,7 +757,7 @@ function FolderItem({ folder, isExpanded, onToggle, chatCount = 0, onEdit, onDel
   return (
     <div
       className={cn(
-        "flex max-w-full min-w-0 items-center gap-2 overflow-hidden px-3 py-1.5 cursor-pointer hover:bg-accent/20 group rounded-md transition-colors select-none",
+        "flex max-w-full min-w-0 items-center gap-2 overflow-hidden px-3 py-1.5 cursor-pointer hover:bg-accent/30 group rounded-md transition-colors select-none",
       )}
       onClick={onToggle}
       onMouseEnter={() => setIsHovered(true)}
@@ -865,10 +871,10 @@ function ChatItem({
     <TooltipProvider>
       <motion.div
         className={cn(
-          "group relative cursor-pointer px-3 py-1.5 rounded-md transition-colors select-none max-w-full min-w-0 overflow-hidden",
-          "hover:bg-accent/20",
-          (isActive || isStreaming) && "bg-accent/20",
-          isSelected && "bg-accent/30",
+          "group relative cursor-pointer px-3 py-2.5 sm:py-1.5 rounded-md transition-colors select-none max-w-full min-w-0 overflow-hidden",
+          "hover:bg-accent/30",
+          (isActive || isStreaming) && "bg-accent/30",
+          isSelected && "bg-accent/40",
           isNested && "ml-4",
         )}
         {...longPressHandlers}
@@ -914,10 +920,15 @@ function ChatItem({
                       </motion.span>
                     )}
                   </AnimatePresence>
-                  <span className="text-xs truncate flex-1 min-w-0 text-muted-foreground" title={chat.title}>
+                  <span className="text-xs truncate flex-1 min-w-0 text-foreground/80 group-hover:text-foreground" title={chat.title}>
                     {chat.title}
                   </span>
                 </div>
+                {previewText && (
+                  <p className="mt-0.5 text-[11px] text-muted-foreground/80 line-clamp-1">
+                    {previewText}
+                  </p>
+                )}
               </div>
             </TooltipTrigger>
             {chat.summary && (
@@ -942,7 +953,7 @@ function ChatItem({
                   size="icon"
                   className="h-6 w-6 hover:bg-accent/50"
                 >
-                  <MoreHorizontal className="h-4 w-4" />
+                  <MoreHorizontal className="h-3.5 w-3.5" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" side="right" sideOffset={8} className="w-48">

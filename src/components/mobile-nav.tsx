@@ -27,11 +27,11 @@ export function MobileNav() {
     };
 
     return (
-        <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden pb-safe">
-            <div className="mx-3 mb-3 flex items-center justify-around rounded-xl border border-border/50 bg-background/80 dark:bg-background/70 backdrop-blur-xl px-1 py-1 shadow-lg shadow-black/10 dark:shadow-black/20">
+        <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden pb-safe safe-area-bottom">
+            <div className="mx-3 mb-3 flex items-center justify-around rounded-xl border border-border/60 bg-background/90 dark:bg-background/80 backdrop-blur-xl px-1 py-1 shadow-lg shadow-black/10 dark:shadow-black/20">
                 <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
                     <SheetTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-muted-foreground">
+                        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg text-muted-foreground" aria-label="Open menu">
                             <Menu className="h-4 w-4" />
                         </Button>
                     </SheetTrigger>
@@ -44,7 +44,8 @@ export function MobileNav() {
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 rounded-lg text-muted-foreground"
+                        className="h-9 w-9 rounded-lg text-muted-foreground"
+                        aria-label="Open chat"
                     >
                         <MessageSquare className="h-4 w-4" />
                     </Button>
@@ -53,8 +54,9 @@ export function MobileNav() {
                 <Button
                     variant="default"
                     size="icon"
-                    className="h-9 w-9 rounded-full bg-primary shadow-md"
+                    className="h-10 w-10 rounded-full bg-primary shadow-md"
                     onClick={handleNewChat}
+                    aria-label="New chat"
                 >
                     <Plus className="h-4 w-4" />
                 </Button>
@@ -63,7 +65,8 @@ export function MobileNav() {
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 rounded-lg text-muted-foreground"
+                        className="h-9 w-9 rounded-lg text-muted-foreground"
+                        aria-label="Open settings"
                     >
                         <Settings className="h-4 w-4" />
                     </Button>
@@ -86,10 +89,10 @@ export const MobileNavInline = memo(function MobileNavInline() {
     };
 
     return (
-        <div className="flex sm:hidden items-center justify-around rounded-xl border border-border/50 bg-muted/30 px-1 py-1">
+        <div className="flex sm:hidden items-center justify-around rounded-xl border border-border/60 bg-background/80 px-1 py-1">
             <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
                 <SheetTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-muted-foreground">
+                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg text-muted-foreground" aria-label="Open menu">
                         <Menu className="h-4 w-4" />
                     </Button>
                 </SheetTrigger>
@@ -102,7 +105,8 @@ export const MobileNavInline = memo(function MobileNavInline() {
                 <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 rounded-lg text-muted-foreground"
+                    className="h-9 w-9 rounded-lg text-muted-foreground"
+                    aria-label="Open chat"
                 >
                     <MessageSquare className="h-4 w-4" />
                 </Button>
@@ -111,8 +115,9 @@ export const MobileNavInline = memo(function MobileNavInline() {
             <Button
                 variant="default"
                 size="icon"
-                className="h-9 w-9 rounded-full bg-primary shadow-md"
+                className="h-10 w-10 rounded-full bg-primary shadow-md"
                 onClick={handleNewChat}
+                aria-label="New chat"
             >
                 <Plus className="h-4 w-4" />
             </Button>
@@ -121,7 +126,8 @@ export const MobileNavInline = memo(function MobileNavInline() {
                 <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 rounded-lg text-muted-foreground"
+                    className="h-9 w-9 rounded-lg text-muted-foreground"
+                    aria-label="Open settings"
                 >
                     <Settings className="h-4 w-4" />
                 </Button>

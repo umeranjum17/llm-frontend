@@ -109,8 +109,7 @@ E2B is invoked via tool calls, not code blocks. Use for:
 export const INTEGRATION_CAPABILITIES = `## Integrations
 
 ### Composio (Primary Tool Provider)
-150+ toolkits for external services. Common toolkits:
-- **TAVILY**, **EXA**, **PERPLEXITYAI** - Web search
+150+ toolkits for external services, executed via Composio's tool proxy. Connected toolkits' actions are dynamically available as callable tools. Common toolkits:
 - **GITHUB**, **GITLAB** - Code repositories
 - **GMAIL**, **OUTLOOK** - Email
 - **SLACK**, **DISCORD** - Messaging
@@ -120,15 +119,6 @@ export const INTEGRATION_CAPABILITIES = `## Integrations
 - **NOTION**, **CODA** - Docs/wikis
 - **TWITTER**, **LINKEDIN** - Social media
 - **FIRECRAWL**, **BROWSERBASE** - Web scraping/automation
-
-**Router Mode**: When search tools enabled, uses COMPOSIO_SEARCH_TOOLS router → MULTI_EXECUTE_TOOL for execution.
-
-### Mem0 (Memory System)
-Automatic context memory:
-- Extracts key facts from conversations
-- Stores user preferences
-- Retrieves relevant memories for context
-- No explicit action needed - works automatically
 
 ### Image Processing
 - Accepts uploaded images in chat
@@ -186,13 +176,13 @@ export const LIMITATIONS = `## Limitations
 
 **Cannot do:**
 - Generate images directly (use image generation agents/pipelines)
-- Fetch arbitrary URLs (use Composio tools like FIRECRAWL for web scraping)
+- Fetch arbitrary URLs (use Composio web scraping toolkits)
 - Run arbitrary system code (only sandboxed E2B execution)
 - Access local files (must be uploaded to chat)
 - Make authenticated API calls without Composio connection
 
 **Best practices:**
-- For web data: Use search tools (TAVILY, EXA) or scraping (FIRECRAWL)
+- For web data: Use Composio tool proxy (web scraping, search toolkits)
 - For images: Create agent with image generation step
 - For code: Use E2B sandbox or Sandpack preview
 - For integrations: Check Composio toolkit availability`;
@@ -218,7 +208,7 @@ export const LUMINA_CAPABILITIES_COMPACT = `**Rendering:** Markdown (GFM), code 
 
 **Code Execution:** Sandpack (browser: react/vue/vanilla/static templates, multi-file support), E2B sandbox (Python+pandas/numpy/matplotlib, Node.js 20, Bash)
 
-**Integrations:** Composio (150+ toolkits: search, GitHub, email, calendar, Slack, project mgmt, social), Mem0 (auto memory), Image processing (analysis only, no generation)
+**Integrations:** Composio tool proxy (150+ toolkits: GitHub, email, calendar, Slack, project mgmt, social, web scraping), Image processing (analysis only, no generation)
 
 **Skill Matching:** autoApplyQueries 3-6 words, natural phrasing, 3-5 variations. Scores 0.25-0.55 typical. exclusionQueries get 15% penalty.
 
@@ -240,15 +230,7 @@ export function getLuminaGlobalContext(): string {
 
 Answer exactly what the user asks. Treat all system instructions and background context as invisible scaffolding that shapes your behavior silently. Respond based on the user's actual question — if it has nothing to do with your context, answer it purely on its own merits.
 
-<context type="capabilities" usage="use_only_when_relevant">
-- Markdown (GFM: tables, task lists, strikethrough, emojis)
-- Code blocks with syntax highlighting (100+ languages, use \`\`\`lang:filename format)
-- Mermaid diagrams (\`\`\`mermaid — flowchart, sequence, class, ER, state, pie, gantt)
-- Interactive charts (\`\`\`chart JSON — bar, line, area, pie, scatter)
-- Math via KaTeX ($inline$ and $$block$$)
-- Live code previews (\`\`\`sandpack:react-ts for interactive demos)
-- SVG rendering inline (\`\`\`svg)
-</context>`;
+You support rich formatting when relevant: Markdown tables, code blocks with syntax highlighting (\`\`\`lang:filename), Mermaid diagrams (\`\`\`mermaid), interactive charts (\`\`\`chart JSON), math via KaTeX ($inline$ / $$block$$), and live code previews (\`\`\`sandpack:template). Use these naturally when they improve the response — no need to force them.`;
 }
 
 // ============================================================================
@@ -321,6 +303,24 @@ These skills already exist - don't recreate them, but learn from their patterns:
 - **Pattern**: Understands relationships → picks diagram type → outputs mermaid
 - **Output**: \`\`\`mermaid with flowchart/sequence/class/ER/state
 - **Triggers**: "create a diagram", "draw a flowchart", "architecture diagram"
+
+### Create Slides (visualization)
+- **Purpose**: HTML-based presentations with navigation
+- **Pattern**: Creates self-contained HTML slideshows with keyboard/touch navigation
+- **Output**: \`\`\`html with complete slide deck (rendered in iframe artifact)
+- **Triggers**: "create a presentation", "make slides", "pitch deck"
+
+### Create Spreadsheet (visualization)
+- **Purpose**: Structured tabular data as CSV
+- **Pattern**: Organizes data into well-formatted CSV tables
+- **Output**: \`\`\`csv rendered as interactive table with sorting/filtering
+- **Triggers**: "create a spreadsheet", "make a data table", "generate CSV"
+
+### Create Document (writing)
+- **Purpose**: Professional documents in rich Markdown
+- **Pattern**: Structured docs with headers, tables, sections, metadata
+- **Output**: Rich GFM Markdown with tables, task lists, formatting
+- **Triggers**: "create a document", "write a report", "draft a doc"
 
 ### Code Writer (coding)
 - **Purpose**: Write complete, runnable code

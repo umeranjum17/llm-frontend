@@ -8,7 +8,7 @@ import { SkillEditorFooter } from "./skill-editor-footer";
 import { BasicsStep } from "./steps/basics-step";
 import { TriggersStep } from "./steps/triggers-step";
 import { PromptReviewStep } from "./steps/prompt-review-step";
-import { addSkill, updateSkill } from "@/lib/db/queries";
+import { addSkill, updateSkill, isSkillNameTaken } from "@/lib/db/queries";
 import { toast } from "sonner";
 import type { Skill, SkillTrigger, SkillUI } from "@/lib/db/schema";
 import { useApiKeysStore } from "@/stores/api-keys-store";
@@ -99,6 +99,9 @@ export function SkillEditorShell({
   };
 
   const handleSaveClick = async () => {
+    // Task 4: Prevent concurrent saves
+    if (saving) return;
+
     if (!validateAll()) {
       toast.error("Please fix all errors before saving");
       return;
@@ -107,7 +110,26 @@ export function SkillEditorShell({
     setSaving(true);
 
     try {
-      const description = triggerPhrases
+      // Task 1: Sanitize trigger phrases and exclusion queries
+      const cleanedTriggerPhrases = triggerPhrases
+        .map(p => p.trim())
+        .filter(p => p.length > 0);
+      const cleanedExclusionQueries = exclusionQueries
+        .map(q => q.trim())
+        .filter(q => q.length > 0);
+      const uniqueTriggerPhrases = [...new Set(cleanedTriggerPhrases)];
+      const uniqueExclusionQueries = [...new Set(cleanedExclusionQueries)];
+
+      // Task 2: Prevent duplicate skill names
+      const isEditMode = mode === "edit" && !!existingSkill;
+      const isDuplicate = await isSkillNameTaken(name, isEditMode ? existingSkill?.id : undefined);
+      if (isDuplicate) {
+        toast.error(`A skill named "${name.trim()}" already exists.`);
+        setSaving(false);
+        return;
+      }
+
+      const description = uniqueTriggerPhrases
         .slice(0, MAX_TRIGGER_PHRASES_IN_DESCRIPTION)
         .join(", ");
 
@@ -124,6 +146,12 @@ export function SkillEditorShell({
       );
 
       if (mode === "edit" && existingSkill) {
+        // Task 8: Clear stale embeddings before regenerating
+        await updateSkill(existingSkill.id, {
+          autoApplyEmbeddings: undefined,
+          exclusionEmbeddings: undefined,
+        });
+
         await updateSkill(existingSkill.id, {
           name: name.trim(),
           description,
@@ -133,13 +161,13 @@ export function SkillEditorShell({
           variables: variables.length > 0 ? variables : undefined,
           trigger,
           requireApproval,
-          autoApplyQueries: triggerPhrases.length > 0 ? triggerPhrases : undefined,
-          exclusionQueries: exclusionQueries.length > 0 ? exclusionQueries : undefined,
+          autoApplyQueries: uniqueTriggerPhrases.length > 0 ? uniqueTriggerPhrases : undefined,
+          exclusionQueries: uniqueExclusionQueries.length > 0 ? uniqueExclusionQueries : undefined,
           ui,
         });
 
         // Regenerate embeddings if trigger phrases changed
-        if (embeddingsProvider && embeddingsModelId && triggerPhrases.length > 0) {
+        if (embeddingsProvider && embeddingsModelId && uniqueTriggerPhrases.length > 0) {
           const apiKeyObj = getKeyForProvider(embeddingsProvider);
           if (apiKeyObj?.key) {
             try {
@@ -150,7 +178,7 @@ export function SkillEditorShell({
                 "@/lib/skills/skill-embeddings"
               );
 
-              const totalSteps = 2 + (exclusionQueries.length > 0 ? 1 : 0);
+              const totalSteps = 2 + (uniqueExclusionQueries.length > 0 ? 1 : 0);
               let currentStepNum = 0;
 
               // Generate trigger phrase embeddings
@@ -158,27 +186,35 @@ export function SkillEditorShell({
               setEmbeddingProgress(
                 `Updating trigger embeddings (${currentStepNum}/${totalSteps})...`
               );
-              await setSkillAutoApplyQueries(
+              const triggerResult = await setSkillAutoApplyQueries(
                 existingSkill.id,
-                triggerPhrases,
+                uniqueTriggerPhrases,
                 apiKeyObj.key,
                 embeddingsProvider,
                 embeddingsModelId
               );
+              // Task 3: Validate embedding generation results
+              if (triggerResult && !triggerResult.success) {
+                toast.warning(`Skill saved, but ${triggerResult.failedCount ?? "some"} trigger embeddings failed to generate.`);
+              }
 
               // Generate exclusion embeddings if any
-              if (exclusionQueries.length > 0) {
+              if (uniqueExclusionQueries.length > 0) {
                 currentStepNum++;
                 setEmbeddingProgress(
                   `Updating exclusion embeddings (${currentStepNum}/${totalSteps})...`
                 );
-                await setSkillExclusionQueries(
+                const exclusionResult = await setSkillExclusionQueries(
                   existingSkill.id,
-                  exclusionQueries,
+                  uniqueExclusionQueries,
                   apiKeyObj.key,
                   embeddingsProvider,
                   embeddingsModelId
                 );
+                // Task 3: Validate embedding generation results
+                if (exclusionResult && !exclusionResult.success) {
+                  toast.warning(`${exclusionResult.failedCount ?? "Some"} exclusion embeddings failed to generate.`);
+                }
               }
 
               // Generate description embedding
@@ -216,8 +252,8 @@ export function SkillEditorShell({
           variables: variables.length > 0 ? variables : undefined,
           trigger,
           requireApproval,
-          autoApplyQueries: triggerPhrases.length > 0 ? triggerPhrases : undefined,
-          exclusionQueries: exclusionQueries.length > 0 ? exclusionQueries : undefined,
+          autoApplyQueries: uniqueTriggerPhrases.length > 0 ? uniqueTriggerPhrases : undefined,
+          exclusionQueries: uniqueExclusionQueries.length > 0 ? uniqueExclusionQueries : undefined,
           ui,
           isBuiltIn: false,
           isEnabled: true,
@@ -225,7 +261,7 @@ export function SkillEditorShell({
         });
 
         // Auto-generate embeddings if API key is configured
-        if (newSkill && embeddingsProvider && embeddingsModelId && triggerPhrases.length > 0) {
+        if (newSkill && embeddingsProvider && embeddingsModelId && uniqueTriggerPhrases.length > 0) {
           const apiKeyObj = getKeyForProvider(embeddingsProvider);
           if (apiKeyObj?.key) {
             try {
@@ -236,7 +272,7 @@ export function SkillEditorShell({
                 "@/lib/skills/skill-embeddings"
               );
 
-              const totalSteps = 2 + (exclusionQueries.length > 0 ? 1 : 0);
+              const totalSteps = 2 + (uniqueExclusionQueries.length > 0 ? 1 : 0);
               let currentStepNum = 0;
 
               // Generate trigger phrase embeddings
@@ -244,27 +280,35 @@ export function SkillEditorShell({
               setEmbeddingProgress(
                 `Generating trigger embeddings (${currentStepNum}/${totalSteps})...`
               );
-              await setSkillAutoApplyQueries(
+              const triggerResult = await setSkillAutoApplyQueries(
                 newSkill.id,
-                triggerPhrases,
+                uniqueTriggerPhrases,
                 apiKeyObj.key,
                 embeddingsProvider,
                 embeddingsModelId
               );
+              // Task 3: Validate embedding generation results
+              if (triggerResult && !triggerResult.success) {
+                toast.warning(`Skill saved, but ${triggerResult.failedCount ?? "some"} trigger embeddings failed to generate.`);
+              }
 
               // Generate exclusion embeddings if any
-              if (exclusionQueries.length > 0) {
+              if (uniqueExclusionQueries.length > 0) {
                 currentStepNum++;
                 setEmbeddingProgress(
                   `Generating exclusion embeddings (${currentStepNum}/${totalSteps})...`
                 );
-                await setSkillExclusionQueries(
+                const exclusionResult = await setSkillExclusionQueries(
                   newSkill.id,
-                  exclusionQueries,
+                  uniqueExclusionQueries,
                   apiKeyObj.key,
                   embeddingsProvider,
                   embeddingsModelId
                 );
+                // Task 3: Validate embedding generation results
+                if (exclusionResult && !exclusionResult.success) {
+                  toast.warning(`${exclusionResult.failedCount ?? "Some"} exclusion embeddings failed to generate.`);
+                }
               }
 
               // Generate description embedding
@@ -289,7 +333,7 @@ export function SkillEditorShell({
           } else {
             toast.success("Skill created (configure API key for auto-matching)");
           }
-        } else if (newSkill && triggerPhrases.length > 0) {
+        } else if (newSkill && uniqueTriggerPhrases.length > 0) {
           toast.success("Skill created (configure embeddings in Settings for auto-matching)");
         } else {
           toast.success("Skill created");

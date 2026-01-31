@@ -139,7 +139,7 @@ export function EmptyStateWelcome({
                   <span className="hidden sm:block text-sm sm:text-base font-medium text-foreground">
                     {suggestion.label}
                   </span>
-                  <span className="text-xs sm:text-sm text-muted-foreground sm:pl-10 truncate">
+                  <span className="text-xs sm:text-sm text-muted-foreground truncate">
                     {suggestion.description}
                   </span>
                 </div>

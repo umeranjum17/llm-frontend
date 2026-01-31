@@ -112,10 +112,16 @@ export const useSkillEditorForm = create<SkillEditorFormState>((set, get) => ({
         errors.name = "Name must be at least 3 characters";
         isValid = false;
       }
+      const validCategories = ["creation", "visualization", "coding", "analysis", "writing", "productivity", "research", "business", "search"];
+      if (!validCategories.includes(state.category)) {
+        errors.category = "Invalid category";
+        isValid = false;
+      }
     } else if (step === 1) {
       // Triggers step
-      if (state.autoTrigger && state.triggerPhrases.length === 0) {
-        errors.triggerPhrases = "At least one trigger phrase is required for auto-trigger skills";
+      const validPhrases = state.triggerPhrases.filter(p => p.trim().length > 0);
+      if (state.autoTrigger && validPhrases.length === 0) {
+        errors.triggerPhrases = "At least one non-empty trigger phrase is required";
         isValid = false;
       }
     } else if (step === 2) {

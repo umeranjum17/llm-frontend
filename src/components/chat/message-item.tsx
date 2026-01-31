@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download, ThumbsUp, ThumbsDown, Volume2, VolumeX, ChevronDown, ChevronRight, Wrench, Loader2, Brain, RefreshCw, Pin, PinOff, AlertTriangle } from "lucide-react";
+import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download, ThumbsUp, ThumbsDown, Volume2, VolumeX, ChevronDown, ChevronRight, Wrench, Loader2, Brain, RefreshCw, Pin, PinOff, AlertTriangle, FileText } from "lucide-react";
 import { usePrefersReducedMotion } from "@/hooks/use-motion-config";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -33,6 +33,13 @@ import { MentionRenderer } from "@/components/chat/mention-renderer";
 import { useLiveQuery } from "dexie-react-hooks";
 import { getSkillById } from "@/lib/db/queries";
 import { toggleMessagePin } from "@/lib/utils/context-compaction";
+import { SelectionCopyToolbar } from "@/components/chat/selection-copy-toolbar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type ToolCallLike = {
   id?: string;
@@ -872,6 +879,7 @@ export const MessageItem = memo(function MessageItem({
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
   const [showMobileActions, setShowMobileActions] = useState(false);
+  const proseRef = useRef<HTMLDivElement>(null);
   const { speak, stop, isPlaying } = useVoiceOutput();
   const { setActiveArtifact, setShowArtifacts } = useUIStore();
 
@@ -984,6 +992,13 @@ export const MessageItem = memo(function MessageItem({
     setTimeout(() => setCopied(false), 2000);
   }, [textContent, images]);
 
+  const handleCopyMarkdown = useCallback(async () => {
+    await navigator.clipboard.writeText(textContent);
+    toast.success("Copied as Markdown");
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [textContent]);
+
   const handleSaveEdit = async () => {
     if (editContent.trim() === textContent) {
       setIsEditing(false);
@@ -1083,6 +1098,13 @@ export const MessageItem = memo(function MessageItem({
               )}
             >
               <div className="mb-1.5 sm:mb-2 flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                {/* Mobile-only role icon since avatar is hidden on small screens */}
+                <span className={cn(
+                  "sm:hidden flex items-center justify-center h-5 w-5 rounded-full shrink-0",
+                  isUser ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
+                )}>
+                  {isUser ? <User className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
+                </span>
                 <span className={cn(
                   "text-xs sm:text-sm font-semibold",
                   isUser ? "text-primary" : "text-foreground"
@@ -1157,6 +1179,7 @@ export const MessageItem = memo(function MessageItem({
                   className="relative"
                 >
                   <div
+                    ref={proseRef}
                     className="prose prose-sm dark:prose-invert max-w-none break-words"
                     style={{ overflowWrap: 'anywhere' }}
                   >
@@ -1189,6 +1212,9 @@ export const MessageItem = memo(function MessageItem({
                         background: 'linear-gradient(to bottom, transparent 0%, hsl(var(--card) / 0.05) 20%, hsl(var(--card) / 0.15) 35%, hsl(var(--card) / 0.35) 50%, hsl(var(--card) / 0.55) 65%, hsl(var(--card) / 0.75) 78%, hsl(var(--card) / 0.9) 90%, hsl(var(--card) / 0.98) 100%)',
                       } as React.CSSProperties}
                     />
+                  )}
+                  {isAssistant && !isStreaming && (
+                    <SelectionCopyToolbar containerRef={proseRef} markdownSource={textContent} />
                   )}
                 </div>
               )}
@@ -1545,20 +1571,44 @@ export const MessageItem = memo(function MessageItem({
           {/* Desktop Actions - Outside bubble */}
           {!isEditing && (
             <div className="hidden sm:flex shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex-col gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={handleCopy}
-                title="Copy message"
-                aria-label="Copy message"
-              >
-                {copied ? (
-                  <Check className="h-4 w-4 text-green-500" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
-              </Button>
+              <div className="flex items-center">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-r-none"
+                  onClick={handleCopy}
+                  title="Copy message"
+                  aria-label="Copy message"
+                >
+                  {copied ? (
+                    <Check className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-4 rounded-l-none px-0"
+                      aria-label="Copy options"
+                    >
+                      <ChevronDown className="h-3 w-3" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" side="bottom">
+                    <DropdownMenuItem onClick={handleCopy}>
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copy as Plain Text
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleCopyMarkdown}>
+                      <FileText className="h-4 w-4 mr-2" />
+                      Copy as Markdown
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
               {isAssistant && (
                 <Button
                   variant="ghost"
