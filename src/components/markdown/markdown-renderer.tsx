@@ -83,12 +83,15 @@ interface MarkdownRendererProps {
   content: string;
   isStreaming?: boolean;
   onCodeBlocksCollected?: (blocks: CodeFile[]) => void;
+  /** When true, renders mermaid diagrams in compact/static mode (no toolbar) */
+  insideSlides?: boolean;
 }
 
 export const MarkdownRenderer = memo(function MarkdownRenderer({
   content,
   isStreaming = false,
-  onCodeBlocksCollected
+  onCodeBlocksCollected,
+  insideSlides = false,
 }: MarkdownRendererProps) {
   // Collect code blocks for multi-file project detection
   const codeBlocksRef = useRef<CodeFile[]>([]);
@@ -157,7 +160,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
               if (isStreaming) {
                 return <CodeBlock language={language} code={code} filename={null} isStreaming={isStreaming} />;
               }
-              return <MermaidDiagram code={code} />;
+              return <MermaidDiagram code={code} compact={insideSlides} />;
             }
 
             // Handle chart/graph data (JSON-based charts) - only render after streaming completes

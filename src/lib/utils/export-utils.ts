@@ -32,6 +32,75 @@ export async function parseCsvContent(content: string): Promise<{ headers: strin
   return { headers, rows };
 }
 
+/** Parse markdown slide content into structured text runs for pptxgenjs */
+function parseMarkdownToTextProps(
+  md: string
+): Array<{ text: string; options: Record<string, unknown> }> {
+  const lines = md.split("\n");
+  const result: Array<{ text: string; options: Record<string, unknown> }> = [];
+
+  const bodyColor = "E0E0E8";
+  const headingColor = "A78BFA";
+  const accentColor = "C4B5FD";
+
+  for (const line of lines) {
+    // Skip mermaid/code blocks
+    if (line.trim().startsWith("```")) continue;
+
+    // Headings
+    const h1 = line.match(/^#\s+(.+)/);
+    if (h1) {
+      result.push({ text: h1[1] + "\n", options: { fontSize: 28, bold: true, color: headingColor, fontFace: "Arial" } });
+      continue;
+    }
+    const h2 = line.match(/^##\s+(.+)/);
+    if (h2) {
+      result.push({ text: h2[1] + "\n", options: { fontSize: 22, bold: true, color: headingColor, fontFace: "Arial" } });
+      continue;
+    }
+    const h3 = line.match(/^###\s+(.+)/);
+    if (h3) {
+      result.push({ text: h3[1] + "\n", options: { fontSize: 18, bold: true, color: accentColor, fontFace: "Arial" } });
+      continue;
+    }
+
+    // Bullet points
+    const bullet = line.match(/^[\s]*[-*]\s+(.+)/);
+    if (bullet) {
+      const text = bullet[1]
+        .replace(/\*\*(.+?)\*\*/g, "$1")
+        .replace(/\*(.+?)\*/g, "$1")
+        .replace(/`(.+?)`/g, "$1");
+      result.push({ text: "  • " + text + "\n", options: { fontSize: 14, color: bodyColor, fontFace: "Arial" } });
+      continue;
+    }
+
+    // Numbered list
+    const numbered = line.match(/^[\s]*\d+\.\s+(.+)/);
+    if (numbered) {
+      const text = numbered[1]
+        .replace(/\*\*(.+?)\*\*/g, "$1")
+        .replace(/\*(.+?)\*/g, "$1")
+        .replace(/`(.+?)`/g, "$1");
+      result.push({ text: "  " + line.match(/^\s*(\d+)/)![1] + ". " + text + "\n", options: { fontSize: 14, color: bodyColor, fontFace: "Arial" } });
+      continue;
+    }
+
+    // Regular text (strip inline markdown)
+    if (line.trim()) {
+      const text = line
+        .replace(/\*\*(.+?)\*\*/g, "$1")
+        .replace(/\*(.+?)\*/g, "$1")
+        .replace(/`(.+?)`/g, "$1");
+      result.push({ text: text + "\n", options: { fontSize: 14, color: bodyColor, fontFace: "Arial" } });
+    } else {
+      result.push({ text: "\n", options: { fontSize: 10, color: bodyColor } });
+    }
+  }
+
+  return result;
+}
+
 /** Export slides to PPTX using pptxgenjs */
 export async function exportSlidesToPptx(content: string, title: string = "Presentation") {
   const PptxGenJS = (await import("pptxgenjs")).default;
@@ -39,18 +108,21 @@ export async function exportSlidesToPptx(content: string, title: string = "Prese
 
   const pptx = new PptxGenJS();
   pptx.title = title;
+  pptx.layout = "LAYOUT_WIDE";
 
   for (const slideContent of slides) {
     const slide = pptx.addSlide();
-    slide.addText(slideContent, {
-      x: 0.5,
+    slide.background = { color: "1A1A2E" };
+
+    const textProps = parseMarkdownToTextProps(slideContent);
+    slide.addText(textProps, {
+      x: 0.6,
       y: 0.5,
-      w: "90%",
-      h: "80%",
-      fontSize: 14,
-      fontFace: "Arial",
+      w: "88%",
+      h: "85%",
       valign: "top",
       wrap: true,
+      paraSpaceAfter: 4,
     });
   }
 

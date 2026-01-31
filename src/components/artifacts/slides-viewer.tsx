@@ -2,11 +2,10 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2 } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
 import { ExportButton } from "@/components/artifacts/export-button";
-import { useUIStore } from "@/stores/ui-store";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface SlidesViewerProps {
@@ -25,8 +24,6 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
   const [current, setCurrent] = useState(0);
   const slideRef = useRef<HTMLDivElement>(null);
   const [direction, setDirection] = useState(0);
-  const artifactsFullscreen = useUIStore((s) => s.artifactsFullscreen);
-  const setArtifactsFullscreen = useUIStore((s) => s.setArtifactsFullscreen);
 
   const total = slides.length;
 
@@ -71,14 +68,14 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
 
   if (total === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">
+      <div className="flex items-center justify-center h-full" style={{ color: "#8b8fa3" }}>
         No slides found
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" style={{ background: "#0f0f1a" }}>
       {/* Slide area — 16:9 aspect ratio */}
       <div
         className="flex-1 flex items-center justify-center p-4 sm:p-8 overflow-hidden"
@@ -86,7 +83,13 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
         onTouchEnd={handleTouchEnd}
       >
         <div ref={slideRef} className="relative w-full max-w-4xl" style={{ aspectRatio: "16/9" }}>
-          <div className="absolute inset-0 rounded-xl border shadow-lg overflow-hidden bg-gradient-to-br from-background via-background to-muted/20">
+          <div
+            className="absolute inset-0 rounded-xl overflow-hidden"
+            style={{
+              background: "linear-gradient(135deg, #1a1a2e 0%, #16162a 50%, #1a1a2e 100%)",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06)",
+            }}
+          >
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={current}
@@ -94,26 +97,13 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
                 animate={{ x: 0, opacity: 1 }}
                 exit={{ x: direction * -100, opacity: 0 }}
                 transition={{ duration: 0.2, ease: "easeInOut" }}
-                className={cn(
-                  "absolute inset-0 overflow-auto p-6 sm:p-10",
-                  "prose dark:prose-invert max-w-none",
-                  // Rich slide typography - larger headings, generous spacing
-                  "prose-headings:mt-0 prose-headings:mb-4",
-                  "prose-h1:text-2xl sm:prose-h1:text-4xl prose-h1:font-bold prose-h1:tracking-tight",
-                  "prose-h2:text-xl sm:prose-h2:text-2xl prose-h2:font-semibold",
-                  "prose-h3:text-lg sm:prose-h3:text-xl",
-                  "prose-p:text-sm sm:prose-p:text-base prose-p:leading-relaxed",
-                  "prose-li:text-sm sm:prose-li:text-base prose-li:leading-relaxed",
-                  "prose-strong:text-primary",
-                  "prose-code:text-xs sm:prose-code:text-sm prose-code:bg-muted/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded",
-                  "prose-blockquote:border-l-primary/50 prose-blockquote:bg-muted/20 prose-blockquote:rounded-r-lg prose-blockquote:py-1 prose-blockquote:px-4",
-                  "prose-img:rounded-lg prose-img:shadow-md",
-                  // First child centering for title slides (single h1)
-                  "[&>div>h1:first-child:last-child]:text-center [&>div>h1:first-child:last-child]:mt-[20%]",
-                  "[&>div>h1:first-child+p:last-child]:text-center"
-                )}
+                className="absolute inset-0 overflow-auto p-6 sm:p-10 slide-content"
+                style={{
+                  color: "#e0e0e8",
+                  fontFamily: "ui-sans-serif, system-ui, -apple-system, sans-serif",
+                }}
               >
-                <MarkdownRenderer content={slides[current]} />
+                <MarkdownRenderer content={slides[current]} insideSlides />
               </motion.div>
             </AnimatePresence>
           </div>
@@ -141,14 +131,17 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
               className={cn(
                 "h-2 rounded-full transition-all",
                 i === current
-                  ? "w-6 bg-primary"
-                  : "w-2 bg-muted-foreground/30 hover:bg-muted-foreground/50"
+                  ? "w-6"
+                  : "w-2 hover:opacity-70"
               )}
+              style={{
+                background: i === current ? "#a78bfa" : "rgba(255,255,255,0.2)",
+              }}
             />
           ))}
         </div>
 
-        <span className="text-xs text-muted-foreground tabular-nums min-w-[3rem] text-center">
+        <span className="text-xs tabular-nums min-w-[3rem] text-center" style={{ color: "#8b8fa3" }}>
           {current + 1} / {total}
         </span>
 
@@ -160,16 +153,6 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
           disabled={current === total - 1}
         >
           <ChevronRight className="h-4 w-4" />
-        </Button>
-
-        <Button
-          variant="outline"
-          size="icon"
-          className="h-10 w-10 sm:h-8 sm:w-8"
-          onClick={() => setArtifactsFullscreen(!artifactsFullscreen)}
-          title={artifactsFullscreen ? "Exit fullscreen" : "Fullscreen"}
-        >
-          {artifactsFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
         </Button>
 
         <div className="flex items-center gap-1.5 basis-full sm:basis-auto justify-center sm:ml-4">
@@ -191,6 +174,116 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
           />
         </div>
       </div>
+
+      {/* Scoped slide typography styles */}
+      <style jsx global>{`
+        .slide-content h1 {
+          font-size: 2rem;
+          font-weight: 700;
+          color: #a78bfa;
+          margin: 0 0 1rem 0;
+          letter-spacing: -0.02em;
+          line-height: 1.2;
+        }
+        .slide-content h2 {
+          font-size: 1.5rem;
+          font-weight: 600;
+          color: #a78bfa;
+          margin: 0 0 0.75rem 0;
+          line-height: 1.3;
+        }
+        .slide-content h3 {
+          font-size: 1.25rem;
+          font-weight: 600;
+          color: #c4b5fd;
+          margin: 0 0 0.5rem 0;
+        }
+        .slide-content p {
+          font-size: 0.95rem;
+          line-height: 1.7;
+          margin: 0.5rem 0;
+          color: #e0e0e8;
+        }
+        .slide-content ul, .slide-content ol {
+          margin: 0.5rem 0 0.5rem 1.5rem;
+          padding: 0;
+        }
+        .slide-content li {
+          font-size: 0.95rem;
+          line-height: 1.7;
+          margin: 0.25rem 0;
+          color: #e0e0e8;
+        }
+        .slide-content strong {
+          color: #c4b5fd;
+          font-weight: 600;
+        }
+        .slide-content em {
+          color: #d1d5db;
+        }
+        .slide-content code {
+          font-size: 0.85rem;
+          background: rgba(255,255,255,0.08);
+          padding: 0.15rem 0.4rem;
+          border-radius: 0.25rem;
+          color: #e0e0e8;
+        }
+        .slide-content blockquote {
+          border-left: 3px solid #a78bfa;
+          background: rgba(167,139,250,0.08);
+          padding: 0.5rem 1rem;
+          border-radius: 0 0.5rem 0.5rem 0;
+          margin: 0.75rem 0;
+        }
+        .slide-content img {
+          border-radius: 0.5rem;
+          max-width: 100%;
+        }
+        .slide-content a {
+          color: #93c5fd;
+          text-decoration: underline;
+        }
+        .slide-content table {
+          width: 100%;
+          border-collapse: collapse;
+          margin: 0.75rem 0;
+        }
+        .slide-content th {
+          background: rgba(255,255,255,0.06);
+          padding: 0.5rem 0.75rem;
+          text-align: left;
+          font-size: 0.85rem;
+          font-weight: 600;
+          color: #c4b5fd;
+          border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .slide-content td {
+          padding: 0.4rem 0.75rem;
+          font-size: 0.85rem;
+          border-bottom: 1px solid rgba(255,255,255,0.05);
+          color: #e0e0e8;
+        }
+        .slide-content hr {
+          border: none;
+          border-top: 1px solid rgba(255,255,255,0.1);
+          margin: 1rem 0;
+        }
+        /* Title slide: center single h1 */
+        .slide-content > div > h1:first-child:last-child {
+          text-align: center;
+          margin-top: 20%;
+          font-size: 2.5rem;
+        }
+        .slide-content > div > h1:first-child + p:last-child {
+          text-align: center;
+        }
+        @media (min-width: 640px) {
+          .slide-content h1 { font-size: 2.5rem; }
+          .slide-content h2 { font-size: 1.75rem; }
+          .slide-content p, .slide-content li { font-size: 1.05rem; }
+          .slide-content > div > h1:first-child:last-child { font-size: 3rem; }
+        }
+      `}</style>
     </div>
   );
 }

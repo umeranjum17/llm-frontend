@@ -9,49 +9,85 @@ import { cn } from "@/lib/utils";
 // Lazy-load mermaid (~300KB) only when a diagram is actually rendered
 let mermaidInstance: typeof import("mermaid").default | null = null;
 
+const mermaidConfig = {
+  startOnLoad: false,
+  theme: "dark" as const,
+  securityLevel: "loose" as const,
+  fontFamily: "ui-sans-serif, system-ui, -apple-system, sans-serif",
+  themeVariables: {
+    darkMode: true,
+    background: "#0d1117",
+    primaryColor: "#1f6feb",
+    primaryTextColor: "#e6edf3",
+    primaryBorderColor: "#388bfd",
+    secondaryColor: "#161b22",
+    secondaryTextColor: "#e6edf3",
+    secondaryBorderColor: "#30363d",
+    tertiaryColor: "#161b22",
+    tertiaryTextColor: "#e6edf3",
+    tertiaryBorderColor: "#30363d",
+    lineColor: "#8b949e",
+    textColor: "#e6edf3",
+    mainBkg: "#1f6feb",
+    nodeBorder: "#388bfd",
+    clusterBkg: "#161b22",
+    clusterBorder: "#30363d",
+    titleColor: "#e6edf3",
+    edgeLabelBackground: "#0d1117",
+    nodeTextColor: "#e6edf3",
+  },
+  flowchart: { useMaxWidth: true, htmlLabels: true, padding: 16, curve: "linear" as const },
+  sequence: { useMaxWidth: true, wrap: true },
+  gantt: { useMaxWidth: true },
+  class: { useMaxWidth: true },
+  state: { useMaxWidth: true },
+  er: { useMaxWidth: true },
+  pie: { useMaxWidth: true },
+  journey: { useMaxWidth: true },
+  mindmap: { useMaxWidth: true },
+};
+
 async function getMermaid() {
   if (!mermaidInstance) {
     const m = await import("mermaid");
     mermaidInstance = m.default;
-    mermaidInstance.initialize({
-      startOnLoad: false,
-      theme: "dark",
-      securityLevel: "loose",
-      fontFamily: "ui-sans-serif, system-ui, -apple-system, sans-serif",
-      themeVariables: {
-        darkMode: true,
-        background: "#0d1117",
-        primaryColor: "#1f6feb",
-        primaryTextColor: "#e6edf3",
-        primaryBorderColor: "#388bfd",
-        secondaryColor: "#161b22",
-        secondaryTextColor: "#e6edf3",
-        secondaryBorderColor: "#30363d",
-        tertiaryColor: "#161b22",
-        tertiaryTextColor: "#e6edf3",
-        tertiaryBorderColor: "#30363d",
-        lineColor: "#8b949e",
-        textColor: "#e6edf3",
-        mainBkg: "#1f6feb",
-        nodeBorder: "#388bfd",
-        clusterBkg: "#161b22",
-        clusterBorder: "#30363d",
-        titleColor: "#e6edf3",
-        edgeLabelBackground: "#0d1117",
-        nodeTextColor: "#e6edf3",
-      },
-      flowchart: { useMaxWidth: true, htmlLabels: true, padding: 16, curve: "linear" },
-      sequence: { useMaxWidth: true, wrap: true },
-      gantt: { useMaxWidth: true },
-      class: { useMaxWidth: true },
-      state: { useMaxWidth: true },
-      er: { useMaxWidth: true },
-      pie: { useMaxWidth: true },
-      journey: { useMaxWidth: true },
-      mindmap: { useMaxWidth: true },
-    });
+    mermaidInstance.initialize(mermaidConfig);
   }
   return mermaidInstance;
+}
+
+function resetMermaid() {
+  mermaidInstance = null;
+}
+
+// Serialize all mermaid.render() calls to prevent concurrent DOM conflicts
+let renderQueue: Promise<void> = Promise.resolve();
+
+function queueRender<T>(fn: () => Promise<T>): Promise<T> {
+  let resolve!: (v: T) => void;
+  let reject!: (e: unknown) => void;
+  const p = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+  renderQueue = renderQueue.then(
+    () => fn().then(resolve, reject),
+    () => fn().then(resolve, reject)
+  );
+  return p;
+}
+
+/** Render mermaid code to SVG using a dedicated off-screen container */
+async function renderMermaidSvg(id: string, code: string): Promise<string> {
+  const mermaid = await getMermaid();
+  const container = document.createElement("div");
+  container.style.position = "absolute";
+  container.style.left = "-9999px";
+  container.style.top = "-9999px";
+  document.body.appendChild(container);
+  try {
+    const { svg } = await mermaid.render(id, code, container);
+    return svg;
+  } finally {
+    container.remove();
+  }
 }
 
 /**
@@ -103,9 +139,11 @@ function detectDiagramType(code: string): string {
 interface MermaidDiagramProps {
   code: string;
   className?: string;
+  /** When true, renders only the SVG with no toolbar, zoom, or interactive controls */
+  compact?: boolean;
 }
 
-export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: MermaidDiagramProps) {
+export const MermaidDiagram = memo(function MermaidDiagram({ code, className, compact = false }: MermaidDiagramProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgWrapperRef = useRef<HTMLDivElement>(null);
   const [svg, setSvg] = useState<string>("");
@@ -121,57 +159,52 @@ export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: 
   const diagramType = detectDiagramType(code);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function renderDiagram() {
       if (!code.trim()) return;
 
-      const mermaid = await getMermaid();
-      const cleanup = () => {
-        document.querySelectorAll('[id^="dmermaid-"], [id^="d"].mermaid, .mermaid-error, #dmermaid').forEach(el => {
-          el.remove();
-        });
-      };
+      const genId = () => `mermaid-${Math.random().toString(36).substr(2, 9)}`;
 
-      // First attempt: render as-is
-      try {
-        const id = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
-        const { svg: renderedSvg } = await mermaid.render(id, code);
-        setSvg(renderedSvg);
-        setError(null);
-        cleanup();
-        return;
-      } catch {
-        cleanup();
-      }
-
-      // Second attempt: sanitize (fixes duplicate/concatenated diagrams from LLM)
-      const sanitized = sanitizeMermaidCode(code);
-      if (sanitized !== code.trim()) {
+      // All render attempts are queued to prevent concurrent DOM conflicts
+      const result = await queueRender(async () => {
+        // First attempt: render as-is
         try {
-          const id2 = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
-          const { svg: renderedSvg } = await mermaid.render(id2, sanitized);
-          setSvg(renderedSvg);
-          setError(null);
-          cleanup();
-          return;
+          const renderedSvg = await renderMermaidSvg(genId(), code);
+          return { svg: renderedSvg, error: null };
         } catch {
-          cleanup();
+          // continue to next attempt
         }
-      }
 
-      // Both failed — show error from original attempt
-      try {
-        const id3 = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
-        await mermaid.render(id3, code);
-      } catch (err) {
-        console.error("Mermaid rendering error:", err);
-        setError(err instanceof Error ? err.message : "Failed to render diagram");
-        setSvg("");
-      } finally {
-        cleanup();
-      }
+        // Second attempt: sanitize (fixes duplicate/concatenated diagrams from LLM)
+        const sanitized = sanitizeMermaidCode(code);
+        if (sanitized !== code.trim()) {
+          try {
+            const renderedSvg = await renderMermaidSvg(genId(), sanitized);
+            return { svg: renderedSvg, error: null };
+          } catch {
+            // continue to next attempt
+          }
+        }
+
+        // Third attempt: reset mermaid and retry (recovers from corrupted internal state)
+        try {
+          resetMermaid();
+          const renderedSvg = await renderMermaidSvg(genId(), code);
+          return { svg: renderedSvg, error: null };
+        } catch (err) {
+          console.error("Mermaid rendering error:", err);
+          return { svg: "", error: err instanceof Error ? err.message : "Failed to render diagram" };
+        }
+      });
+
+      if (cancelled) return;
+      setSvg(result.svg);
+      setError(result.error);
     }
 
     renderDiagram();
+    return () => { cancelled = true; };
   }, [code]);
 
   // Reset zoom/pan when toggling fullscreen
@@ -380,6 +413,24 @@ export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: 
           <p className="mt-2 text-xs text-muted-foreground font-medium">Source:</p>
           <pre className="mt-1 text-xs text-muted-foreground max-h-32 overflow-auto whitespace-pre-wrap break-all">{code}</pre>
         </details>
+      </div>
+    );
+  }
+
+  // Compact mode: just the SVG, no chrome
+  if (compact) {
+    return (
+      <div className={cn("my-2 rounded-lg bg-[#0d1117] p-3 overflow-hidden", className)}>
+        {svg ? (
+          <div
+            className="w-full flex justify-center [&>svg]:max-w-full [&>svg]:h-auto"
+            dangerouslySetInnerHTML={{ __html: svg }}
+          />
+        ) : (
+          <div className="flex items-center justify-center h-[120px]">
+            <span className="text-xs text-white/40">Rendering diagram...</span>
+          </div>
+        )}
       </div>
     );
   }
