@@ -80,6 +80,15 @@ export default function Home() {
     initAndLoad();
   }, [loadSettings, loadKeys, settingsLoaded, keysLoaded]);
 
+  // Auto-connect to Claw if enabled in settings
+  useEffect(() => {
+    if (settingsLoaded) {
+      import("@/stores/claw-store").then(({ useClawStore }) => {
+        useClawStore.getState().initFromSettings();
+      });
+    }
+  }, [settingsLoaded]);
+
   useEffect(() => {
     // Seed built-in agents/prompts once the app is running.
     ensureBuiltIns().catch((err) => console.error("Failed to seed built-ins:", err));
