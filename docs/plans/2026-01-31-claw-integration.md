@@ -2,9 +2,14 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Add a "Claw" panel to Lumina that connects to Claw's REST API (over Tailscale), showing agent status, tasks, activity, schedules — and allowing task creation and API key sync — while keeping all existing Lumina functionality intact.
+**Goal:** Deeply integrate Claw (background AI agent) into Lumina as a first-class feature — not bolted-on, but native. Users interact with Claw through chat (@Claw agent), auto-detecting skills ("schedule a daily email check", "what's Claw doing?"), and a Settings > Claw management dashboard.
 
-**Architecture:** Claw is a background AI agent with a Hono REST API at `http://<tailscale-ip>:8000`. Lumina connects via a new `ClawClient` class, stores connection config in `UserSettings`, manages state in a Zustand store, and renders a collapsible panel at the bottom of the sidebar. SSE provides real-time updates. All changes are additive — zero modifications to existing chat/agent/skill flows.
+**Architecture:** Three integration layers:
+1. **Claw Agent** — Built-in agent in the agent picker. When selected, messages route to Claw's `/chat` endpoint instead of OpenRouter. Appears in chat like any other agent.
+2. **Claw Skills** — Three built-in auto-detect skills: "Delegate to Claw" (create tasks), "Schedule with Claw" (create cron jobs), "Claw Status" (inline status report). Work even when Claw isn't the active agent.
+3. **Settings > Claw** — Full management dashboard with sub-tabs: Connection, Tasks, Activity, Schedules, Config, Key Sync.
+
+All powered by a `ClawClient` HTTP class, `useClawStore` Zustand store, and SSE real-time events. Zero changes to existing chat/agent/skill infrastructure — all additive.
 
 **Tech Stack:** Next.js 15, React 19, Zustand, Dexie (IndexedDB), Tailwind CSS, Shadcn UI, EventSource (SSE).
 
@@ -16,7 +21,6 @@
 |--------|------|------|-------------|
 | GET | `/status` | No | Health check, uptime |
 | GET | `/tasks` | Yes | List all tasks |
-| GET | `/tasks/:id` | Yes | Get single task |
 | POST | `/tasks` | Yes | Create task |
 | PATCH | `/tasks/:id` | Yes | Update task |
 | DELETE | `/tasks/:id` | Yes | Delete task |
@@ -35,221 +39,37 @@ Auth: `Authorization: Bearer <CLAW_SECRET>` header (or `?token=<secret>` for SSE
 
 ---
 
-## Task 1: Claw Types + API Client
+## Task 1: Claw Types + API Client ✅ DONE
 
-**Files:**
-- Create: `src/lib/claw/types.ts`
-- Create: `src/lib/claw/client.ts`
-
-**Step 1: Create types file**
-
-```typescript
-// src/lib/claw/types.ts
-export interface ClawStatus {
-  status: string;
-  uptime: number;
-  startedAt: string;
-}
-
-export interface ClawTask {
-  id: string;
-  title: string;
-  description?: string;
-  status: "pending" | "running" | "completed" | "failed";
-  priority: "low" | "medium" | "high";
-  assignedTo?: string;
-  createdAt: string;
-  updatedAt: string;
-  dueDate?: string;
-  metadata?: string;
-}
-
-export interface ClawActivity {
-  id: string;
-  taskId?: string;
-  action: string;
-  details?: string;
-  timestamp: string;
-}
-
-export interface ClawSchedule {
-  id: string;
-  name: string;
-  cronExpression: string;
-  taskId?: string;
-  enabled: boolean;
-  lastRun?: string;
-  nextRun?: string;
-  createdAt: string;
-}
-
-export interface ClawConfig {
-  openrouterModel: string;
-  heartbeatIntervalMinutes: number;
-  port: number;
-  host: string;
-}
-```
-
-**Step 2: Create the API client**
-
-```typescript
-// src/lib/claw/client.ts
-import type {
-  ClawStatus, ClawTask, ClawActivity, ClawSchedule, ClawConfig,
-} from "./types";
-
-export class ClawClient {
-  constructor(private baseUrl: string, private secret: string) {}
-
-  private headers(): HeadersInit {
-    return {
-      Authorization: `Bearer ${this.secret}`,
-      "Content-Type": "application/json",
-    };
-  }
-
-  private async request<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      ...init,
-      headers: { ...this.headers(), ...init?.headers },
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.error || `Claw API error: ${res.status}`);
-    }
-    return res.json();
-  }
-
-  async getStatus(): Promise<ClawStatus> {
-    return this.request("/status");
-  }
-
-  async getTasks(): Promise<{ tasks: ClawTask[] }> {
-    return this.request("/tasks");
-  }
-
-  async getTask(id: string): Promise<{ task: ClawTask }> {
-    return this.request(`/tasks/${id}`);
-  }
-
-  async createTask(instruction: string): Promise<{ accepted: boolean; taskId: string }> {
-    return this.request("/tasks", {
-      method: "POST",
-      body: JSON.stringify({ instruction }),
-    });
-  }
-
-  async updateTask(id: string, data: Partial<ClawTask>): Promise<{ ok: boolean }> {
-    return this.request(`/tasks/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteTask(id: string): Promise<{ ok: boolean }> {
-    return this.request(`/tasks/${id}`, { method: "DELETE" });
-  }
-
-  async getActivity(limit = 20): Promise<{ activity: ClawActivity[] }> {
-    return this.request(`/activity?limit=${limit}`);
-  }
-
-  async getSchedules(): Promise<{ schedules: ClawSchedule[] }> {
-    return this.request("/schedules");
-  }
-
-  async createSchedule(name: string, cronExpression: string): Promise<{ id: string }> {
-    return this.request("/schedules", {
-      method: "POST",
-      body: JSON.stringify({ name, cronExpression }),
-    });
-  }
-
-  async deleteSchedule(id: string): Promise<{ ok: boolean }> {
-    return this.request(`/schedules/${id}`, { method: "DELETE" });
-  }
-
-  async getConfig(): Promise<{ config: ClawConfig }> {
-    return this.request("/config");
-  }
-
-  async updateConfig(data: Partial<ClawConfig>): Promise<{ ok: boolean }> {
-    return this.request("/config", {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    });
-  }
-
-  async getMaskedKeys(): Promise<{ keys: Record<string, string | null> }> {
-    return this.request("/config/keys");
-  }
-
-  async pushKeys(keys: Record<string, string>): Promise<{ updated: string[] }> {
-    return this.request("/config/keys", {
-      method: "POST",
-      body: JSON.stringify({ keys }),
-    });
-  }
-
-  async chat(message: string): Promise<{ response: string; taskId: string }> {
-    return this.request("/chat", {
-      method: "POST",
-      body: JSON.stringify({ message, source: "lumina" }),
-    });
-  }
-
-  createEventSource(): EventSource {
-    return new EventSource(
-      `${this.baseUrl}/events?token=${encodeURIComponent(this.secret)}`
-    );
-  }
-}
-```
-
-**Step 3: Commit**
-
-```bash
-git add src/lib/claw/types.ts src/lib/claw/client.ts
-git commit -m "feat: add Claw API client and types for agent integration"
-```
+Already committed at `1d5b2b8`. Files:
+- `src/lib/claw/types.ts` — ClawStatus, ClawTask, ClawActivity, ClawSchedule, ClawConfig
+- `src/lib/claw/client.ts` — ClawClient class with all endpoint methods + SSE
 
 ---
 
 ## Task 2: Add Claw Fields to UserSettings (Schema v32)
 
 **Files:**
-- Modify: `src/lib/db/schema.ts` — add fields to `UserSettings`, bump `DB_SCHEMA_VERSION` to 32
-- No table-registry changes needed (no new tables or indexes — just new optional fields on `settings` row)
+- Modify: `src/lib/db/schema.ts` — add fields to UserSettings, bump DB_SCHEMA_VERSION to 32
 
 **Step 1: Add fields to UserSettings interface**
 
-In `src/lib/db/schema.ts`, add these fields to the `UserSettings` interface, after the `memoryDecayDays` / `lastMemoryDecayAt` block (around line 200):
+In `src/lib/db/schema.ts`, add to `UserSettings` interface after the `lastMemoryDecayAt` field (around line 200):
 
 ```typescript
   // Claw agent integration
   clawUrl?: string;           // e.g. "http://100.x.x.x:8000" (Tailscale IP)
   clawSecret?: string;        // Bearer token matching Claw's CLAW_SECRET env var
-  clawEnabled?: boolean;      // Master toggle for Claw sidebar panel
+  clawEnabled?: boolean;      // Master toggle for Claw integration
 ```
 
 **Step 2: Bump DB_SCHEMA_VERSION**
 
-Change line 5 from:
-```typescript
-export const DB_SCHEMA_VERSION = 31;
-```
-to:
-```typescript
-export const DB_SCHEMA_VERSION = 32;
-```
+Change `export const DB_SCHEMA_VERSION = 31;` → `export const DB_SCHEMA_VERSION = 32;`
 
-**Step 3: Verify app starts**
+No table-registry changes needed — these are just optional fields on the existing `settings` row.
 
-Run: `cd /home/umer/Github/llm-frontend && npm run dev`
-Expected: App starts, no DB errors. The version loop in the `LuminaDB` constructor (`for (let version = 1; version <= DB_SCHEMA_VERSION; version++)`) handles this automatically since `getStoresForVersion(32)` returns the same stores as v31 (no new tables).
-
-**Step 4: Commit**
+**Step 3: Commit**
 
 ```bash
 git add src/lib/db/schema.ts
@@ -258,21 +78,21 @@ git commit -m "feat: add clawUrl/clawSecret/clawEnabled to UserSettings (schema 
 
 ---
 
-## Task 3: Claw Zustand Store
+## Task 3: Claw Zustand Store + Settings Store Update
 
 **Files:**
 - Create: `src/stores/claw-store.ts`
 - Modify: `src/stores/settings-store.ts` — add `updateClawSettings` action
 
-**Step 1: Add updateClawSettings to settings store**
+**Step 1: Add to settings store interface and implementation**
 
-In `src/stores/settings-store.ts`, add to the `SettingsState` interface:
+In `src/stores/settings-store.ts`, add to `SettingsState` interface:
 
 ```typescript
   updateClawSettings: (url: string, secret: string, enabled: boolean) => Promise<void>;
 ```
 
-And add the implementation inside `create<SettingsState>((set, get) => ({`:
+Implementation:
 
 ```typescript
   updateClawSettings: async (url, secret, enabled) => {
@@ -281,32 +101,27 @@ And add the implementation inside `create<SettingsState>((set, get) => ({`:
   },
 ```
 
-**Step 2: Create the Claw store**
+**Step 2: Create the store**
 
 ```typescript
 // src/stores/claw-store.ts
 import { create } from "zustand";
 import { ClawClient } from "@/lib/claw/client";
-import type {
-  ClawStatus, ClawTask, ClawActivity, ClawSchedule, ClawConfig,
-} from "@/lib/claw/types";
+import type { ClawStatus, ClawTask, ClawActivity, ClawSchedule, ClawConfig } from "@/lib/claw/types";
 import { getSettings, updateSettings } from "@/lib/db/queries";
 
 interface ClawState {
-  // Connection
   isConnected: boolean;
   isConnecting: boolean;
   error: string | null;
   client: ClawClient | null;
 
-  // Data
   status: ClawStatus | null;
   tasks: ClawTask[];
   activity: ClawActivity[];
   schedules: ClawSchedule[];
   config: ClawConfig | null;
 
-  // Actions
   connect: (url: string, secret: string) => Promise<void>;
   disconnect: () => void;
   refreshAll: () => Promise<void>;
@@ -320,6 +135,7 @@ interface ClawState {
   deleteSchedule: (id: string) => Promise<void>;
   updateConfig: (data: Partial<ClawConfig>) => Promise<void>;
   pushKeys: (keys: Record<string, string>) => Promise<string[]>;
+  chatWithClaw: (message: string) => Promise<{ response: string; taskId: string }>;
   initFromSettings: () => Promise<void>;
 }
 
@@ -343,79 +159,45 @@ export const useClawStore = create<ClawState>((set, get) => ({
       await updateSettings({ clawUrl: url, clawSecret: secret, clawEnabled: true });
       await get().refreshAll();
     } catch (e) {
-      set({
-        isConnecting: false,
-        isConnected: false,
-        error: (e as Error).message,
-      });
+      set({ isConnecting: false, isConnected: false, error: (e as Error).message });
     }
   },
 
   disconnect: () => {
-    set({
-      isConnected: false,
-      client: null,
-      status: null,
-      tasks: [],
-      activity: [],
-      schedules: [],
-      config: null,
-      error: null,
-    });
+    set({ isConnected: false, client: null, status: null, tasks: [], activity: [], schedules: [], config: null, error: null });
   },
 
   refreshAll: async () => {
     const s = get();
-    await Promise.allSettled([
-      s.refreshTasks(),
-      s.refreshActivity(),
-      s.refreshSchedules(),
-      s.refreshConfig(),
-    ]);
+    await Promise.allSettled([s.refreshTasks(), s.refreshActivity(), s.refreshSchedules(), s.refreshConfig()]);
   },
 
   refreshTasks: async () => {
     const { client } = get();
     if (!client) return;
-    try {
-      const { tasks } = await client.getTasks();
-      set({ tasks });
-    } catch (e) {
-      console.warn("[Claw] Failed to refresh tasks:", (e as Error).message);
-    }
+    try { const { tasks } = await client.getTasks(); set({ tasks }); }
+    catch (e) { console.warn("[Claw] refresh tasks:", (e as Error).message); }
   },
 
   refreshActivity: async () => {
     const { client } = get();
     if (!client) return;
-    try {
-      const { activity } = await client.getActivity(50);
-      set({ activity });
-    } catch (e) {
-      console.warn("[Claw] Failed to refresh activity:", (e as Error).message);
-    }
+    try { const { activity } = await client.getActivity(50); set({ activity }); }
+    catch (e) { console.warn("[Claw] refresh activity:", (e as Error).message); }
   },
 
   refreshSchedules: async () => {
     const { client } = get();
     if (!client) return;
-    try {
-      const { schedules } = await client.getSchedules();
-      set({ schedules });
-    } catch (e) {
-      console.warn("[Claw] Failed to refresh schedules:", (e as Error).message);
-    }
+    try { const { schedules } = await client.getSchedules(); set({ schedules }); }
+    catch (e) { console.warn("[Claw] refresh schedules:", (e as Error).message); }
   },
 
   refreshConfig: async () => {
     const { client } = get();
     if (!client) return;
-    try {
-      const { config } = await client.getConfig();
-      set({ config });
-    } catch (e) {
-      console.warn("[Claw] Failed to refresh config:", (e as Error).message);
-    }
+    try { const { config } = await client.getConfig(); set({ config }); }
+    catch (e) { console.warn("[Claw] refresh config:", (e as Error).message); }
   },
 
   createTask: async (instruction) => {
@@ -461,15 +243,19 @@ export const useClawStore = create<ClawState>((set, get) => ({
     return updated;
   },
 
+  chatWithClaw: async (message) => {
+    const { client } = get();
+    if (!client) throw new Error("Not connected to Claw");
+    return client.chat(message);
+  },
+
   initFromSettings: async () => {
     try {
       const settings = await getSettings();
       if (settings.clawEnabled && settings.clawUrl && settings.clawSecret) {
         await get().connect(settings.clawUrl, settings.clawSecret);
       }
-    } catch {
-      // Settings not loaded yet
-    }
+    } catch { /* settings not loaded yet */ }
   },
 }));
 ```
@@ -524,14 +310,9 @@ export function useClawEvents() {
     es.addEventListener("schedule:created", onSchedule);
     es.addEventListener("schedule:deleted", onSchedule);
 
-    es.onerror = () => {
-      console.warn("[Claw SSE] Connection error, auto-reconnecting...");
-    };
+    es.onerror = () => console.warn("[Claw SSE] Connection error, auto-reconnecting...");
 
-    return () => {
-      es.close();
-      esRef.current = null;
-    };
+    return () => { es.close(); esRef.current = null; };
   }, [isConnected, client, refreshTasks, refreshActivity, refreshSchedules]);
 }
 ```
@@ -545,755 +326,407 @@ git commit -m "feat: add useClawEvents hook for real-time SSE updates from Claw"
 
 ---
 
-## Task 5: Claw Settings Tab
+## Task 5: Built-in Claw Agent
+
+**Files:**
+- Modify: `src/lib/constants/agents.ts` — add Claw agent to BUILTIN_AGENTS
+- Modify: `src/hooks/use-chat.ts` — add special routing for Claw agent
+
+**Step 1: Add Claw agent to BUILTIN_AGENTS**
+
+In `src/lib/constants/agents.ts`, add to the `BUILTIN_AGENTS` array:
+
+```typescript
+{
+  id: "agent_builtin_claw",
+  name: "Claw",
+  description: "Your background AI agent. Claw runs 24/7 on your machine, handling tasks like checking emails, managing schedules, and executing background work. Messages sent here go directly to Claw over your local network.",
+  avatar: "🦀",
+  systemPrompt: "You are Claw, a background AI agent. The user is talking to you through Lumina.",
+  modelId: undefined,
+  enabledTools: [],
+  mcpServerIds: [],
+  knowledgeBaseIds: [],
+  isBuiltIn: true,
+  isActive: true,
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
+  usageCount: 0,
+  executionType: "simple" as const,
+},
+```
+
+**Step 2: Add Claw agent routing in use-chat.ts**
+
+In `src/hooks/use-chat.ts`, inside the `generateResponse` function (or `sendMessage`), add a check before the normal LLM call. Find where agent-based routing happens and add:
+
+```typescript
+// Special routing for Claw agent — messages go to Claw's /chat endpoint
+if (agent?.id === "agent_builtin_claw") {
+  const clawStore = (await import("@/stores/claw-store")).useClawStore.getState();
+  if (!clawStore.isConnected) {
+    // Save error message as assistant response
+    const errorMsg = "Claw is not connected. Go to Settings > Claw to configure the connection.";
+    await saveAssistantMessage(actualChatId, errorMsg, parentUserMessageId);
+    return;
+  }
+  try {
+    const { response, taskId } = await clawStore.chatWithClaw(cleanedMessage);
+    const content = taskId
+      ? `${response}\n\n*Task ID: ${taskId}*`
+      : response;
+    await saveAssistantMessage(actualChatId, content, parentUserMessageId);
+  } catch (e) {
+    await saveAssistantMessage(actualChatId, `Claw error: ${(e as Error).message}`, parentUserMessageId);
+  }
+  return;
+}
+```
+
+Note: `saveAssistantMessage` is a placeholder — the implementer should use whatever pattern `use-chat.ts` uses to persist and display assistant messages (likely creating a Message in Dexie and updating the streaming store). The implementer must read the existing code to find the correct pattern.
+
+**Step 3: Commit**
+
+```bash
+git add src/lib/constants/agents.ts src/hooks/use-chat.ts
+git commit -m "feat: add built-in Claw agent with direct API routing"
+```
+
+---
+
+## Task 6: Built-in Claw Skills (3 skills)
+
+**Files:**
+- Modify: `src/lib/constants/skills.ts` — add 3 Claw skills to BUILTIN_SKILLS
+
+**Step 1: Add skills to BUILTIN_SKILLS**
+
+In `src/lib/constants/skills.ts`, add these three skills to the `BUILTIN_SKILLS` array:
+
+```typescript
+// --- Claw Integration Skills ---
+
+{
+  id: "skill_builtin_claw_delegate",
+  name: "Delegate to Claw",
+  description: "send this to Claw, have Claw handle this, delegate to Claw, create a task for Claw, Claw should do this, ask Claw to do this, background task",
+  category: "productivity",
+  systemPrompt: `The user wants to delegate a task to Claw, their background AI agent.
+
+Extract the task instruction from the user's message and output it in a claw-task code fence:
+
+\`\`\`claw-task
+Check my emails and summarize anything important from today
+\`\`\`
+
+Rules:
+- Extract a clear, actionable instruction
+- If the user's message IS the instruction, use it directly
+- Don't add extra commentary — just the code fence with the instruction
+- After the code fence, confirm: "Task sent to Claw."`,
+  trigger: { type: "auto" },
+  autoApplyQueries: [
+    "send this to Claw",
+    "have Claw handle this",
+    "delegate to Claw",
+    "create a task for Claw",
+    "Claw should do this",
+  ],
+  exclusionQueries: [
+    "what is Claw",
+    "how does Claw work",
+    "tell me about Claw",
+  ],
+  ui: {
+    icon: "Send",
+    color: "orange",
+    activeLabel: "Delegating to Claw...",
+  },
+  isBuiltIn: true,
+  isEnabled: true,
+  usageCount: 0,
+  createdAt: now(),
+  updatedAt: now(),
+},
+{
+  id: "skill_builtin_claw_schedule",
+  name: "Schedule with Claw",
+  description: "schedule a task with Claw, set up a recurring task, every day at 9am, cron job for Claw, remind me daily via Claw, schedule Claw to check",
+  category: "productivity",
+  systemPrompt: `The user wants to create a scheduled/recurring task for Claw, their background AI agent.
+
+Extract the schedule name and cron expression from the user's message and output in a claw-schedule code fence:
+
+\`\`\`claw-schedule
+{"name": "Check emails", "cron": "0 9 * * *"}
+\`\`\`
+
+Common cron patterns:
+- Every day at 9am: "0 9 * * *"
+- Every hour: "0 * * * *"
+- Every Monday at 8am: "0 8 * * 1"
+- Every 30 minutes: "*/30 * * * *"
+- Twice daily (9am and 5pm): "0 9,17 * * *"
+
+Rules:
+- Extract a descriptive name and valid cron expression
+- Use 5-field cron format (minute hour day-of-month month day-of-week)
+- After the code fence, confirm: "Schedule created in Claw."`,
+  trigger: { type: "auto" },
+  autoApplyQueries: [
+    "schedule a task with Claw",
+    "set up a recurring task",
+    "every day at 9am check",
+    "cron job for Claw",
+    "schedule Claw to",
+  ],
+  exclusionQueries: [
+    "what are Claw's schedules",
+    "show my schedules",
+    "explain cron syntax",
+  ],
+  ui: {
+    icon: "Calendar",
+    color: "purple",
+    activeLabel: "Scheduling with Claw...",
+  },
+  isBuiltIn: true,
+  isEnabled: true,
+  usageCount: 0,
+  createdAt: now(),
+  updatedAt: now(),
+},
+{
+  id: "skill_builtin_claw_status",
+  name: "Claw Status",
+  description: "what's Claw doing, Claw status, show my Claw tasks, Claw activity, is Claw running, check on Claw, Claw tasks",
+  category: "productivity",
+  systemPrompt: `The user wants to check on Claw, their background AI agent.
+
+You will receive Claw's current status data injected into the conversation context. Present it in a clean, readable format:
+
+## Claw Status
+
+**Connection:** 🟢 Online (uptime: Xh Ym)
+
+### Active Tasks
+| Task | Status | Created |
+|------|--------|---------|
+| ... | ... | ... |
+
+### Recent Activity
+- [timestamp] action — details
+- ...
+
+If no tasks or activity, say so. Be concise.`,
+  trigger: { type: "auto" },
+  autoApplyQueries: [
+    "what's Claw doing",
+    "Claw status",
+    "show my Claw tasks",
+    "is Claw running",
+    "check on Claw",
+  ],
+  exclusionQueries: [
+    "create a task for Claw",
+    "send this to Claw",
+    "schedule with Claw",
+  ],
+  ui: {
+    icon: "Activity",
+    color: "green",
+    activeLabel: "Checking Claw status...",
+  },
+  isBuiltIn: true,
+  isEnabled: true,
+  usageCount: 0,
+  createdAt: now(),
+  updatedAt: now(),
+},
+```
+
+**Step 2: Add claw-task and claw-schedule code fence parsing**
+
+In the chat message handling code (likely in `use-chat.ts` after receiving LLM response, or in a message post-processor), add parsing for the special code fences:
+
+```typescript
+// After LLM response is received, check for Claw code fences
+const clawTaskMatch = responseText.match(/```claw-task\n([\s\S]*?)```/);
+if (clawTaskMatch) {
+  const instruction = clawTaskMatch[1].trim();
+  const clawStore = (await import("@/stores/claw-store")).useClawStore.getState();
+  if (clawStore.isConnected) {
+    try {
+      await clawStore.createTask(instruction);
+    } catch (e) {
+      console.warn("[Claw] Failed to create task:", e);
+    }
+  }
+}
+
+const clawScheduleMatch = responseText.match(/```claw-schedule\n([\s\S]*?)```/);
+if (clawScheduleMatch) {
+  try {
+    const { name, cron } = JSON.parse(clawScheduleMatch[1].trim());
+    const clawStore = (await import("@/stores/claw-store")).useClawStore.getState();
+    if (clawStore.isConnected) {
+      await clawStore.createSchedule(name, cron);
+    }
+  } catch (e) {
+    console.warn("[Claw] Failed to create schedule:", e);
+  }
+}
+```
+
+**Step 3: Add Claw status data injection for the Status skill**
+
+In `src/lib/ai/context-builder.ts`, when the active skill is `skill_builtin_claw_status`, inject Claw's current data into the context:
+
+```typescript
+if (options?.skill?.id === "skill_builtin_claw_status") {
+  const clawStore = (await import("@/stores/claw-store")).useClawStore.getState();
+  if (clawStore.isConnected) {
+    const statusData = {
+      status: clawStore.status,
+      tasks: clawStore.tasks,
+      activity: clawStore.activity.slice(0, 10),
+      schedules: clawStore.schedules,
+    };
+    skillContent += `\n\n## Current Claw Data\n\`\`\`json\n${JSON.stringify(statusData, null, 2)}\n\`\`\``;
+  } else {
+    skillContent += "\n\nClaw is not connected. Tell the user to configure it in Settings > Claw.";
+  }
+}
+```
+
+**Step 4: Commit**
+
+```bash
+git add src/lib/constants/skills.ts src/hooks/use-chat.ts src/lib/ai/context-builder.ts
+git commit -m "feat: add 3 built-in Claw skills (delegate, schedule, status) with code fence parsing"
+```
+
+---
+
+## Task 7: Settings > Claw — Connection Tab
 
 **Files:**
 - Create: `src/components/settings/claw-settings.tsx`
 - Modify: `src/app/settings/page.tsx` — add "Claw" tab
 
-**Step 1: Create the settings component**
+**Step 1: Create the settings component with Connection sub-tab**
 
-```typescript
-// src/components/settings/claw-settings.tsx
-"use client";
+Create `src/components/settings/claw-settings.tsx` — a component with an inner tab system:
 
-import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Bot, Loader2, CheckCircle2, XCircle, Key } from "lucide-react";
-import { useClawStore } from "@/stores/claw-store";
-import { useSettingsStore } from "@/stores/settings-store";
-import { useApiKeysStore } from "@/stores/api-keys-store";
-import { toast } from "sonner";
+- **Connection sub-tab**: URL input, secret input, enable toggle, connect/disconnect button with status badge, key sync button
+- Reuses: Card, CardHeader, CardContent, Button, Input, Label, Switch, Badge from Shadcn
+- Uses: `useClawStore` for connection state, `useSettingsStore` for persistence, `useApiKeysStore` for key sync, `toast` from sonner
 
-export function ClawSettings() {
-  const settings = useSettingsStore();
-  const {
-    isConnected,
-    isConnecting,
-    error,
-    connect,
-    disconnect,
-    pushKeys,
-    client,
-  } = useClawStore();
-  const { keys } = useApiKeysStore();
-
-  const [url, setUrl] = useState(settings.clawUrl || "");
-  const [secret, setSecret] = useState(settings.clawSecret || "");
-  const [enabled, setEnabled] = useState(settings.clawEnabled ?? false);
-
-  useEffect(() => {
-    if (settings.isLoaded) {
-      setUrl(settings.clawUrl || "");
-      setSecret(settings.clawSecret || "");
-      setEnabled(settings.clawEnabled ?? false);
-    }
-  }, [settings.isLoaded, settings.clawUrl, settings.clawSecret, settings.clawEnabled]);
-
-  const handleConnect = async () => {
-    if (!url || !secret) {
-      toast.error("URL and secret are required");
-      return;
-    }
-    await connect(url, secret);
-    if (useClawStore.getState().isConnected) {
-      toast.success("Connected to Claw");
-    } else {
-      const err = useClawStore.getState().error;
-      if (err) toast.error(`Connection failed: ${err}`);
-    }
-  };
-
-  const handleDisconnect = () => {
-    disconnect();
-    toast.info("Disconnected from Claw");
-  };
-
-  const handleSyncKeys = async () => {
-    if (!client) return;
-    const keysToSync: Record<string, string> = {};
-    for (const k of keys) {
-      if (k.provider === "openrouter" && k.key)
-        keysToSync["OPENROUTER_API_KEY"] = k.key;
-    }
-    if (Object.keys(keysToSync).length === 0) {
-      toast.warning("No API keys to sync");
-      return;
-    }
-    try {
-      const updated = await pushKeys(keysToSync);
-      toast.success(`Synced ${updated.length} key(s) to Claw`);
-    } catch (e) {
-      toast.error(`Key sync failed: ${(e as Error).message}`);
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Bot className="h-5 w-5" />
-            Claw Agent Connection
-          </CardTitle>
-          <CardDescription>
-            Connect to your Claw background agent running on your local network
-            or via Tailscale.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="claw-enabled">Enable Claw Integration</Label>
-            <Switch
-              id="claw-enabled"
-              checked={enabled}
-              onCheckedChange={setEnabled}
-            />
-          </div>
-
-          {enabled && (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="claw-url">Claw URL</Label>
-                <Input
-                  id="claw-url"
-                  placeholder="http://100.x.x.x:8000"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="claw-secret">Claw Secret</Label>
-                <Input
-                  id="claw-secret"
-                  type="password"
-                  placeholder="Bearer token"
-                  value={secret}
-                  onChange={(e) => setSecret(e.target.value)}
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                {isConnected ? (
-                  <>
-                    <Badge variant="default" className="bg-green-600">
-                      <CheckCircle2 className="h-3 w-3 mr-1" />
-                      Connected
-                    </Badge>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleDisconnect}
-                    >
-                      Disconnect
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    {error && (
-                      <Badge variant="destructive">
-                        <XCircle className="h-3 w-3 mr-1" />
-                        {error}
-                      </Badge>
-                    )}
-                    <Button
-                      size="sm"
-                      onClick={handleConnect}
-                      disabled={isConnecting}
-                    >
-                      {isConnecting && (
-                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                      )}
-                      Connect
-                    </Button>
-                  </>
-                )}
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      {isConnected && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Key className="h-5 w-5" />
-              Sync API Keys to Claw
-            </CardTitle>
-            <CardDescription>
-              Push your Lumina API keys (OpenRouter, etc.) to Claw so it can use
-              the same providers.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button variant="outline" onClick={handleSyncKeys}>
-              Sync Keys to Claw
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  );
-}
-```
+See full implementation in the previous version of this plan (Task 5 in the old plan). The component should include connection config, test button, and key sync section.
 
 **Step 2: Add "Claw" tab to settings page**
 
 In `src/app/settings/page.tsx`:
+1. Add dynamic import for `ClawSettings`
+2. Add `"claw"` to `allowedTabs` array
+3. Add `<TabsTrigger value="claw">` with `Bot` icon
+4. Add `<TabsContent value="claw"><ClawSettings /></TabsContent>`
 
-1. Add dynamic import alongside the other lazy imports (around line 35):
-
-```typescript
-const ClawSettings = dynamic(
-  () =>
-    import("@/components/settings/claw-settings").then((m) => ({
-      default: m.ClawSettings,
-    })),
-  { loading: LoadingSpinner }
-);
-```
-
-2. Add `"claw"` to the `allowedTabs` array on line 63:
-
-```typescript
-const allowedTabs = ["general", "mcp", "api-keys", "memory", "theme", "shortcuts", "data", "sync", "agents", "skills", "trust", "analytics", "aliases", "claw"];
-```
-
-3. Add the tab trigger inside `<TabsList>` (with the other triggers):
-
-```tsx
-<TabsTrigger value="claw">
-  <Bot className="h-4 w-4 mr-1.5" />
-  Claw
-</TabsTrigger>
-```
-
-4. Add the tab content (with the other `<TabsContent>` blocks):
-
-```tsx
-<TabsContent value="claw">
-  <ClawSettings />
-</TabsContent>
-```
-
-Note: `Bot` icon is already imported from lucide-react on line 9.
-
-**Step 3: Verify**
-
-Run: `cd /home/umer/Github/llm-frontend && npm run dev`
-Navigate to `/settings?tab=claw`. Expected: "Claw Agent Connection" card renders with URL/secret fields.
-
-**Step 4: Commit**
+**Step 3: Commit**
 
 ```bash
 git add src/components/settings/claw-settings.tsx src/app/settings/page.tsx
-git commit -m "feat: add Claw settings tab with connection config and key sync"
+git commit -m "feat: add Settings > Claw connection tab"
 ```
 
 ---
 
-## Task 6: Claw Sidebar Components
+## Task 8: Settings > Claw — Tasks, Activity, Schedules Sub-tabs
 
 **Files:**
-- Create: `src/components/claw/status-badge.tsx`
-- Create: `src/components/claw/task-list.tsx`
-- Create: `src/components/claw/activity-feed.tsx`
-- Create: `src/components/claw/schedule-list.tsx`
-- Create: `src/components/claw/create-task-dialog.tsx`
-- Create: `src/components/claw/claw-panel.tsx`
+- Modify: `src/components/settings/claw-settings.tsx` — add Tasks, Activity, Schedules, Config sub-tabs
 
-**Step 1: Create StatusBadge**
+**Step 1: Add inner tabs to the Claw settings component**
 
-```typescript
-// src/components/claw/status-badge.tsx
-"use client";
+Using `Tabs`/`TabsList`/`TabsTrigger`/`TabsContent` from Shadcn, add sub-tabs within the Claw settings:
 
-import { Badge } from "@/components/ui/badge";
-import { useClawStore } from "@/stores/claw-store";
-import { Circle } from "lucide-react";
+**Tasks sub-tab:**
+- Table view: id (truncated), title, status badge (pending=yellow, running=blue, completed=green, failed=red), priority, created date
+- "New Task" button → Dialog with textarea for instruction
+- Delete button per row
+- Uses `useClawStore` tasks + createTask + deleteTask
+- Auto-refresh from SSE (useClawEvents hook)
 
-export function ClawStatusBadge() {
-  const isConnected = useClawStore((s) => s.isConnected);
-  const status = useClawStore((s) => s.status);
+**Activity sub-tab:**
+- Timeline/feed with entries: action (bold), details (muted), timestamp
+- Limit selector dropdown (20, 50, 100) → refreshActivity with limit
+- Uses `useClawStore` activity
 
-  if (!isConnected) {
-    return (
-      <Badge variant="secondary" className="text-xs">
-        <Circle className="h-2 w-2 mr-1 fill-muted-foreground text-muted-foreground" />
-        Offline
-      </Badge>
-    );
-  }
+**Schedules sub-tab:**
+- Table: name, cron expression (code), enabled badge, last run, next run
+- "New Schedule" button → Dialog with name + cron input
+- Delete button per row
+- Uses `useClawStore` schedules + createSchedule + deleteSchedule
 
-  const mins = status ? Math.floor(status.uptime / 60) : 0;
-  const label =
-    mins > 60
-      ? `${Math.floor(mins / 60)}h ${mins % 60}m`
-      : `${mins}m`;
+**Config sub-tab:**
+- Form fields: openrouterModel (input), heartbeatIntervalMinutes (number input)
+- Save button → updateConfig
+- Uses `useClawStore` config + updateConfig
 
-  return (
-    <Badge variant="default" className="text-xs bg-green-600">
-      <Circle className="h-2 w-2 mr-1 fill-current" />
-      Up {label}
-    </Badge>
-  );
-}
-```
+**Key Sync sub-tab:**
+- Shows which Lumina API keys can be synced to Claw
+- "Sync Keys" button → pushKeys
+- Shows masked key status from `getMaskedKeys`
 
-**Step 2: Create TaskList**
-
-```typescript
-// src/components/claw/task-list.tsx
-"use client";
-
-import { useClawStore } from "@/stores/claw-store";
-import { Button } from "@/components/ui/button";
-import { Trash2 } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
-
-const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-yellow-500",
-  running: "bg-blue-500",
-  completed: "bg-green-500",
-  failed: "bg-red-500",
-};
-
-export function ClawTaskList() {
-  const tasks = useClawStore((s) => s.tasks);
-  const deleteTask = useClawStore((s) => s.deleteTask);
-
-  if (tasks.length === 0) {
-    return (
-      <p className="text-xs text-muted-foreground py-2">No tasks yet.</p>
-    );
-  }
-
-  return (
-    <ScrollArea className="max-h-[300px]">
-      <div className="space-y-2">
-        {tasks.map((task) => (
-          <div
-            key={task.id}
-            className="flex items-start justify-between gap-2 p-2 rounded-md border text-sm"
-          >
-            <div className="min-w-0 flex-1">
-              <p className="font-medium truncate">{task.title}</p>
-              <div className="flex items-center gap-1.5 mt-1">
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${STATUS_COLORS[task.status] || "bg-gray-400"}`}
-                />
-                <span className="text-xs text-muted-foreground capitalize">
-                  {task.status}
-                </span>
-              </div>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 shrink-0"
-              onClick={() => deleteTask(task.id)}
-            >
-              <Trash2 className="h-3 w-3" />
-            </Button>
-          </div>
-        ))}
-      </div>
-    </ScrollArea>
-  );
-}
-```
-
-**Step 3: Create ActivityFeed**
-
-```typescript
-// src/components/claw/activity-feed.tsx
-"use client";
-
-import { useClawStore } from "@/stores/claw-store";
-import { ScrollArea } from "@/components/ui/scroll-area";
-
-export function ClawActivityFeed() {
-  const activity = useClawStore((s) => s.activity);
-
-  if (activity.length === 0) {
-    return (
-      <p className="text-xs text-muted-foreground py-2">
-        No recent activity.
-      </p>
-    );
-  }
-
-  return (
-    <ScrollArea className="max-h-[200px]">
-      <div className="space-y-1.5">
-        {activity.slice(0, 20).map((a) => (
-          <div
-            key={a.id}
-            className="text-xs py-1 border-b border-border/50 last:border-0"
-          >
-            <span className="font-medium">{a.action}</span>
-            {a.details && (
-              <span className="text-muted-foreground ml-1">
-                — {a.details}
-              </span>
-            )}
-            <div className="text-muted-foreground/60 text-[10px] mt-0.5">
-              {new Date(a.timestamp).toLocaleTimeString()}
-            </div>
-          </div>
-        ))}
-      </div>
-    </ScrollArea>
-  );
-}
-```
-
-**Step 4: Create ScheduleList**
-
-```typescript
-// src/components/claw/schedule-list.tsx
-"use client";
-
-import { useClawStore } from "@/stores/claw-store";
-import { Button } from "@/components/ui/button";
-import { Trash2, Clock } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
-
-export function ClawScheduleList() {
-  const schedules = useClawStore((s) => s.schedules);
-  const deleteSchedule = useClawStore((s) => s.deleteSchedule);
-
-  if (schedules.length === 0) {
-    return (
-      <p className="text-xs text-muted-foreground py-2">No schedules.</p>
-    );
-  }
-
-  return (
-    <ScrollArea className="max-h-[200px]">
-      <div className="space-y-2">
-        {schedules.map((s) => (
-          <div
-            key={s.id}
-            className="flex items-center justify-between gap-2 p-2 rounded-md border text-sm"
-          >
-            <div className="min-w-0 flex-1">
-              <p className="font-medium truncate">{s.name}</p>
-              <div className="flex items-center gap-1 mt-0.5">
-                <Clock className="h-3 w-3 text-muted-foreground" />
-                <code className="text-xs text-muted-foreground">
-                  {s.cronExpression}
-                </code>
-              </div>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 shrink-0"
-              onClick={() => deleteSchedule(s.id)}
-            >
-              <Trash2 className="h-3 w-3" />
-            </Button>
-          </div>
-        ))}
-      </div>
-    </ScrollArea>
-  );
-}
-```
-
-**Step 5: Create CreateTaskDialog**
-
-```typescript
-// src/components/claw/create-task-dialog.tsx
-"use client";
-
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Plus, Loader2 } from "lucide-react";
-import { useClawStore } from "@/stores/claw-store";
-import { toast } from "sonner";
-
-export function CreateTaskDialog() {
-  const [open, setOpen] = useState(false);
-  const [instruction, setInstruction] = useState("");
-  const [loading, setLoading] = useState(false);
-  const createTask = useClawStore((s) => s.createTask);
-
-  const handleCreate = async () => {
-    if (!instruction.trim()) return;
-    setLoading(true);
-    try {
-      await createTask(instruction.trim());
-      toast.success("Task sent to Claw");
-      setInstruction("");
-      setOpen(false);
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="w-full">
-          <Plus className="h-3 w-3 mr-1" />
-          New Task
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Send Task to Claw</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 pt-2">
-          <Input
-            placeholder="e.g. Check my emails and summarize anything important"
-            value={instruction}
-            onChange={(e) => setInstruction(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-          />
-          <Button
-            onClick={handleCreate}
-            disabled={loading || !instruction.trim()}
-          >
-            {loading && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
-            Send
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-```
-
-**Step 6: Create ClawPanel (main container)**
-
-```typescript
-// src/components/claw/claw-panel.tsx
-"use client";
-
-import { useState } from "react";
-import Link from "next/link";
-import { useClawStore } from "@/stores/claw-store";
-import { useSettingsStore } from "@/stores/settings-store";
-import { ClawStatusBadge } from "./status-badge";
-import { ClawTaskList } from "./task-list";
-import { ClawActivityFeed } from "./activity-feed";
-import { ClawScheduleList } from "./schedule-list";
-import { CreateTaskDialog } from "./create-task-dialog";
-import { useClawEvents } from "@/hooks/use-claw-events";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
-  ChevronRight,
-  ListTodo,
-  Activity,
-  Calendar,
-  Settings,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-
-export function ClawPanel() {
-  const isConnected = useClawStore((s) => s.isConnected);
-  const clawEnabled = useSettingsStore((s) => s.clawEnabled);
-  const [tasksOpen, setTasksOpen] = useState(true);
-  const [activityOpen, setActivityOpen] = useState(false);
-  const [schedulesOpen, setSchedulesOpen] = useState(false);
-
-  // Subscribe to SSE events when connected
-  useClawEvents();
-
-  // Don't render anything if Claw is not enabled in settings
-  if (!clawEnabled) return null;
-
-  if (!isConnected) {
-    return (
-      <div className="px-3 py-4 border-t">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Claw Agent
-          </span>
-          <ClawStatusBadge />
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Not connected.{" "}
-          <Link href="/settings?tab=claw" className="underline">
-            Configure
-          </Link>
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="px-3 py-3 border-t space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Claw Agent
-        </span>
-        <div className="flex items-center gap-1.5">
-          <ClawStatusBadge />
-          <Link href="/settings?tab=claw">
-            <Button variant="ghost" size="icon" className="h-5 w-5">
-              <Settings className="h-3 w-3" />
-            </Button>
-          </Link>
-        </div>
-      </div>
-
-      <CreateTaskDialog />
-
-      <Collapsible open={tasksOpen} onOpenChange={setTasksOpen}>
-        <CollapsibleTrigger className="flex items-center gap-1 text-xs font-medium w-full hover:text-foreground text-muted-foreground">
-          <ChevronRight
-            className={`h-3 w-3 transition-transform ${tasksOpen ? "rotate-90" : ""}`}
-          />
-          <ListTodo className="h-3 w-3" />
-          Tasks
-        </CollapsibleTrigger>
-        <CollapsibleContent className="pt-1">
-          <ClawTaskList />
-        </CollapsibleContent>
-      </Collapsible>
-
-      <Collapsible open={activityOpen} onOpenChange={setActivityOpen}>
-        <CollapsibleTrigger className="flex items-center gap-1 text-xs font-medium w-full hover:text-foreground text-muted-foreground">
-          <ChevronRight
-            className={`h-3 w-3 transition-transform ${activityOpen ? "rotate-90" : ""}`}
-          />
-          <Activity className="h-3 w-3" />
-          Activity
-        </CollapsibleTrigger>
-        <CollapsibleContent className="pt-1">
-          <ClawActivityFeed />
-        </CollapsibleContent>
-      </Collapsible>
-
-      <Collapsible open={schedulesOpen} onOpenChange={setSchedulesOpen}>
-        <CollapsibleTrigger className="flex items-center gap-1 text-xs font-medium w-full hover:text-foreground text-muted-foreground">
-          <ChevronRight
-            className={`h-3 w-3 transition-transform ${schedulesOpen ? "rotate-90" : ""}`}
-          />
-          <Calendar className="h-3 w-3" />
-          Schedules
-        </CollapsibleTrigger>
-        <CollapsibleContent className="pt-1">
-          <ClawScheduleList />
-        </CollapsibleContent>
-      </Collapsible>
-    </div>
-  );
-}
-```
-
-**Step 7: Commit**
+**Step 2: Commit**
 
 ```bash
-git add src/components/claw/
-git commit -m "feat: add Claw sidebar components (status, tasks, activity, schedules, task dialog)"
+git add src/components/settings/claw-settings.tsx
+git commit -m "feat: add Tasks, Activity, Schedules, Config, Key Sync sub-tabs to Claw settings"
 ```
 
 ---
 
-## Task 7: Wire ClawPanel into Sidebar + Auto-Connect on Startup
+## Task 9: Auto-Connect on Startup + SSE Activation
 
 **Files:**
-- Modify: `src/components/sidebar/sidebar.tsx` — render `<ClawPanel />` at bottom
 - Modify: `src/app/page.tsx` — call `initFromSettings()` on mount
+- Modify: `src/components/settings/claw-settings.tsx` — activate `useClawEvents` when on Claw settings page
 
-**Step 1: Add ClawPanel to sidebar**
+**Step 1: Add auto-connect on startup**
 
-In `src/components/sidebar/sidebar.tsx`:
-
-1. Add import at top:
-```typescript
-import { ClawPanel } from "@/components/claw/claw-panel";
-```
-
-2. Replace the closing section of the return JSX. Currently the sidebar ends with:
-```tsx
-      {/* Chat List */}
-      <div className="flex-1 min-h-0 overflow-hidden pt-2">
-        <ChatList searchQuery={searchQuery} onChatSelect={onNavigate} currentProjectId={currentProjectId} />
-      </div>
-    </div>
-```
-
-Change to:
-```tsx
-      {/* Chat List */}
-      <div className="flex-1 min-h-0 overflow-hidden pt-2">
-        <ChatList searchQuery={searchQuery} onChatSelect={onNavigate} currentProjectId={currentProjectId} />
-      </div>
-
-      {/* Claw Agent Panel */}
-      <ClawPanel />
-    </div>
-```
-
-**Step 2: Add auto-connect on startup**
-
-In `src/app/page.tsx`, add this effect after the existing `useEffect` blocks (e.g. after the `loadRecentChat` effect around line 115):
+In `src/app/page.tsx`, add after the existing initialization effects:
 
 ```typescript
-  // Auto-connect to Claw if previously configured
-  useEffect(() => {
-    if (settingsLoaded) {
-      import("@/stores/claw-store").then(({ useClawStore }) => {
-        useClawStore.getState().initFromSettings();
-      });
-    }
-  }, [settingsLoaded]);
+// Auto-connect to Claw if previously configured
+useEffect(() => {
+  if (settingsLoaded) {
+    import("@/stores/claw-store").then(({ useClawStore }) => {
+      useClawStore.getState().initFromSettings();
+    });
+  }
+}, [settingsLoaded]);
 ```
 
-Using dynamic import keeps the Claw store out of the critical path — it only loads when settings are ready.
+**Step 2: Activate SSE in Claw settings**
 
-**Step 3: Verify**
+In `src/components/settings/claw-settings.tsx`, call `useClawEvents()` at the top of the component so SSE is active while viewing Claw settings (keeps data fresh).
 
-Run: `cd /home/umer/Github/llm-frontend && npm run dev`
-Expected: Sidebar shows "Claw Agent" section at bottom (only if `clawEnabled` is true in settings). If not configured, nothing renders.
-
-**Step 4: Commit**
+**Step 3: Commit**
 
 ```bash
-git add src/components/sidebar/sidebar.tsx src/app/page.tsx
-git commit -m "feat: wire Claw panel into sidebar and auto-connect on startup"
+git add src/app/page.tsx src/components/settings/claw-settings.tsx
+git commit -m "feat: auto-connect to Claw on startup and activate SSE on settings page"
 ```
 
 ---
 
-## Task 8: Type Check + Build
+## Task 10: Type Check + Build
 
 **Step 1: Type check**
 
 Run: `cd /home/umer/Github/llm-frontend && npx tsc --noEmit`
-Expected: No type errors in new files.
+Expected: No type errors.
 
 **Step 2: Build**
 
@@ -1310,32 +743,34 @@ git add -A && git commit -m "chore: fix type errors and build issues from Claw i
 
 ## Summary of All Changes
 
-### New Files (11)
+### New Files (4)
 | File | Purpose |
 |------|---------|
 | `src/lib/claw/types.ts` | TypeScript types for Claw API |
-| `src/lib/claw/client.ts` | HTTP client for all 15 Claw endpoints + SSE |
-| `src/stores/claw-store.ts` | Zustand store (connection, tasks, activity, schedules) |
+| `src/lib/claw/client.ts` | HTTP client for all Claw endpoints + SSE |
+| `src/stores/claw-store.ts` | Zustand store (connection, data, actions, chat) |
 | `src/hooks/use-claw-events.ts` | SSE subscription hook |
-| `src/components/settings/claw-settings.tsx` | Settings tab UI |
-| `src/components/claw/claw-panel.tsx` | Main sidebar panel container |
-| `src/components/claw/status-badge.tsx` | Green/red connection indicator |
-| `src/components/claw/task-list.tsx` | Task cards with status + delete |
-| `src/components/claw/activity-feed.tsx` | Activity timeline |
-| `src/components/claw/schedule-list.tsx` | Cron schedule list with delete |
-| `src/components/claw/create-task-dialog.tsx` | Dialog to send tasks to Claw |
 
-### Modified Files (4)
+### New Components (1)
+| File | Purpose |
+|------|---------|
+| `src/components/settings/claw-settings.tsx` | Full Claw management dashboard (Connection, Tasks, Activity, Schedules, Config, Key Sync) |
+
+### Modified Files (6)
 | File | Change |
 |------|--------|
 | `src/lib/db/schema.ts` | Add `clawUrl`, `clawSecret`, `clawEnabled` to UserSettings; bump to v32 |
 | `src/stores/settings-store.ts` | Add `updateClawSettings` action |
+| `src/lib/constants/agents.ts` | Add built-in Claw agent |
+| `src/lib/constants/skills.ts` | Add 3 Claw skills (delegate, schedule, status) |
+| `src/hooks/use-chat.ts` | Claw agent routing + code fence parsing |
+| `src/lib/ai/context-builder.ts` | Inject Claw status data for status skill |
 | `src/app/settings/page.tsx` | Add "Claw" tab |
-| `src/components/sidebar/sidebar.tsx` | Render `<ClawPanel />` at bottom |
-| `src/app/page.tsx` | Auto-connect to Claw on startup |
+| `src/app/page.tsx` | Auto-connect on startup |
 
 ### Zero Breaking Changes
-- All existing features untouched (chat, agents, skills, projects, etc.)
-- ClawPanel returns `null` when `clawEnabled` is falsy — invisible by default
+- All existing features untouched
+- Claw agent is a standard built-in agent (same pattern as Research Assistant, etc.)
+- Claw skills are standard built-in skills (same pattern as Summarize, Create Chart, etc.)
 - DB migration is additive (optional fields on existing `settings` row)
-- Claw store lazy-loaded via dynamic import on startup
+- Claw features only activate when `clawEnabled` is true and connected
