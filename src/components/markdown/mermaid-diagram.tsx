@@ -139,11 +139,9 @@ function detectDiagramType(code: string): string {
 interface MermaidDiagramProps {
   code: string;
   className?: string;
-  /** When true, renders only the SVG with no toolbar, zoom, or interactive controls */
-  compact?: boolean;
 }
 
-export const MermaidDiagram = memo(function MermaidDiagram({ code, className, compact = false }: MermaidDiagramProps) {
+export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: MermaidDiagramProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgWrapperRef = useRef<HTMLDivElement>(null);
   const [svg, setSvg] = useState<string>("");
@@ -413,24 +411,6 @@ export const MermaidDiagram = memo(function MermaidDiagram({ code, className, co
           <p className="mt-2 text-xs text-muted-foreground font-medium">Source:</p>
           <pre className="mt-1 text-xs text-muted-foreground max-h-32 overflow-auto whitespace-pre-wrap break-all">{code}</pre>
         </details>
-      </div>
-    );
-  }
-
-  // Compact mode: just the SVG, no chrome
-  if (compact) {
-    return (
-      <div className={cn("my-2 rounded-lg bg-[#0d1117] p-3 overflow-hidden", className)}>
-        {svg ? (
-          <div
-            className="w-full flex justify-center [&>svg]:max-w-full [&>svg]:h-auto"
-            dangerouslySetInnerHTML={{ __html: svg }}
-          />
-        ) : (
-          <div className="flex items-center justify-center h-[120px]">
-            <span className="text-xs text-white/40">Rendering diagram...</span>
-          </div>
-        )}
       </div>
     );
   }

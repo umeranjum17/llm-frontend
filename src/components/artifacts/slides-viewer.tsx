@@ -1,161 +1,301 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Palette } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
 import { ExportButton } from "@/components/artifacts/export-button";
-import { motion, AnimatePresence } from "framer-motion";
+import { Badge } from "@/components/ui/badge";
 
 interface SlidesViewerProps {
   content: string;
 }
 
-function parseSlideContent(content: string): string[] {
+const REVEAL_THEMES = [
+  { id: "black", label: "Black" },
+  { id: "white", label: "White" },
+  { id: "moon", label: "Moon" },
+  { id: "night", label: "Night" },
+  { id: "league", label: "League" },
+  { id: "solarized", label: "Solarized" },
+  { id: "dracula", label: "Dracula" },
+  { id: "beige", label: "Beige" },
+  { id: "sky", label: "Sky" },
+  { id: "serif", label: "Serif" },
+  { id: "simple", label: "Simple" },
+  { id: "blood", label: "Blood" },
+] as const;
+
+function countSlides(content: string): number {
   return content
     .split(/\n---\n/)
     .map((s) => s.trim())
-    .filter(Boolean);
+    .filter(Boolean).length;
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function buildRevealHtml(content: string, theme: string): string {
+  const escaped = escapeHtml(content);
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.min.css">
+<link id="reveal-theme" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/${theme}.min.css">
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; }
+  .reveal { width: 100%; height: 100%; }
+  .reveal .slides { text-align: left; }
+  .reveal .slides section {
+    text-align: left;
+    padding: 40px 60px;
+    height: 100%;
+    box-sizing: border-box;
+  }
+  .reveal .slides section h1,
+  .reveal .slides section h2,
+  .reveal .slides section h3 {
+    text-transform: none;
+    text-align: left;
+  }
+  .reveal .slides section h1 { font-size: 1.8em; margin-bottom: 0.5em; }
+  .reveal .slides section h2 { font-size: 1.4em; margin-bottom: 0.4em; }
+  .reveal .slides section h3 { font-size: 1.1em; margin-bottom: 0.3em; }
+  .reveal .slides section ul,
+  .reveal .slides section ol {
+    display: block;
+    margin-left: 1em;
+  }
+  .reveal .slides section li {
+    margin-bottom: 0.4em;
+    font-size: 0.85em;
+    line-height: 1.6;
+  }
+  .reveal .slides section p {
+    font-size: 0.85em;
+    line-height: 1.6;
+  }
+  .reveal .slides section code {
+    font-size: 0.8em;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .reveal .slides section pre {
+    font-size: 0.55em;
+    width: 100%;
+    box-shadow: none;
+  }
+  .reveal .slides section blockquote {
+    width: 90%;
+    font-size: 0.85em;
+    padding: 10px 20px;
+  }
+  .reveal .slides section table {
+    font-size: 0.75em;
+  }
+  .reveal .slides section img {
+    max-height: 50vh;
+    border-radius: 8px;
+  }
+  .reveal .slides section .mermaid {
+    background: transparent;
+    text-align: center;
+  }
+  .reveal .slides section .mermaid svg {
+    max-height: 55vh;
+    max-width: 100%;
+  }
+  .reveal .controls { display: none !important; }
+  .reveal .progress { height: 3px; }
+</style>
+</head>
+<body>
+<div class="reveal">
+  <div class="slides">
+    <section data-markdown data-separator="^\\n---\\n" data-separator-vertical="^\\n--\\n">
+      <textarea data-template>
+${escaped}
+      </textarea>
+    </section>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.min.js"><\/script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/markdown/markdown.min.js"><\/script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"><\/script>
+<script>
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'dark',
+    securityLevel: 'loose',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    themeVariables: {
+      darkMode: true,
+      background: 'transparent',
+      primaryColor: '#4fc3f7',
+      primaryTextColor: '#e0e0e0',
+      lineColor: '#8b949e',
+      textColor: '#e0e0e0',
+    }
+  });
+
+  Reveal.initialize({
+    hash: false,
+    controls: false,
+    progress: true,
+    transition: 'slide',
+    embedded: true,
+    keyboardCondition: 'focused',
+    width: '100%',
+    height: '100%',
+    margin: 0,
+    minScale: 0.5,
+    maxScale: 2.0,
+    plugins: [RevealMarkdown],
+  }).then(function() {
+    // Render mermaid diagrams after reveal.js processes markdown
+    document.querySelectorAll('pre code.language-mermaid, pre code.mermaid').forEach(function(block) {
+      var pre = block.parentElement;
+      var div = document.createElement('div');
+      div.className = 'mermaid';
+      div.textContent = block.textContent;
+      if (pre && pre.parentElement) pre.parentElement.replaceChild(div, pre);
+    });
+    document.querySelectorAll('code.language-mermaid').forEach(function(block) {
+      var p = block.parentElement;
+      if (p && p.tagName === 'PRE' && p.parentElement) {
+        var div = document.createElement('div');
+        div.className = 'mermaid';
+        div.textContent = block.textContent;
+        p.parentElement.replaceChild(div, p);
+      }
+    });
+    mermaid.run();
+
+    var total = Reveal.getTotalSlides();
+    parent.postMessage({ event: 'ready', indexh: 0, total: total }, '*');
+
+    Reveal.on('slidechanged', function(ev) {
+      parent.postMessage({
+        event: 'slidechanged',
+        indexh: ev.indexh,
+        total: Reveal.getTotalSlides()
+      }, '*');
+    });
+  });
+
+  window.addEventListener('message', function(e) {
+    if (!e.data || !e.data.method) return;
+    if (e.data.method === 'prev') Reveal.prev();
+    if (e.data.method === 'next') Reveal.next();
+    if (e.data.method === 'slide') Reveal.slide(e.data.index);
+    if (e.data.method === 'setTheme') {
+      var link = document.getElementById('reveal-theme');
+      if (link) link.setAttribute('href', 'https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/' + e.data.theme + '.min.css');
+    }
+  });
+<\/script>
+</body>
+</html>`;
 }
 
 export function SlidesViewer({ content }: SlidesViewerProps) {
-  const slides = parseSlideContent(content);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const total = useMemo(() => countSlides(content), [content]);
   const [current, setCurrent] = useState(0);
-  const slideRef = useRef<HTMLDivElement>(null);
-  const [direction, setDirection] = useState(0);
+  const [ready, setReady] = useState(false);
+  const [theme, setTheme] = useState("black");
+  const [showThemes, setShowThemes] = useState(false);
 
-  const total = slides.length;
-
-  const goTo = useCallback(
-    (index: number) => {
-      if (index < 0 || index >= total) return;
-      setDirection(index > current ? 1 : -1);
-      setCurrent(index);
-    },
-    [current, total]
-  );
-
-  const prev = useCallback(() => goTo(current - 1), [goTo, current]);
-  const next = useCallback(() => goTo(current + 1), [goTo, current]);
-
-  // Touch swipe support
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
-
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-  }, []);
-
-  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
-    if (!touchStartRef.current) return;
-    const dx = e.changedTouches[0].clientX - touchStartRef.current.x;
-    const dy = e.changedTouches[0].clientY - touchStartRef.current.y;
-    touchStartRef.current = null;
-    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
-      if (dx < 0) next();
-      else prev();
-    }
-  }, [next, prev]);
+  const html = useMemo(() => buildRevealHtml(content, theme), [content, theme]);
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "ArrowLeft") prev();
-      if (e.key === "ArrowRight") next();
+    const handler = (e: MessageEvent) => {
+      if (!e.data || !e.data.event) return;
+      if (e.data.event === "ready") {
+        setReady(true);
+        setCurrent(0);
+      }
+      if (e.data.event === "slidechanged") {
+        setCurrent(e.data.indexh);
+      }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [prev, next]);
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
+
+  const postMessage = useCallback((msg: Record<string, unknown>) => {
+    iframeRef.current?.contentWindow?.postMessage(msg, "*");
+  }, []);
+
+  const prev = useCallback(() => postMessage({ method: "prev" }), [postMessage]);
+  const next = useCallback(() => postMessage({ method: "next" }), [postMessage]);
+  const goTo = useCallback((i: number) => postMessage({ method: "slide", index: i }), [postMessage]);
+
+  const changeTheme = useCallback((newTheme: string) => {
+    setTheme(newTheme);
+    postMessage({ method: "setTheme", theme: newTheme });
+    setShowThemes(false);
+  }, [postMessage]);
 
   if (total === 0) {
     return (
-      <div className="flex items-center justify-center h-full" style={{ color: "#8b8fa3" }}>
+      <div className="flex items-center justify-center h-full text-muted-foreground">
         No slides found
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full" style={{ background: "#0f0f1a" }}>
-      {/* Slide area — 16:9 aspect ratio */}
-      <div
-        className="flex-1 flex items-center justify-center p-4 sm:p-8 overflow-hidden"
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-      >
-        <div ref={slideRef} className="relative w-full max-w-4xl" style={{ aspectRatio: "16/9" }}>
-          <div
-            className="absolute inset-0 rounded-xl overflow-hidden"
-            style={{
-              background: "linear-gradient(135deg, #1a1a2e 0%, #16162a 50%, #1a1a2e 100%)",
-              boxShadow: "0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06)",
-            }}
-          >
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div
-                key={current}
-                initial={{ x: direction * 100, opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{ x: direction * -100, opacity: 0 }}
-                transition={{ duration: 0.2, ease: "easeInOut" }}
-                className="absolute inset-0 overflow-auto p-6 sm:p-10 slide-content"
-                style={{
-                  color: "#e0e0e8",
-                  fontFamily: "ui-sans-serif, system-ui, -apple-system, sans-serif",
-                }}
-              >
-                <MarkdownRenderer content={slides[current]} insideSlides />
-              </motion.div>
-            </AnimatePresence>
+    <div className="flex flex-col h-full bg-black">
+      {/* Header */}
+      <div className="shrink-0 flex items-center justify-between px-3 py-1.5 bg-black/90 border-b border-white/5">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-white/70">Slides</span>
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-normal text-white/50 border-white/10">
+            reveal.js
+          </Badge>
+        </div>
+
+        <div className="flex items-center gap-1">
+          {/* Theme picker */}
+          <div className="relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1.5 text-xs text-white/60 hover:text-white hover:bg-white/10"
+              onClick={() => setShowThemes(!showThemes)}
+            >
+              <Palette className="h-3 w-3" />
+              <span className="hidden sm:inline capitalize">{theme}</span>
+            </Button>
+            {showThemes && (
+              <div className="absolute right-0 top-full mt-1 z-50 bg-neutral-900 border border-white/10 rounded-lg shadow-xl p-1 min-w-[120px] max-h-[200px] overflow-y-auto">
+                {REVEAL_THEMES.map((t) => (
+                  <button
+                    key={t.id}
+                    className={cn(
+                      "w-full text-left text-xs px-3 py-1.5 rounded hover:bg-white/10 transition-colors",
+                      t.id === theme ? "text-primary bg-white/5" : "text-white/70"
+                    )}
+                    onClick={() => changeTheme(t.id)}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-      </div>
 
-      {/* Controls */}
-      <div className="shrink-0 flex flex-wrap items-center justify-center gap-3 sm:gap-4 pb-4 px-4">
-        <Button
-          variant="outline"
-          size="icon"
-          className="h-10 w-10 sm:h-8 sm:w-8"
-          onClick={prev}
-          disabled={current === 0}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-
-        <div className="flex items-center gap-1.5">
-          {slides.map((_, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => goTo(i)}
-              className={cn(
-                "h-2 rounded-full transition-all",
-                i === current
-                  ? "w-6"
-                  : "w-2 hover:opacity-70"
-              )}
-              style={{
-                background: i === current ? "#a78bfa" : "rgba(255,255,255,0.2)",
-              }}
-            />
-          ))}
-        </div>
-
-        <span className="text-xs tabular-nums min-w-[3rem] text-center" style={{ color: "#8b8fa3" }}>
-          {current + 1} / {total}
-        </span>
-
-        <Button
-          variant="outline"
-          size="icon"
-          className="h-10 w-10 sm:h-8 sm:w-8"
-          onClick={next}
-          disabled={current === total - 1}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-
-        <div className="flex items-center gap-1.5 basis-full sm:basis-auto justify-center sm:ml-4">
+          {/* Export */}
           <ExportButton
             label="PPTX"
             onClick={async () => {
@@ -166,124 +306,71 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
           <ExportButton
             label="PDF"
             onClick={async () => {
-              if (slideRef.current) {
+              if (containerRef.current) {
                 const { exportToPdf } = await import("@/lib/utils/export-utils");
-                await exportToPdf(slideRef.current, "Presentation");
+                await exportToPdf(containerRef.current, "Presentation");
               }
             }}
           />
         </div>
       </div>
 
-      {/* Scoped slide typography styles */}
-      <style jsx global>{`
-        .slide-content h1 {
-          font-size: 2rem;
-          font-weight: 700;
-          color: #a78bfa;
-          margin: 0 0 1rem 0;
-          letter-spacing: -0.02em;
-          line-height: 1.2;
-        }
-        .slide-content h2 {
-          font-size: 1.5rem;
-          font-weight: 600;
-          color: #a78bfa;
-          margin: 0 0 0.75rem 0;
-          line-height: 1.3;
-        }
-        .slide-content h3 {
-          font-size: 1.25rem;
-          font-weight: 600;
-          color: #c4b5fd;
-          margin: 0 0 0.5rem 0;
-        }
-        .slide-content p {
-          font-size: 0.95rem;
-          line-height: 1.7;
-          margin: 0.5rem 0;
-          color: #e0e0e8;
-        }
-        .slide-content ul, .slide-content ol {
-          margin: 0.5rem 0 0.5rem 1.5rem;
-          padding: 0;
-        }
-        .slide-content li {
-          font-size: 0.95rem;
-          line-height: 1.7;
-          margin: 0.25rem 0;
-          color: #e0e0e8;
-        }
-        .slide-content strong {
-          color: #c4b5fd;
-          font-weight: 600;
-        }
-        .slide-content em {
-          color: #d1d5db;
-        }
-        .slide-content code {
-          font-size: 0.85rem;
-          background: rgba(255,255,255,0.08);
-          padding: 0.15rem 0.4rem;
-          border-radius: 0.25rem;
-          color: #e0e0e8;
-        }
-        .slide-content blockquote {
-          border-left: 3px solid #a78bfa;
-          background: rgba(167,139,250,0.08);
-          padding: 0.5rem 1rem;
-          border-radius: 0 0.5rem 0.5rem 0;
-          margin: 0.75rem 0;
-        }
-        .slide-content img {
-          border-radius: 0.5rem;
-          max-width: 100%;
-        }
-        .slide-content a {
-          color: #93c5fd;
-          text-decoration: underline;
-        }
-        .slide-content table {
-          width: 100%;
-          border-collapse: collapse;
-          margin: 0.75rem 0;
-        }
-        .slide-content th {
-          background: rgba(255,255,255,0.06);
-          padding: 0.5rem 0.75rem;
-          text-align: left;
-          font-size: 0.85rem;
-          font-weight: 600;
-          color: #c4b5fd;
-          border-bottom: 1px solid rgba(255,255,255,0.1);
-        }
-        .slide-content td {
-          padding: 0.4rem 0.75rem;
-          font-size: 0.85rem;
-          border-bottom: 1px solid rgba(255,255,255,0.05);
-          color: #e0e0e8;
-        }
-        .slide-content hr {
-          border: none;
-          border-top: 1px solid rgba(255,255,255,0.1);
-          margin: 1rem 0;
-        }
-        /* Title slide: center single h1 */
-        .slide-content > div > h1:first-child:last-child {
-          text-align: center;
-          margin-top: 20%;
-          font-size: 2.5rem;
-        }
-        .slide-content > div > h1:first-child + p:last-child {
-          text-align: center;
-        }
-        @media (min-width: 640px) {
-          .slide-content h1 { font-size: 2.5rem; }
-          .slide-content h2 { font-size: 1.75rem; }
-          .slide-content p, .slide-content li { font-size: 1.05rem; }
-          .slide-content > div > h1:first-child:last-child { font-size: 3rem; }
-        }
-      `}</style>
+      {/* Slide area */}
+      <div ref={containerRef} className="flex-1 overflow-hidden relative">
+        <iframe
+          ref={iframeRef}
+          srcDoc={html}
+          className="absolute inset-0 w-full h-full border-0"
+          sandbox="allow-scripts allow-same-origin"
+          title="Presentation"
+        />
+      </div>
+
+      {/* Controls */}
+      <div className="shrink-0 flex items-center justify-center gap-3 sm:gap-4 py-2.5 px-4 bg-black/90 border-t border-white/5">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-white/60 hover:text-white hover:bg-white/10"
+          onClick={prev}
+          disabled={!ready || current === 0}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+
+        <div className="flex items-center gap-1.5">
+          {Array.from({ length: total }, (_, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => goTo(i)}
+              className={cn(
+                "h-2 rounded-full transition-all",
+                i === current ? "w-6 bg-primary" : "w-2 bg-white/20 hover:bg-white/40"
+              )}
+            />
+          ))}
+        </div>
+
+        <span className="text-xs text-white/50 tabular-nums min-w-[3rem] text-center">
+          {current + 1} / {total}
+        </span>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-white/60 hover:text-white hover:bg-white/10"
+          onClick={next}
+          disabled={!ready || current === total - 1}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {/* Close theme picker on outside click */}
+      {showThemes && (
+        <div className="fixed inset-0 z-40" onClick={() => setShowThemes(false)} />
+      )}
     </div>
   );
 }
