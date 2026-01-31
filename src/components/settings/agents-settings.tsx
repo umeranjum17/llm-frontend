@@ -37,12 +37,12 @@ export function AgentsSettings() {
     const builtInIds = new Set(BUILTIN_AGENTS.map(a => a.id));
 
     // Filter: only show built-ins that are in BUILTIN_AGENTS, plus all custom agents
-    const visibleAgents = list.filter(a => !a.isBuiltIn || builtInIds.has(a.id));
+    const visibleAgents = list.filter((a: Agent) => !a.isBuiltIn || builtInIds.has(a.id));
 
     const q = debouncedQuery.trim().toLowerCase();
     if (!q) return visibleAgents;
 
-    return visibleAgents.filter((a) => {
+    return visibleAgents.filter((a: Agent) => {
       // Search in name and description
       if (
         a.name.toLowerCase().includes(q) ||
@@ -127,7 +127,7 @@ export function AgentsSettings() {
       />
 
       <div className="space-y-2">
-        {filtered?.map((agent) => (
+        {filtered?.map((agent: Agent) => (
           <div
             key={agent.id}
             className="flex items-center justify-between gap-4 rounded-lg border p-3"

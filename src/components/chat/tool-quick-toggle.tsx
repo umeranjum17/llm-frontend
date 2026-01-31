@@ -212,7 +212,7 @@ export function ToolQuickToggle({ chatId }: ToolQuickToggleProps) {
     const handleToggleComposio = useCallback(async () => {
         const currentActive = chat?.activeMcpServerIds ?? defaultMcpServerIds ?? [];
         const newActive = isComposioActive
-            ? currentActive.filter(id => id !== "composio-consolidated")
+            ? currentActive.filter((id: string) => id !== "composio-consolidated")
             : [...currentActive, "composio-consolidated"];
 
         await updateDefaultMcpServerIds(newActive);

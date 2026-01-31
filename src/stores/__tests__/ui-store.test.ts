@@ -7,16 +7,12 @@ describe('ui-store', () => {
     useUIStore.setState({
       sidebarCollapsed: false,
       activeChatId: null,
-      secondaryChatId: null,
-      isSplitView: false,
       commandPaletteOpen: false,
       modelPickerOpen: false,
       toolSelectorOpen: false,
       showArtifacts: false,
       activeArtifact: null,
       artifactTabs: [],
-      isArenaMode: false,
-      arenaModelIds: [],
       isFocusMode: false,
       artifactsFullscreen: false,
     });
@@ -53,38 +49,8 @@ describe('ui-store', () => {
     });
   });
 
-  describe('split view', () => {
-    it('enables split view', () => {
-      const store = useUIStore.getState();
-
-      store.setIsSplitView(true);
-      expect(useUIStore.getState().isSplitView).toBe(true);
-    });
-
-    it('sets secondary chat ID for split view', () => {
-      const store = useUIStore.getState();
-      store.setIsSplitView(true);
-      store.setActiveChatId('chat-1');
-
-      store.setSecondaryChatId('chat-2');
-
-      const state = useUIStore.getState();
-      expect(state.isSplitView).toBe(true);
-      expect(state.activeChatId).toBe('chat-1');
-      expect(state.secondaryChatId).toBe('chat-2');
-    });
-
-    it('clears secondary chat when disabling split view', () => {
-      const store = useUIStore.getState();
-      store.setIsSplitView(true);
-      store.setSecondaryChatId('chat-2');
-
-      store.setIsSplitView(false);
-      store.setSecondaryChatId(null);
-
-      expect(useUIStore.getState().secondaryChatId).toBeNull();
-    });
-  });
+  // Split view tests removed: isSplitView, secondaryChatId, setIsSplitView,
+  // setSecondaryChatId do not exist on the current UIState interface.
 
   describe('dialog states', () => {
     it('toggles command palette', () => {
@@ -258,35 +224,8 @@ describe('ui-store', () => {
     });
   });
 
-  describe('arena mode', () => {
-    it('enables arena mode', () => {
-      const store = useUIStore.getState();
-
-      store.setIsArenaMode(true);
-      expect(useUIStore.getState().isArenaMode).toBe(true);
-    });
-
-    it('sets arena model IDs', () => {
-      const store = useUIStore.getState();
-      const modelIds = ['gpt-4', 'claude-3-sonnet'];
-
-      store.setArenaModelIds(modelIds);
-
-      expect(useUIStore.getState().arenaModelIds).toEqual(modelIds);
-    });
-
-    it('clears arena model IDs when disabling', () => {
-      const store = useUIStore.getState();
-
-      store.setIsArenaMode(true);
-      store.setArenaModelIds(['gpt-4', 'claude-3-sonnet']);
-
-      store.setIsArenaMode(false);
-      store.setArenaModelIds([]);
-
-      expect(useUIStore.getState().arenaModelIds).toEqual([]);
-    });
-  });
+  // Arena mode tests removed: isArenaMode, setIsArenaMode, arenaModelIds,
+  // setArenaModelIds do not exist on the current UIState interface.
 
   describe('focus mode', () => {
     it('toggles focus mode', () => {
@@ -306,18 +245,12 @@ describe('ui-store', () => {
 
       // Set multiple states
       store.setActiveChatId('chat-1');
-      store.setIsSplitView(true);
-      store.setSecondaryChatId('chat-2');
-      store.setIsArenaMode(false);
       store.setSidebarCollapsed(true);
       store.setShowArtifacts(false);
       store.setIsFocusMode(true);
 
       const state = useUIStore.getState();
       expect(state.activeChatId).toBe('chat-1');
-      expect(state.isSplitView).toBe(true);
-      expect(state.secondaryChatId).toBe('chat-2');
-      expect(state.isArenaMode).toBe(false);
       expect(state.sidebarCollapsed).toBe(true);
       expect(state.showArtifacts).toBe(false);
       expect(state.isFocusMode).toBe(true);

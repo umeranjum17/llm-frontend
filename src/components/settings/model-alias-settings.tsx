@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Trash2, Plus, ArrowRight, Settings2, Info } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import type { ModelAlias } from "@/lib/db/schema";
 import { cn } from "@/lib/utils";
 
 export function ModelAliasSettings() {
@@ -118,7 +119,7 @@ export function ModelAliasSettings() {
 
                 {aliases && aliases.length > 0 ? (
                     <div className="grid grid-cols-1 gap-4">
-                        {aliases.map((item) => {
+                        {aliases.map((item: ModelAlias) => {
                             const originalModel = getModelById(item.id) || allModels.find(m => m.id === item.id);
                             return (
                                 <Card key={item.id} className="border-border/50 overflow-hidden">

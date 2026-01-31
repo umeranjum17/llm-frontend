@@ -1,7 +1,7 @@
 import { createTag, getAllTags, updateChat, getMessages } from "@/lib/db/queries";
 import { pickBestProviderId } from "@/lib/ai/provider-routing";
 import { db } from "@/lib/db/schema";
-import type { ApiKey } from "@/lib/db/schema";
+import type { ApiKey, Tag, Message } from "@/lib/db/schema";
 import type { UIMessage } from "ai";
 
 export interface TaggingOptions {
@@ -59,7 +59,7 @@ export async function generateAndApplyTags({ chatId, messages, keys }: TaggingOp
 
         for (const tagName of newTagNames) {
             const lowerName = tagName.toLowerCase().trim();
-            let tag = existingTags.find((t) => t.name.toLowerCase() === lowerName);
+            let tag: Tag | undefined = existingTags.find((t: Tag) => t.name.toLowerCase() === lowerName);
 
             if (!tag) {
                 // Create new tag
@@ -98,7 +98,7 @@ export async function triggerBatchAutoTagging(keys: ApiKey[]) {
         const messages = await getMessages(chat.id);
         if (messages.length >= 3) {
             // Map db messages to ai UIMessages (v6 requires parts array)
-            const aiMessages: UIMessage[] = messages.map(m => ({
+            const aiMessages: UIMessage[] = messages.map((m: Message) => ({
                 id: m.id,
                 role: m.role as any,
                 content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),

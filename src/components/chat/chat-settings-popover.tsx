@@ -15,6 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import { getAgentById, getSettings, updateSettings, updateChat, getChatById, getMessages, getProjectFiles, getChatFiles } from "@/lib/db/queries";
+import type { Message, ProjectFile } from "@/lib/db/schema";
 import { reindexProjectFiles } from "@/lib/rag/file-indexer";
 import { toast } from "sonner";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -73,7 +74,7 @@ export function ChatSettingsPopover({
   const defaultMaxTokens = settings?.defaultMaxTokens ?? 4096;
   const temperature = chat?.temperature ?? defaultTemperature;
   const maxTokens = chat?.maxTokens ?? defaultMaxTokens;
-  const calculatedCost = messages?.reduce((sum, msg) => sum + (msg.cost || 0), 0) || 0;
+  const calculatedCost = messages?.reduce((sum: number, msg: Message) => sum + (msg.cost || 0), 0) || 0;
 
   const defaultReasoningLevel = (settings?.defaultReasoningLevel as ReasoningLevel) || "medium";
   const updateDefaultReasoningLevel = useSettingsStore((state) => state.updateDefaultReasoningLevel);
@@ -131,7 +132,7 @@ export function ChatSettingsPopover({
     // When enabling, ensure existing project files are indexed
     if (enabling && chat?.projectId) {
       const files = await getProjectFiles(chat.projectId);
-      const hasUnindexed = files.some(f => !f.indexed);
+      const hasUnindexed = files.some((f: ProjectFile) => !f.indexed);
       if (hasUnindexed) {
         reindexProjectFiles(chat.projectId).catch((err) =>
           console.error("[KB] Failed to index existing project files:", err)

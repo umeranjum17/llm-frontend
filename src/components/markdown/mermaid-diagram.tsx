@@ -39,7 +39,7 @@ async function getMermaid() {
         edgeLabelBackground: "#0d1117",
         nodeTextColor: "#e6edf3",
       },
-      flowchart: { useMaxWidth: true, htmlLabels: true, padding: 16, curve: "basis" },
+      flowchart: { useMaxWidth: true, htmlLabels: true, padding: 16, curve: "linear" },
       sequence: { useMaxWidth: true, wrap: true },
       gantt: { useMaxWidth: true },
       class: { useMaxWidth: true },

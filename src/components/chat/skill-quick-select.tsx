@@ -81,8 +81,8 @@ export function SkillQuickSelect({ onSelect, selectedSkill }: SkillQuickSelectPr
   const { favorites, grouped, enabledCount } = useMemo(() => {
     if (!skills) return { favorites: [], grouped: {}, enabledCount: 0 };
 
-    const enabledSkills = skills.filter((s) => s.isEnabled);
-    const favs = enabledSkills.filter((s) => s.isFavorite);
+    const enabledSkills = skills.filter((s: Skill) => s.isEnabled);
+    const favs = enabledSkills.filter((s: Skill) => s.isFavorite);
     const byCategory: Record<string, Skill[]> = {};
 
     for (const skill of enabledSkills) {
@@ -169,7 +169,7 @@ export function SkillQuickSelect({ onSelect, selectedSkill }: SkillQuickSelectPr
                   <Star className="h-3 w-3 fill-yellow-500 text-yellow-500" />
                   Favorites
                 </div>
-                {favorites.map((skill) => (
+                {favorites.map((skill: Skill) => (
                   <SkillItem
                     key={skill.id}
                     skill={skill}

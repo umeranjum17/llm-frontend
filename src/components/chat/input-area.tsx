@@ -19,7 +19,7 @@ import { BUILTIN_AGENTS } from "@/lib/constants/agents";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import type { MessageContentPart, Skill } from "@/lib/db/schema";
+import type { MessageContentPart, Skill, Agent, Tag, ProjectFile, Chat } from "@/lib/db/schema";
 import { useStreamingStore } from "@/stores/streaming-store";
 import { MentionTextarea } from "@/components/chat/mention-textarea";
 import { MentionItem } from "@/lib/mentions/types";
@@ -328,7 +328,7 @@ export function InputArea({ chatId }: InputAreaProps) {
         if (msgs[i].role === "assistant" && msgs[i].skillId) {
           const allSkills = await getAllSkills();
           if (cancelled) return;
-          const skill = allSkills.find(s => s.id === msgs[i].skillId);
+          const skill = allSkills.find((s: Skill) => s.id === msgs[i].skillId);
           if (skill?.isEnabled && !userSelectedSkillRef.current) {
             setSelectedSkill(skill);
           }
@@ -368,7 +368,7 @@ export function InputArea({ chatId }: InputAreaProps) {
     if (!chat?.agentId) return null;
     const builtin = BUILTIN_AGENTS.find(a => a.id === chat.agentId);
     if (builtin) return builtin;
-    return agents?.find(a => a.id === chat.agentId) || null;
+    return agents?.find((a: Agent) => a.id === chat.agentId) || null;
   }, [chat?.agentId, agents]);
   const isPipelineAgent = currentAgent?.executionType === "pipeline";
 
@@ -446,7 +446,7 @@ export function InputArea({ chatId }: InputAreaProps) {
     // Agents (@ trigger)
     if (agents) {
       const builtInIds = new Set(BUILTIN_AGENTS.map((agent) => agent.id));
-      agents.forEach(a => {
+      agents.forEach((a: Agent) => {
         if (!a.isActive) return;
         if (a.isBuiltIn && !builtInIds.has(a.id)) return;
         items.push({
@@ -463,7 +463,7 @@ export function InputArea({ chatId }: InputAreaProps) {
 
     // Skills (@ trigger)
     if (skills) {
-      skills.forEach(s => {
+      skills.forEach((s: Skill) => {
         if (!s.isEnabled) return;
         items.push({
           id: s.id,
@@ -479,7 +479,7 @@ export function InputArea({ chatId }: InputAreaProps) {
 
     // Files (@ trigger)
     if (files) {
-      files.forEach(f => {
+      files.forEach((f: ProjectFile) => {
         items.push({
           id: f.id,
           type: "file",
@@ -495,7 +495,7 @@ export function InputArea({ chatId }: InputAreaProps) {
 
     // Chats (# trigger)
     if (otherChats) {
-      otherChats.forEach(c => {
+      otherChats.forEach((c: Chat) => {
         if (c.id === chatId) return; // Exclude current chat
         items.push({
           id: c.id,
@@ -510,7 +510,7 @@ export function InputArea({ chatId }: InputAreaProps) {
 
     // Tags (# trigger)
     if (tags) {
-      tags.forEach(t => {
+      tags.forEach((t: Tag) => {
         items.push({
           id: t.id,
           type: "tag",
@@ -789,7 +789,7 @@ export function InputArea({ chatId }: InputAreaProps) {
     const currentImages = [...imageAttachments];
 
     // Look up full skill from skills array if we have an active skill ID
-    const currentSkill = selectedSkill ? skills?.find(s => s.id === selectedSkill.id) || null : null;
+    const currentSkill = selectedSkill ? skills?.find((s: Skill) => s.id === selectedSkill.id) || null : null;
 
     const contentParts: MessageContentPart[] = [
       ...(message ? [{ type: "text" as const, text: message }] : []),
@@ -994,7 +994,7 @@ export function InputArea({ chatId }: InputAreaProps) {
     cancelRequest();
 
     // Get the skill if any
-    const msgSkill = queuedMsg.skill ? skills?.find(s => s.id === queuedMsg.skill) || null : null;
+    const msgSkill = queuedMsg.skill ? skills?.find((s: Skill) => s.id === queuedMsg.skill) || null : null;
 
     setTimeout(() => {
       sendMessage(queuedMsg.content, queuedMsg.attachments, msgSkill);

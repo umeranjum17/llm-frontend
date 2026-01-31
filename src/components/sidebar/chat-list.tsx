@@ -102,8 +102,8 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
         ]);
 
         // Merge and dedupe (pinned may overlap with recent)
-        const pinnedIds = new Set(pinnedChats.map(c => c.id));
-        const allChats = [...pinnedChats, ...recentChats.filter(c => !pinnedIds.has(c.id))];
+        const pinnedIds = new Set(pinnedChats.map((c: Chat) => c.id));
+        const allChats = [...pinnedChats, ...recentChats.filter((c: Chat) => !pinnedIds.has(c.id))];
 
         // Sort chats: pinned first, then by explicit order if set, otherwise by recency
         allChats.sort((a, b) => {
@@ -164,7 +164,7 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
     const folderIdsInProject = new Set(
       (chats || [])
         .map((chat: Chat) => chat.folderId)
-        .filter((folderId): folderId is string => Boolean(folderId))
+        .filter((folderId: string | undefined): folderId is string => Boolean(folderId))
     );
     return folders.filter(
       (folder: FolderType) =>
@@ -198,11 +198,11 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
 
         // Perform fuzzy search using Fuse.js
         const Fuse = (await import('fuse.js')).default;
-        const fuse = new Fuse(projectFilteredChats, {
+        const fuse = new Fuse<Chat>(projectFilteredChats, {
           keys: ['title', 'summary'],
           threshold: 0.4
         });
-        setSearchResults(fuse.search(searchQuery).map(r => r.item));
+        setSearchResults(fuse.search(searchQuery).map((r: { item: Chat }) => r.item));
       } catch (error) {
         console.error("Failed to search chats:", error);
         setSearchResults([]);
@@ -354,7 +354,7 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
     const chatsByFolder: Record<string, Chat[]> = {};
     const looseChats: Chat[] = [];
 
-    filteredChats.forEach(chat => {
+    filteredChats.forEach((chat: Chat) => {
       if (chat.folderId) {
         if (!chatsByFolder[chat.folderId]) chatsByFolder[chat.folderId] = [];
         chatsByFolder[chat.folderId].push(chat);
@@ -568,7 +568,7 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
       <div className="flex h-full min-w-0 flex-col overflow-x-hidden">
         <div className="px-3 pt-3 pb-2 flex items-center justify-between">
           <span className="text-xs text-muted-foreground/70">Your chats</span>
-          <Select value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as "updated" | "created" | "name")}>
             <SelectTrigger className="h-7 px-2 border-0 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/40 rounded-md" aria-label="Sort chats">
               <div className="flex items-center gap-1.5">
                 <span className="hidden sm:inline">Sort</span>

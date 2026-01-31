@@ -134,7 +134,7 @@ export function KeyboardShortcutsSettings() {
   useEffect(() => {
     if (settings?.shortcuts) {
       const parsed: Record<string, string[]> = {};
-      for (const [id, value] of Object.entries(settings.shortcuts)) {
+      for (const [id, value] of Object.entries(settings.shortcuts) as [string, string][]) {
         try {
           parsed[id] = JSON.parse(value);
         } catch {

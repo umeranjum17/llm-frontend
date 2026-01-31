@@ -357,7 +357,7 @@ export async function buildContextMessages(
     if (isSkillEditorSkill) {
       try {
         const allSkills = await getAllSkills();
-        const userSkills = allSkills.filter(s => !s.isBuiltIn);
+        const userSkills = allSkills.filter((s: Skill) => !s.isBuiltIn);
 
         let skillContextMsg = "\n\n## Available Skills for Editing\n\n";
 
@@ -365,7 +365,7 @@ export async function buildContextMessages(
           skillContextMsg += `### User-Created Skills (${userSkills.length})\n`;
           skillContextMsg += "Use the **id** field when outputting edits.\n\n";
 
-          userSkills.slice(0, 20).forEach(skill => {
+          userSkills.slice(0, 20).forEach((skill: Skill) => {
             skillContextMsg += `**${skill.name}** (id: \`${skill.id}\`)\n`;
             skillContextMsg += `- Category: ${skill.category} | ${skill.isEnabled ? "Enabled" : "Disabled"}\n`;
             skillContextMsg += `- Triggers: ${(skill.autoApplyQueries || []).slice(0, 3).join(", ") || "None"}\n`;
@@ -377,10 +377,10 @@ export async function buildContextMessages(
         }
 
         // Add built-in skills reference
-        const builtInSkills = allSkills.filter(s => s.isBuiltIn);
+        const builtInSkills = allSkills.filter((s: Skill) => s.isBuiltIn);
         if (builtInSkills.length > 0) {
           skillContextMsg += `### Built-in Skills (Reference Only)\n`;
-          builtInSkills.forEach(skill => {
+          builtInSkills.forEach((skill: Skill) => {
             skillContextMsg += `- **${skill.name}** (\`${skill.id}\`): ${skill.category}\n`;
           });
         }

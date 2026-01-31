@@ -7,7 +7,7 @@ import { addMessage, updateChat, getChatById, updateMessage, getMessagesForBranc
 import { buildContextMessages, formatDynamicContext } from "@/lib/ai/context-builder";
 import { countMessagesTokens, countTokens, estimateCost, calculateCacheSavings } from "@/lib/utils/token-counter";
 import { calculateContextBudget, truncateHistoryToFit, estimateMessagesTokens, validateSystemContextFits, compactAndTruncateHistory, type LLMMessage, type CompactionConfig, type CompactionResult, type CompactedMessage } from "@/lib/utils/context-budget";
-import type { MessageContent, Agent, Skill } from "@/lib/db/schema";
+import type { MessageContent, Agent, Skill, Message, PipelineStep } from "@/lib/db/schema";
 import { getImagesFromMessageContent, getTextFromMessageContent, mapTextInMessageContent, convertToAISDKContent } from "@/lib/utils/message-content";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { toast } from "sonner";
@@ -387,9 +387,9 @@ async function handlePipelineExecution(
     if (needsHistory && parentUserMessageId) {
       const history = await getMessagesForBranch(chatId, parentUserMessageId);
       chatHistory = history
-        .filter(m => ["system", "user", "assistant"].includes(m.role))
+        .filter((m: Message) => ["system", "user", "assistant"].includes(m.role))
         .slice(-20) // Limit history
-        .map(m => ({
+        .map((m: Message) => ({
           role: m.role as "system" | "user" | "assistant",
           content: typeof m.content === "string" ? m.content : getTextFromMessageContent(m.content),
         }));
@@ -683,7 +683,7 @@ export function useChat(chatId: string | null) {
         const messages = await getMessages(chatId);
         if (messages.length >= 2) {
           // Get last exchange (User + Assistant) for context
-          const recentMessages = messages.slice(-2).map(m => ({
+          const recentMessages = messages.slice(-2).map((m: Message) => ({
             role: m.role,
             content: typeof m.content === 'string' ? m.content : getTextFromMessageContent(m.content)
           }));
@@ -708,7 +708,7 @@ export function useChat(chatId: string | null) {
           const settings = await getSettings();
           const autoExtract = settings?.memoryAutoExtract ?? true;
           if (settings?.memoryEnabled && autoExtract && messages.length >= 2) {
-            const recentMessages = messages.slice(-2).map(m => ({
+            const recentMessages = messages.slice(-2).map((m: Message) => ({
               role: m.role,
               content: typeof m.content === 'string' ? m.content : getTextFromMessageContent(m.content)
             }));
@@ -837,7 +837,7 @@ export function useChat(chatId: string | null) {
       try {
         // Get MCP servers for tool steps - include servers from all pipeline step configurations
         // Steps can have their own mcpServerIds that need to be fetched
-        const allStepMcpServerIds = agent.pipeline.steps.flatMap(step => step.mcpServerIds || []);
+        const allStepMcpServerIds = agent.pipeline.steps.flatMap((step: PipelineStep) => step.mcpServerIds || []);
         const uniqueMcpServerIds = [...new Set([
           ...(chat.activeMcpServerIds || []),
           ...(agent.mcpServerIds || []),
@@ -988,7 +988,7 @@ export function useChat(chatId: string | null) {
     // 5. Get raw history from DB
     const rawHistory = await getMessagesForBranch(effectiveChatId, parentUserMessageId);
     const filteredHistory = rawHistory.filter(
-      (m) => m.role === "system" || m.role === "user" || m.role === "assistant"
+      (m: Message) => m.role === "system" || m.role === "user" || m.role === "assistant"
     );
 
     // 6. Handle context compaction/truncation
@@ -1019,10 +1019,10 @@ export function useChat(chatId: string | null) {
       // Transform the compacted history to LLM format
       // compactedHistory contains CompactedMessage with string content
       // We need to get original messages for proper image handling
-      const keptMessageMap = new Map(
+      const keptMessageMap = new Map<string, Message>(
         filteredHistory
-          .filter((m) => result.keptMessageIds.includes(m.id))
-          .map((m) => [m.id, m])
+          .filter((m: Message) => result.keptMessageIds.includes(m.id))
+          .map((m: Message) => [m.id, m] as [string, Message])
       );
 
       truncatedHistory = result.compactedHistory.map((cm: CompactedMessage) => {
@@ -1076,7 +1076,7 @@ export function useChat(chatId: string | null) {
       }
     } else {
       // Use simple transformation and truncation
-      const historyMessages: LLMMessage[] = filteredHistory.map((m) => {
+      const historyMessages: LLMMessage[] = filteredHistory.map((m: Message) => {
         const role = m.role as "system" | "user" | "assistant";
         const content = role === "user"
           ? mapTextInMessageContent(m.content, cleanReferencesForLLM)
@@ -1790,7 +1790,7 @@ export function useChat(chatId: string | null) {
       const updatedMessages = await getMessages(effectiveChatId);
       if (updatedMessages.length > 0 && updatedMessages.length % 10 === 0) {
         // Map to ai UIMessages for the utility
-        const aiMessages: UIMessage[] = updatedMessages.map(m => ({
+        const aiMessages: UIMessage[] = updatedMessages.map((m: Message) => ({
           id: m.id,
           role: m.role as any,
           content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
@@ -1985,7 +1985,7 @@ export function useChat(chatId: string | null) {
           let stickySkill: Skill | null = null;
           try {
             const recentMsgs = await getMessages(actualChatId);
-            const lastAssistantMsg = recentMsgs.filter(m => m.role === 'assistant').pop();
+            const lastAssistantMsg = recentMsgs.filter((m: Message) => m.role === 'assistant').pop();
             if (lastAssistantMsg?.skillId) {
               const prevSkill = await getSkillById(lastAssistantMsg.skillId);
               if (prevSkill?.isEnabled) {
@@ -2004,7 +2004,7 @@ export function useChat(chatId: string | null) {
               let conversationContext: Array<{ role: string; content: string }> | undefined;
               if (messageText.length < 20) {
                 const recentMessages = await getMessages(actualChatId);
-                conversationContext = recentMessages.slice(-4).map(m => ({
+                conversationContext = recentMessages.slice(-4).map((m: Message) => ({
                   role: m.role,
                   content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
                 }));

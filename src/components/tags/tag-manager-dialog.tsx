@@ -30,7 +30,7 @@ import {
   deleteTag,
   updateTag,
 } from "@/lib/db/queries";
-import { TAG_COLORS } from "@/lib/db/tag-schema";
+import { TAG_COLORS, type Tag } from "@/lib/db/tag-schema";
 
 interface TagManagerDialogProps {
   children?: React.ReactNode;
@@ -169,7 +169,7 @@ export function TagManagerDialog({ children }: TagManagerDialogProps) {
             <ScrollArea className="h-[300px]">
               <div className="space-y-2">
                 {tags && tags.length > 0 ? (
-                  tags.map((tag) => (
+                  tags.map((tag: Tag) => (
                     <div
                       key={tag.id}
                       className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent transition-colors"

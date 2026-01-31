@@ -39,6 +39,12 @@ vi.mock('@/lib/db/queries', () => ({
   getAllAgents: vi.fn(() => Promise.resolve([])),
   getAllTags: vi.fn(() => Promise.resolve([])),
   getMessages: vi.fn(() => Promise.resolve([])),
+  getAllSkills: vi.fn(() => Promise.resolve([])),
+  saveDraft: vi.fn(() => Promise.resolve()),
+  getDraft: vi.fn(() => Promise.resolve(null)),
+  deleteDraft: vi.fn(() => Promise.resolve()),
+  addChatFile: vi.fn(() => Promise.resolve()),
+  updateChat: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock('@/components/chat/mention-textarea', () => {
@@ -60,9 +66,56 @@ vi.mock('@/components/chat/mention-textarea', () => {
   };
 });
 
-vi.mock('@/components/chat/prompt-quick-select', () => ({
-  PromptQuickSelect: () => <div data-testid="prompt-quick-select">Prompt Select</div>,
+vi.mock('@/components/chat/skill-quick-select', () => ({
+  SkillQuickSelect: () => <div data-testid="skill-quick-select">Skill Select</div>,
 }));
+
+vi.mock('@/lib/constants/skills', () => ({
+  SKILL_COLORS: {},
+}));
+
+vi.mock('@/lib/rag/file-indexer', () => ({
+  indexChatFile: vi.fn(() => Promise.resolve()),
+}));
+
+vi.mock('@/lib/utils/token-counter', () => ({
+  countMessagesTokens: vi.fn(() => 0),
+  countTokens: vi.fn(() => 0),
+}));
+
+vi.mock('@/lib/constants/models', () => ({
+  getModelById: vi.fn(() => null),
+}));
+
+vi.mock('@/lib/constants/model-capabilities', () => ({
+  getModelCapabilities: vi.fn(() => ({ vision: false, functionCalling: false })),
+}));
+
+vi.mock('@/lib/utils/file-extractor', () => ({
+  extractTextFromFile: vi.fn(() => Promise.resolve('')),
+}));
+
+vi.mock('@/lib/constants/agents', () => ({
+  BUILTIN_AGENTS: [],
+}));
+
+vi.mock('@/stores/streaming-store', () => ({
+  useStreamingStore: vi.fn((selector) => {
+    const state = {
+      streamingChatIds: new Set(),
+      chatStreams: {},
+      setActiveSkill: vi.fn(),
+      getChatStream: vi.fn(() => ({ streamingMessageId: null, messageQueue: [], activeSkill: null })),
+      enqueueMessage: vi.fn(),
+      clearQueue: vi.fn(),
+      removeQueuedMessage: vi.fn(),
+      moveQueuedMessageUp: vi.fn(),
+    };
+    return selector(state);
+  }),
+}));
+
+vi.mock('@/lib/mentions/types', () => ({}));
 
 vi.mock('@/components/mobile-nav', () => ({
   MobileNavInline: () => <div data-testid="mobile-nav">Mobile Nav</div>,
@@ -104,12 +157,12 @@ describe('InputArea', () => {
 
     it('renders send button', () => {
       render(<InputArea chatId="test-chat" />);
-      expect(screen.getByTitle('Send')).toBeInTheDocument();
+      expect(screen.getByLabelText('Send message')).toBeInTheDocument();
     });
 
     it('renders attach button', () => {
       render(<InputArea chatId="test-chat" />);
-      expect(screen.getByTitle('Attach images or files')).toBeInTheDocument();
+      expect(screen.getByLabelText('Attach images or files')).toBeInTheDocument();
     });
   });
 
@@ -117,20 +170,17 @@ describe('InputArea', () => {
     it('renders voice input button on desktop (hidden on mobile via CSS)', () => {
       render(<InputArea chatId="test-chat" />);
 
-      // Voice button has "hidden sm:flex" class - visible on sm+ screens
-      const voiceButton = screen.getByTitle(/Voice input|Stop recording/i);
+      const voiceButton = screen.getByLabelText(/Voice input|Stop recording/i);
       expect(voiceButton).toBeInTheDocument();
       expect(voiceButton.className).toContain('hidden');
       expect(voiceButton.className).toContain('sm:flex');
     });
 
-    it('renders prompt quick select on desktop (hidden on mobile via CSS)', () => {
+    it('renders skill quick select', () => {
       render(<InputArea chatId="test-chat" />);
 
-      // The prompt quick select wrapper has "hidden sm:block" class
-      const promptSelect = screen.getByTestId('prompt-quick-select');
-      expect(promptSelect.parentElement?.className).toContain('hidden');
-      expect(promptSelect.parentElement?.className).toContain('sm:block');
+      const skillSelect = screen.getByTestId('skill-quick-select');
+      expect(skillSelect).toBeInTheDocument();
     });
 
     it('renders mobile navigation component', () => {
@@ -141,8 +191,7 @@ describe('InputArea', () => {
     it('has responsive button sizes (sm: larger, mobile: smaller)', () => {
       render(<InputArea chatId="test-chat" />);
 
-      const attachButton = screen.getByTitle('Attach images or files');
-      // Button has "h-9 w-9 sm:h-10 sm:w-10" classes
+      const attachButton = screen.getByLabelText('Attach images or files');
       expect(attachButton.className).toContain('h-9');
       expect(attachButton.className).toContain('sm:h-10');
     });
@@ -150,21 +199,10 @@ describe('InputArea', () => {
     it('has responsive padding on input container', () => {
       render(<InputArea chatId="test-chat" />);
 
-      // The form contains the input container with responsive classes
       const form = document.querySelector('form');
       const inputContainer = form?.querySelector('.rounded-xl');
       expect(inputContainer?.className).toContain('p-1.5');
       expect(inputContainer?.className).toContain('sm:p-2');
-    });
-
-    it('helper text is hidden on mobile', () => {
-      render(<InputArea chatId="test-chat" />);
-
-      // Helper text exists (wording uses symbols: "↵ Send • ⇧↵ New line")
-      const helperText = screen.getByText(/Send/i);
-      expect(helperText).toBeInTheDocument();
-      // Uses small responsive typography
-      expect(helperText.className).toContain('sm:text-xs');
     });
   });
 
@@ -172,7 +210,7 @@ describe('InputArea', () => {
     it('send button is disabled when input is empty', () => {
       render(<InputArea chatId="test-chat" />);
 
-      const sendButton = screen.getByTitle('Send');
+      const sendButton = screen.getByLabelText('Send message');
       expect(sendButton).toBeDisabled();
     });
 
@@ -182,7 +220,7 @@ describe('InputArea', () => {
       const textarea = screen.getByTestId('mention-textarea');
       fireEvent.change(textarea, { target: { value: 'Hello' } });
 
-      const sendButton = screen.getByTitle('Send');
+      const sendButton = screen.getByLabelText('Send message');
       expect(sendButton).not.toBeDisabled();
     });
   });
@@ -209,7 +247,7 @@ describe('InputArea', () => {
     it('clicking attach button triggers file input', () => {
       render(<InputArea chatId="test-chat" />);
 
-      const attachButton = screen.getByTitle('Attach images or files');
+      const attachButton = screen.getByLabelText('Attach images or files');
       const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
 
       const clickSpy = vi.spyOn(fileInput, 'click');
@@ -239,18 +277,17 @@ describe('InputArea', () => {
     it('textarea container is flex-1 to fill available space', () => {
       render(<InputArea chatId="test-chat" />);
 
-      const textareaContainer = screen.getByTestId('mention-textarea').parentElement;
-      expect(textareaContainer?.className).toContain('flex-1');
+      const textareaContainer = screen.getByTestId('mention-textarea').closest('.flex-1');
+      expect(textareaContainer).toBeInTheDocument();
     });
   });
 
   describe('placeholder text', () => {
-    it('shows placeholder with mention hints', () => {
+    it('shows default placeholder', () => {
       render(<InputArea chatId="test-chat" />);
 
       const textarea = screen.getByTestId('mention-textarea');
-      expect(textarea).toHaveAttribute('placeholder', expect.stringContaining('@ for agents'));
-      expect(textarea).toHaveAttribute('placeholder', expect.stringContaining('# for chats'));
+      expect(textarea).toHaveAttribute('placeholder', 'Message Lumina...');
     });
   });
 });

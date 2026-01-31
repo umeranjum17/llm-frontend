@@ -1,11 +1,30 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { CodeBlock } from '../code-block';
+import React from 'react';
 
 // Mock shiki
 vi.mock('shiki', () => ({
   codeToHtml: vi.fn().mockResolvedValue('<pre><code>highlighted code</code></pre>'),
 }));
+
+// Mock CodeBlockContext from markdown-renderer
+vi.mock('../markdown-renderer', () => ({
+  CodeBlockContext: React.createContext(null),
+}));
+
+// Mock code-runner to avoid sandpack import issues
+vi.mock('@/components/artifacts/code-runner', () => ({
+  RUNNABLE_LANGUAGES: ['javascript', 'typescript', 'python'],
+}));
+
+// Mock sanitizeSvgHtml from utils
+vi.mock('@/lib/utils', async (importOriginal) => {
+  const actual = await importOriginal() as any;
+  return {
+    ...actual,
+    sanitizeSvgHtml: vi.fn((html: string) => html),
+  };
+});
 
 // Mock the UI store
 const mockSetShowArtifacts = vi.fn();
@@ -24,8 +43,12 @@ vi.mock('@/stores/ui-store', () => ({
 }));
 
 describe('CodeBlock', () => {
-  beforeEach(() => {
+  let CodeBlock: any;
+
+  beforeEach(async () => {
     vi.clearAllMocks();
+    const mod = await import('../code-block');
+    CodeBlock = mod.CodeBlock;
   });
 
   it('renders code with language label', () => {
@@ -45,9 +68,7 @@ describe('CodeBlock', () => {
     const code = 'function hello() { console.log("Hi"); }';
     render(<CodeBlock language="javascript" code={code} />);
 
-    // The code should be inside a <code> element
-    const codeElement = screen.getByRole('code', { hidden: true }) ||
-                        document.querySelector('code');
+    const codeElement = document.querySelector('code');
     expect(codeElement).toBeInTheDocument();
     expect(codeElement?.textContent).toBe(code);
   });
@@ -75,8 +96,6 @@ describe('CodeBlock', () => {
     const copyButton = screen.getByTitle('Copy code');
     fireEvent.click(copyButton);
 
-    // After clicking, the check icon should appear (we can't easily check the icon change,
-    // but we can verify the click was registered)
     await waitFor(() => {
       expect(navigator.clipboard.writeText).toHaveBeenCalled();
     });
@@ -140,7 +159,6 @@ line 2
 line 3`;
     render(<CodeBlock language="text" code={multilineCode} />);
 
-    // Find the code element and check its content
     const codeElement = document.querySelector('code');
     expect(codeElement).toBeInTheDocument();
     expect(codeElement?.textContent).toBe(multilineCode);
@@ -150,6 +168,8 @@ line 3`;
     const code = '<div class="test">&amp;</div>';
     render(<CodeBlock language="html" code={code} />);
 
+    // HTML code with <!DOCTYPE or <html triggers preview mode, but this doesn't
+    // so it renders as code
     expect(screen.getByText(code)).toBeInTheDocument();
   });
 
@@ -174,23 +194,17 @@ line 3`;
     expect(toggleButton).toBeInTheDocument();
     fireEvent.click(toggleButton!);
 
-    // After collapsing, the code container uses grid-template-rows to hide content (0fr)
+    // After collapsing, code is removed from DOM (conditional render)
     await waitFor(() => {
-      const header = toggleButton!.closest('div');
-      const grid = header?.nextElementSibling as HTMLElement | null;
-      expect(grid).toBeTruthy();
-      expect(grid?.style.gridTemplateRows).toBe('0fr');
+      expect(screen.queryByText('const x = 1;')).not.toBeInTheDocument();
     });
 
     // Click again to expand
     fireEvent.click(toggleButton!);
 
-    // Code should be visible again (grid-template-rows back to 1fr)
+    // Code should be visible again
     await waitFor(() => {
-      const header = toggleButton!.closest('div');
-      const grid = header?.nextElementSibling as HTMLElement | null;
-      expect(grid).toBeTruthy();
-      expect(grid?.style.gridTemplateRows).toBe('1fr');
+      expect(screen.getByText('const x = 1;')).toBeInTheDocument();
     });
   });
 

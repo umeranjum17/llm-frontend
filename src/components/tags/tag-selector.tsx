@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tag, Plus, Check, X } from "lucide-react";
 import { getAllTags } from "@/lib/db/queries";
+import type { Tag as TagType } from "@/lib/db/schema";
 import { TagManagerDialog } from "./tag-manager-dialog";
 
 interface TagSelectorProps {
@@ -32,11 +33,11 @@ export function TagSelector({ selectedTags, onTagsChange }: TagSelectorProps) {
   };
 
   const getTagName = (tagId: string) => {
-    return allTags?.find((t) => t.id === tagId)?.name || tagId;
+    return allTags?.find((t: TagType) => t.id === tagId)?.name || tagId;
   };
 
   const getTagColor = (tagId: string) => {
-    return allTags?.find((t) => t.id === tagId)?.color || "#6b7280";
+    return allTags?.find((t: TagType) => t.id === tagId)?.color || "#6b7280";
   };
 
   return (
@@ -75,7 +76,7 @@ export function TagSelector({ selectedTags, onTagsChange }: TagSelectorProps) {
 
           {allTags && allTags.length > 0 ? (
             <>
-              {allTags.map((tag) => {
+              {allTags.map((tag: TagType) => {
                 const isSelected = selectedTags.includes(tag.id);
                 return (
                   <DropdownMenuItem

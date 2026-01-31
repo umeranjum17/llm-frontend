@@ -126,8 +126,8 @@ export function SkillsSettings() {
   // Count skills needing embedding (enabled skills without embedding or with wrong model)
   const skillsNeedingEmbedding = useMemo(() => {
     if (!skills || !embeddingInfo) return 0;
-    const enabledSkills = skills.filter(s => s.isEnabled && s.trigger.type === "auto");
-    return enabledSkills.filter(s => !skillIdsWithEmbeddings.has(s.id)).length;
+    const enabledSkills = skills.filter((s: Skill) => s.isEnabled && s.trigger.type === "auto");
+    return enabledSkills.filter((s: Skill) => !skillIdsWithEmbeddings.has(s.id)).length;
   }, [skills, embeddingInfo, skillIdsWithEmbeddings]);
 
   // Get available providers based on configured API keys
@@ -203,7 +203,7 @@ export function SkillsSettings() {
   const needsGeneration = !hasEmbeddings || modelChanged;
 
   const handleGenerateEmbeddings = async () => {
-    const enabledSkills = skills?.filter((s) => s.isEnabled) || [];
+    const enabledSkills = skills?.filter((s: Skill) => s.isEnabled) || [];
     if (enabledSkills.length === 0) {
       toast.error("No enabled skills to generate embeddings for");
       return;
@@ -306,7 +306,7 @@ export function SkillsSettings() {
     const list = skills || [];
     const q = debouncedQuery.trim().toLowerCase();
     if (!q) return list;
-    return list.filter((s) => {
+    return list.filter((s: Skill) => {
       // Search in name, description, and category
       if (
         s.name.toLowerCase().includes(q) ||
@@ -317,12 +317,12 @@ export function SkillsSettings() {
       }
 
       // Search in trigger phrases (autoApplyQueries)
-      if (s.autoApplyQueries?.some((phrase) => phrase.toLowerCase().includes(q))) {
+      if (s.autoApplyQueries?.some((phrase: string) => phrase.toLowerCase().includes(q))) {
         return true;
       }
 
       // Search in exclusion queries
-      if (s.exclusionQueries?.some((exclusion) => exclusion.toLowerCase().includes(q))) {
+      if (s.exclusionQueries?.some((exclusion: string) => exclusion.toLowerCase().includes(q))) {
         return true;
       }
 
@@ -367,7 +367,7 @@ export function SkillsSettings() {
   };
 
   const handleResetToDefaults = async () => {
-    const customSkillsCount = skills?.filter(s => !s.isBuiltIn).length || 0;
+    const customSkillsCount = skills?.filter((s: Skill) => !s.isBuiltIn).length || 0;
     const description = customSkillsCount > 0
       ? `This will delete ${customSkillsCount} custom skill${customSkillsCount !== 1 ? 's' : ''} and reset all skills to defaults.\n\nThis action cannot be undone.`
       : "This will reset all skills to their default settings and clear embeddings.";
@@ -589,7 +589,7 @@ export function SkillsSettings() {
       />
 
       <div className="space-y-2">
-        {filtered?.map((skill) => {
+        {filtered?.map((skill: Skill) => {
           const embeddingApiKey = selectedProvider ? getKeyForProvider(selectedProvider) : undefined;
           return (
             <SkillSettingsItem

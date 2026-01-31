@@ -38,14 +38,14 @@ export function AtMentionAutocomplete({
   // Filter items by query
   const filteredFiles = useMemo(() => {
     const q = query.toLowerCase();
-    return (files || []).filter((file) =>
+    return (files || []).filter((file: ProjectFile) =>
       file.name.toLowerCase().includes(q)
     );
   }, [files, query]);
 
   const filteredChats = useMemo(() => {
     const q = query.toLowerCase();
-    return (chats || []).filter((chat) =>
+    return (chats || []).filter((chat: Chat) =>
       chat.title.toLowerCase().includes(q)
     );
   }, [chats, query]);
@@ -100,7 +100,7 @@ export function AtMentionAutocomplete({
         <CommandList>
           {filteredFiles.length > 0 && (
             <CommandGroup heading="Files">
-              {filteredFiles.map((file, index) => (
+              {filteredFiles.map((file: ProjectFile, index: number) => (
                 <FilePreviewItem
                   key={file.id}
                   file={file}
@@ -115,7 +115,7 @@ export function AtMentionAutocomplete({
           )}
           {filteredChats.length > 0 && (
             <CommandGroup heading="Chats">
-              {filteredChats.map((chat, index) => (
+              {filteredChats.map((chat: Chat, index: number) => (
                 <ChatPreviewItem
                   key={chat.id}
                   chat={chat}

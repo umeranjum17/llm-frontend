@@ -170,10 +170,8 @@ describe('message-content utilities', () => {
           { type: 'image_url' as const, image_url: { url: 'https://example.com/generated.png' } },
         ];
         const result = convertToAISDKContent(content, 'assistant');
-        expect(result).toEqual([
-          { type: 'text', text: 'I generated this: ' },
-          { type: 'text', text: '[Generated image]' },
-        ]);
+        // AI SDK v6: assistant always returns a joined string
+        expect(result).toBe('I generated this: \n[Generated image]');
       });
 
       it('returns single text as string', () => {
@@ -189,9 +187,8 @@ describe('message-content utilities', () => {
     describe('user role', () => {
       it('converts text parts', () => {
         const content = [{ type: 'text' as const, text: 'User message' }];
-        expect(convertToAISDKContent(content, 'user')).toEqual([
-          { type: 'text', text: 'User message' },
-        ]);
+        // Single text-only user message returns string for simplicity
+        expect(convertToAISDKContent(content, 'user')).toBe('User message');
       });
 
       it('converts image_url to AI SDK image format', () => {

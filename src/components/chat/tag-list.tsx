@@ -16,7 +16,7 @@ export function TagList({ tagIds, className, size = "default" }: TagListProps) {
 
     if (!tagIds || tagIds.length === 0 || !allTags) return null;
 
-    const tags = allTags.filter((t) => tagIds.includes(t.id));
+    const tags = allTags.filter((t: { id: string; name: string; color: string }) => tagIds.includes(t.id));
 
     // Color mapping similar to schema (Tailwind classes)
     const getColorClass = (color: string) => {
@@ -36,7 +36,7 @@ export function TagList({ tagIds, className, size = "default" }: TagListProps) {
 
     return (
         <div className={cn("flex flex-wrap gap-1.5", className)}>
-            {tags.map((tag) => (
+            {tags.map((tag: { id: string; name: string; color: string }) => (
                 <Badge
                     key={tag.id}
                     variant="outline"

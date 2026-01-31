@@ -15,6 +15,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertTriangle, DollarSign } from "lucide-react";
 import { getMessages } from "@/lib/db/queries";
+import type { Message } from "@/lib/db/schema";
 import { getChatById } from "@/lib/db/queries";
 
 interface BudgetWarningProps {
@@ -27,7 +28,7 @@ interface BudgetWarningProps {
 // Calculate total cost of all messages in a chat
 async function calculateChatCost(chatId: string): Promise<number> {
   const messages = await getMessages(chatId);
-  return messages.reduce((sum, msg) => sum + (msg.cost || 0), 0);
+  return messages.reduce((sum: number, msg: Message) => sum + (msg.cost || 0), 0);
 }
 
 export function BudgetWarning({

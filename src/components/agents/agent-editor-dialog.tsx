@@ -94,7 +94,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
           setIsActive(merged.isActive ?? true);
 
           const existingSteps = merged.pipeline?.steps || [];
-          const stepsWithDefaults = existingSteps.map((step) => ({
+          const stepsWithDefaults = existingSteps.map((step: PipelineStep) => ({
             ...step,
             providerId: step.providerId || "openrouter",
             imageProviderId: step.type === "image" ? (step.imageProviderId || "openrouter") : step.imageProviderId,
@@ -113,7 +113,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
 
       // Pipeline state - ensure steps have default providerId values
       const existingSteps = source?.pipeline?.steps || [];
-      const stepsWithDefaults = existingSteps.map((step) => ({
+      const stepsWithDefaults = existingSteps.map((step: PipelineStep) => ({
         ...step,
         providerId: step.providerId || "openrouter",
         imageProviderId: step.type === "image" ? (step.imageProviderId || "openrouter") : step.imageProviderId,
@@ -819,7 +819,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
                                     MCP Tools
                                   </Label>
                                   <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
-                                    {allMcpServers.map((server) => {
+                                    {allMcpServers.map((server: McpServer) => {
                                       const isEnabled = step.mcpServerIds?.includes(server.id);
                                       const toolCount = server.tools?.length || 0;
                                       const serverTools = (server.tools || []) as Array<{ name: string; description?: string }>;
@@ -874,7 +874,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
                                                   No tools loaded for this server yet.
                                                 </div>
                                               ) : composioToolkits.length > 0 ? (
-                                                composioToolkits.map((toolkit) => {
+                                                composioToolkits.map((toolkit: { key: string; name: string; logo?: string; isEnabled: boolean }) => {
                                                   const stepOverrides = step.toolkitOverrides || {};
                                                   const effectiveEnabled = stepOverrides[toolkit.key] ?? toolkit.isEnabled;
                                                   const hasOverride = toolkit.key in stepOverrides;
@@ -933,7 +933,7 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
                                                           if (currentTools.length === 0) {
                                                             const enabledToolIds = (step.mcpServerIds || [])
                                                               .flatMap((serverId) => {
-                                                                const serverEntry = allMcpServers.find((s) => s.id === serverId);
+                                                                const serverEntry = allMcpServers.find((s: McpServer) => s.id === serverId);
                                                                 const tools = (serverEntry?.tools || []) as Array<{ name: string }>;
                                                                 return tools.map((t) => `${serverId}/${t.name}`);
                                                               })

@@ -50,10 +50,10 @@ export function ContextManagerDialog({
     }
   }, [open, chatId]);
 
-  const pinnedMessages = messages?.filter((m) => m.isPinned) || [];
-  const summarizedMessages = messages?.filter((m) => m.isSummarized) || [];
+  const pinnedMessages = messages?.filter((m: Message) => m.isPinned) || [];
+  const summarizedMessages = messages?.filter((m: Message) => m.isSummarized) || [];
   const regularMessages = messages?.filter(
-    (m) => !m.isPinned && !m.isSummarized && (m.role === "user" || m.role === "assistant")
+    (m: Message) => !m.isPinned && !m.isSummarized && (m.role === "user" || m.role === "assistant")
   ) || [];
 
   const handleTogglePin = async (messageId: string) => {
@@ -110,7 +110,7 @@ export function ContextManagerDialog({
             <div className="grid grid-cols-3 gap-3">
               <div className="p-3 rounded-lg bg-muted/50 border">
                 <div className="text-2xl font-bold text-foreground">
-                  {messages?.filter((m) => m.role === "user" || m.role === "assistant").length || 0}
+                  {messages?.filter((m: Message) => m.role === "user" || m.role === "assistant").length || 0}
                 </div>
                 <div className="text-xs text-muted-foreground">Total Messages</div>
               </div>
@@ -200,7 +200,7 @@ export function ContextManagerDialog({
                   Pinned Messages ({pinnedMessages.length})
                 </h3>
                 <div className="space-y-2">
-                  {pinnedMessages.map((msg) => (
+                  {pinnedMessages.map((msg: Message) => (
                     <div
                       key={msg.id}
                       className="p-3 rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50/50 dark:bg-amber-950/30 flex items-start gap-3"
@@ -242,7 +242,7 @@ export function ContextManagerDialog({
                 Recent Messages ({regularMessages.length})
               </h3>
               <div className="space-y-2 max-h-64 overflow-y-auto">
-                {regularMessages.slice(-20).map((msg) => (
+                {regularMessages.slice(-20).map((msg: Message) => (
                   <div
                     key={msg.id}
                     className="p-2 rounded-lg border bg-muted/30 flex items-start gap-3"

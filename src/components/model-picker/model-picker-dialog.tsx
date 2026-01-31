@@ -393,26 +393,26 @@ export function ModelPickerDialog({
   // Recent + favorite models
   const favoriteModelObjects = useMemo(() => {
     const list = (favoriteModels || [])
-      .map((fav) => modelById.get(fav.id) || getModelById(fav.id))
-      .filter((m): m is Model => m !== undefined);
+      .map((fav: { id: string }) => modelById.get(fav.id) || getModelById(fav.id))
+      .filter((m: Model | undefined): m is Model => m !== undefined);
 
     if (currentProviderId) {
       if (!llmProviderIds.includes(currentProviderId)) return [];
-      return list.filter((m) => isModelIdCompatibleWithProviderId(currentProviderId, m.id));
+      return list.filter((m: Model) => isModelIdCompatibleWithProviderId(currentProviderId, m.id));
     }
-    return list.filter((m) => bestProviderByModelId.get(m.id) != null);
+    return list.filter((m: Model) => bestProviderByModelId.get(m.id) != null);
   }, [bestProviderByModelId, currentProviderId, favoriteModels, llmProviderIds, modelById]);
 
   const recentModelObjects = useMemo(() => {
     const list = (recentModels || [])
-      .map((rec) => modelById.get(rec.id) || getModelById(rec.id))
-      .filter((m): m is Model => m !== undefined);
+      .map((rec: { id: string }) => modelById.get(rec.id) || getModelById(rec.id))
+      .filter((m: Model | undefined): m is Model => m !== undefined);
 
     if (currentProviderId) {
       if (!llmProviderIds.includes(currentProviderId)) return [];
-      return list.filter((m) => isModelIdCompatibleWithProviderId(currentProviderId, m.id));
+      return list.filter((m: Model) => isModelIdCompatibleWithProviderId(currentProviderId, m.id));
     }
-    return list.filter((m) => bestProviderByModelId.get(m.id) != null);
+    return list.filter((m: Model) => bestProviderByModelId.get(m.id) != null);
   }, [bestProviderByModelId, currentProviderId, llmProviderIds, modelById, recentModels]);
 
   const handleSelectModel = async (modelId: string) => {
@@ -440,7 +440,7 @@ export function ModelPickerDialog({
   };
 
   const isFavorite = (modelId: string) => {
-    return favoriteModels?.some((fav) => fav.id === modelId) || false;
+    return favoriteModels?.some((fav: { id: string }) => fav.id === modelId) || false;
   };
 
   // Check if we're in search/filter mode
@@ -548,7 +548,7 @@ export function ModelPickerDialog({
                     <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Favorites</h3>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {favoriteModelObjects.slice(0, 6).map(model => (
+                    {favoriteModelObjects.slice(0, 6).map((model: Model) => (
                       <button
                         key={model.id}
                         onClick={() => handleSelectModel(model.id)}
@@ -573,7 +573,7 @@ export function ModelPickerDialog({
                     <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recent</h3>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {recentModelObjects.slice(0, 5).map(model => (
+                    {recentModelObjects.slice(0, 5).map((model: Model) => (
                       <button
                         key={model.id}
                         onClick={() => handleSelectModel(model.id)}

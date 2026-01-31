@@ -43,7 +43,7 @@ export function DeleteProjectDialog({
 
   const projects = useLiveQuery(() => getAllProjects(), []);
   const otherProjects = projects?.filter(
-    (p) => p.id !== projectId
+    (p: { id: string }) => p.id !== projectId
   );
 
   useEffect(() => {

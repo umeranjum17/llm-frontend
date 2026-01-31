@@ -26,7 +26,7 @@ export function ProjectSources({ projectId }: ProjectSourcesProps) {
 
       {files && files.length > 0 && (
         <div className="space-y-1">
-          {files.map((file) => (
+          {files.map((file: { id: string; name: string; size: number; indexed?: boolean }) => (
             <div
               key={file.id}
               className="flex items-center gap-3 px-3 py-2 rounded-lg border bg-background/50 hover:bg-muted/50 transition-colors"

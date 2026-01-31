@@ -16,6 +16,7 @@ import {
   getMessages,
   updateAgent,
 } from "@/lib/db/queries";
+import type { Message } from "@/lib/db/schema";
 import { MODELS, type Model, getModelById, USE_CASE_RECOMMENDATIONS, MODEL_CATALOG } from "@/lib/constants/models";
 import { MessageList } from "./message-list";
 import { ModelPanel, AddModelPanelButton } from "./model-panel";
@@ -226,7 +227,7 @@ export function ChatShell() {
   // Map messages to match ai SDK Message type (createdAt as Date)
   const aiMessages = useMemo(() => {
     if (!messages) return [];
-    return messages.map((m) => ({
+    return messages.map((m: Message) => ({
       ...m,
       createdAt: new Date(m.createdAt),
     })) as any[];
@@ -280,15 +281,15 @@ export function ChatShell() {
     [allModels]
   );
   const favoriteIds = useMemo(
-    () => new Set((favoriteModelEntries || []).map((model) => model.id)),
+    () => new Set((favoriteModelEntries || []).map((model: { id: string }) => model.id)),
     [favoriteModelEntries]
   );
   const favoriteModelObjects = useMemo(() => {
     const entries = favoriteModelEntries || [];
     return entries
-      .map((model) => modelMap.get(model.id))
-      .filter((model): model is Model => Boolean(model))
-      .filter((model) => {
+      .map((model: { id: string }) => modelMap.get(model.id))
+      .filter((model: Model | undefined): model is Model => Boolean(model))
+      .filter((model: Model) => {
         // If a specific provider is set, only show compatible models
         if (chat?.providerId) {
           return isModelIdCompatibleWithProviderId(chat.providerId, model.id);
@@ -301,10 +302,10 @@ export function ChatShell() {
   const recentModelObjects = useMemo(() => {
     const entries = recentModelEntries || [];
     return entries
-      .filter((model) => !favoriteIds.has(model.id))
-      .map((model) => modelMap.get(model.id))
-      .filter((model): model is Model => Boolean(model))
-      .filter((model) => {
+      .filter((model: { id: string }) => !favoriteIds.has(model.id))
+      .map((model: { id: string }) => modelMap.get(model.id))
+      .filter((model: Model | undefined): model is Model => Boolean(model))
+      .filter((model: Model) => {
         if (chat?.providerId) {
           return isModelIdCompatibleWithProviderId(chat.providerId, model.id);
         }
@@ -314,8 +315,8 @@ export function ChatShell() {
 
   const suggestedModels = useMemo(() => {
     const excluded = new Set([
-      ...(favoriteModelEntries || []).map((model) => model.id),
-      ...(recentModelEntries || []).map((model) => model.id),
+      ...(favoriteModelEntries || []).map((model: { id: string }) => model.id),
+      ...(recentModelEntries || []).map((model: { id: string }) => model.id),
     ]);
     return allModels
       .filter((model) => !excluded.has(model.id))
@@ -333,7 +334,7 @@ export function ChatShell() {
   const quickSwitchModels = useMemo(() => {
     const sortedFavorites = [...favoriteModelObjects].sort((a, b) => a.name.localeCompare(b.name));
     const sortedRecent = [...recentModelObjects]
-      .filter((m) => !favoriteModelObjects.some((f) => f.id === m.id))
+      .filter((m) => !favoriteModelObjects.some((f: Model) => f.id === m.id))
       .sort((a, b) => a.name.localeCompare(b.name));
     return [...sortedFavorites, ...sortedRecent].slice(0, 9);
   }, [favoriteModelObjects, recentModelObjects]);

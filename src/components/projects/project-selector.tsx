@@ -37,7 +37,7 @@ export function ProjectSelector({
     ensureDefaultProject();
   }, []);
 
-  const currentProject = projects?.find((p) => p.id === currentProjectId);
+  const currentProject = projects?.find((p: { id: string }) => p.id === currentProjectId);
 
   // If no project selected, default to Personal
   useEffect(() => {
@@ -60,7 +60,7 @@ export function ProjectSelector({
   };
 
   // Sort projects: Personal first, then by updatedAt
-  const sortedProjects = projects?.slice().sort((a, b) => {
+  const sortedProjects = projects?.slice().sort((a: { id: string; updatedAt: number }, b: { id: string; updatedAt: number }) => {
     if (a.id === DEFAULT_PROJECT_ID) return -1;
     if (b.id === DEFAULT_PROJECT_ID) return 1;
     return b.updatedAt - a.updatedAt;
@@ -89,7 +89,7 @@ export function ProjectSelector({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-56">
           {sortedProjects && sortedProjects.length > 0 ? (
-            sortedProjects.map((project) => (
+            sortedProjects.map((project: { id: string; name: string; color?: string }) => (
               <DropdownMenuItem
                 key={project.id}
                 onClick={() => onProjectChange(project.id)}

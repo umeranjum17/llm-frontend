@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState, useMemo, useCallback, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
-import { useRxQueryWithTimeout } from "@/hooks/use-live-query-with-timeout";
-import { getChatWithMessages, updateChat, getRecentMessages, getMessageCount, getChatById } from "@/lib/db/queries";
+import { useLiveQueryWithTimeout } from "@/hooks/use-live-query-with-timeout";
+import { getChatWithMessages, updateChat } from "@/lib/db/queries";
 import { MessageItem } from "./message-item";
 import { useChat } from "@/hooks/use-chat";
 import { ArrowDown, Loader2, RefreshCw } from "lucide-react";
@@ -14,7 +14,7 @@ import type { Message } from "@/lib/db/schema";
 import { BranchNavigator } from "./branch-navigator";
 import { useSuggestedResponses } from "@/hooks/use-suggested-responses";
 import { SuggestedResponses } from "./suggested-responses";
-import { useStreamingStore, getStreamingKey } from "@/stores/streaming-store";
+import { useStreamingStore } from "@/stores/streaming-store";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { cn } from "@/lib/utils";
 
@@ -92,7 +92,6 @@ const MessageRow = memo(function MessageRow({
   isStreaming,
   streamingContent,
   streamingVersion,
-  modelId,
 }: {
   message: Message;
   onContinue: (messageId: string) => void;
@@ -108,7 +107,6 @@ const MessageRow = memo(function MessageRow({
   isStreaming: boolean;
   streamingContent?: string;
   streamingVersion?: number;
-  modelId?: string;
 }) {
   return (
     <div>
@@ -122,7 +120,6 @@ const MessageRow = memo(function MessageRow({
         isContinuing={isContinuing}
         streamingContentProp={isStreaming ? streamingContent : undefined}
         streamingVersionProp={isStreaming ? streamingVersion : undefined}
-        modelId={modelId}
       />
       {showBranchNav && siblings.length > 1 && siblingIndex !== -1 && (
         <div className="mx-auto max-w-3xl px-4 pb-4 -mt-4">
@@ -147,8 +144,7 @@ const MessageRow = memo(function MessageRow({
     prevProps.message.content === nextProps.message.content &&
     prevProps.isContinuing === nextProps.isContinuing &&
     prevProps.siblingIndex === nextProps.siblingIndex &&
-    prevProps.siblings.length === nextProps.siblings.length &&
-    prevProps.modelId === nextProps.modelId
+    prevProps.siblings.length === nextProps.siblings.length
   );
 });
 
@@ -230,18 +226,13 @@ export function MessageList({ chatId, modelId, onSendMessage }: MessageListProps
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [showNewMessagesButton, setShowNewMessagesButton] = useState(false);
   const previousMessageCount = useRef(0);
-  const [loadedMessages, setLoadedMessages] = useState<Message[]>([]);
-  const [hasMoreMessages, setHasMoreMessages] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  // Get streaming state for THIS chat/model combo to pass to MessageRow for proper re-renders
-  // In multi-model mode (when modelId is provided), use composite key to get the right streaming state
-  const streamingKey = chatId ? getStreamingKey(chatId, modelId) : null;
-  const chatStreamingState = useStreamingStore((state) => streamingKey ? state.getChatStream(streamingKey) : null);
+  // Get streaming state for THIS chat to pass to MessageRow for proper re-renders
+  const chatStreamingState = useStreamingStore((state) => chatId ? state.getChatStream(chatId) : null);
   const { streamingMessageId, streamingContent, streamingVersion, pipelineExecution } = chatStreamingState || {};
 
   // Use combined query to fetch chat and messages in one transaction
-  const { data: chatData, isTimedOut, retry: handleRetry } = useRxQueryWithTimeout(
+  const { data: chatData, isTimedOut, retry: handleRetry } = useLiveQueryWithTimeout(
     () => chatId ? getChatWithMessages(chatId) : undefined,
     [chatId],
     { timeoutMs: 5000 }
@@ -250,49 +241,15 @@ export function MessageList({ chatId, modelId, onSendMessage }: MessageListProps
   const allMessages = chatData?.messages;
   const chat = chatData?.chat;
 
-  // Update loaded messages when data changes
-  useEffect(() => {
-    if (allMessages) {
-      setLoadedMessages(allMessages);
-      setHasMoreMessages(false); // All messages loaded with current implementation
-    }
-  }, [allMessages]);
-
-  // Load more messages (for future pagination implementation)
-  const loadMoreMessages = useCallback(async () => {
-    if (!chatId || isLoadingMore || !hasMoreMessages) return;
-
-    setIsLoadingMore(true);
-    try {
-      const oldestTimestamp = loadedMessages.length > 0
-        ? Math.min(...loadedMessages.map(m => m.createdAt))
-        : undefined;
-
-      const { messages: olderMessages, hasMore } = await getRecentMessages(
-        chatId,
-        50,
-        oldestTimestamp
-      );
-
-      setLoadedMessages(prev => [...olderMessages, ...prev]);
-      setHasMoreMessages(hasMore);
-    } catch (error) {
-      console.error('Failed to load more messages:', error);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  }, [chatId, isLoadingMore, hasMoreMessages, loadedMessages]);
-
   // Memoize the maps to avoid rebuilding on every render
-  // Use loadedMessages instead of allMessages to support pagination
   const { byId, childrenByParent } = useMemo(() => {
-    if (!loadedMessages || loadedMessages.length === 0) return { byId: new Map<string, Message>(), childrenByParent: new Map<string, Message[]>() };
-    return buildMaps(loadedMessages);
-  }, [loadedMessages]);
+    if (!allMessages) return { byId: new Map<string, Message>(), childrenByParent: new Map<string, Message[]>() };
+    return buildMaps(allMessages);
+  }, [allMessages]);
 
   const { suggestions, isLoading: suggestionsLoading, setSuggestions } = useSuggestedResponses(
     chatId || undefined,
-    loadedMessages || [],
+    allMessages || [],
     !modelId // Suggestions only in normal mode for now
   );
 
@@ -300,13 +257,13 @@ export function MessageList({ chatId, modelId, onSendMessage }: MessageListProps
 
   // Memoize branch path computation (reuse byId to avoid duplicate buildMaps)
   const branchPath = useMemo(() => {
-    if (!loadedMessages || loadedMessages.length === 0) return undefined;
-    return getBranchPath(loadedMessages, activeLeafId, byId);
-  }, [loadedMessages, activeLeafId, byId]);
+    if (!allMessages) return undefined;
+    return getBranchPath(allMessages, activeLeafId, byId);
+  }, [allMessages, activeLeafId, byId]);
 
   // Memoize final messages list
   const messages = useMemo(() => {
-    if (!branchPath || !loadedMessages || loadedMessages.length === 0) return undefined;
+    if (!branchPath || !allMessages) return undefined;
 
     if (!modelId) {
       // Normal mode: just use branch path as-is
@@ -332,7 +289,7 @@ export function MessageList({ chatId, modelId, onSendMessage }: MessageListProps
     }
 
     return result;
-  }, [branchPath, loadedMessages, modelId, childrenByParent]);
+  }, [branchPath, allMessages, modelId, childrenByParent]);
 
   const messageCount = messages?.length || 0;
 
@@ -371,7 +328,7 @@ export function MessageList({ chatId, modelId, onSendMessage }: MessageListProps
 
   // Memoize callbacks to prevent re-renders
   const switchSibling = useCallback(async (message: Message, direction: -1 | 1) => {
-    if (!loadedMessages || loadedMessages.length === 0) return;
+    if (!allMessages) return;
     const parentKey = message.parentId || "";
     const siblings = (childrenByParent.get(parentKey) || []).filter((m) => m.role !== "tool");
     if (siblings.length <= 1) return;
@@ -385,7 +342,7 @@ export function MessageList({ chatId, modelId, onSendMessage }: MessageListProps
     if (chatId) {
       await updateChat(chatId, { activeBranchLeafId: newLeaf, hasBranches: true });
     }
-  }, [loadedMessages, chatId, childrenByParent]);
+  }, [allMessages, chatId, childrenByParent]);
 
   const handleFork = useCallback(async (messageId: string) => {
     // Fork: set the active branch to this message, creating a new branch point
@@ -505,7 +462,6 @@ export function MessageList({ chatId, modelId, onSendMessage }: MessageListProps
                 isStreaming={isMessageStreaming}
                 streamingContent={isMessageStreaming ? context.streamingContent : undefined}
                 streamingVersion={isMessageStreaming ? context.streamingVersion : undefined}
-                modelId={modelId}
               />
             </div>
           );
@@ -514,28 +470,6 @@ export function MessageList({ chatId, modelId, onSendMessage }: MessageListProps
         atBottomStateChange={handleAtBottomChange}
         className="scrollbar-thin"
         components={{
-          Header: () => (
-            hasMoreMessages ? (
-              <div className="mx-auto max-w-3xl px-4 py-4 flex justify-center">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={loadMoreMessages}
-                  disabled={isLoadingMore}
-                  className="gap-2"
-                >
-                  {isLoadingMore ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Loading...
-                    </>
-                  ) : (
-                    'Load older messages'
-                  )}
-                </Button>
-              </div>
-            ) : null
-          ),
           Footer: () => (
             <div className="mx-auto max-w-3xl px-4 pb-4">
               {/* Pipeline progress indicator */}

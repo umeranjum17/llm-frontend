@@ -59,10 +59,10 @@ export function AgentPickerDialog({
   const filtered = useMemo(() => {
     const list = agents || [];
     const q = query.trim();
-    const builtInIds = new Set(BUILTIN_AGENTS.map((agent) => agent.id));
-    const visibleAgents = list.filter((agent) => !agent.isBuiltIn || builtInIds.has(agent.id));
-    if (!q) return visibleAgents.filter((a) => a.isActive);
-    return visibleAgents.filter((a) => a.isActive && matches(a, q));
+    const builtInIds = new Set(BUILTIN_AGENTS.map((agent: Agent) => agent.id));
+    const visibleAgents = list.filter((agent: Agent) => !agent.isBuiltIn || builtInIds.has(agent.id));
+    if (!q) return visibleAgents.filter((a: Agent) => a.isActive);
+    return visibleAgents.filter((a: Agent) => a.isActive && matches(a, q));
   }, [agents, query]);
 
   const selectAgent = async (agent: Agent | null) => {
@@ -118,7 +118,7 @@ export function AgentPickerDialog({
 
           <div className="flex-1 overflow-y-auto -mx-1 px-1">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
-              {filtered.map((agent) => {
+              {filtered.map((agent: Agent) => {
                 const model = agent.modelId ? getModelById(agent.modelId) : null;
                 const costDisplay = model ? formatModelCost(model.inputCost, model.outputCost) : null;
                 const isFree = model && model.inputCost + model.outputCost === 0;
@@ -209,7 +209,7 @@ export function AgentPickerDialog({
         onSaved={(agentId) => {
           // After creating/editing, select the agent
           getAllAgents().then((allAgents) => {
-            const savedAgent = allAgents.find((a) => a.id === agentId);
+            const savedAgent = allAgents.find((a: Agent) => a.id === agentId);
             if (savedAgent && !editingAgent) selectAgent(savedAgent);
           });
         }}

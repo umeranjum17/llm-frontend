@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { X, ChevronUp, ChevronDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { getMessages } from "@/lib/db/queries";
+import type { Message } from "@/lib/db/schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 
 interface ChatSearchProps {
@@ -51,7 +52,7 @@ export function ChatSearch({ chatId, isOpen, onClose }: ChatSearchProps) {
       const results: SearchMatch[] = [];
       const lowerQuery = query.toLowerCase();
 
-      messages.forEach((msg, index) => {
+      messages.forEach((msg: Message, index: number) => {
         const text = getTextFromMessageContent(msg.content);
         const lowerText = text.toLowerCase();
         let pos = 0;

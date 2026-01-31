@@ -292,7 +292,7 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
       try {
         const [settings, encryptedKeys] = await Promise.all([
           getSettings(),
-          getAllApiKeys(),
+          getAllApiKeys() as Promise<ApiKey[]>,
         ]);
 
         const vaultMeta = normalizeVaultMeta(settings.apiKeyVault ?? null);
@@ -342,8 +342,8 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
         const lockedKeyIds: string[] = [];
 
         // Split keys by encryption scheme first (vault keys require passphrase)
-        const nonVaultKeys = encryptedKeys.filter((k) => !isVaultEncryptedKey(k.key));
-        const vaultKeys = encryptedKeys.filter((k) => isVaultEncryptedKey(k.key));
+        const nonVaultKeys = encryptedKeys.filter((k: ApiKey) => !isVaultEncryptedKey(k.key));
+        const vaultKeys = encryptedKeys.filter((k: ApiKey) => isVaultEncryptedKey(k.key));
 
         // Handle vault keys (locked by default)
         for (const storedKey of vaultKeys) {
@@ -368,7 +368,7 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
 
         // Process non-vault keys in PARALLEL (device-secret encryption)
         const decryptionResults = await Promise.all(
-          nonVaultKeys.map(async (storedKey) => {
+          nonVaultKeys.map(async (storedKey: ApiKey) => {
             try {
               const decryptedKeyValue = await decryptApiKey(storedKey.key);
 
@@ -678,7 +678,7 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
     const vaultKey = await deriveVaultKey(passphrase, effectiveMeta);
     cachedVaultKey = vaultKey;
 
-    const allKeys = await getAllApiKeys();
+    const allKeys: ApiKey[] = await getAllApiKeys();
     const vaultKeys = allKeys.filter((k) => isVaultEncryptedKey(k.key));
 
     let decryptedVaultKeys: ApiKey[] = [];
@@ -758,7 +758,7 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
     }
     cachedVaultKey = vaultKey;
 
-    const allKeys = await getAllApiKeys();
+    const allKeys: ApiKey[] = await getAllApiKeys();
     const vaultKeys = allKeys.filter((k) => isVaultEncryptedKey(k.key));
 
     const decryptedVaultKeys = await Promise.all(
@@ -825,7 +825,7 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
     const vaultKey = await deriveVaultKey(passphrase, hydratedMeta);
     cachedVaultKey = vaultKey;
 
-    const allKeys = await getAllApiKeys();
+    const allKeys: ApiKey[] = await getAllApiKeys();
 
     // Re-encrypt all existing keys into the vault.
     await Promise.all(
@@ -848,7 +848,7 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
       apiKeyVaultPasskey: undefined,
     });
 
-    const refreshed = await getAllApiKeys();
+    const refreshed: ApiKey[] = await getAllApiKeys();
     const vaultKeys = refreshed.filter((k) => isVaultEncryptedKey(k.key));
     const otherKeys = refreshed.filter((k) => !isVaultEncryptedKey(k.key));
 
@@ -903,7 +903,7 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
 
     const vaultKey = await deriveVaultKey(passphrase, meta);
 
-    const allKeys = await getAllApiKeys();
+    const allKeys: ApiKey[] = await getAllApiKeys();
     const vaultKeys = allKeys.filter((k) => isVaultEncryptedKey(k.key));
 
     await Promise.all(
@@ -927,7 +927,7 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
       vaultAutoLockTimeout = null;
     }
 
-    const refreshed = await getAllApiKeys();
+    const refreshed: ApiKey[] = await getAllApiKeys();
     const decryptedAll: ApiKey[] = [];
     for (const k of refreshed) {
       try {
@@ -989,7 +989,7 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
   },
 
   resetVault: async () => {
-    const allKeys = await getAllApiKeys();
+    const allKeys: ApiKey[] = await getAllApiKeys();
     const vaultKeys = allKeys.filter((k) => isVaultEncryptedKey(k.key));
 
     await Promise.all(vaultKeys.map((k) => dbDeleteApiKey(k.id)));
@@ -1006,7 +1006,7 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
       vaultAutoLockTimeout = null;
     }
 
-    const refreshed = await getAllApiKeys();
+    const refreshed: ApiKey[] = await getAllApiKeys();
     const decryptedAll: ApiKey[] = [];
     for (const k of refreshed) {
       try {

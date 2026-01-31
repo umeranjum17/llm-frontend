@@ -2,31 +2,8 @@ import { db, type Chat, type Message, type Project, type ProjectFile, type Model
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { autoGenerateEmbeddingsForSkill } from "@/lib/skills/skill-embeddings";
 
-// All collections now use RxDB
-export const db = {
-  chats: chatHelpers,
-  messages: messageHelpers,
-  projects: projectHelpers,
-  projectFiles: projectFileHelpers,
-  folders: folderHelpers,
-  tags: tagHelpers,
-  apiKeys: apiKeyHelpers,
-  settings: settingsHelpers,
-  modelFavorites: modelFavoriteHelpers,
-  tagRules: tagRuleHelpers,
-  parameterPresets: parameterPresetHelpers,
-  agents: agentHelpers,
-  prompts: promptHelpers,
-  skills: skillHelpers,
-  skillEmbeddings: skillEmbeddingHelpers,
-  vectorDocuments: vectorDocumentHelpers,
-  workflows: workflowHelpers,
-  modelAliases: modelAliasHelpers,
-  mcpServers: mcpServerHelpers,
-  deviceSecrets: deviceSecretHelpers,
-  cloudSyncConfig: cloudSyncConfigHelpers,
-  contextSummaries: contextSummaryHelpers
-} as any;
+// Re-export db for direct access when needed (e.g., batch operations)
+export { db };
 
 // ============= DEFAULT PROJECT =============
 
@@ -157,25 +134,29 @@ export async function getChatById(id: string) {
 }
 
 /**
- * Get chat with its messages together.
+ * Get chat with its messages in a single transaction.
  * More efficient than separate queries when both are needed.
  */
 export async function getChatWithMessages(chatId: string): Promise<{ chat: Chat | undefined; messages: Message[] }> {
-  const [chat, messages] = await Promise.all([
-    db.chats.get(chatId),
-    db.messages.where("chatId").equals(chatId).sortBy("createdAt")
-  ]);
-  return { chat, messages };
+  return await db.transaction('r', [db.chats, db.messages], async () => {
+    const [chat, messages] = await Promise.all([
+      db.chats.get(chatId),
+      db.messages.where("chatId").equals(chatId).sortBy("createdAt")
+    ]);
+    return { chat, messages };
+  });
 }
 
 /**
- * Get chat with its associated agent.
+ * Get chat with its associated agent in a single transaction.
  * Useful for chat-shell where both are needed together.
  */
 export async function getChatWithAgent(chatId: string): Promise<{ chat: Chat | undefined; agent: Agent | undefined }> {
-  const chat = await db.chats.get(chatId);
-  const agent = chat?.agentId ? await db.agents.get(chat.agentId) : undefined;
-  return { chat, agent };
+  return await db.transaction('r', [db.chats, db.agents], async () => {
+    const chat = await db.chats.get(chatId);
+    const agent = chat?.agentId ? await db.agents.get(chat.agentId) : undefined;
+    return { chat, agent };
+  });
 }
 
 /**
@@ -191,7 +172,7 @@ export async function getChatsByProject(projectId: string) {
     .where("projectId")
     .equals(projectId)
     .sortBy("updatedAt")
-    .then((chats: Chat[]) => chats.reverse());
+    .then((chats) => chats.reverse());
 }
 
 export async function getPinnedChats() {
@@ -199,7 +180,7 @@ export async function getPinnedChats() {
     .where("pinned")
     .equals(1)
     .sortBy("updatedAt")
-    .then((chats: Chat[]) => chats.reverse());
+    .then((chats) => chats.reverse());
 }
 
 export async function getFavoriteChats() {
@@ -207,7 +188,7 @@ export async function getFavoriteChats() {
     .where("favorite")
     .equals(1)
     .sortBy("updatedAt")
-    .then((chats: Chat[]) => chats.reverse());
+    .then((chats) => chats.reverse());
 }
 
 export async function createChat(chat: Omit<Chat, "id" | "createdAt" | "updatedAt">) {
@@ -264,7 +245,7 @@ export async function searchChats(query: string) {
   // This is a simple search - will be enhanced with Fuse.js
   const lowerQuery = query.toLowerCase();
   return await db.chats
-    .filter((chat: Chat) => chat.title.toLowerCase().includes(lowerQuery))
+    .filter((chat) => chat.title.toLowerCase().includes(lowerQuery))
     .toArray();
 }
 
@@ -282,7 +263,7 @@ export async function searchMessages(query: string): Promise<MessageSearchResult
     .orderBy('createdAt')
     .reverse()
     .until(() => messages.length >= 20)
-    .each((msg: Message) => {
+    .each(msg => {
       // Only search text content of user/assistant messages
       if (msg.role !== 'user' && msg.role !== 'assistant') return;
 
@@ -295,7 +276,7 @@ export async function searchMessages(query: string): Promise<MessageSearchResult
   // Batch fetch chat titles for context
   const chatIds = [...new Set(messages.map(m => m.chatId))];
   const chats = await db.chats.where('id').anyOf(chatIds).toArray();
-  const chatMap = new Map<string, Chat>(chats.map((c: Chat) => [c.id, c]));
+  const chatMap = new Map(chats.map(c => [c.id, c]));
 
   return messages.map(msg => ({
     ...msg,
@@ -324,7 +305,7 @@ export async function getRecentMessages(
   let query = db.messages.where("chatId").equals(chatId);
 
   if (beforeTimestamp) {
-    query = query.filter((m: Message) => m.createdAt < beforeTimestamp);
+    query = query.filter((m) => m.createdAt < beforeTimestamp);
   }
 
   // Get limit + 1 to check if there are more
@@ -386,7 +367,7 @@ export async function getMessagesForBranch(chatId: string, leafMessageId?: strin
   const messages = await getMessages(chatId);
   if (messages.length === 0) return [];
 
-  const byId = new Map(messages.map((m: Message) => [m.id, m] as const));
+  const byId = new Map(messages.map((m) => [m.id, m] as const));
   let cursor = leafMessageId ? byId.get(leafMessageId) : messages[messages.length - 1];
   if (!cursor) cursor = messages[messages.length - 1];
 
@@ -404,11 +385,11 @@ export async function getMessagesForBranch(chatId: string, leafMessageId?: strin
 
 export async function getMessageSiblings(chatId: string, messageId: string) {
   const messages = await getMessages(chatId);
-  const target = messages.find((m: Message) => m.id === messageId);
+  const target = messages.find((m) => m.id === messageId);
   if (!target) return [];
   return messages
-    .filter((m: Message) => (m.parentId || "") === (target.parentId || ""))
-    .sort((a: Message, b: Message) => a.createdAt - b.createdAt);
+    .filter((m) => (m.parentId || "") === (target.parentId || ""))
+    .sort((a, b) => a.createdAt - b.createdAt);
 }
 
 export async function chatHasBranches(chatId: string) {
@@ -453,7 +434,7 @@ export async function deleteMessagesAfter(chatId: string, timestamp: number) {
   return await db.messages
     .where("chatId")
     .equals(chatId)
-    .filter((msg: Message) => msg.createdAt > timestamp)
+    .filter((msg) => msg.createdAt > timestamp)
     .delete();
 }
 
@@ -506,7 +487,7 @@ export async function deleteProject(id: string, cascadeDeleteChats: boolean = tr
 
   // Get chats in this project
   const chats = await db.chats.where("projectId").equals(id).toArray();
-  const chatIds = chats.map((c: Chat) => c.id);
+  const chatIds = chats.map((c) => c.id);
   let deletedChats = 0;
 
   if (cascadeDeleteChats && chatIds.length > 0) {
@@ -516,9 +497,11 @@ export async function deleteProject(id: string, cascadeDeleteChats: boolean = tr
     deletedChats = chatIds.length;
   } else if (!cascadeDeleteChats && chatIds.length > 0) {
     // Batch move chats to the default project
-    for (const chatId of chatIds) {
-      await db.chats.update(chatId, { projectId: DEFAULT_PROJECT_ID });
-    }
+    await db.transaction("rw", db.chats, async () => {
+      for (const chatId of chatIds) {
+        await db.chats.update(chatId, { projectId: DEFAULT_PROJECT_ID });
+      }
+    });
   }
 
   // Delete the project
@@ -534,7 +517,7 @@ export async function getProjectFiles(projectId: string) {
     .where("projectId")
     .equals(projectId)
     .sortBy("createdAt")
-    .then((files: ProjectFile[]) => files.reverse());
+    .then((files) => files.reverse());
 }
 
 export async function getProjectFileById(id: string) {
@@ -548,7 +531,7 @@ export async function getProjectFileById(id: string) {
 export async function getProjectFilesByIds(ids: string[]): Promise<Map<string, ProjectFile>> {
   if (ids.length === 0) return new Map();
   const files = await db.projectFiles.where('id').anyOf(ids).toArray();
-  return new Map(files.map((f: ProjectFile) => [f.id, f]));
+  return new Map(files.map(f => [f.id, f]));
 }
 
 /**
@@ -560,38 +543,40 @@ export async function getChatsWithMessagesByIds(
 ): Promise<Map<string, { chat: Chat; messages: Message[] }>> {
   if (chatIds.length === 0) return new Map();
 
-  const [chats, allMessages] = await Promise.all([
-    db.chats.where('id').anyOf(chatIds).toArray(),
-    db.messages.where('chatId').anyOf(chatIds).toArray()
-  ]) as [Chat[], Message[]];
+  return await db.transaction('r', [db.chats, db.messages], async () => {
+    const [chats, allMessages] = await Promise.all([
+      db.chats.where('id').anyOf(chatIds).toArray(),
+      db.messages.where('chatId').anyOf(chatIds).toArray()
+    ]);
 
-  const chatMap = new Map<string, Chat>(chats.map((c: Chat) => [c.id, c]));
-  const messagesByChat = new Map<string, Message[]>();
+    const chatMap = new Map(chats.map(c => [c.id, c]));
+    const messagesByChat = new Map<string, Message[]>();
 
-  // Group messages by chatId
-  for (const msg of allMessages) {
-    const arr = messagesByChat.get(msg.chatId) || [];
-    arr.push(msg);
-    messagesByChat.set(msg.chatId, arr);
-  }
-
-  // Sort messages by createdAt within each chat
-  for (const [, msgs] of messagesByChat) {
-    msgs.sort((a: Message, b: Message) => a.createdAt - b.createdAt);
-  }
-
-  const result = new Map<string, { chat: Chat; messages: Message[] }>();
-  for (const chatId of chatIds) {
-    const chat = chatMap.get(chatId);
-    if (chat) {
-      result.set(chatId, {
-        chat,
-        messages: messagesByChat.get(chatId) || []
-      });
+    // Group messages by chatId
+    for (const msg of allMessages) {
+      const arr = messagesByChat.get(msg.chatId) || [];
+      arr.push(msg);
+      messagesByChat.set(msg.chatId, arr);
     }
-  }
 
-  return result;
+    // Sort messages by createdAt within each chat
+    for (const [, msgs] of messagesByChat) {
+      msgs.sort((a, b) => a.createdAt - b.createdAt);
+    }
+
+    const result = new Map<string, { chat: Chat; messages: Message[] }>();
+    for (const chatId of chatIds) {
+      const chat = chatMap.get(chatId);
+      if (chat) {
+        result.set(chatId, {
+          chat,
+          messages: messagesByChat.get(chatId) || []
+        });
+      }
+    }
+
+    return result;
+  });
 }
 
 export async function addProjectFile(file: Omit<ProjectFile, "id" | "createdAt">) {
@@ -656,15 +641,17 @@ export async function getRecentModels(limit: number = 5) {
 }
 
 /**
- * Batch query for model picker data - reduces 3 queries to 1 call
+ * Batch query for model picker data - reduces 3 queries to 1 transaction
  */
 export async function getModelPickerData() {
-  const [favorites, recent, aliases] = await Promise.all([
-    db.modelFavorites.orderBy("lastUsed").reverse().toArray(),
-    db.modelFavorites.orderBy("lastUsed").reverse().limit(6).toArray(),
-    db.modelAliases.toArray(),
-  ]);
-  return { favorites, recent, aliases };
+  return await db.transaction("r", [db.modelFavorites, db.modelAliases], async () => {
+    const [favorites, recent, aliases] = await Promise.all([
+      db.modelFavorites.orderBy("lastUsed").reverse().toArray(),
+      db.modelFavorites.orderBy("lastUsed").reverse().limit(6).toArray(),
+      db.modelAliases.toArray(),
+    ]);
+    return { favorites, recent, aliases };
+  });
 }
 
 export async function toggleModelFavorite(modelId: string, category: string) {
@@ -819,7 +806,7 @@ export async function getAgentById(id: string) {
 export async function getAgentsByIds(ids: string[]): Promise<Map<string, Agent>> {
   if (ids.length === 0) return new Map();
   const agents = await db.agents.where('id').anyOf(ids).toArray();
-  return new Map(agents.map((a: Agent) => [a.id, a]));
+  return new Map(agents.map(a => [a.id, a]));
 }
 
 export async function getActiveAgents() {
@@ -918,7 +905,7 @@ export async function searchPrompts(query: string) {
   const q = query.trim().toLowerCase();
   if (!q) return await getAllPrompts();
   return await db.prompts
-    .filter((p: Prompt) => p.title.toLowerCase().includes(q) || p.content.toLowerCase().includes(q))
+    .filter((p) => p.title.toLowerCase().includes(q) || p.content.toLowerCase().includes(q))
     .toArray();
 }
 
@@ -976,15 +963,15 @@ export async function getSkillById(id: string) {
 }
 
 export async function getEnabledSkills() {
-  return await db.skills.filter((s: Skill) => s.isEnabled).toArray();
+  return await db.skills.filter((s) => s.isEnabled).toArray();
 }
 
 export async function getAutoTriggerSkills() {
-  return await db.skills.filter((s: Skill) => s.isEnabled && s.trigger.type === "auto").toArray();
+  return await db.skills.filter((s) => s.isEnabled && s.trigger.type === "auto").toArray();
 }
 
 export async function getFavoriteSkills() {
-  return await db.skills.filter((s: Skill) => s.isFavorite === true).toArray();
+  return await db.skills.filter((s) => s.isFavorite === true).toArray();
 }
 
 export async function getSkillsByCategory(category: string) {
@@ -1176,11 +1163,11 @@ export async function removeSkillAutoApplyQuery(
   providerId: string = "openrouter",
   modelId?: string
 ): Promise<void> {
-  const skill = await db.skills.get(skillId) as Skill | undefined;
+  const skill = await db.skills.get(skillId);
   if (!skill) return;
 
   const existingQueries = skill.autoApplyQueries || [];
-  const newQueries = existingQueries.filter((q: string) => q !== query);
+  const newQueries = existingQueries.filter((q) => q !== query);
 
   await setSkillAutoApplyQueries(skillId, newQueries, apiKey, providerId, modelId);
 }
@@ -1284,11 +1271,11 @@ export async function removeSkillExclusionQuery(
   providerId: string = "openrouter",
   modelId?: string
 ): Promise<void> {
-  const skill = await db.skills.get(skillId) as Skill | undefined;
+  const skill = await db.skills.get(skillId);
   if (!skill) return;
 
   const existingQueries = skill.exclusionQueries || [];
-  const newQueries = existingQueries.filter((q: string) => q !== query);
+  const newQueries = existingQueries.filter((q) => q !== query);
 
   await setSkillExclusionQueries(skillId, newQueries, apiKey, providerId, modelId);
 }
@@ -1320,10 +1307,10 @@ export async function updateTag(id: string, updates: Partial<import("./schema").
 
 export async function deleteTag(id: string) {
   // Remove tag from all chats
-  const chats = await db.chats.where("tags").equals(id).toArray() as Chat[];
+  const chats = await db.chats.where("tags").equals(id).toArray();
   for (const chat of chats) {
     await updateChat(chat.id, {
-      tags: chat.tags?.filter((t: string) => t !== id),
+      tags: chat.tags?.filter((t) => t !== id),
     });
   }
   // Delete tag rules
@@ -1406,7 +1393,7 @@ export async function getDefaultPresets() {
 export async function getAllFolders() {
   const folders = await db.folders.toArray();
   // Sort by order (if set), then by createdAt
-  return folders.sort((a: Folder, b: Folder) => {
+  return folders.sort((a, b) => {
     if (a.order !== undefined && b.order !== undefined) {
       return a.order - b.order;
     }
@@ -1443,17 +1430,21 @@ export async function deleteFolder(id: string) {
 }
 
 export async function reorderChats(chatIds: string[]) {
-  // Batch update order for all chats
-  for (let i = 0; i < chatIds.length; i++) {
-    await db.chats.update(chatIds[i], { order: i });
-  }
+  // Batch update order for all chats in a single transaction
+  await db.transaction("rw", db.chats, async () => {
+    for (let i = 0; i < chatIds.length; i++) {
+      await db.chats.update(chatIds[i], { order: i });
+    }
+  });
 }
 
 export async function reorderFolders(folderIds: string[]) {
-  // Batch update order for all folders
-  for (let i = 0; i < folderIds.length; i++) {
-    await db.folders.update(folderIds[i], { order: i });
-  }
+  // Batch update order for all folders in a single transaction
+  await db.transaction("rw", db.folders, async () => {
+    for (let i = 0; i < folderIds.length; i++) {
+      await db.folders.update(folderIds[i], { order: i });
+    }
+  });
 }
 
 export async function moveChatToFolder(chatId: string, folderId: string | null) {
@@ -1524,7 +1515,7 @@ export async function deleteModelAlias(modelId: string) {
 }
 // MCP Servers
 export async function getEnabledMcpServers() {
-  return await db.mcpServers.filter((server: McpServer) => server.enabled === true).toArray();
+  return await db.mcpServers.filter(server => server.enabled === true).toArray();
 }
 
 export async function getMcpServersByIds(ids: string[]) {
@@ -1622,7 +1613,7 @@ export async function getPinnedMessages(chatId: string): Promise<Message[]> {
   return db.messages
     .where("chatId")
     .equals(chatId)
-    .filter((m: Message) => m.isPinned === true)
+    .filter((m) => m.isPinned === true)
     .toArray();
 }
 
@@ -1630,7 +1621,7 @@ export async function getSummarizedMessages(chatId: string): Promise<Message[]> 
   return db.messages
     .where("chatId")
     .equals(chatId)
-    .filter((m: Message) => m.isSummarized === true)
+    .filter((m) => m.isSummarized === true)
     .toArray();
 }
 

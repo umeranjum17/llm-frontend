@@ -113,11 +113,11 @@ export function SkillDefinitionBlock({ code }: SkillDefinitionBlockProps) {
     
     const data = parseResult.data;
     if (data.id) {
-      const found = skills.find(s => s.id === data.id);
+      const found = skills.find((s: Skill) => s.id === data.id);
       setExistingSkillId(found?.id || null);
     } else if (data.name) {
       // Try name match (case-insensitive)
-      const found = skills.find(s => s.name.toLowerCase() === data.name.toLowerCase());
+      const found = skills.find((s: Skill) => s.name.toLowerCase() === data.name.toLowerCase());
       setExistingSkillId(found?.id || null);
     } else {
       setExistingSkillId(null);

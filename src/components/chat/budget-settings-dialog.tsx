@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DollarSign, Trash2, TrendingUp, AlertTriangle } from "lucide-react";
 import { getChatById, updateChat, getMessages } from "@/lib/db/queries";
+import type { Message } from "@/lib/db/schema";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -46,7 +47,7 @@ export function BudgetSettingsDialog({
 
   // Calculate actual cost from messages
   const calculatedCost =
-    messages?.reduce((sum, msg) => sum + (msg.cost || 0), 0) || 0;
+    messages?.reduce((sum: number, msg: Message) => sum + (msg.cost || 0), 0) || 0;
 
   const handleSetBudget = async () => {
     const budget = parseFloat(budgetInput);

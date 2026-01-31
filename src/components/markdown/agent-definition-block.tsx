@@ -82,11 +82,11 @@ export function AgentDefinitionBlock({ code }: AgentDefinitionBlockProps) {
     
     const data = parseResult.data;
     if (data.id) {
-      const found = agents.find(a => a.id === data.id);
+      const found = agents.find((a: Agent) => a.id === data.id);
       setExistingAgentId(found?.id || null);
     } else if (data.name) {
       // Try name match (case-insensitive)
-      const found = agents.find(a => a.name.toLowerCase() === data.name.toLowerCase());
+      const found = agents.find((a: Agent) => a.name.toLowerCase() === data.name.toLowerCase());
       setExistingAgentId(found?.id || null);
     } else {
       setExistingAgentId(null);
