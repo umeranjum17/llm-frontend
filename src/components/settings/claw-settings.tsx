@@ -33,7 +33,8 @@ import { toast } from "sonner";
 import { useClawStore } from "@/stores/claw-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useApiKeysStore } from "@/stores/api-keys-store";
-import { useClawEvents } from "@/hooks/use-claw-events";
+import { useModelsStore } from "@/stores/models-store";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 function ConnectionTab() {
   const { isConnected, isConnecting, error, connect, disconnect } = useClawStore();
@@ -343,6 +344,7 @@ function SchedulesTab() {
 
 function ConfigTab() {
   const { config, updateConfig, isConnected } = useClawStore();
+  const allModels = useModelsStore((s) => s.models);
   const [model, setModel] = useState(config?.openrouterModel ?? "");
   const [heartbeat, setHeartbeat] = useState(
     config?.heartbeatIntervalMinutes?.toString() ?? ""
@@ -376,13 +378,19 @@ function ConfigTab() {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="claw-model">OpenRouter Model</Label>
-          <Input
-            id="claw-model"
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            disabled={!isConnected}
-          />
+          <Label>OpenRouter Model</Label>
+          <Select value={model} onValueChange={setModel} disabled={!isConnected}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select a model" />
+            </SelectTrigger>
+            <SelectContent className="max-h-64">
+              {allModels.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  {m.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="space-y-2">
           <Label htmlFor="claw-heartbeat">Heartbeat Interval (minutes)</Label>
@@ -405,19 +413,30 @@ function ConfigTab() {
 function KeySyncTab() {
   const { pushKeys, isConnected } = useClawStore();
   const { keys } = useApiKeysStore();
+  const settings = useSettingsStore();
   const [syncing, setSyncing] = useState(false);
 
   const handleSync = async () => {
     setSyncing(true);
     try {
       const keyMap: Record<string, string> = {};
+      const providerToEnv: Record<string, string> = {
+        openrouter: "OPENROUTER_API_KEY",
+        mem0: "MEM0_API_KEY",
+        composio: "COMPOSIO_API_KEY",
+      };
       for (const k of keys) {
-        if (k.provider === "openrouter") {
-          keyMap["OPENROUTER_API_KEY"] = k.key;
+        const envName = providerToEnv[k.provider];
+        if (envName) {
+          keyMap[envName] = k.key;
         }
       }
+      // Also push mem0 user ID from settings
+      if (settings.memoryUserId) {
+        keyMap["MEM0_USER_ID"] = settings.memoryUserId;
+      }
       if (Object.keys(keyMap).length === 0) {
-        toast.error("No OpenRouter key found to sync");
+        toast.error("No keys found to sync");
         setSyncing(false);
         return;
       }
@@ -448,7 +467,6 @@ function KeySyncTab() {
 }
 
 export function ClawSettings() {
-  useClawEvents();
 
   return (
     <div className="space-y-4 sm:space-y-6">

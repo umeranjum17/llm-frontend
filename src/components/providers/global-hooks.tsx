@@ -5,6 +5,7 @@ import { useDBHealth } from "@/hooks/use-db-health";
 import { useCacheCleanup } from "@/hooks/use-cache-cleanup";
 import { useSyncInit } from "@/hooks/use-sync-init";
 import { useAutoSync } from "@/hooks/use-auto-sync";
+import { useClawEvents } from "@/hooks/use-claw-events";
 
 /**
  * Client component to run global initialization hooks.
@@ -25,6 +26,9 @@ export function GlobalHooks() {
 
   // Auto-sync on focus or interval (if enabled)
   useAutoSync();
+
+  // Subscribe to Claw SSE events for real-time notifications (no-op when Claw is disabled)
+  useClawEvents();
 
   // This component doesn't render anything
   return null;
