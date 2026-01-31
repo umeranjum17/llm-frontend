@@ -2,7 +2,7 @@ import Dexie, { type EntityTable } from "dexie";
 import { TABLE_REGISTRY, getStoresForVersion } from "./table-registry";
 
 // Current schema version - update this when adding new tables or indexes
-export const DB_SCHEMA_VERSION = 31;
+export const DB_SCHEMA_VERSION = 32;
 
 // Type definitions
 export interface Project {
@@ -198,6 +198,10 @@ export interface UserSettings {
   memoryDecayEnabled?: boolean;        // Auto-prune old memories (default: false)
   memoryDecayDays?: number;            // Age threshold in days (default: 60, range 14-365)
   lastMemoryDecayAt?: number;          // Timestamp of last decay run
+  // Claw agent integration
+  clawUrl?: string;           // e.g. "http://100.x.x.x:8000" (Tailscale IP)
+  clawSecret?: string;        // Bearer token matching Claw's CLAW_SECRET env var
+  clawEnabled?: boolean;      // Master toggle for Claw integration
 }
 
 export interface ModelFavorite {
