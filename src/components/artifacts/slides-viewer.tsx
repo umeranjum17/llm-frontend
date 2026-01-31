@@ -86,7 +86,7 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
         onTouchEnd={handleTouchEnd}
       >
         <div ref={slideRef} className="relative w-full max-w-4xl" style={{ aspectRatio: "16/9" }}>
-          <div className="absolute inset-0 rounded-xl border bg-card shadow-lg overflow-hidden">
+          <div className="absolute inset-0 rounded-xl border shadow-lg overflow-hidden bg-gradient-to-br from-background via-background to-muted/20">
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={current}
@@ -94,7 +94,24 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
                 animate={{ x: 0, opacity: 1 }}
                 exit={{ x: direction * -100, opacity: 0 }}
                 transition={{ duration: 0.2, ease: "easeInOut" }}
-                className="absolute inset-0 overflow-auto p-6 sm:p-10 prose prose-sm dark:prose-invert max-w-none"
+                className={cn(
+                  "absolute inset-0 overflow-auto p-6 sm:p-10",
+                  "prose dark:prose-invert max-w-none",
+                  // Rich slide typography - larger headings, generous spacing
+                  "prose-headings:mt-0 prose-headings:mb-4",
+                  "prose-h1:text-2xl sm:prose-h1:text-4xl prose-h1:font-bold prose-h1:tracking-tight",
+                  "prose-h2:text-xl sm:prose-h2:text-2xl prose-h2:font-semibold",
+                  "prose-h3:text-lg sm:prose-h3:text-xl",
+                  "prose-p:text-sm sm:prose-p:text-base prose-p:leading-relaxed",
+                  "prose-li:text-sm sm:prose-li:text-base prose-li:leading-relaxed",
+                  "prose-strong:text-primary",
+                  "prose-code:text-xs sm:prose-code:text-sm prose-code:bg-muted/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded",
+                  "prose-blockquote:border-l-primary/50 prose-blockquote:bg-muted/20 prose-blockquote:rounded-r-lg prose-blockquote:py-1 prose-blockquote:px-4",
+                  "prose-img:rounded-lg prose-img:shadow-md",
+                  // First child centering for title slides (single h1)
+                  "[&>div>h1:first-child:last-child]:text-center [&>div>h1:first-child:last-child]:mt-[20%]",
+                  "[&>div>h1:first-child+p:last-child]:text-center"
+                )}
               >
                 <MarkdownRenderer content={slides[current]} />
               </motion.div>

@@ -98,13 +98,17 @@ export function ArtifactShell() {
         }
     }, [activeArtifact, isRunnable, isData, isDoc, isHtml, isSvg, isMarkdown, isSlides, isDocument, isSpreadsheet]);
 
-    // Auto-enter fullscreen on mobile when artifacts open
+    // Auto-enter fullscreen on mobile when a NEW artifact opens
+    const lastAutoFsId = useRef<string | null>(null);
     useEffect(() => {
+        if (!activeArtifact) { lastAutoFsId.current = null; return; }
+        if (lastAutoFsId.current === activeArtifact.id) return;
         const isMobile = window.matchMedia("(max-width: 768px)").matches;
-        if (isMobile && activeArtifact && !artifactsFullscreen) {
+        if (isMobile) {
+            lastAutoFsId.current = activeArtifact.id;
             setArtifactsFullscreen(true);
         }
-    }, [activeArtifact]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [activeArtifact, setArtifactsFullscreen]);
 
     // Handle escape key for fullscreen
     useEffect(() => {
