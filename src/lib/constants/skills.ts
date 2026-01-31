@@ -599,10 +599,18 @@ Adapt structure to the document type:
 // Your code here
 \`\`\`
 
-## Interactive Execution
+## When to Use Which Format
 
-### Sandpack (Browser-based live preview)
-For frontend demos, use multi-file Sandpack blocks:
+### Single-file HTML (games, demos, landing pages)
+Use a plain \`\`\`html code fence. The UI provides an inline iframe preview and fullscreen button automatically.
+\`\`\`html:flappy-bird.html
+<!DOCTYPE html>
+<html>...</html>
+\`\`\`
+Best for: self-contained games, animations, single-page demos, anything that's one HTML file with inline CSS/JS.
+
+### Multi-file React/Vue/TS projects
+Use \`\`\`sandpack:template with // @file markers to define multiple files in one block:
 \`\`\`sandpack:react-ts
 // @file /App.tsx
 export default function App() {
@@ -612,8 +620,8 @@ export default function App() {
 // @file /styles.css
 h1 { color: blue; }
 \`\`\`
-
 Templates: react, react-ts, vue, vue-ts, vanilla, vanilla-ts, static
+Best for: multi-file projects, React/Vue apps, anything needing imports across files.
 
 ### E2B (Server Sandbox)
 For data analysis, scripts, and computation — invoked via tool calls:
@@ -621,7 +629,10 @@ For data analysis, scripts, and computation — invoked via tool calls:
 - **Node.js 20**: npm packages via dynamic import
 - **Bash**: Shell commands, file operations
 
-Use Sandpack for UI demos. Use E2B for data work, scripting, and anything that needs real execution.`,
+**Decision guide:**
+- Single HTML file (game, animation, demo) → \`\`\`html
+- Multi-file frontend project → \`\`\`sandpack:template
+- Data/scripting/computation → E2B tool calls`,
     trigger: { type: "auto" },
     autoApplyQueries: [
       "write code",
@@ -921,6 +932,12 @@ After creating, click "Convert to Skill"!`,
 
 ## Critical Rules
 - ALWAYS include the \`id\` field when editing (e.g., \`"id": "skill_abc123"\`)
+- **CRITICAL**: Your skill JSON MUST be wrapped in a \`\`\`skill code fence. Without it, the UI cannot detect and render the "Update Skill" button. Example:
+
+\`\`\`skill
+{ "id": "...", "name": "...", "systemPrompt": "...", "category": "..." }
+\`\`\`
+
 - If the user says "edit the summarize skill", find it in the list and use its exact ID
 - If no matching skill exists, suggest creating a new one with the Skill Creator instead
 - Only output fields you're changing, plus the required \`id\`

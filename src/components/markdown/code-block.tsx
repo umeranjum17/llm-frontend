@@ -55,6 +55,8 @@ export function CodeBlock({ language, code, filename, isStreaming = false }: Cod
   const [isExpanded, setIsExpanded] = useState(!isStreaming);
   const [wasStreaming, setWasStreaming] = useState(isStreaming);
   const isSvgLang = language?.toLowerCase() === "svg";
+  const isHtmlLang = language?.toLowerCase() === "html" && (code.includes("<!DOCTYPE") || code.includes("<html") || code.includes("<body"));
+  const isPreviewable = isSvgLang || isHtmlLang;
   const [showPreview, setShowPreview] = useState(isSvgLang);
   const shikiLang = getShikiLanguage(language);
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(
@@ -311,13 +313,13 @@ export function CodeBlock({ language, code, filename, isStreaming = false }: Cod
               <FolderOpen className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </Button>
           )}
-          {isSvgLang && (
+          {isPreviewable && (
             <Button
               variant="ghost"
               size="icon"
               className={cn("h-7 w-7 sm:h-8 sm:w-8", showPreview && "bg-primary/10")}
               onClick={() => setShowPreview(!showPreview)}
-              title={showPreview ? "Show code" : "Preview SVG"}
+              title={showPreview ? "Show code" : (isSvgLang ? "Preview SVG" : "Preview HTML")}
             >
               {showPreview ? (
                 <Code className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
@@ -359,6 +361,17 @@ export function CodeBlock({ language, code, filename, isStreaming = false }: Cod
                 className="[&>svg]:w-full [&>svg]:h-auto [&>svg]:max-h-[300px] [&>svg]:min-w-[200px]"
                 style={{ width: '100%', maxWidth: '400px' }}
                 dangerouslySetInnerHTML={{ __html: sanitizeSvgHtml(code) }}
+              />
+            </div>
+          ) : isHtmlLang && showPreview ? (
+            <div className="relative bg-white rounded-b-lg">
+              {/* Sandboxed iframe — user-generated HTML runs in isolated context */}
+              <iframe
+                srcDoc={code}
+                sandbox="allow-scripts"
+                className="w-full rounded-b-lg border-0"
+                style={{ height: '400px' }}
+                title="HTML Preview"
               />
             </div>
           ) : (

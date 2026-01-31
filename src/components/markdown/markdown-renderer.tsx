@@ -37,6 +37,11 @@ const DocumentRenderer = dynamic(() => import("./document-renderer").then(m => (
   ssr: false,
 });
 
+const SandpackInlinePreview = dynamic(() => import("./sandpack-inline-preview").then(m => ({ default: m.SandpackInlinePreview })), {
+  loading: () => <div className="animate-pulse bg-muted rounded-lg h-32 my-4" />,
+  ssr: false,
+});
+
 // Context to collect code blocks for multi-file project detection
 export interface CodeFile {
   language: string;
@@ -199,6 +204,28 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
                 return <CodeBlock language="markdown" code={code} filename={null} isStreaming={isStreaming} />;
               }
               return <DocumentRenderer code={code} />;
+            }
+
+            // Handle sandpack:template code fences (e.g., sandpack:react-ts)
+            if (language === "sandpack" && filename) {
+              // filename holds the template part from "sandpack:react-ts"
+              if (isStreaming) {
+                return <CodeBlock language="typescript" code={code} filename={`sandpack:${filename}`} isStreaming={isStreaming} />;
+              }
+              return <SandpackInlinePreview code={code} template={filename} />;
+            }
+
+            // Auto-detect skill definitions in json/unlabeled code blocks
+            // (LLM sometimes omits ```skill fence)
+            if (language === "json" || language === "") {
+              try {
+                const parsed = JSON.parse(code);
+                if (parsed && typeof parsed === "object" && parsed.name && parsed.systemPrompt && parsed.category) {
+                  return <SkillDefinitionBlock code={code} />;
+                }
+              } catch {
+                // Not valid JSON or not a skill — fall through
+              }
             }
 
             return (

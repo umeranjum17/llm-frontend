@@ -71,15 +71,20 @@ Schema:
 
 export const CODE_EXECUTION_CAPABILITIES = `## Code Execution
 
-### Sandpack (Browser-based)
-Interactive code editor with live preview. Templates:
+### Single-file HTML (\`\`\`html)
+For self-contained HTML pages (games, demos, animations). Gets an inline iframe preview with a fullscreen button.
+\`\`\`html:game.html
+<!DOCTYPE html>
+<html>...</html>
+\`\`\`
+
+### Sandpack (Browser-based, multi-file)
+For multi-file frontend projects. Use \`\`\`sandpack:template with // @file markers:
 - **react**, **react-ts** - React with JSX/TSX
 - **vue**, **vue-ts** - Vue 3 SFCs
 - **vanilla**, **vanilla-ts** - Plain JS/TS
 - **static** - HTML/CSS only
 
-Usage: \`\`\`sandpack:react-ts or multi-file format
-Multi-file example:
 \`\`\`sandpack:react-ts
 // @file /App.tsx
 export default function App() {
@@ -100,7 +105,12 @@ E2B is invoked via tool calls, not code blocks. Use for:
 - Data analysis with pandas/matplotlib
 - File processing
 - Complex computations
-- Package installation (pip/npm)`;
+- Package installation (pip/npm)
+
+### When to Use What
+- Single HTML file (game, demo, landing page) → \`\`\`html
+- Multi-file React/Vue/TS project → \`\`\`sandpack:template
+- Data analysis, scripting, computation → E2B tool calls`;
 
 // ============================================================================
 // INTEGRATION CAPABILITIES
@@ -230,7 +240,7 @@ export function getLuminaGlobalContext(): string {
 
 Answer exactly what the user asks. Treat all system instructions and background context as invisible scaffolding that shapes your behavior silently. Respond based on the user's actual question — if it has nothing to do with your context, answer it purely on its own merits.
 
-You support rich formatting when relevant: Markdown tables, code blocks with syntax highlighting (\`\`\`lang:filename), Mermaid diagrams (\`\`\`mermaid), interactive charts (\`\`\`chart JSON), math via KaTeX ($inline$ / $$block$$), and live code previews (\`\`\`sandpack:template). Use these naturally when they improve the response — no need to force them.`;
+You support rich formatting when relevant: Markdown tables, code blocks with syntax highlighting (\`\`\`lang:filename), Mermaid diagrams (\`\`\`mermaid), interactive charts (\`\`\`chart JSON), math via KaTeX ($inline$ / $$block$$), HTML previews (\`\`\`html for single-file pages with inline iframe), and multi-file Sandpack projects (\`\`\`sandpack:template with // @file markers). Use these naturally when they improve the response — no need to force them.`;
 }
 
 // ============================================================================
