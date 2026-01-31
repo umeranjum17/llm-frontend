@@ -13,7 +13,7 @@ import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { toast } from "sonner";
 import { getActionableError, getErrorMessage, type APIErrorResponse } from "@/lib/utils/error-messages";
 import { isModelIdCompatibleWithProviderId, pickBestProviderId, providerLabel } from "@/lib/ai/provider-routing";
-import { addMemory, refreshCacheInBackground, searchMemories } from "@/lib/memory";
+import { addMemory, refreshCacheInBackground, searchMemories, runMemoryDecay } from "@/lib/memory";
 import { generateAndApplySummary } from "@/lib/ai/summarization";
 import { getSettings } from "@/lib/db/queries";
 import { matchSkill, SKILL_SWITCH_THRESHOLD } from "@/lib/skills/skill-matcher";
@@ -1856,6 +1856,9 @@ export function useChat(chatId: string | null) {
       // Refresh memory cache in background for next interaction
       // This keeps memories fresh without blocking the current response
       refreshCacheInBackground(userMessageText);
+
+      // Run memory decay in background (once per day, non-blocking)
+      runMemoryDecay().catch(() => {});
     }
   }, [chatId, getKeyForProvider, isProviderKeyLocked, requestVaultUnlock, keys, scheduleMemoryExtraction, setStreamingMessage, appendStreamingContent, appendStreamingReasoning, setStreamingToolCalls, setStreamingToolResults, clearStreaming, startPipeline, setStepRunning, setStepComplete, setStepError, setStepRetrying, completePipeline, failPipeline, clearPipeline, setActiveSkill, setImageGenerationProgress, clearImageGenerationProgress, setOptimisticMessage, clearOptimisticMessage, setPendingSkillApproval, setContextCompaction]);
 

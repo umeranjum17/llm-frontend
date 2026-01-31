@@ -223,6 +223,48 @@ export function MemorySettings() {
                                 />
                             </div>
 
+                            {/* Memory Decay */}
+                            <div className="flex items-center justify-between pt-3 border-t">
+                                <div>
+                                    <Label>Memory decay</Label>
+                                    <p className="text-xs text-muted-foreground">
+                                        Gradually forget old memories that haven&apos;t been reinforced
+                                    </p>
+                                </div>
+                                <Switch
+                                    checked={settings?.memoryDecayEnabled ?? false}
+                                    onCheckedChange={async (checked) => {
+                                        await updateSettings({ memoryDecayEnabled: checked });
+                                        toast.success(checked ? "Memory decay enabled" : "Memory decay disabled");
+                                    }}
+                                />
+                            </div>
+
+                            {(settings?.memoryDecayEnabled) && (
+                                <div className="flex items-center justify-between pl-4">
+                                    <div>
+                                        <Label>Decay after</Label>
+                                        <p className="text-xs text-muted-foreground">
+                                            Memories untouched for this long get pruned (max 3/day, only when &gt;20 total)
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            type="number"
+                                            min={14}
+                                            max={365}
+                                            className="w-20 h-8 text-sm"
+                                            value={settings?.memoryDecayDays ?? 60}
+                                            onChange={async (e) => {
+                                                const value = Math.max(14, Math.min(365, parseInt(e.target.value) || 60));
+                                                await updateSettings({ memoryDecayDays: value });
+                                            }}
+                                        />
+                                        <span className="text-sm text-muted-foreground">days</span>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Cache TTL Setting */}
                             <div className="flex items-center justify-between pt-3 border-t">
                                 <div>

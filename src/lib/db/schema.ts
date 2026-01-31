@@ -194,6 +194,10 @@ export interface UserSettings {
     method: "prf" | "hmac-secret";
   };
   apiKeyVaultRememberMs?: number;    // UI preference for unlock duration
+  // Memory decay settings
+  memoryDecayEnabled?: boolean;        // Auto-prune old memories (default: false)
+  memoryDecayDays?: number;            // Age threshold in days (default: 60, range 14-365)
+  lastMemoryDecayAt?: number;          // Timestamp of last decay run
 }
 
 export interface ModelFavorite {

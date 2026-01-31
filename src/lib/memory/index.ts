@@ -306,5 +306,65 @@ export function clearMemoryCache() {
     apiKeyInvalid = false;
 }
 
+/**
+ * Memory decay - prune old memories that haven't been reinforced.
+ * Runs at most once per 24h, deletes up to 3 stale memories per run.
+ * Skips if total memory count is ≤ 20.
+ */
+export async function runMemoryDecay(): Promise<void> {
+    try {
+        const settings = await getSettings();
+        if (!settings?.memoryDecayEnabled) return;
+
+        const now = Date.now();
+        const lastRun = settings.lastMemoryDecayAt ?? 0;
+        const ONE_DAY = 24 * 60 * 60 * 1000;
+
+        // Only run once per day
+        if (now - lastRun < ONE_DAY) return;
+
+        const allMemories = await getAllMemories();
+        if (!allMemories || allMemories.length <= 20) {
+            // Update timestamp so we don't re-check constantly
+            const { updateSettings } = await import("@/lib/db/queries");
+            await updateSettings({ lastMemoryDecayAt: now });
+            return;
+        }
+
+        const decayDays = settings.memoryDecayDays ?? 60;
+        const thresholdMs = decayDays * ONE_DAY;
+
+        // Find stale memories (older than threshold, sorted oldest first)
+        const staleMemories = allMemories
+            .filter(m => {
+                const lastActive = m.updated_at || m.created_at;
+                if (!lastActive) return false;
+                const age = now - new Date(lastActive).getTime();
+                return age > thresholdMs;
+            })
+            .sort((a, b) => {
+                const aDate = new Date(a.updated_at || a.created_at || 0).getTime();
+                const bDate = new Date(b.updated_at || b.created_at || 0).getTime();
+                return aDate - bDate; // oldest first
+            });
+
+        // Delete up to 3
+        const toDelete = staleMemories.slice(0, 3);
+        for (const memory of toDelete) {
+            console.log(`[Memory Decay] Pruning stale memory: "${memory.memory.slice(0, 50)}..."`);
+            await deleteMemory(memory.id);
+        }
+
+        if (toDelete.length > 0) {
+            console.log(`[Memory Decay] Pruned ${toDelete.length} stale memories`);
+        }
+
+        const { updateSettings } = await import("@/lib/db/queries");
+        await updateSettings({ lastMemoryDecayAt: now });
+    } catch (error) {
+        console.error("[Memory Decay] Failed:", error);
+    }
+}
+
 // Re-export types that might be needed
 export type { MemoryItem };
