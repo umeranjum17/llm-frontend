@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useContext } from "react";
 import { Button } from "@/components/ui/button";
-import { Copy, Check, Maximize2, ChevronRight, Eye, Code, FolderOpen, Play } from "lucide-react";
+import { Copy, Check, Maximize2, ChevronRight, Eye, Code, FolderOpen, Play, WrapText } from "lucide-react";
 import { codeToHtml } from "shiki";
 import { useUIStore } from "@/stores/ui-store";
 import { cn, sanitizeSvgHtml } from "@/lib/utils";
@@ -59,6 +59,10 @@ export function CodeBlock({ language, code, filename, isStreaming = false }: Cod
   const isHtmlLang = language?.toLowerCase() === "html" && (code.includes("<!DOCTYPE") || code.includes("<html") || code.includes("<body"));
   const isPreviewable = isSvgLang || isHtmlLang;
   const [showPreview, setShowPreview] = useState(isSvgLang);
+  const [wordWrap, setWordWrap] = useState(false);
+  const codeContainerRef = useRef<HTMLDivElement>(null);
+  const [hasOverflowLeft, setHasOverflowLeft] = useState(false);
+  const [hasOverflowRight, setHasOverflowRight] = useState(false);
   const shikiLang = getShikiLanguage(language);
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(
     () => getCachedHighlight(code, shikiLang)
@@ -76,6 +80,25 @@ export function CodeBlock({ language, code, filename, isStreaming = false }: Cod
       codeBlockContext.registerCodeBlock({ language, filename: filename || null, code });
     }
   }, [codeBlockContext, language, filename, code]);
+
+  // Detect horizontal scroll overflow for fade indicators
+  useEffect(() => {
+    const el = codeContainerRef.current;
+    if (!el || wordWrap) {
+      setHasOverflowLeft(false);
+      setHasOverflowRight(false);
+      return;
+    }
+    const check = () => {
+      setHasOverflowLeft(el.scrollLeft > 0);
+      setHasOverflowRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+    };
+    check();
+    el.addEventListener("scroll", check, { passive: true });
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => { el.removeEventListener("scroll", check); ro.disconnect(); };
+  }, [isExpanded, highlightedHtml, wordWrap]);
 
   // Auto-expand when streaming finishes - instant, no animation
   useEffect(() => {
@@ -348,6 +371,15 @@ export function CodeBlock({ language, code, filename, isStreaming = false }: Cod
           <Button
             variant="ghost"
             size="icon"
+            className={cn("h-7 w-7 sm:h-8 sm:w-8", wordWrap && "bg-primary/10")}
+            onClick={() => setWordWrap(!wordWrap)}
+            title={wordWrap ? "Disable word wrap" : "Enable word wrap"}
+          >
+            <WrapText className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
             className="h-7 w-7 sm:h-8 sm:w-8"
             onClick={handleOpenArtifact}
             title="Open fullscreen"
@@ -392,23 +424,40 @@ export function CodeBlock({ language, code, filename, isStreaming = false }: Cod
               />
             </div>
           ) : (
-            <div className="overflow-x-auto flex">
-              {/* Line numbers */}
-              <div className="select-none text-right text-[11px] sm:text-[13px] leading-relaxed font-mono text-[#6a737d] py-3 sm:py-4 pl-3 sm:pl-4 pr-3 border-r border-white/10 shrink-0" aria-hidden="true">
-                {code.split('\n').map((_, i) => (
-                  <div key={i}>{i + 1}</div>
-                ))}
-              </div>
-              {highlightedHtml ? (
-                <div
-                  className="flex-1 min-w-0 [&>pre]:m-0 [&>pre]:rounded-none [&>pre]:rounded-br-lg [&>pre]:bg-transparent [&>pre]:p-3 sm:[&>pre]:p-4 [&>pre]:text-[11px] sm:[&>pre]:text-[13px] [&_code]:text-[11px] sm:[&_code]:text-[13px]"
-                  dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-                />
-              ) : (
-                <pre className="flex-1 min-w-0 text-[#e1e4e8] p-3 sm:p-4 m-0 font-mono text-[11px] sm:text-[13px] leading-relaxed whitespace-pre-wrap break-words">
-                  <code>{code}</code>
-                </pre>
+            <div className="relative">
+              {/* Scroll fade indicators */}
+              {hasOverflowLeft && (
+                <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-[#24292e] to-transparent z-10 pointer-events-none" />
               )}
+              {hasOverflowRight && (
+                <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-[#24292e] to-transparent z-10 pointer-events-none" />
+              )}
+              <div ref={codeContainerRef} className={cn("flex", wordWrap ? "overflow-x-hidden" : "overflow-x-auto")}>
+                {/* Line numbers */}
+                <div className="select-none text-right text-[11px] sm:text-[13px] leading-relaxed font-mono text-[#6a737d] py-3 sm:py-4 pl-3 sm:pl-4 pr-3 border-r border-white/10 shrink-0" aria-hidden="true">
+                  {code.split('\n').map((_, i) => (
+                    <div key={i} className="hover:text-[#8b949e] transition-colors">{i + 1}</div>
+                  ))}
+                </div>
+                {highlightedHtml ? (
+                  <div
+                    className={cn(
+                      "flex-1 min-w-0 [&>pre]:m-0 [&>pre]:rounded-none [&>pre]:rounded-br-lg [&>pre]:bg-transparent [&>pre]:p-3 sm:[&>pre]:p-4 [&>pre]:text-[11px] sm:[&>pre]:text-[13px] [&_code]:text-[11px] sm:[&_code]:text-[13px]",
+                      "[&_.line]:hover:bg-white/[0.03] [&_.line]:transition-colors [&_.line]:rounded-sm",
+                      wordWrap && "[&>pre]:whitespace-pre-wrap [&>pre]:break-words"
+                    )}
+                    // Shiki-generated HTML is trusted (not user content)
+                    dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+                  />
+                ) : (
+                  <pre className={cn(
+                    "flex-1 min-w-0 text-[#e1e4e8] p-3 sm:p-4 m-0 font-mono text-[11px] sm:text-[13px] leading-relaxed",
+                    wordWrap ? "whitespace-pre-wrap break-words" : "whitespace-pre"
+                  )}>
+                    <code>{code}</code>
+                  </pre>
+                )}
+              </div>
             </div>
           )}
         </div>
