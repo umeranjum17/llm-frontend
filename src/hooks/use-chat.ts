@@ -831,6 +831,47 @@ export function useChat(chatId: string | null) {
       );
     }
 
+    // Special routing for Claw agent
+    if (agent?.id === "agent_builtin_claw") {
+      const { useClawStore } = await import("@/stores/claw-store");
+      const clawStore = useClawStore.getState();
+
+      const cleanedMessage = cleanReferencesForLLM(getTextFromMessageContent(messageContent));
+
+      if (!clawStore.isConnected) {
+        const errMsg = await addMessage({
+          chatId: effectiveChatId,
+          role: "assistant",
+          content: "Claw is not connected. Go to Settings > Claw to configure the connection.",
+          parentId: parentUserMessageId,
+        });
+        await updateChat(effectiveChatId, { activeBranchLeafId: errMsg.id });
+        return;
+      }
+
+      try {
+        const { response, taskId } = await clawStore.chatWithClaw(cleanedMessage);
+        const content = taskId ? `${response}\n\n*Task ID: ${taskId}*` : response;
+        const assistantMsg = await addMessage({
+          chatId: effectiveChatId,
+          role: "assistant",
+          content,
+          parentId: parentUserMessageId,
+        });
+        await updateChat(effectiveChatId, { activeBranchLeafId: assistantMsg.id });
+        return;
+      } catch (e) {
+        const errMsg = await addMessage({
+          chatId: effectiveChatId,
+          role: "assistant",
+          content: `Claw error: ${(e as Error).message}`,
+          parentId: parentUserMessageId,
+        });
+        await updateChat(effectiveChatId, { activeBranchLeafId: errMsg.id });
+        return;
+      }
+    }
+
     // Check if this is a pipeline agent
     if (agent?.executionType === "pipeline" && agent.pipeline?.steps?.length) {
       abortControllerRef.current = new AbortController();

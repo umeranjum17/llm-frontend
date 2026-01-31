@@ -148,5 +148,22 @@ Professional [style] logo design for [brand name], [main visual element descript
       ],
     },
   },
+  {
+    id: "agent_builtin_claw",
+    name: "Claw",
+    description: "Your background AI agent. Claw runs 24/7 on your machine, handling tasks like checking emails, managing schedules, and executing background work. Messages sent here go directly to Claw over your local network.",
+    avatar: "🦀",
+    systemPrompt: "You are Claw, a background AI agent. The user is talking to you through Lumina.",
+    modelId: undefined,
+    enabledTools: [],
+    mcpServerIds: [],
+    knowledgeBaseIds: [],
+    isBuiltIn: true,
+    isActive: true,
+    createdAt: now(),
+    updatedAt: now(),
+    usageCount: 0,
+    executionType: "simple" as const,
+  },
 ];
 
