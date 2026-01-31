@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
 import { ExportButton } from "@/components/artifacts/export-button";
+import { useUIStore } from "@/stores/ui-store";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface SlidesViewerProps {
@@ -24,6 +25,8 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
   const [current, setCurrent] = useState(0);
   const slideRef = useRef<HTMLDivElement>(null);
   const [direction, setDirection] = useState(0);
+  const artifactsFullscreen = useUIStore((s) => s.artifactsFullscreen);
+  const setArtifactsFullscreen = useUIStore((s) => s.setArtifactsFullscreen);
 
   const total = slides.length;
 
@@ -140,6 +143,16 @@ export function SlidesViewer({ content }: SlidesViewerProps) {
           disabled={current === total - 1}
         >
           <ChevronRight className="h-4 w-4" />
+        </Button>
+
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-10 w-10 sm:h-8 sm:w-8"
+          onClick={() => setArtifactsFullscreen(!artifactsFullscreen)}
+          title={artifactsFullscreen ? "Exit fullscreen" : "Fullscreen"}
+        >
+          {artifactsFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
         </Button>
 
         <div className="flex items-center gap-1.5 basis-full sm:basis-auto justify-center sm:ml-4">

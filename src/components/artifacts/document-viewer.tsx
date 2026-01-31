@@ -2,9 +2,10 @@
 
 import { useState, useMemo, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { List } from "lucide-react";
+import { List, Maximize2, Minimize2 } from "lucide-react";
 import { ExportButton } from "@/components/artifacts/export-button";
 import { cn } from "@/lib/utils";
+import { useUIStore } from "@/stores/ui-store";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
 
 interface DocumentViewerProps {
@@ -57,6 +58,8 @@ export function DocumentViewer({ content }: DocumentViewerProps) {
   const [showToc, setShowToc] = useState(headings.length > 0);
   const [activeId, setActiveId] = useState<string>("");
   const contentRef = useRef<HTMLDivElement>(null);
+  const artifactsFullscreen = useUIStore((s) => s.artifactsFullscreen);
+  const setArtifactsFullscreen = useUIStore((s) => s.setArtifactsFullscreen);
 
   // Scroll-linked TOC highlighting
   useEffect(() => {
@@ -133,7 +136,16 @@ export function DocumentViewer({ content }: DocumentViewerProps) {
                   {frontmatter.date && <span>{frontmatter.date}</span>}
                 </div>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => setArtifactsFullscreen(!artifactsFullscreen)}
+                  title={artifactsFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                >
+                  {artifactsFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+                </Button>
                 {headings.length > 0 && (
                   <Button
                     variant="ghost"

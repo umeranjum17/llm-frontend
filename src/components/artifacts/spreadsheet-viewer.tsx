@@ -12,8 +12,10 @@ import {
   type ColumnDef,
 } from "@tanstack/react-table";
 import { Input } from "@/components/ui/input";
-import { ArrowUpDown, Search } from "lucide-react";
+import { ArrowUpDown, Search, Maximize2, Minimize2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { ExportButton } from "@/components/artifacts/export-button";
+import { useUIStore } from "@/stores/ui-store";
 import { cn } from "@/lib/utils";
 
 interface SpreadsheetViewerProps {
@@ -23,6 +25,8 @@ interface SpreadsheetViewerProps {
 export function SpreadsheetViewer({ content }: SpreadsheetViewerProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
+  const artifactsFullscreen = useUIStore((s) => s.artifactsFullscreen);
+  const setArtifactsFullscreen = useUIStore((s) => s.setArtifactsFullscreen);
 
   const { headers, rows, error } = useMemo(() => {
     try {
@@ -90,6 +94,15 @@ export function SpreadsheetViewer({ content }: SpreadsheetViewerProps) {
           {table.getFilteredRowModel().rows.length} of {rows.length} rows
         </span>
         <div className="flex items-center gap-1.5 ml-auto">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setArtifactsFullscreen(!artifactsFullscreen)}
+            title={artifactsFullscreen ? "Exit fullscreen" : "Fullscreen"}
+          >
+            {artifactsFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+          </Button>
           <ExportButton
             label="XLSX"
             onClick={async () => {
