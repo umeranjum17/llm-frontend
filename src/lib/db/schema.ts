@@ -503,6 +503,29 @@ export interface DeviceSecret {
   createdAt: number;
 }
 
+export interface CloudSyncConfig {
+  id: string; // Always 'default'
+  provider: "s3" | "r2";
+  bucket: string;
+  region?: string; // S3 region (e.g., 'us-east-1')
+  endpoint?: string; // R2/custom endpoint URL
+  accessKeyId: string; // Encrypted
+  secretAccessKey: string; // Encrypted
+  enabled: boolean;
+  autoSyncEnabled: boolean;
+  syncIntervalSeconds: number; // Default: 30
+  encryptionEnabled: boolean;
+  deviceId: string; // Unique device identifier for sync loop prevention
+  deviceName?: string; // Human-readable device name (e.g., "MacBook", "iPhone")
+  lastSyncAt?: number;
+  lastSyncStatus?: "success" | "error" | "in_progress";
+  lastSyncError?: string;
+  lastSyncDeviceId?: string; // Device that performed the last sync (from manifest)
+  lastSyncDeviceName?: string; // Device name that performed the last sync
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface ContextSummary {
   id: string;
   chatId: string;
@@ -609,6 +632,7 @@ export class LuminaDB extends Dexie {
   modelAliases!: EntityTable<ModelAlias, "id">;
   mcpServers!: EntityTable<McpServer, "id">;
   deviceSecrets!: EntityTable<DeviceSecret, "id">;
+  cloudSyncConfig!: EntityTable<CloudSyncConfig, "id">;
   contextSummaries!: EntityTable<ContextSummary, "id">;
   usageSnapshots!: EntityTable<UsageSnapshot, "id">;
   drafts!: EntityTable<ChatDraft, "chatId">;
