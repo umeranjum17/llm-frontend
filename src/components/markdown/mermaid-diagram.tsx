@@ -54,6 +54,39 @@ async function getMermaid() {
   return mermaidInstance;
 }
 
+/**
+ * Sanitize mermaid code to handle common LLM output glitches:
+ * - Duplicate/concatenated diagrams (two "flowchart TD" in one block)
+ * - Trailing incomplete fragments
+ */
+function sanitizeMermaidCode(code: string): string {
+  const trimmed = code.trim();
+
+  // Diagram declaration keywords
+  const declarations = [
+    "flowchart", "graph", "sequenceDiagram", "classDiagram", "stateDiagram",
+    "stateDiagram-v2", "erDiagram", "gantt", "pie", "journey", "mindmap",
+    "gitGraph", "timeline", "quadrantChart", "sankey", "xychartChart", "block-beta",
+  ];
+
+  // Build regex that finds a second diagram declaration (not at position 0)
+  const pattern = new RegExp(
+    `(?<=\\S)\\s*((?:${declarations.join("|")})(?:\\s|$))`,
+    "im"
+  );
+  const match = trimmed.match(pattern);
+
+  if (match && match.index != null) {
+    // Found a duplicate declaration — take the longer/later complete one
+    const firstPart = trimmed.slice(0, match.index).trim();
+    const secondPart = trimmed.slice(match.index).trim();
+    // Use whichever part is longer (likely the complete one)
+    return secondPart.length >= firstPart.length ? secondPart : firstPart;
+  }
+
+  return trimmed;
+}
+
 /** Detect the diagram type from mermaid source */
 function detectDiagramType(code: string): string {
   const first = code.trim().split(/[\s\n{]/)[0].toLowerCase();
@@ -91,20 +124,50 @@ export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: 
     async function renderDiagram() {
       if (!code.trim()) return;
 
+      const mermaid = await getMermaid();
+      const cleanup = () => {
+        document.querySelectorAll('[id^="dmermaid-"], [id^="d"].mermaid, .mermaid-error, #dmermaid').forEach(el => {
+          el.remove();
+        });
+      };
+
+      // First attempt: render as-is
       try {
         const id = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
-        const mermaid = await getMermaid();
         const { svg: renderedSvg } = await mermaid.render(id, code);
         setSvg(renderedSvg);
         setError(null);
+        cleanup();
+        return;
+      } catch {
+        cleanup();
+      }
+
+      // Second attempt: sanitize (fixes duplicate/concatenated diagrams from LLM)
+      const sanitized = sanitizeMermaidCode(code);
+      if (sanitized !== code.trim()) {
+        try {
+          const id2 = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
+          const { svg: renderedSvg } = await mermaid.render(id2, sanitized);
+          setSvg(renderedSvg);
+          setError(null);
+          cleanup();
+          return;
+        } catch {
+          cleanup();
+        }
+      }
+
+      // Both failed — show error from original attempt
+      try {
+        const id3 = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
+        await mermaid.render(id3, code);
       } catch (err) {
         console.error("Mermaid rendering error:", err);
         setError(err instanceof Error ? err.message : "Failed to render diagram");
         setSvg("");
       } finally {
-        document.querySelectorAll('[id^="dmermaid-"], [id^="d"].mermaid, .mermaid-error, #dmermaid').forEach(el => {
-          el.remove();
-        });
+        cleanup();
       }
     }
 
