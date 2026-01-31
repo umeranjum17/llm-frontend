@@ -1277,6 +1277,144 @@ Check context below for available tools/models. After creating, click "Convert t
     createdAt: now(),
     updatedAt: now(),
   },
+  // --- Claw Integration Skills ---
+  {
+    id: "skill_builtin_claw_delegate",
+    name: "Delegate to Claw",
+    description: "send this to Claw, have Claw handle this, delegate to Claw, create a task for Claw, Claw should do this, ask Claw to do this, background task",
+    category: "productivity",
+    systemPrompt: `The user wants to delegate a task to Claw, their background AI agent.
+
+Extract the task instruction from the user's message and output it in a claw-task code fence:
+
+\`\`\`claw-task
+Check my emails and summarize anything important from today
+\`\`\`
+
+Rules:
+- Extract a clear, actionable instruction
+- If the user's message IS the instruction, use it directly
+- Don't add extra commentary — just the code fence with the instruction
+- After the code fence, confirm: "Task sent to Claw."`,
+    trigger: { type: "auto" },
+    autoApplyQueries: [
+      "send this to Claw",
+      "have Claw handle this",
+      "delegate to Claw",
+      "create a task for Claw",
+      "Claw should do this",
+    ],
+    exclusionQueries: [
+      "what is Claw",
+      "how does Claw work",
+      "tell me about Claw",
+    ],
+    ui: {
+      icon: "Send",
+      color: "orange",
+      activeLabel: "Delegating to Claw...",
+    },
+    isBuiltIn: true,
+    isEnabled: true,
+    usageCount: 0,
+    createdAt: now(),
+    updatedAt: now(),
+  },
+  {
+    id: "skill_builtin_claw_schedule",
+    name: "Schedule with Claw",
+    description: "schedule a task with Claw, set up a recurring task, every day at 9am, cron job for Claw, remind me daily via Claw, schedule Claw to check",
+    category: "productivity",
+    systemPrompt: `The user wants to create a scheduled/recurring task for Claw, their background AI agent.
+
+Extract the schedule name and cron expression from the user's message and output in a claw-schedule code fence:
+
+\`\`\`claw-schedule
+{"name": "Check emails", "cron": "0 9 * * *"}
+\`\`\`
+
+Common cron patterns:
+- Every day at 9am: "0 9 * * *"
+- Every hour: "0 * * * *"
+- Every Monday at 8am: "0 8 * * 1"
+- Every 30 minutes: "*/30 * * * *"
+- Twice daily (9am and 5pm): "0 9,17 * * *"
+
+Rules:
+- Extract a descriptive name and valid cron expression
+- Use 5-field cron format (minute hour day-of-month month day-of-week)
+- After the code fence, confirm: "Schedule created in Claw."`,
+    trigger: { type: "auto" },
+    autoApplyQueries: [
+      "schedule a task with Claw",
+      "set up a recurring task",
+      "every day at 9am check",
+      "cron job for Claw",
+      "schedule Claw to",
+    ],
+    exclusionQueries: [
+      "what are Claw's schedules",
+      "show my schedules",
+      "explain cron syntax",
+    ],
+    ui: {
+      icon: "Calendar",
+      color: "purple",
+      activeLabel: "Scheduling with Claw...",
+    },
+    isBuiltIn: true,
+    isEnabled: true,
+    usageCount: 0,
+    createdAt: now(),
+    updatedAt: now(),
+  },
+  {
+    id: "skill_builtin_claw_status",
+    name: "Claw Status",
+    description: "what's Claw doing, Claw status, show my Claw tasks, Claw activity, is Claw running, check on Claw, Claw tasks",
+    category: "productivity",
+    systemPrompt: `The user wants to check on Claw, their background AI agent.
+
+You will receive Claw's current status data injected into the conversation context. Present it in a clean, readable format:
+
+## Claw Status
+
+**Connection:** 🟢 Online (uptime: Xh Ym)
+
+### Active Tasks
+| Task | Status | Created |
+|------|--------|---------|
+| ... | ... | ... |
+
+### Recent Activity
+- [timestamp] action — details
+- ...
+
+If no tasks or activity, say so. Be concise.`,
+    trigger: { type: "auto" },
+    autoApplyQueries: [
+      "what's Claw doing",
+      "Claw status",
+      "show my Claw tasks",
+      "is Claw running",
+      "check on Claw",
+    ],
+    exclusionQueries: [
+      "create a task for Claw",
+      "send this to Claw",
+      "schedule with Claw",
+    ],
+    ui: {
+      icon: "Activity",
+      color: "green",
+      activeLabel: "Checking Claw status...",
+    },
+    isBuiltIn: true,
+    isEnabled: true,
+    usageCount: 0,
+    createdAt: now(),
+    updatedAt: now(),
+  },
   {
     id: "skill_builtin_agent_editor",
     name: "Agent Editor",

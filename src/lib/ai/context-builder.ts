@@ -391,6 +391,27 @@ export async function buildContextMessages(
       }
     }
 
+    // For Claw Status skill, inject current Claw data
+    if (options.skill.id === "skill_builtin_claw_status") {
+      try {
+        const { useClawStore } = await import("@/stores/claw-store");
+        const clawStore = useClawStore.getState();
+        if (clawStore.isConnected) {
+          const statusData = {
+            status: clawStore.status,
+            tasks: clawStore.tasks,
+            activity: clawStore.activity.slice(0, 10),
+            schedules: clawStore.schedules,
+          };
+          skillContent += `\n\n## Current Claw Data\n\`\`\`json\n${JSON.stringify(statusData, null, 2)}\n\`\`\``;
+        } else {
+          skillContent += "\n\nClaw is not connected. Tell the user to configure it in Settings > Claw.";
+        }
+      } catch (e) {
+        console.warn("[Claw] Failed to inject status data:", e);
+      }
+    }
+
     messages.push({
       id: `system-skill-${options.skill.id}`,
       chatId,

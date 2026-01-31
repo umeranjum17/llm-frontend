@@ -1827,6 +1827,35 @@ export function useChat(chatId: string | null) {
       // Schedule memory extraction after assistant response
       scheduleMemoryExtraction();
 
+      // Parse Claw code fences from LLM response
+      const clawTaskMatch = fullContent.match(/```claw-task\n([\s\S]*?)```/);
+      if (clawTaskMatch) {
+        const instruction = clawTaskMatch[1].trim();
+        try {
+          const { useClawStore } = await import("@/stores/claw-store");
+          const clawStore = useClawStore.getState();
+          if (clawStore.isConnected) {
+            await clawStore.createTask(instruction);
+          }
+        } catch (e) {
+          console.warn("[Claw] Failed to create task:", e);
+        }
+      }
+
+      const clawScheduleMatch = fullContent.match(/```claw-schedule\n([\s\S]*?)```/);
+      if (clawScheduleMatch) {
+        try {
+          const { name, cron } = JSON.parse(clawScheduleMatch[1].trim());
+          const { useClawStore } = await import("@/stores/claw-store");
+          const clawStore = useClawStore.getState();
+          if (clawStore.isConnected) {
+            await clawStore.createSchedule(name, cron);
+          }
+        } catch (e) {
+          console.warn("[Claw] Failed to create schedule:", e);
+        }
+      }
+
       // Auto-summarize every 10 messages
       const updatedMessages = await getMessages(effectiveChatId);
       if (updatedMessages.length > 0 && updatedMessages.length % 10 === 0) {
