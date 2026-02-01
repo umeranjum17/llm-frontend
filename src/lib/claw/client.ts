@@ -1,5 +1,6 @@
 import type {
-  ClawStatus, ClawTask, ClawActivity, ClawSchedule, ClawConfig,
+  ClawStatus, ClawTask, ClawActivity, ClawSchedule, ClawScheduleRun, ClawInitiative, ClawConfig,
+  ClawBriefing, ClawMonitor, ClawPipelineRun,
 } from "./types";
 
 export class ClawClient {
@@ -73,6 +74,26 @@ export class ClawClient {
     return this.request(`/schedules/${id}`, { method: "DELETE" });
   }
 
+  async getScheduleRuns(scheduleId: string, limit = 20): Promise<{ runs: ClawScheduleRun[] }> {
+    return this.request(`/schedules/${scheduleId}/runs?limit=${limit}`);
+  }
+
+  async getScheduleRun(scheduleId: string, runId: string): Promise<{ run: ClawScheduleRun }> {
+    return this.request(`/schedules/${scheduleId}/runs/${runId}`);
+  }
+
+  async getInitiatives(status?: string): Promise<{ initiatives: ClawInitiative[] }> {
+    const query = status ? `?status=${status}` : "";
+    return this.request(`/initiatives${query}`);
+  }
+
+  async updateInitiative(id: string, status: "approved" | "rejected" | "deferred"): Promise<{ ok: boolean }> {
+    return this.request(`/initiatives/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    });
+  }
+
   async getConfig(): Promise<{ config: ClawConfig }> {
     return this.request("/config");
   }
@@ -95,11 +116,53 @@ export class ClawClient {
     });
   }
 
-  async chat(message: string): Promise<{ response: string; taskId: string }> {
+  async chat(message: string, history?: Array<{ role: "user" | "assistant"; content: string }>): Promise<{ response: string; taskId: string }> {
     return this.request("/chat", {
       method: "POST",
-      body: JSON.stringify({ message, source: "lumina" }),
+      body: JSON.stringify({ message, source: "lumina", history }),
     });
+  }
+
+  // --- Briefings ---
+
+  async getLatestBriefing(): Promise<{ briefing: ClawBriefing | null }> {
+    return this.request("/briefing");
+  }
+
+  async getBriefingHistory(limit = 20): Promise<{ briefings: ClawBriefing[] }> {
+    return this.request(`/briefing/history?limit=${limit}`);
+  }
+
+  async generateBriefing(): Promise<{ briefing: ClawBriefing }> {
+    return this.request("/briefing/generate", { method: "POST" });
+  }
+
+  // --- Monitors ---
+
+  async getMonitors(): Promise<{ monitors: ClawMonitor[] }> {
+    return this.request("/monitors");
+  }
+
+  async createMonitor(data: { name: string; type: string; config: Record<string, any> }): Promise<{ id: string }> {
+    return this.request("/monitors", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async updateMonitor(id: string, data: Partial<{ name: string; type: string; config: Record<string, any>; enabled: boolean }>): Promise<{ ok: boolean }> {
+    return this.request(`/monitors/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+  }
+
+  async deleteMonitor(id: string): Promise<{ ok: boolean }> {
+    return this.request(`/monitors/${id}`, { method: "DELETE" });
+  }
+
+  // --- Pipeline ---
+
+  async getPipelineRuns(limit = 50): Promise<{ runs: ClawPipelineRun[] }> {
+    return this.request(`/pipeline/runs?limit=${limit}`);
+  }
+
+  async runPipeline(): Promise<{ ok: boolean; message: string }> {
+    return this.request("/pipeline/run", { method: "POST" });
   }
 
   createEventSource(): EventSource {

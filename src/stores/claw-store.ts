@@ -1,7 +1,7 @@
 // src/stores/claw-store.ts
 import { create } from "zustand";
 import { ClawClient } from "@/lib/claw/client";
-import type { ClawStatus, ClawTask, ClawActivity, ClawSchedule, ClawConfig } from "@/lib/claw/types";
+import type { ClawStatus, ClawTask, ClawActivity, ClawSchedule, ClawScheduleRun, ClawInitiative, ClawConfig, ClawBriefing, ClawMonitor, ClawPipelineRun } from "@/lib/claw/types";
 import { getSettings, updateSettings } from "@/lib/db/queries";
 
 interface ClawState {
@@ -16,6 +16,11 @@ interface ClawState {
   activity: ClawActivity[];
   schedules: ClawSchedule[];
   config: ClawConfig | null;
+  scheduleRuns: Record<string, ClawScheduleRun[]>;
+  initiatives: ClawInitiative[];
+  briefing: ClawBriefing | null;
+  monitors: ClawMonitor[];
+  pipelineRuns: ClawPipelineRun[];
 
   connect: (url: string, secret: string) => Promise<void>;
   disconnect: () => void;
@@ -31,7 +36,17 @@ interface ClawState {
   deleteSchedule: (id: string) => Promise<void>;
   updateConfig: (data: Partial<ClawConfig>) => Promise<void>;
   pushKeys: (keys: Record<string, string>) => Promise<string[]>;
-  chatWithClaw: (message: string) => Promise<{ response: string; taskId: string }>;
+  fetchScheduleRuns: (scheduleId: string) => Promise<void>;
+  refreshInitiatives: () => Promise<void>;
+  updateInitiative: (id: string, status: "approved" | "rejected" | "deferred") => Promise<void>;
+  refreshBriefing: () => Promise<void>;
+  refreshMonitors: () => Promise<void>;
+  refreshPipelineRuns: () => Promise<void>;
+  generateBriefing: () => Promise<ClawBriefing | null>;
+  runPipeline: () => Promise<void>;
+  createMonitor: (data: { name: string; type: string; config: Record<string, any> }) => Promise<string | null>;
+  deleteMonitor: (id: string) => Promise<void>;
+  chatWithClaw: (message: string, history?: Array<{ role: "user" | "assistant"; content: string }>) => Promise<{ response: string; taskId: string }>;
   initFromSettings: () => Promise<void>;
 }
 
@@ -46,6 +61,11 @@ export const useClawStore = create<ClawState>((set, get) => ({
   activity: [],
   schedules: [],
   config: null,
+  scheduleRuns: {},
+  initiatives: [],
+  briefing: null,
+  monitors: [],
+  pipelineRuns: [],
 
   connect: async (url, secret) => {
     set({ isConnecting: true, error: null });
@@ -75,6 +95,10 @@ export const useClawStore = create<ClawState>((set, get) => ({
           await apiKeysState.loadKeys();
         }
         const keys = useApiKeysStore.getState().keys;
+        const settingsState = useSettingsStore.getState();
+        if (!settingsState.isLoaded) {
+          await settingsState.loadSettings();
+        }
         const settings = useSettingsStore.getState();
         const keyMap: Record<string, string> = {};
         const providerToEnv: Record<string, string> = {
@@ -86,7 +110,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
           const envName = providerToEnv[k.provider];
           if (envName) keyMap[envName] = k.key;
         }
-        if (settings.memoryUserId) keyMap["MEM0_USER_ID"] = settings.memoryUserId;
+        keyMap["MEM0_USER_ID"] = settings.memoryUserId || "default-user";
         if (Object.keys(keyMap).length > 0) {
           await client.pushKeys(keyMap);
           console.log(`[Claw] Keys synced successfully (attempt ${attempt})`);
@@ -114,7 +138,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
   },
 
   disconnect: async () => {
-    set({ isConnected: false, client: null, status: null, tasks: [], activity: [], schedules: [], config: null, error: null, keysSynced: false });
+    set({ isConnected: false, client: null, status: null, tasks: [], activity: [], schedules: [], scheduleRuns: {}, initiatives: [], briefing: null, monitors: [], pipelineRuns: [], config: null, error: null, keysSynced: false });
     // Persist disabled state so auto-connect doesn't re-enable on next startup
     const { useSettingsStore } = await import("@/stores/settings-store");
     const settings = useSettingsStore.getState();
@@ -125,7 +149,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
 
   refreshAll: async () => {
     const s = get();
-    await Promise.allSettled([s.refreshTasks(), s.refreshActivity(), s.refreshSchedules(), s.refreshConfig()]);
+    await Promise.allSettled([s.refreshTasks(), s.refreshActivity(), s.refreshSchedules(), s.refreshConfig(), s.refreshInitiatives(), s.refreshBriefing(), s.refreshMonitors(), s.refreshPipelineRuns()]);
   },
 
   refreshTasks: async () => {
@@ -199,14 +223,94 @@ export const useClawStore = create<ClawState>((set, get) => ({
     return updated;
   },
 
-  chatWithClaw: async (message) => {
+  refreshInitiatives: async () => {
+    const { client } = get();
+    if (!client) return;
+    try { const { initiatives } = await client.getInitiatives(); set({ initiatives }); }
+    catch (e) { console.warn("[Claw] refresh initiatives:", (e as Error).message); }
+  },
+
+  updateInitiative: async (id, status) => {
+    const { client } = get();
+    if (!client) return;
+    await client.updateInitiative(id, status);
+    await get().refreshInitiatives();
+  },
+
+  refreshBriefing: async () => {
+    const { client } = get();
+    if (!client) return;
+    try { const { briefing } = await client.getLatestBriefing(); set({ briefing }); }
+    catch (e) { console.warn("[Claw] refresh briefing:", (e as Error).message); }
+  },
+
+  refreshMonitors: async () => {
+    const { client } = get();
+    if (!client) return;
+    try { const { monitors } = await client.getMonitors(); set({ monitors }); }
+    catch (e) { console.warn("[Claw] refresh monitors:", (e as Error).message); }
+  },
+
+  refreshPipelineRuns: async () => {
+    const { client } = get();
+    if (!client) return;
+    try { const { runs } = await client.getPipelineRuns(10); set({ pipelineRuns: runs }); }
+    catch (e) { console.warn("[Claw] refresh pipeline runs:", (e as Error).message); }
+  },
+
+  generateBriefing: async () => {
+    const { client } = get();
+    if (!client) return null;
+    try {
+      const { briefing } = await client.generateBriefing();
+      set({ briefing });
+      return briefing;
+    } catch (e) {
+      console.warn("[Claw] generate briefing:", (e as Error).message);
+      return null;
+    }
+  },
+
+  runPipeline: async () => {
+    const { client } = get();
+    if (!client) return;
+    await client.runPipeline();
+  },
+
+  createMonitor: async (data) => {
+    const { client } = get();
+    if (!client) return null;
+    const { id } = await client.createMonitor(data);
+    await get().refreshMonitors();
+    return id;
+  },
+
+  deleteMonitor: async (id) => {
+    const { client } = get();
+    if (!client) return;
+    await client.deleteMonitor(id);
+    set((s) => ({ monitors: s.monitors.filter((m) => m.id !== id) }));
+  },
+
+  fetchScheduleRuns: async (scheduleId) => {
+    const { client } = get();
+    if (!client) return;
+    try {
+      const { runs } = await client.getScheduleRuns(scheduleId);
+      set((s) => ({ scheduleRuns: { ...s.scheduleRuns, [scheduleId]: runs } }));
+    } catch (e) {
+      console.warn("[Claw] fetch schedule runs:", (e as Error).message);
+    }
+  },
+
+  chatWithClaw: async (message, history) => {
     const { client, keysSynced } = get();
     if (!client) throw new Error("Not connected to Claw");
     // Ensure keys are synced before first chat
     if (!keysSynced) {
       await get().syncKeys();
     }
-    return client.chat(message);
+    return client.chat(message, history);
   },
 
   initFromSettings: async () => {

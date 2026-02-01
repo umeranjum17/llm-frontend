@@ -231,6 +231,12 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
               );
             }
 
+            // Hide claw-task and claw-schedule blocks — these are internal instructions
+            // that get parsed and executed behind the scenes, never shown to the user
+            if (language === "claw-task" || language === "claw-schedule") {
+              return <></>;
+            }
+
             // Handle sandpack:template code fences (e.g., sandpack:react-ts)
             if (language === "sandpack" && filename) {
               // filename holds the template part from "sandpack:react-ts"

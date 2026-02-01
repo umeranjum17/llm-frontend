@@ -66,7 +66,8 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved, onReset 
   const allMcpServers = useLiveQuery(() => getAllMcpServers(), []) || [];
 
   // Load all agents for subagent selection
-  const allAgents = useLiveQuery(() => getAllAgents(), []) || [];
+  const allAgentsQuery = useLiveQuery(() => getAllAgents(), []);
+  const allAgents = useMemo(() => allAgentsQuery || [], [allAgentsQuery]);
 
   // Initialize form when dialog opens
   useEffect(() => {

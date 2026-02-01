@@ -836,38 +836,6 @@ export function useChat(chatId: string | null) {
       const { useClawStore } = await import("@/stores/claw-store");
       const clawStore = useClawStore.getState();
 
-      const cleanedMessage = cleanReferencesForLLM(getTextFromMessageContent(messageContent));
-
-      // Run skill matching for Claw flow so schedule/delegate/status skills apply
-      let clawSkill: Skill | null = null;
-      try {
-        const settings = await getSettings();
-        const embeddingsProvider = settings?.embeddingsProvider;
-        const embeddingsModelId = settings?.embeddingsModelId;
-        const threshold = settings?.skillMatchThreshold ?? 0.25;
-        if (embeddingsProvider && embeddingsModelId) {
-          const embeddingsApiKey = getKeyForProvider(embeddingsProvider);
-          if (embeddingsApiKey?.key) {
-            const matchResult = await matchSkill(
-              cleanedMessage,
-              embeddingsApiKey.key,
-              {
-                providerId: embeddingsProvider,
-                modelId: embeddingsModelId,
-                threshold,
-                excludeManualOnly: true,
-                includePrefix: "skill_builtin_claw_",
-              }
-            );
-            if (matchResult) {
-              clawSkill = matchResult.skill;
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("[Claw] Skill matching failed, continuing without skill:", e);
-      }
-
       if (!clawStore.isConnected) {
         const errMsg = await addMessage({
           chatId: effectiveChatId,
@@ -879,67 +847,25 @@ export function useChat(chatId: string | null) {
         return;
       }
 
-      // Refresh Claw state for fresh context
-      await clawStore.refreshAll();
-      const freshClaw = useClawStore.getState();
+      const cleanedMessage = cleanReferencesForLLM(getTextFromMessageContent(messageContent));
 
-      // Build context: Claw state + conversation history
-      const clawContext: string[] = [];
-
-      // Inject Claw state summary
-      clawContext.push("[CLAW STATE]");
-      if (freshClaw.status) {
-        clawContext.push(`Status: ${freshClaw.status.status} | Uptime: ${Math.round((freshClaw.status.uptime || 0) / 60)}m`);
-      }
-      if (freshClaw.tasks.length > 0) {
-        clawContext.push(`Tasks (${freshClaw.tasks.length}):`);
-        for (const t of freshClaw.tasks.slice(0, 10)) {
-          clawContext.push(`  - [${t.status}] ${t.title}${t.id ? ` (id: ${t.id})` : ""}`);
-        }
-      }
-      if (freshClaw.schedules.length > 0) {
-        clawContext.push(`Schedules (${freshClaw.schedules.length}):`);
-        for (const s of freshClaw.schedules.slice(0, 10)) {
-          clawContext.push(`  - ${s.name} (${s.cronExpression}) ${s.enabled ? "enabled" : "disabled"}${s.nextRun ? ` next: ${s.nextRun}` : ""}`);
-        }
-      }
-      if (freshClaw.activity.length > 0) {
-        clawContext.push(`Recent activity:`);
-        for (const a of freshClaw.activity.slice(0, 5)) {
-          clawContext.push(`  - ${a.action}${a.details ? `: ${a.details}` : ""} (${a.timestamp})`);
-        }
-      }
-      clawContext.push("");
-
-      // Inject recent conversation history so Claw has conversational context
+      // Load conversation history for Claw context
+      let clawHistory: Array<{ role: "user" | "assistant"; content: string }> = [];
       try {
         const history = parentUserMessageId
           ? await getMessagesForBranch(effectiveChatId, parentUserMessageId)
           : await getMessages(effectiveChatId);
-        const recentHistory = history.slice(-10); // Last 10 messages
-        if (recentHistory.length > 0) {
-          clawContext.push("[CONVERSATION HISTORY]");
-          for (const msg of recentHistory) {
-            const text = getTextFromMessageContent(msg.content);
-            if (text.trim()) {
-              clawContext.push(`${msg.role}: ${text.slice(0, 500)}`);
-            }
-          }
-          clawContext.push("");
-        }
+        clawHistory = history
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .slice(-20)
+          .map((m) => ({
+            role: m.role as "user" | "assistant",
+            content: getTextFromMessageContent(m.content),
+          }))
+          .filter((m) => m.content.trim());
       } catch (e) {
         console.warn("[Claw] Failed to load conversation history:", e);
       }
-
-      // Inject matched skill instructions if a claw skill was auto-detected
-      if (clawSkill?.systemPrompt) {
-        clawContext.push("[SKILL INSTRUCTIONS]");
-        clawContext.push(clawSkill.systemPrompt);
-        clawContext.push("");
-      }
-
-      clawContext.push(`[USER MESSAGE]\n${cleanedMessage}`);
-      const enrichedMessage = clawContext.join("\n");
 
       // Create placeholder message to show loading skeleton
       const placeholderMsg = await addMessage({
@@ -952,8 +878,10 @@ export function useChat(chatId: string | null) {
       setStreamingMessage(effectiveChatId, placeholderMsg.id);
 
       try {
-        const { response, taskId } = await clawStore.chatWithClaw(enrichedMessage);
-        const content = taskId ? `${response}\n\n*Task ID: ${taskId}*` : response;
+        const { response, taskId } = await clawStore.chatWithClaw(cleanedMessage, clawHistory);
+        const content = response
+          ? (taskId ? `${response}\n\n*Task ID: ${taskId}*` : response)
+          : "Claw returned an empty response. This usually means a configuration issue — check that API keys are set up in Settings → Claw → Key Sync.";
         await updateMessage(placeholderMsg.id, { content });
         clearStreaming(effectiveChatId);
         return;
@@ -1919,34 +1847,6 @@ export function useChat(chatId: string | null) {
       // Schedule memory extraction after assistant response
       scheduleMemoryExtraction();
 
-      // Parse Claw code fences from LLM response
-      const clawTaskMatch = fullContent.match(/```claw-task\n([\s\S]*?)```/);
-      if (clawTaskMatch) {
-        const instruction = clawTaskMatch[1].trim();
-        try {
-          const { useClawStore } = await import("@/stores/claw-store");
-          const clawStore = useClawStore.getState();
-          if (clawStore.isConnected) {
-            await clawStore.createTask(instruction);
-          }
-        } catch (e) {
-          console.warn("[Claw] Failed to create task:", e);
-        }
-      }
-
-      const clawScheduleMatch = fullContent.match(/```claw-schedule\n([\s\S]*?)```/);
-      if (clawScheduleMatch) {
-        try {
-          const { name, cron } = JSON.parse(clawScheduleMatch[1].trim());
-          const { useClawStore } = await import("@/stores/claw-store");
-          const clawStore = useClawStore.getState();
-          if (clawStore.isConnected) {
-            await clawStore.createSchedule(name, cron);
-          }
-        } catch (e) {
-          console.warn("[Claw] Failed to create schedule:", e);
-        }
-      }
 
       // Auto-summarize every 10 messages
       const updatedMessages = await getMessages(effectiveChatId);

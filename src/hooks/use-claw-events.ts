@@ -1,7 +1,35 @@
 import { useEffect, useRef } from "react";
 import { useClawStore } from "@/stores/claw-store";
 import { useClawNotificationStore } from "@/stores/claw-notification-store";
+import { useClawActivityStore } from "@/stores/claw-activity-store";
+import type { ClawEventType } from "@/stores/claw-activity-store";
 import { toast } from "sonner";
+
+const ACTIVITY_EVENTS: ClawEventType[] = [
+  "brain:started",
+  "brain:tool_call",
+  "brain:tool_result",
+  "brain:completed",
+  "brain:error",
+  "heartbeat:started",
+  "heartbeat:completed",
+  "schedule:executing",
+  "schedule:completed",
+  "reflection:started",
+  "reflection:completed",
+  "ambient:started",
+  "ambient:thought",
+  "ambient:completed",
+  "pipeline:started",
+  "pipeline:findings",
+  "pipeline:completed",
+  "pipeline:action",
+  "briefing:started",
+  "briefing:generated",
+  "briefing:delivered",
+  "monitor:checked",
+  "monitor:alert",
+];
 
 export function useClawEvents() {
   const client = useClawStore((s) => s.client);
@@ -29,6 +57,7 @@ export function useClawEvents() {
 
     const addNotification =
       useClawNotificationStore.getState().addNotification;
+    const pushEvent = useClawActivityStore.getState().pushEvent;
 
     const es = client.createEventSource();
     esRef.current = es;
@@ -118,12 +147,86 @@ export function useClawEvents() {
       });
     };
 
+    const onScheduleCompleted = (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.scheduleId) {
+          useClawStore.getState().fetchScheduleRuns(data.scheduleId);
+          refreshSchedules();
+        }
+      } catch {}
+    };
+
     es.addEventListener("task:created", onTaskCreated);
     es.addEventListener("task:updated", onTaskUpdated);
     es.addEventListener("task:deleted", onTaskDeleted);
     es.addEventListener("activity:new", onActivity);
     es.addEventListener("schedule:created", onScheduleCreated);
     es.addEventListener("schedule:deleted", onScheduleDeleted);
+    es.addEventListener("schedule:completed", onScheduleCompleted);
+
+    const onInitiativeUpdate = () => {
+      useClawStore.getState().refreshInitiatives();
+    };
+    es.addEventListener("initiative:proposed", onInitiativeUpdate);
+    es.addEventListener("initiative:updated", onInitiativeUpdate);
+
+    // Pipeline/briefing/monitor events
+    const onBriefingGenerated = () => {
+      useClawStore.getState().refreshBriefing();
+      addNotification({
+        type: "activity:new",
+        title: "Briefing Ready",
+        message: "A new briefing has been generated",
+      });
+    };
+    es.addEventListener("briefing:generated", onBriefingGenerated);
+
+    const onMonitorChange = () => {
+      useClawStore.getState().refreshMonitors();
+    };
+    es.addEventListener("monitor:created", onMonitorChange);
+    es.addEventListener("monitor:deleted", onMonitorChange);
+
+    const onMonitorAlert = (e: MessageEvent) => {
+      useClawStore.getState().refreshMonitors();
+      try {
+        const data = JSON.parse(e.data);
+        addNotification({
+          type: "activity:new",
+          title: "Monitor Alert",
+          message: data.name || "A monitor triggered an alert",
+        });
+        toast.info(`Monitor alert: ${data.name || "check dashboard"}`);
+      } catch {}
+    };
+    es.addEventListener("monitor:alert", onMonitorAlert);
+
+    const onPipelineCompleted = () => {
+      useClawStore.getState().refreshPipelineRuns();
+    };
+    es.addEventListener("pipeline:completed", onPipelineCompleted);
+
+    // Auto-sync keys when Claw requests them
+    const onKeysNeeded = () => {
+      console.log("[Claw SSE] Claw requested keys, auto-syncing...");
+      useClawStore.getState().syncKeys().catch((err: any) => {
+        console.warn("[Claw SSE] Auto key sync failed:", err);
+      });
+    };
+    es.addEventListener("keys:needed", onKeysNeeded);
+
+    // Granular activity events → push into activity store
+    for (const eventType of ACTIVITY_EVENTS) {
+      es.addEventListener(eventType, (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data);
+          pushEvent(eventType, data);
+        } catch {
+          pushEvent(eventType, {});
+        }
+      });
+    }
 
     es.onerror = () =>
       console.warn("[Claw SSE] Connection error, auto-reconnecting...");

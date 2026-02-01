@@ -87,24 +87,20 @@ export function ClawAgentEnrichment() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="hidden sm:flex h-8 gap-1.5 px-2.5 text-xs font-medium border-border/50 relative"
+        <button
+          className="hidden sm:flex items-center justify-center h-8 px-1.5 rounded-md hover:bg-accent/50 transition-colors relative"
+          title="Claw notifications"
         >
-          <div className="flex items-center gap-1.5">
-            <div className="relative">
-              <Bot className="h-3.5 w-3.5" />
-              <span className={`absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-1 ring-background ${statusColor}`} />
-            </div>
-            <span className="text-xs">Claw</span>
+          <div className="relative">
+            <Bell className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className={`absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-1 ring-background ${statusColor}`} />
           </div>
           {unreadCount > 0 && (
-            <span className="flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold leading-none">
+            <span className="absolute -top-0.5 -right-0 flex items-center justify-center h-3.5 min-w-3.5 px-0.5 rounded-full bg-red-500 text-white text-[8px] font-bold leading-none">
               {unreadCount > 9 ? "9+" : unreadCount}
             </span>
           )}
-        </Button>
+        </button>
       </PopoverTrigger>
       <PopoverContent align="end" sideOffset={8} className="w-80 p-0">
         {/* Status header */}
@@ -119,11 +115,18 @@ export function ClawAgentEnrichment() {
               <div className="text-[10px] text-muted-foreground">{statusLabel}{status?.uptime != null ? ` · ${formatUptime(status.uptime)}` : ""}</div>
             </div>
           </div>
-          <Link href="/settings?tab=claw" prefetch={false}>
-            <Button variant="ghost" size="icon" className="h-6 w-6">
-              <Settings className="h-3 w-3" />
-            </Button>
-          </Link>
+          <div className="flex gap-0.5">
+            <Link href="/claw" prefetch={false}>
+              <Button variant="ghost" size="icon" className="h-6 w-6" title="Open Claw Dashboard">
+                <Activity className="h-3 w-3" />
+              </Button>
+            </Link>
+            <Link href="/settings?tab=claw" prefetch={false}>
+              <Button variant="ghost" size="icon" className="h-6 w-6">
+                <Settings className="h-3 w-3" />
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {/* Quick task input */}

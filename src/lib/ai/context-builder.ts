@@ -391,30 +391,6 @@ export async function buildContextMessages(
       }
     }
 
-    // For all Claw skills, inject current Claw state so the LLM has context
-    const isClawSkill = options.skill.id.startsWith("skill_builtin_claw_");
-    if (isClawSkill) {
-      try {
-        const { useClawStore } = await import("@/stores/claw-store");
-        const clawStore = useClawStore.getState();
-        if (clawStore.isConnected) {
-          const statusData = {
-            connected: true,
-            status: clawStore.status,
-            tasks: clawStore.tasks,
-            schedules: clawStore.schedules,
-            recentActivity: clawStore.activity.slice(0, 10),
-          };
-          skillContent += `\n\n## Current Claw State\n\`\`\`json\n${JSON.stringify(statusData, null, 2)}\n\`\`\``;
-          skillContent += `\n\nUse this data to give informed responses. Reference existing tasks/schedules when relevant.`;
-        } else {
-          skillContent += "\n\nClaw is not connected. Tell the user to configure it in Settings > Claw.";
-        }
-      } catch (e) {
-        console.warn("[Claw] Failed to inject state data:", e);
-      }
-    }
-
     messages.push({
       id: `system-skill-${options.skill.id}`,
       chatId,

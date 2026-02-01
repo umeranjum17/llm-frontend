@@ -752,13 +752,25 @@ export async function getSettings() {
       defaultReasoningLevel: "medium",
       updatedAt: Date.now(),
     };
-    await db.settings.add(settings);
+    // Persist defaults — but don't throw if we're inside a liveQuery
+    // (Dexie disallows readwrite transactions in liveQuery context)
+    try {
+      await db.settings.add(settings);
+    } catch {
+      // ReadOnlyError from liveQuery context — return defaults in memory.
+      // They'll be persisted on the next updateSettings() call.
+    }
   }
   return settings;
 }
 
 export async function updateSettings(updates: Partial<Omit<UserSettings, "id">>) {
-  await db.settings.update("default", { ...updates, updatedAt: Date.now() });
+  const count = await db.settings.update("default", { ...updates, updatedAt: Date.now() });
+  if (count === 0) {
+    // Row doesn't exist yet (getSettings add was skipped in liveQuery context)
+    const defaults = await getSettings();
+    await db.settings.put({ ...defaults, ...updates, id: "default", updatedAt: Date.now() });
+  }
 }
 
 export async function markOnboardingCompleted(providerId?: string) {
@@ -954,12 +966,8 @@ export async function incrementPromptUsage(promptId: string) {
 
 // ============= SKILL QUERIES =============
 
-/** Prefix for skills that are internal-only (not shown in UI, only matched in their agent flow) */
-const HIDDEN_SKILL_PREFIX = "skill_builtin_claw_";
-
 export async function getAllSkills() {
-  const all = await db.skills.orderBy("updatedAt").reverse().toArray();
-  return all.filter((s) => !s.id.startsWith(HIDDEN_SKILL_PREFIX));
+  return await db.skills.orderBy("updatedAt").reverse().toArray();
 }
 
 export async function getSkillById(id: string) {
@@ -967,15 +975,15 @@ export async function getSkillById(id: string) {
 }
 
 export async function getEnabledSkills() {
-  return await db.skills.filter((s) => s.isEnabled && !s.id.startsWith(HIDDEN_SKILL_PREFIX)).toArray();
+  return await db.skills.filter((s) => s.isEnabled).toArray();
 }
 
 export async function getAutoTriggerSkills() {
-  return await db.skills.filter((s) => s.isEnabled && s.trigger.type === "auto" && !s.id.startsWith(HIDDEN_SKILL_PREFIX)).toArray();
+  return await db.skills.filter((s) => s.isEnabled && s.trigger.type === "auto").toArray();
 }
 
 export async function getFavoriteSkills() {
-  return await db.skills.filter((s) => s.isFavorite === true && !s.id.startsWith(HIDDEN_SKILL_PREFIX)).toArray();
+  return await db.skills.filter((s) => s.isFavorite === true).toArray();
 }
 
 export async function getSkillsByCategory(category: string) {
