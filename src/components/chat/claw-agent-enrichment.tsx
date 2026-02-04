@@ -21,6 +21,10 @@ const ICON_MAP: Record<ClawNotification["type"], { icon: typeof Bell; color: str
   "activity:new": { icon: Activity, color: "text-blue-500" },
   "schedule:triggered": { icon: Calendar, color: "text-purple-500" },
   "keys:synced": { icon: Key, color: "text-emerald-500" },
+  "initiative:proposed": { icon: Bell, color: "text-amber-500" },
+  "initiative:approved": { icon: CheckCheck, color: "text-green-500" },
+  "initiative:rejected": { icon: AlertTriangle, color: "text-red-500" },
+  "initiative:deferred": { icon: Calendar, color: "text-muted-foreground" },
 };
 
 function formatRelativeTime(timestamp: number) {

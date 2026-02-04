@@ -13,6 +13,7 @@ import { useSidebarKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { getDefaultChatConfig } from "@/lib/ai/default-chat";
 import { createChat, getChatWithMessages, createFolder } from "@/lib/db/queries";
 import { SyncStatusIndicator } from "@/components/sync-status-indicator";
+import { ClawSidebarWidget } from "./claw-sidebar-widget";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -115,6 +116,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         </div>
         <div className="flex items-center gap-1">
           <SyncStatusIndicator />
+          <ClawSidebarWidget />
           <Link href="/settings" prefetch title="Settings" onClick={onNavigate}>
             <Button
               variant="ghost"

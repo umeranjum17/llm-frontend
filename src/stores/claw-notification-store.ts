@@ -7,7 +7,11 @@ export interface ClawNotification {
     | "task:failed"
     | "activity:new"
     | "schedule:triggered"
-    | "keys:synced";
+    | "keys:synced"
+    | "initiative:proposed"
+    | "initiative:approved"
+    | "initiative:rejected"
+    | "initiative:deferred";
   title: string;
   message: string;
   timestamp: number;
@@ -58,3 +62,12 @@ export const useUnreadCount = () =>
   useClawNotificationStore(
     (state) => state.notifications.filter((n) => !n.read).length,
   );
+
+// Count proposed initiatives that need attention (computed from claw-store)
+export const useAttentionCount = () => {
+  // Import dynamically to avoid circular dependency
+  const { useClawStore } = require("@/stores/claw-store");
+  return useClawStore((s: { initiatives: Array<{ status: string }> }) =>
+    s.initiatives.filter((i) => i.status === "proposed").length
+  );
+};
