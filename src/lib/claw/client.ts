@@ -4,7 +4,11 @@ import type {
 } from "./types";
 
 export class ClawClient {
-  constructor(private baseUrl: string, private secret: string) {}
+  constructor(baseUrl: string, private secret: string) {
+    // Trim whitespace and trailing slashes from URL
+    this.baseUrl = baseUrl.trim().replace(/\/+$/, "");
+  }
+  private baseUrl: string;
 
   private headers(): HeadersInit {
     return {
@@ -14,13 +18,24 @@ export class ClawClient {
   }
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      ...init,
-      headers: { ...this.headers(), ...init?.headers },
-    });
+    const url = `${this.baseUrl}${path}`;
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        ...init,
+        headers: { ...this.headers(), ...init?.headers },
+        cache: "no-store",
+        mode: "cors",
+        credentials: "omit",
+      });
+    } catch (err) {
+      // Network-level errors: CORS, server down, DNS failure, etc.
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`${msg}`);
+    }
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(body.error || `Claw API error: ${res.status}`);
+      throw new Error(body.error || `Claw API error ${res.status} for ${url}`);
     }
     return res.json();
   }

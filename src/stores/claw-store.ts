@@ -68,17 +68,19 @@ export const useClawStore = create<ClawState>((set, get) => ({
   pipelineRuns: [],
 
   connect: async (url, secret) => {
+    const cleanUrl = url.trim().replace(/\/+$/, "");
     set({ isConnecting: true, error: null });
     try {
-      const client = new ClawClient(url, secret);
+      const client = new ClawClient(cleanUrl, secret);
       const status = await client.getStatus();
       set({ client, isConnected: true, isConnecting: false, status, keysSynced: false });
-      await updateSettings({ clawUrl: url, clawSecret: secret, clawEnabled: true });
+      await updateSettings({ clawUrl: cleanUrl, clawSecret: secret, clawEnabled: true });
       await get().refreshAll();
       // Auto-sync keys with retry
       await get().syncKeys();
     } catch (e) {
-      set({ isConnecting: false, isConnected: false, error: (e as Error).message });
+      const msg = (e as Error).message;
+      set({ isConnecting: false, isConnected: false, error: `URL: ${cleanUrl}/status | ${msg}` });
     }
   },
 

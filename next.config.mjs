@@ -26,10 +26,12 @@ const withPWA = withPWAInit({
     // Clean up caches when storage quota is exceeded
     cleanupOutdatedCaches: true,
     // Limit runtime cache size to prevent unbounded growth
+    // Don't let service worker handle requests to external origins (like Claw)
+    navigateFallbackDenylist: [/^https?:\/\/(?!llm-frontend).*$/],
     runtimeCaching: [
       {
-        // Cache page navigations with network-first strategy
-        urlPattern: /^https?.*\/(?!api\/).*$/,
+        // Cache page navigations with network-first strategy (same-origin only)
+        urlPattern: ({ url }) => url.origin === self.location.origin && !url.pathname.startsWith('/api/'),
         handler: "NetworkFirst",
         options: {
           cacheName: "pages-cache",
@@ -124,7 +126,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https:",
               "font-src 'self' data:",
-              "connect-src 'self' https: wss: http://localhost:* http://100.0.0.0/8",
+              "connect-src 'self' https: wss: http: ws:",
               "frame-src 'self' https://codesandbox.io https://stackblitz.com",
               "worker-src 'self' blob:",
               "media-src 'self' blob:",
