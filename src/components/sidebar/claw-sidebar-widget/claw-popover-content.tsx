@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   ArrowRight,
@@ -136,6 +137,7 @@ function SkeletonLine({ width }: { width: string }) {
 }
 
 export function ClawPopoverContent() {
+  const router = useRouter();
   const { isConnected, isConnecting, error, tasks, schedules, initiatives, createTask, updateInitiative, connect } = useClawStore();
   const isAutonomousRunning = useClawActivityStore((s) => s.isAutonomousRunning);
 
@@ -311,10 +313,14 @@ export function ClawPopoverContent() {
                 showTaskInput && "rotate-45"
               )} />
             </Button>
-            <Button asChild size="icon" variant="ghost" className="h-7 w-7 hover:bg-muted" title="Open Dashboard">
-              <Link href="/claw">
-                <ExternalLink className="h-4 w-4" />
-              </Link>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 hover:bg-muted"
+              title="Open Dashboard"
+              onClick={() => router.push("/claw")}
+            >
+              <ExternalLink className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -402,12 +408,13 @@ export function ClawPopoverContent() {
         >
           Settings
         </Link>
-        <Link
-          href="/claw"
+        <button
+          type="button"
+          onClick={() => router.push("/claw")}
           className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 font-medium transition-colors"
         >
           Dashboard <ExternalLink className="h-3 w-3" />
-        </Link>
+        </button>
       </div>
     </div>
   );
