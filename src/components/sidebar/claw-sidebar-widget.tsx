@@ -12,14 +12,15 @@ export function ClawSidebarWidget() {
   // Show inviting CTA when Claw is not enabled
   if (!clawEnabled) {
     return (
-      <Popover>
+      <Popover modal>
         <PopoverTrigger asChild>
           <ClawTrigger />
         </PopoverTrigger>
         <PopoverContent
           align="end"
+          side="bottom"
           sideOffset={8}
-          className="w-[min(18rem,90vw)] p-0 shadow-lg"
+          className="w-[min(18rem,90vw)] p-0 shadow-lg z-[60]"
         >
           <ClawDisabledCTA />
         </PopoverContent>
@@ -28,14 +29,15 @@ export function ClawSidebarWidget() {
   }
 
   return (
-    <Popover>
+    <Popover modal>
       <PopoverTrigger asChild>
         <ClawTrigger />
       </PopoverTrigger>
       <PopoverContent
         align="end"
+        side="bottom"
         sideOffset={8}
-        className="w-[min(20rem,90vw)] p-0 shadow-lg"
+        className="w-[min(20rem,90vw)] p-0 shadow-lg z-[60]"
       >
         <ClawPopoverContent />
       </PopoverContent>
