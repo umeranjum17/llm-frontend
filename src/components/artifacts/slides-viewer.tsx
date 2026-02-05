@@ -56,7 +56,7 @@ function buildRevealHtml(content: string, theme: string): string {
   .reveal .slides { text-align: left; }
   .reveal .slides section {
     text-align: left;
-    padding: 40px 60px;
+    padding: 48px 64px;
     height: 100%;
     box-sizing: border-box;
   }
@@ -65,50 +65,83 @@ function buildRevealHtml(content: string, theme: string): string {
   .reveal .slides section h3 {
     text-transform: none;
     text-align: left;
+    font-weight: 600;
+    letter-spacing: -0.02em;
   }
-  .reveal .slides section h1 { font-size: 1.8em; margin-bottom: 0.5em; }
-  .reveal .slides section h2 { font-size: 1.4em; margin-bottom: 0.4em; }
-  .reveal .slides section h3 { font-size: 1.1em; margin-bottom: 0.3em; }
+  .reveal .slides section h1 {
+    font-size: 2em;
+    margin-bottom: 0.6em;
+  }
+  .reveal .slides section h2 {
+    font-size: 1.5em;
+    margin-bottom: 0.5em;
+  }
+  .reveal .slides section h3 {
+    font-size: 1.2em;
+    margin-bottom: 0.4em;
+  }
   .reveal .slides section ul,
   .reveal .slides section ol {
     display: block;
-    margin-left: 1em;
+    margin-left: 1.5em;
   }
   .reveal .slides section li {
-    margin-bottom: 0.4em;
-    font-size: 0.85em;
-    line-height: 1.6;
+    margin-bottom: 0.5em;
+    font-size: 0.9em;
+    line-height: 1.7;
   }
   .reveal .slides section p {
-    font-size: 0.85em;
-    line-height: 1.6;
+    font-size: 0.9em;
+    line-height: 1.7;
   }
   .reveal .slides section code {
-    font-size: 0.8em;
-    padding: 2px 6px;
-    border-radius: 4px;
+    font-size: 0.85em;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: rgba(127, 127, 127, 0.15);
   }
   .reveal .slides section pre {
-    font-size: 0.55em;
+    font-size: 0.6em;
     width: 100%;
-    box-shadow: none;
-    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    border-radius: 10px;
+    border: 1px solid rgba(127, 127, 127, 0.1);
+  }
+  .reveal .slides section pre code {
+    background: transparent;
+    padding: 0;
   }
   .reveal .slides section blockquote {
     width: 90%;
-    font-size: 0.85em;
-    padding: 10px 20px;
+    font-size: 0.9em;
+    padding: 16px 24px;
+    border-left: 4px solid currentColor;
+    opacity: 0.9;
+    font-style: italic;
+    background: rgba(127, 127, 127, 0.05);
+    border-radius: 0 8px 8px 0;
   }
   .reveal .slides section table {
-    font-size: 0.75em;
+    font-size: 0.8em;
+    border-collapse: collapse;
+  }
+  .reveal .slides section table th,
+  .reveal .slides section table td {
+    padding: 8px 12px;
+    border: 1px solid rgba(127, 127, 127, 0.2);
+  }
+  .reveal .slides section table th {
+    background: rgba(127, 127, 127, 0.1);
   }
   .reveal .slides section img {
     max-height: 50vh;
-    border-radius: 8px;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
   }
   .reveal .slides section .mermaid {
     background: transparent;
     text-align: center;
+    padding: 16px 0;
   }
   .reveal .slides section .mermaid svg {
     max-height: 55vh;
@@ -141,10 +174,21 @@ ${escaped}
     themeVariables: {
       darkMode: true,
       background: 'transparent',
-      primaryColor: '#4fc3f7',
-      primaryTextColor: '#e0e0e0',
-      lineColor: '#8b949e',
-      textColor: '#e0e0e0',
+      primaryColor: '#4a5568',
+      primaryTextColor: '#e2e8f0',
+      primaryBorderColor: '#718096',
+      secondaryColor: '#2d3748',
+      secondaryTextColor: '#e2e8f0',
+      secondaryBorderColor: '#4a5568',
+      lineColor: '#718096',
+      textColor: '#e2e8f0',
+      mainBkg: '#4a5568',
+      nodeBorder: '#718096',
+      clusterBkg: '#2d3748',
+      clusterBorder: '#4a5568',
+      titleColor: '#e2e8f0',
+      edgeLabelBackground: 'transparent',
+      nodeTextColor: '#e2e8f0',
     }
   });
 
