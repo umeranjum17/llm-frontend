@@ -20,6 +20,7 @@ import {
   useUnreadCount,
   type ClawNotification,
 } from "@/stores/claw-notification-store";
+import { useClawSurface } from "@/hooks/use-claw-surface";
 import { cn } from "@/lib/utils";
 
 const ICON_MAP: Record<
@@ -47,6 +48,7 @@ function formatRelativeTime(timestamp: number) {
 }
 
 export function ClawFloatingNotifications() {
+  const { showFloating } = useClawSurface();
   const { clawEnabled } = useSettingsStore();
   const isConnected = useClawStore((s) => s.isConnected);
   const notifications = useClawNotificationStore((s) => s.notifications);
@@ -61,6 +63,9 @@ export function ClawFloatingNotifications() {
   useEffect(() => {
     if (unreadCount > 0) setDismissed(false);
   }, [unreadCount]);
+
+  // Don't render if sidebar widget is handling it
+  if (!showFloating) return null;
 
   if (!clawEnabled || !isConnected) return null;
 
