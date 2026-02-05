@@ -6,24 +6,21 @@ import {
   AlertCircle,
   ArrowRight,
   Bot,
-  Calendar,
   Check,
   Clock,
   ExternalLink,
   Loader2,
-  Play,
   Plus,
   RefreshCw,
   Send,
   X,
-  XCircle,
   Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useClawStore } from "@/stores/claw-store";
-import { useClawActivityStore, type ClawLiveEvent } from "@/stores/claw-activity-store";
+import { useClawActivityStore } from "@/stores/claw-activity-store";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -34,66 +31,6 @@ function formatRelativeTime(timestamp: number | string): string {
   if (diffMs < 60 * 60 * 1000) return `${Math.floor(diffMs / 60000)}m ago`;
   if (diffMs < 24 * 60 * 60 * 1000) return `${Math.floor(diffMs / 3600000)}h ago`;
   return `${Math.floor(diffMs / 86400000)}d ago`;
-}
-
-function formatEventType(type: string): string {
-  const typeMap: Record<string, string> = {
-    "brain:started": "Processing started",
-    "brain:tool_call": "Tool call",
-    "brain:tool_result": "Tool result",
-    "brain:completed": "Processing complete",
-    "brain:error": "Error occurred",
-    "heartbeat:started": "Heartbeat",
-    "heartbeat:completed": "Heartbeat done",
-    "schedule:executing": "Schedule running",
-    "schedule:completed": "Schedule done",
-    "reflection:started": "Reflecting",
-    "reflection:completed": "Reflection done",
-    "ambient:started": "Ambient thinking",
-    "ambient:thought": "Thought",
-    "ambient:completed": "Ambient done",
-    "pipeline:started": "Pipeline started",
-    "pipeline:findings": "Findings",
-    "pipeline:completed": "Pipeline done",
-    "pipeline:action": "Action taken",
-    "briefing:started": "Briefing started",
-    "briefing:generated": "Briefing ready",
-    "briefing:delivered": "Briefing delivered",
-    "monitor:checked": "Monitor checked",
-    "monitor:alert": "Alert",
-  };
-  return typeMap[type] || type.replace(/:/g, " ");
-}
-
-function getEventIcon(type: string) {
-  if (type.includes("error")) return <XCircle className="h-3 w-3 text-red-500" />;
-  if (type.includes("completed") || type.includes("done")) return <Check className="h-3 w-3 text-emerald-500" />;
-  if (type.includes("started") || type.includes("executing")) return <Play className="h-3 w-3 text-blue-500" />;
-  if (type.includes("alert")) return <AlertCircle className="h-3 w-3 text-amber-500" />;
-  return <Clock className="h-3 w-3 text-muted-foreground" />;
-}
-
-function ActivityItem({ event, isNew }: { event: ClawLiveEvent; isNew?: boolean }) {
-  return (
-    <div className={cn(
-      "flex items-start gap-2 py-1.5 rounded-md px-1 -mx-1",
-      "hover:bg-muted/50 transition-colors",
-      isNew && "motion-safe:animate-slide-in-item"
-    )}>
-      <span className="mt-0.5 shrink-0">{getEventIcon(event.type)}</span>
-      <div className="flex-1 min-w-0">
-        <div className="text-xs font-medium text-foreground truncate">{formatEventType(event.type)}</div>
-        {event.data?.message && (
-          <div className="text-[11px] text-muted-foreground truncate">
-            {event.data.message}
-          </div>
-        )}
-      </div>
-      <span className="text-[10px] text-muted-foreground/70 shrink-0 tabular-nums">
-        {formatRelativeTime(event.timestamp)}
-      </span>
-    </div>
-  );
 }
 
 function InitiativeItem({
@@ -200,7 +137,6 @@ function SkeletonLine({ width }: { width: string }) {
 
 export function ClawPopoverContent() {
   const { isConnected, isConnecting, error, tasks, schedules, initiatives, createTask, updateInitiative, connect } = useClawStore();
-  const liveEvents = useClawActivityStore((s) => s.liveEvents);
   const isAutonomousRunning = useClawActivityStore((s) => s.isAutonomousRunning);
 
   const [taskInput, setTaskInput] = useState("");
@@ -219,16 +155,8 @@ export function ClawPopoverContent() {
 
   // Stats
   const runningTasks = tasks.filter((t) => t.status === "running").length;
-  const pendingTasks = tasks.filter((t) => t.status === "pending").length;
+  const activeSchedules = schedules.filter((s) => s.enabled).length;
   const proposedInitiatives = initiatives.filter((i) => i.status === "proposed");
-
-  // Find next schedule
-  const nextSchedule = schedules
-    .filter((s) => s.enabled && s.nextRun)
-    .sort((a, b) => new Date(a.nextRun!).getTime() - new Date(b.nextRun!).getTime())[0];
-
-  // Get last 5 events
-  const recentEvents = liveEvents.slice(0, 5);
 
   const handleCreateTask = async () => {
     const trimmed = taskInput.trim();
@@ -308,8 +236,7 @@ export function ClawPopoverContent() {
         <div className="space-y-3">
           <SkeletonLine width="w-3/4" />
           <SkeletonLine width="w-1/2" />
-          <div className="grid grid-cols-3 gap-2 mt-4">
-            <div className="h-14 bg-muted/40 rounded-lg" />
+          <div className="grid grid-cols-2 gap-2 mt-4">
             <div className="h-14 bg-muted/40 rounded-lg" />
             <div className="h-14 bg-muted/40 rounded-lg" />
           </div>
@@ -339,7 +266,7 @@ export function ClawPopoverContent() {
     );
   }
 
-  // Connected state - full dashboard
+  // Connected state - simplified dashboard
   return (
     <div>
       {/* Header */}
@@ -429,13 +356,9 @@ export function ClawPopoverContent() {
       )}
 
       {/* Quick Stats */}
-      <div className="px-4 py-3 grid grid-cols-3 gap-2 border-b border-border/50">
+      <div className="px-4 py-3 grid grid-cols-2 gap-2 border-b border-border/50">
         <StatCard value={runningTasks} label="Running" highlight={runningTasks > 0} />
-        <StatCard value={pendingTasks} label="Pending" />
-        <StatCard
-          value={nextSchedule ? formatRelativeTime(nextSchedule.nextRun!) : "—"}
-          label="Next Run"
-        />
+        <StatCard value={activeSchedules} label="Schedules" />
       </div>
 
       {/* Attention Items (Proposed Initiatives) */}
@@ -471,46 +394,8 @@ export function ClawPopoverContent() {
         </div>
       )}
 
-      {/* Activity Preview */}
-      <div className="px-4 py-3">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold text-foreground">Recent Activity</span>
-          {recentEvents.length > 0 && (
-            <Link
-              href="/claw?tab=activity"
-              className="text-[10px] text-muted-foreground hover:text-foreground font-medium transition-colors"
-            >
-              View all
-            </Link>
-          )}
-        </div>
-        {recentEvents.length > 0 ? (
-          <div className="space-y-0.5" aria-live="polite" aria-label="Recent Claw activity">
-            {recentEvents.map((event, idx) => (
-              <ActivityItem key={event.id} event={event} isNew={idx === 0} />
-            ))}
-          </div>
-        ) : (
-          <div className="py-6 text-center">
-            <Clock className="h-6 w-6 text-muted-foreground/40 mx-auto mb-2" />
-            <p className="text-xs text-muted-foreground">
-              Claw is ready. Create a task to see activity.
-            </p>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="mt-2 text-xs h-7"
-              onClick={() => setShowTaskInput(true)}
-            >
-              <Plus className="h-3 w-3 mr-1" />
-              Add a task
-            </Button>
-          </div>
-        )}
-      </div>
-
       {/* Footer */}
-      <div className="px-4 py-2.5 border-t border-border/50 flex items-center justify-between bg-muted/20">
+      <div className="px-4 py-2.5 flex items-center justify-between bg-muted/20">
         <Link
           href="/settings?tab=claw"
           className="text-[11px] text-muted-foreground hover:text-foreground font-medium transition-colors"

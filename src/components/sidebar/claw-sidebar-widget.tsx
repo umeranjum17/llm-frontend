@@ -1,7 +1,6 @@
 "use client";
 
 import { useSettingsStore } from "@/stores/settings-store";
-import { useClawStore } from "@/stores/claw-store";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ClawTrigger } from "./claw-sidebar-widget/claw-trigger";
 import { ClawPopoverContent } from "./claw-sidebar-widget/claw-popover-content";
@@ -9,16 +8,13 @@ import { ClawDisabledCTA } from "./claw-sidebar-widget/claw-disabled-cta";
 
 export function ClawSidebarWidget() {
   const clawEnabled = useSettingsStore((s) => s.clawEnabled);
-  const isConnected = useClawStore((s) => s.isConnected);
-  const isConnecting = useClawStore((s) => s.isConnecting);
-  const error = useClawStore((s) => s.error);
 
   // Show inviting CTA when Claw is not enabled
   if (!clawEnabled) {
     return (
       <Popover>
         <PopoverTrigger asChild>
-          <ClawTrigger disabled />
+          <ClawTrigger />
         </PopoverTrigger>
         <PopoverContent
           align="end"
@@ -34,11 +30,7 @@ export function ClawSidebarWidget() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <ClawTrigger
-          isConnected={isConnected}
-          isConnecting={isConnecting}
-          hasError={!!error}
-        />
+        <ClawTrigger />
       </PopoverTrigger>
       <PopoverContent
         align="end"
