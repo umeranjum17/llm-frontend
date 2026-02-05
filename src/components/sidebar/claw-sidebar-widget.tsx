@@ -1,35 +1,41 @@
 "use client";
 
+import { useState } from "react";
 import { useSettingsStore } from "@/stores/settings-store";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ClawTrigger } from "./claw-sidebar-widget/claw-trigger";
 import { ClawPopoverContent } from "./claw-sidebar-widget/claw-popover-content";
 import { ClawDisabledCTA } from "./claw-sidebar-widget/claw-disabled-cta";
+import { useMediaQuery } from "@/hooks/use-media-query";
 
 export function ClawSidebarWidget() {
   const clawEnabled = useSettingsStore((s) => s.clawEnabled);
+  const [open, setOpen] = useState(false);
+  const isMobile = useMediaQuery("(max-width: 640px)");
 
-  // Show inviting CTA when Claw is not enabled
-  if (!clawEnabled) {
+  const content = clawEnabled ? <ClawPopoverContent /> : <ClawDisabledCTA />;
+
+  // On mobile, use a bottom Sheet instead of Popover (works better inside parent Sheet)
+  if (isMobile) {
     return (
-      <Popover modal>
-        <PopoverTrigger asChild>
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetTrigger asChild>
           <ClawTrigger />
-        </PopoverTrigger>
-        <PopoverContent
-          align="end"
+        </SheetTrigger>
+        <SheetContent
           side="bottom"
-          sideOffset={8}
-          className="w-[min(18rem,90vw)] p-0 shadow-lg z-[60]"
+          className="p-0 rounded-t-xl max-h-[85vh] overflow-auto"
         >
-          <ClawDisabledCTA />
-        </PopoverContent>
-      </Popover>
+          {content}
+        </SheetContent>
+      </Sheet>
     );
   }
 
+  // On desktop, use Popover
   return (
-    <Popover modal>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <ClawTrigger />
       </PopoverTrigger>
@@ -37,9 +43,9 @@ export function ClawSidebarWidget() {
         align="end"
         side="bottom"
         sideOffset={8}
-        className="w-[min(20rem,90vw)] p-0 shadow-lg z-[60]"
+        className="w-80 p-0 shadow-lg"
       >
-        <ClawPopoverContent />
+        {content}
       </PopoverContent>
     </Popover>
   );
