@@ -242,7 +242,6 @@ export function ClawPopoverContent() {
         setTaskCreated(false);
         setShowTaskInput(false);
       }, 1500);
-      toast.success("Task created");
     } catch (e) {
       toast.error("Failed to create task");
     } finally {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback, memo } from "react";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Copy, Check, Download, Maximize2, Minimize2, ZoomIn, ZoomOut, RotateCcw, Image } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -9,33 +10,10 @@ import { cn } from "@/lib/utils";
 // Lazy-load mermaid (~300KB) only when a diagram is actually rendered
 let mermaidInstance: typeof import("mermaid").default | null = null;
 
-const mermaidConfig = {
+const baseMermaidConfig = {
   startOnLoad: false,
-  theme: "dark" as const,
   securityLevel: "loose" as const,
   fontFamily: "ui-sans-serif, system-ui, -apple-system, sans-serif",
-  themeVariables: {
-    darkMode: true,
-    background: "#0d1117",
-    primaryColor: "#1f6feb",
-    primaryTextColor: "#e6edf3",
-    primaryBorderColor: "#388bfd",
-    secondaryColor: "#161b22",
-    secondaryTextColor: "#e6edf3",
-    secondaryBorderColor: "#30363d",
-    tertiaryColor: "#161b22",
-    tertiaryTextColor: "#e6edf3",
-    tertiaryBorderColor: "#30363d",
-    lineColor: "#8b949e",
-    textColor: "#e6edf3",
-    mainBkg: "#1f6feb",
-    nodeBorder: "#388bfd",
-    clusterBkg: "#161b22",
-    clusterBorder: "#30363d",
-    titleColor: "#e6edf3",
-    edgeLabelBackground: "#0d1117",
-    nodeTextColor: "#e6edf3",
-  },
   flowchart: { useMaxWidth: true, htmlLabels: true, padding: 16, curve: "linear" as const },
   sequence: { useMaxWidth: true, wrap: true },
   gantt: { useMaxWidth: true },
@@ -47,11 +25,72 @@ const mermaidConfig = {
   mindmap: { useMaxWidth: true },
 };
 
-async function getMermaid() {
+const darkThemeVariables = {
+  darkMode: true,
+  background: "#0d1117",
+  primaryColor: "#30363d",
+  primaryTextColor: "#e6edf3",
+  primaryBorderColor: "#484f58",
+  secondaryColor: "#21262d",
+  secondaryTextColor: "#e6edf3",
+  secondaryBorderColor: "#30363d",
+  tertiaryColor: "#161b22",
+  tertiaryTextColor: "#e6edf3",
+  tertiaryBorderColor: "#30363d",
+  lineColor: "#484f58",
+  textColor: "#e6edf3",
+  mainBkg: "#30363d",
+  nodeBorder: "#484f58",
+  clusterBkg: "#21262d",
+  clusterBorder: "#30363d",
+  titleColor: "#e6edf3",
+  edgeLabelBackground: "#0d1117",
+  nodeTextColor: "#e6edf3",
+};
+
+const lightThemeVariables = {
+  darkMode: false,
+  background: "#ffffff",
+  primaryColor: "#e1e4e8",
+  primaryTextColor: "#24292f",
+  primaryBorderColor: "#d0d7de",
+  secondaryColor: "#f6f8fa",
+  secondaryTextColor: "#24292f",
+  secondaryBorderColor: "#d0d7de",
+  tertiaryColor: "#f6f8fa",
+  tertiaryTextColor: "#24292f",
+  tertiaryBorderColor: "#d0d7de",
+  lineColor: "#57606a",
+  textColor: "#24292f",
+  mainBkg: "#e1e4e8",
+  nodeBorder: "#d0d7de",
+  clusterBkg: "#f6f8fa",
+  clusterBorder: "#d0d7de",
+  titleColor: "#24292f",
+  edgeLabelBackground: "#ffffff",
+  nodeTextColor: "#24292f",
+};
+
+let currentMermaidTheme: "light" | "dark" | null = null;
+
+async function getMermaid(isDark: boolean) {
+  const targetTheme = isDark ? "dark" : "light";
+
+  // Re-initialize if theme changed
+  if (mermaidInstance && currentMermaidTheme !== targetTheme) {
+    mermaidInstance = null;
+  }
+
   if (!mermaidInstance) {
     const m = await import("mermaid");
     mermaidInstance = m.default;
-    mermaidInstance.initialize(mermaidConfig);
+    const themeVars = isDark ? darkThemeVariables : lightThemeVariables;
+    mermaidInstance.initialize({
+      ...baseMermaidConfig,
+      theme: isDark ? "dark" : "default",
+      themeVariables: themeVars,
+    });
+    currentMermaidTheme = targetTheme;
   }
   return mermaidInstance;
 }
@@ -75,8 +114,8 @@ function queueRender<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /** Render mermaid code to SVG using a dedicated off-screen container */
-async function renderMermaidSvg(id: string, code: string): Promise<string> {
-  const mermaid = await getMermaid();
+async function renderMermaidSvg(id: string, code: string, isDark: boolean): Promise<string> {
+  const mermaid = await getMermaid(isDark);
   const container = document.createElement("div");
   container.style.position = "absolute";
   container.style.left = "-9999px";
@@ -142,6 +181,8 @@ interface MermaidDiagramProps {
 }
 
 export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: MermaidDiagramProps) {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
   const containerRef = useRef<HTMLDivElement>(null);
   const svgWrapperRef = useRef<HTMLDivElement>(null);
   const [svg, setSvg] = useState<string>("");
@@ -168,7 +209,7 @@ export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: 
       const result = await queueRender(async () => {
         // First attempt: render as-is
         try {
-          const renderedSvg = await renderMermaidSvg(genId(), code);
+          const renderedSvg = await renderMermaidSvg(genId(), code, isDark);
           return { svg: renderedSvg, error: null };
         } catch {
           // continue to next attempt
@@ -178,7 +219,7 @@ export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: 
         const sanitized = sanitizeMermaidCode(code);
         if (sanitized !== code.trim()) {
           try {
-            const renderedSvg = await renderMermaidSvg(genId(), sanitized);
+            const renderedSvg = await renderMermaidSvg(genId(), sanitized, isDark);
             return { svg: renderedSvg, error: null };
           } catch {
             // continue to next attempt
@@ -188,7 +229,7 @@ export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: 
         // Third attempt: reset mermaid and retry (recovers from corrupted internal state)
         try {
           resetMermaid();
-          const renderedSvg = await renderMermaidSvg(genId(), code);
+          const renderedSvg = await renderMermaidSvg(genId(), code, isDark);
           return { svg: renderedSvg, error: null };
         } catch (err) {
           console.error("Mermaid rendering error:", err);
@@ -203,7 +244,7 @@ export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: 
 
     renderDiagram();
     return () => { cancelled = true; };
-  }, [code]);
+  }, [code, isDark]);
 
   // Reset zoom/pan when toggling fullscreen
   useEffect(() => {
@@ -328,7 +369,7 @@ export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: 
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      ctx.fillStyle = "#0d1117";
+      ctx.fillStyle = isDark ? "#0d1117" : "#ffffff";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       const svgClone = svgEl.cloneNode(true) as SVGSVGElement;
@@ -475,7 +516,7 @@ export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: 
         <div
           ref={containerRef}
           className={cn(
-            "overflow-hidden rounded-b-lg bg-[#0d1117] p-4 min-h-[200px] max-h-[70vh]",
+            "overflow-hidden rounded-b-lg bg-white dark:bg-[#0d1117] p-4 min-h-[200px] max-h-[70vh]",
             isPanning ? "cursor-grabbing" : "cursor-grab"
           )}
           onWheel={handleWheel}
@@ -513,12 +554,12 @@ export const MermaidDiagram = memo(function MermaidDiagram({ code, className }: 
       {/* Fullscreen modal */}
       {isFullscreen && (
         <div
-          className="fixed inset-0 z-50 bg-[#0d1117]/98 backdrop-blur-md flex flex-col"
+          className="fixed inset-0 z-50 bg-white/98 dark:bg-[#0d1117]/98 backdrop-blur-md flex flex-col"
           onClick={() => setIsFullscreen(false)}
         >
           {/* Fullscreen header */}
           <div
-            className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#0d1117]"
+            className="flex items-center justify-between px-4 py-2 border-b border-black/10 dark:border-white/10 bg-white dark:bg-[#0d1117]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-2">

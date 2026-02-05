@@ -11,7 +11,8 @@ export interface ClawNotification {
     | "initiative:proposed"
     | "initiative:approved"
     | "initiative:rejected"
-    | "initiative:deferred";
+    | "initiative:deferred"
+    | "monitor:alert";
   title: string;
   message: string;
   timestamp: number;

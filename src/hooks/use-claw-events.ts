@@ -96,55 +96,22 @@ export function useClawEvents() {
       prevTasksRef.current = updated;
     };
 
-    const onTaskCreated = (e: MessageEvent) => {
+    const onTaskCreated = () => {
       refreshTasks();
-      try {
-        const data = JSON.parse(e.data);
-        addNotification({
-          type: "activity:new",
-          title: "New Task Created",
-          message: data.title || data.instruction || "A new task was created",
-        });
-      } catch {
-        addNotification({
-          type: "activity:new",
-          title: "New Task Created",
-          message: "A new task was created",
-        });
-      }
     };
 
     const onTaskDeleted = () => refreshTasks();
 
     const onActivity = async () => {
       await refreshActivity();
-      const activities = useClawStore.getState().activity;
-      if (activities.length > 0) {
-        const newest = activities[0];
-        addNotification({
-          type: "activity:new",
-          title: newest.action,
-          message: newest.details || "New activity recorded",
-        });
-      }
     };
 
     const onScheduleCreated = () => {
       refreshSchedules();
-      addNotification({
-        type: "schedule:triggered",
-        title: "Schedule Created",
-        message: "A new schedule was created",
-      });
     };
 
     const onScheduleDeleted = () => {
       refreshSchedules();
-      addNotification({
-        type: "schedule:triggered",
-        title: "Schedule Deleted",
-        message: "A schedule was deleted",
-      });
     };
 
     const onScheduleCompleted = (e: MessageEvent) => {
@@ -165,8 +132,18 @@ export function useClawEvents() {
     es.addEventListener("schedule:deleted", onScheduleDeleted);
     es.addEventListener("schedule:completed", onScheduleCompleted);
 
-    const onInitiativeUpdate = () => {
+    const onInitiativeUpdate = (e: MessageEvent) => {
       useClawStore.getState().refreshInitiatives();
+      try {
+        const data = JSON.parse(e.data);
+        if (data.status === "proposed") {
+          addNotification({
+            type: "initiative:proposed",
+            title: "Initiative Proposed",
+            message: data.title || "A new initiative has been proposed",
+          });
+        }
+      } catch {}
     };
     es.addEventListener("initiative:proposed", onInitiativeUpdate);
     es.addEventListener("initiative:updated", onInitiativeUpdate);
@@ -174,11 +151,6 @@ export function useClawEvents() {
     // Pipeline/briefing/monitor events
     const onBriefingGenerated = () => {
       useClawStore.getState().refreshBriefing();
-      addNotification({
-        type: "activity:new",
-        title: "Briefing Ready",
-        message: "A new briefing has been generated",
-      });
     };
     es.addEventListener("briefing:generated", onBriefingGenerated);
 
@@ -193,7 +165,7 @@ export function useClawEvents() {
       try {
         const data = JSON.parse(e.data);
         addNotification({
-          type: "activity:new",
+          type: "monitor:alert",
           title: "Monitor Alert",
           message: data.name || "A monitor triggered an alert",
         });
