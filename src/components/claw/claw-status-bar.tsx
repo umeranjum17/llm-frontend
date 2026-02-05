@@ -16,7 +16,9 @@ function formatUptime(ms: number): string {
 }
 
 export function ClawStatusBar() {
-  const { isConnected, status, createTask } = useClawStore();
+  const isConnected = useClawStore((s) => s.isConnected);
+  const status = useClawStore((s) => s.status);
+  const createTask = useClawStore((s) => s.createTask);
   const currentTask = useClawActivityStore((s) => s.currentTask);
   const isAutonomousRunning = useClawActivityStore((s) => s.isAutonomousRunning);
   const [input, setInput] = useState("");

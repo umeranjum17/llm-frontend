@@ -138,7 +138,15 @@ function SkeletonLine({ width }: { width: string }) {
 
 export function ClawPopoverContent() {
   const router = useRouter();
-  const { isConnected, isConnecting, error, tasks, schedules, initiatives, createTask, updateInitiative, connect } = useClawStore();
+  const isConnected = useClawStore((s) => s.isConnected);
+  const isConnecting = useClawStore((s) => s.isConnecting);
+  const error = useClawStore((s) => s.error);
+  const tasks = useClawStore((s) => s.tasks);
+  const schedules = useClawStore((s) => s.schedules);
+  const initiatives = useClawStore((s) => s.initiatives);
+  const createTask = useClawStore((s) => s.createTask);
+  const updateInitiative = useClawStore((s) => s.updateInitiative);
+  const connect = useClawStore((s) => s.connect);
   const isAutonomousRunning = useClawActivityStore((s) => s.isAutonomousRunning);
 
   const [taskInput, setTaskInput] = useState("");
