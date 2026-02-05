@@ -1,15 +1,15 @@
 'use client'
 
+import { forwardRef } from 'react'
 import { Cpu } from 'lucide-react'
 import { useClawStore } from '@/stores/claw-store'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
-interface ClawTriggerProps {
-  onClick?: () => void
-}
-
-export function ClawTrigger({ onClick }: ClawTriggerProps) {
+export const ClawTrigger = forwardRef<
+  HTMLButtonElement,
+  React.ComponentPropsWithoutRef<typeof Button>
+>(({ className, ...props }, ref) => {
   const isConnected = useClawStore((s) => s.isConnected)
   const pendingInitiatives = useClawStore((s) =>
     s.initiatives.filter((i) => i.status === 'proposed').length
@@ -17,10 +17,11 @@ export function ClawTrigger({ onClick }: ClawTriggerProps) {
 
   return (
     <Button
+      ref={ref}
       variant="ghost"
       size="sm"
-      className="relative h-8 w-8 p-0"
-      onClick={onClick}
+      className={cn("relative h-8 w-8 p-0", className)}
+      {...props}
     >
       <Cpu className="h-4 w-4" />
 
@@ -40,4 +41,6 @@ export function ClawTrigger({ onClick }: ClawTriggerProps) {
       )}
     </Button>
   )
-}
+})
+
+ClawTrigger.displayName = 'ClawTrigger'
