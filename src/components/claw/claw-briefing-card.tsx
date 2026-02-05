@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Loader2, Newspaper, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useClawStore } from "@/stores/claw-store";
+import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
 import { toast } from "sonner";
 
 function formatRelativeTime(iso: string) {
@@ -63,7 +64,9 @@ export function ClawBriefingCard() {
           </p>
         ) : (
           <div className="space-y-3">
-            <p className="text-sm whitespace-pre-wrap">{briefing.content}</p>
+            <div className="text-sm prose-sm">
+              <MarkdownRenderer content={briefing.content} />
+            </div>
             {briefing.sections?.length > 0 && (
               <div className="space-y-2">
                 {briefing.sections.map((section, i) => (
