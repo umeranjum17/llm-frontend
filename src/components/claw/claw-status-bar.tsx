@@ -46,43 +46,47 @@ export function ClawStatusBar() {
   }
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3">
-      <div className="flex items-center gap-2 shrink-0">
-        {isConnected ? (
-          <Wifi className="h-4 w-4 text-emerald-500" />
-        ) : (
-          <WifiOff className="h-4 w-4 text-muted-foreground" />
-        )}
-        <Bot className="h-5 w-5" />
-      </div>
+    <div className="rounded-lg border bg-card">
+      {/* Top row: status info */}
+      <div className="flex items-center gap-3 px-4 py-3">
+        <div className="flex items-center gap-2 shrink-0">
+          {isConnected ? (
+            <Wifi className="h-4 w-4 text-emerald-500" />
+          ) : (
+            <WifiOff className="h-4 w-4 text-muted-foreground" />
+          )}
+          <Bot className="h-5 w-5" />
+        </div>
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium truncate">{statusText}</span>
-          {currentTask?.status === "running" && (
-            <Loader2 className="h-3 w-3 animate-spin text-blue-500 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium truncate">{statusText}</span>
+            {currentTask?.status === "running" && (
+              <Loader2 className="h-3 w-3 animate-spin text-blue-500 shrink-0" />
+            )}
+          </div>
+          {isConnected && status?.uptime != null && (
+            <p className="text-xs text-muted-foreground">
+              Uptime: {formatUptime(status.uptime)}
+            </p>
           )}
         </div>
-        {isConnected && status?.uptime != null && (
-          <p className="text-xs text-muted-foreground">
-            Uptime: {formatUptime(status.uptime)}
-          </p>
-        )}
       </div>
 
+      {/* Bottom row: input (only when connected) */}
       {isConnected && (
-        <div className="flex gap-1.5 shrink-0">
+        <div className="flex gap-1.5 px-4 pb-3">
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSend()}
             placeholder="Send instruction..."
-            className="h-8 w-64 text-sm"
+            className="h-8 text-sm flex-1"
           />
           <Button
             size="icon"
             variant="outline"
-            className="h-8 w-8"
+            className="h-8 w-8 shrink-0"
             disabled={!input.trim() || sending}
             onClick={handleSend}
           >
