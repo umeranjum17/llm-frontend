@@ -21,11 +21,14 @@ import { useClawStore } from "@/stores/claw-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useModelsStore } from "@/stores/models-store";
+import { useClawPreferencesStore, NotificationLevel } from "@/stores/claw-preferences-store";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 function ConnectionTab() {
   const { isConnected, isConnecting, error, connect, disconnect } = useClawStore();
   const { clawUrl, clawSecret, clawEnabled, updateClawSettings } = useSettingsStore();
+  const notificationLevel = useClawPreferencesStore((s) => s.notificationLevel);
+  const setNotificationLevel = useClawPreferencesStore((s) => s.setNotificationLevel);
 
   const [url, setUrl] = useState(clawUrl || "");
   const [secret, setSecret] = useState(clawSecret || "");
@@ -108,6 +111,27 @@ function ConnectionTab() {
               {error}
             </Badge>
           )}
+        </div>
+
+        <div className="space-y-2 pt-4 border-t">
+          <Label htmlFor="notification-level">Notification Level</Label>
+          <Select
+            value={notificationLevel}
+            onValueChange={(value) => setNotificationLevel(value as NotificationLevel)}
+          >
+            <SelectTrigger id="notification-level">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All notifications</SelectItem>
+              <SelectItem value="important">Important only (recommended)</SelectItem>
+              <SelectItem value="minimal">Minimal (errors & attention)</SelectItem>
+              <SelectItem value="none">None</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Control which Claw events show as notifications
+          </p>
         </div>
       </CardContent>
     </Card>

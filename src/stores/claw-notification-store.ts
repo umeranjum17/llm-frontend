@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useClawPreferencesStore } from "./claw-preferences-store";
 
 export interface ClawNotification {
   id: string;
@@ -28,6 +29,10 @@ const BATCH_WINDOW_MS = 2_000;
 const DEDUPE_TYPES: Set<ClawNotification["type"]> = new Set(["keys:synced", "schedule:triggered"]);
 const BATCH_TYPES: Set<ClawNotification["type"]> = new Set(["activity:new"]);
 
+// Notification level filtering sets
+const IMPORTANT_TYPES: Set<ClawNotification["type"]> = new Set(["task:completed", "task:failed", "initiative:proposed", "monitor:alert"]);
+const MINIMAL_TYPES: Set<ClawNotification["type"]> = new Set(["task:failed", "initiative:proposed", "monitor:alert"]);
+
 // Module-level state for deduplication and batching
 let lastEmitByType: Record<string, number> = {};
 let pendingBatch: Map<string, { title: string; messages: string[] }> = new Map();
@@ -49,6 +54,13 @@ export const useClawNotificationStore = create<ClawNotificationState>(
     notifications: [],
 
     addNotification: (n) => {
+      // Filter based on notification level preference
+      const level = useClawPreferencesStore.getState().notificationLevel;
+
+      if (level === 'none') return;
+      if (level === 'minimal' && !MINIMAL_TYPES.has(n.type)) return;
+      if (level === 'important' && !IMPORTANT_TYPES.has(n.type)) return;
+
       const now = Date.now();
       const type = n.type;
 
