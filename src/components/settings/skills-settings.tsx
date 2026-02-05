@@ -401,19 +401,19 @@ export function SkillsSettings() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
         <div>
           <h3 className="text-lg font-medium">Skills</h3>
           <p className="text-sm text-muted-foreground">
             Skills enhance responses with specialized prompts.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <Button
             variant="outline"
             onClick={handleResetToDefaults}
             disabled={isResetting}
-            className="gap-2"
+            className="gap-2 flex-1 sm:flex-initial"
             title="Reset to default skills"
           >
             {isResetting ? (
@@ -425,7 +425,7 @@ export function SkillsSettings() {
           </Button>
           <Button
             onClick={() => router.push("/skills/new")}
-            className="gap-2"
+            className="gap-2 flex-1 sm:flex-initial"
           >
             <Plus className="h-4 w-4" />
             New Skill
@@ -448,14 +448,14 @@ export function SkillsSettings() {
           </p>
         ) : (
           <>
-            <div className="flex flex-wrap items-end gap-3">
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap sm:items-end gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Provider</Label>
                 <Select
                   value={selectedProvider}
                   onValueChange={handleProviderChange}
                 >
-                  <SelectTrigger className="w-[140px]">
+                  <SelectTrigger className="w-full sm:w-[140px]">
                     <SelectValue placeholder="Select" />
                   </SelectTrigger>
                   <SelectContent>
@@ -474,7 +474,7 @@ export function SkillsSettings() {
                   value={selectedModel}
                   onValueChange={setSelectedModel}
                 >
-                  <SelectTrigger className="w-[200px]">
+                  <SelectTrigger className="w-full sm:w-[200px]">
                     <SelectValue placeholder="Select" />
                   </SelectTrigger>
                   <SelectContent>
@@ -490,7 +490,7 @@ export function SkillsSettings() {
               <Button
                 onClick={handleGenerateEmbeddings}
                 disabled={isGenerating || !skills?.length || !selectedProvider || !selectedModel}
-                className="gap-2"
+                className="gap-2 col-span-2 sm:col-span-1"
                 variant={modelChanged || skillsNeedingEmbedding > 0 ? "default" : "outline"}
               >
                 {isGenerating ? (
@@ -651,38 +651,38 @@ function SkillSettingsItem({
       )}
     >
       <div
-        className="flex items-center justify-between gap-4 p-3 cursor-pointer"
+        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 cursor-pointer"
         onClick={() => setExpanded(!expanded)}
       >
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
           <div className={cn("rounded p-2 shrink-0", colorClasses)}>
             {getSkillIcon(skill.ui.icon)}
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="font-medium truncate">{skill.name}</div>
-              {skill.isBuiltIn && <Badge variant="secondary">Built-in</Badge>}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+              <div className="font-medium truncate max-w-[150px] sm:max-w-none">{skill.name}</div>
+              {skill.isBuiltIn && <Badge variant="secondary" className="text-[10px] sm:text-xs">Built-in</Badge>}
               {skill.trigger.type === "auto" && (
-                <Badge variant="outline" className="text-xs">
+                <Badge variant="outline" className="text-[10px] sm:text-xs">
                   Auto
                 </Badge>
               )}
               {skill.requireApproval && (
-                <Badge variant="outline" className="text-xs gap-1">
+                <Badge variant="outline" className="text-[10px] sm:text-xs gap-1">
                   <Shield className="h-3 w-3" />
-                  Approval
+                  <span className="hidden sm:inline">Approval</span>
                 </Badge>
               )}
               {categoryConfig && (
-                <Badge variant="outline" className="text-xs">
+                <Badge variant="outline" className="text-[10px] sm:text-xs hidden sm:inline-flex">
                   {categoryConfig.label}
                 </Badge>
               )}
               {/* Warning for auto skills without embedding */}
               {skill.trigger.type === "auto" && skill.isEnabled && !hasEmbedding && (
-                <Badge variant="outline" className="text-xs gap-1 text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700">
+                <Badge variant="outline" className="text-[10px] sm:text-xs gap-1 text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700">
                   <AlertCircle className="h-3 w-3" />
-                  No embedding
+                  <span className="hidden sm:inline">No embedding</span>
                 </Badge>
               )}
             </div>
@@ -697,7 +697,7 @@ function SkillSettingsItem({
           </div>
         </div>
 
-        <div className="shrink-0 flex items-center gap-2">
+        <div className="shrink-0 flex items-center gap-1 sm:gap-2 justify-end">
           <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", expanded && "rotate-180")} />
           <Switch
             checked={skill.isEnabled}
@@ -708,6 +708,7 @@ function SkillSettingsItem({
           <Button
             variant="ghost"
             size="icon"
+            className="h-8 w-8 sm:h-10 sm:w-10"
             onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
             title={skill.isFavorite ? "Remove from favorites" : "Add to favorites"}
           >
@@ -722,6 +723,7 @@ function SkillSettingsItem({
           <Button
             variant="ghost"
             size="icon"
+            className="h-8 w-8 sm:h-10 sm:w-10"
             onClick={(e) => { e.stopPropagation(); onEdit(); }}
             title="Edit skill"
           >
@@ -730,6 +732,7 @@ function SkillSettingsItem({
           <Button
             variant="ghost"
             size="icon"
+            className="h-8 w-8 sm:h-10 sm:w-10"
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
             disabled={skill.isBuiltIn}
             title={skill.isBuiltIn ? "Built-in skills cannot be deleted" : "Delete skill"}

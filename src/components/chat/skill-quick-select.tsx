@@ -137,7 +137,7 @@ export function SkillQuickSelect({ onSelect, selectedSkill }: SkillQuickSelectPr
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-80 max-h-[400px]">
+      <DropdownMenuContent align="start" className="w-[calc(100vw-2rem)] sm:w-80 max-w-80 max-h-[400px]">
         <DropdownMenuLabel className="flex items-center justify-between">
           <span>Skills</span>
           <span className="text-xs font-normal text-muted-foreground">
