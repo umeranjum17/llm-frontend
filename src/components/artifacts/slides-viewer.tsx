@@ -51,104 +51,291 @@ function buildRevealHtml(content: string, theme: string): string {
 <link id="reveal-theme" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/${theme}.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.min.css">
 <style>
+  :root {
+    --accent-primary: #6366f1;
+    --accent-secondary: #8b5cf6;
+    --accent-tertiary: #a855f7;
+    --glass-bg: rgba(255, 255, 255, 0.03);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --text-primary: rgba(255, 255, 255, 0.95);
+    --text-secondary: rgba(255, 255, 255, 0.7);
+    --text-muted: rgba(255, 255, 255, 0.5);
+  }
   html, body { margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; }
   .reveal { width: 100%; height: 100%; }
   .reveal .slides { text-align: left; }
+
+  /* Slide container with subtle gradient overlay */
   .reveal .slides section {
     text-align: left;
-    padding: 48px 64px;
+    padding: 56px 72px;
     height: 100%;
     box-sizing: border-box;
+    position: relative;
   }
+
+  /* Add subtle gradient mesh to each slide */
+  .reveal .slides section::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background:
+      radial-gradient(ellipse at 20% 20%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, rgba(139, 92, 246, 0.06) 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 50%, rgba(168, 85, 247, 0.04) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .reveal .slides section > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Typography - Headers with gradient text */
   .reveal .slides section h1,
   .reveal .slides section h2,
   .reveal .slides section h3 {
     text-transform: none;
     text-align: left;
-    font-weight: 600;
-    letter-spacing: -0.02em;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.2;
   }
+
   .reveal .slides section h1 {
-    font-size: 2em;
-    margin-bottom: 0.6em;
-  }
-  .reveal .slides section h2 {
-    font-size: 1.5em;
+    font-size: 2.5em;
     margin-bottom: 0.5em;
+    background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-primary) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
+
+  .reveal .slides section h2 {
+    font-size: 1.75em;
+    margin-bottom: 0.6em;
+    color: var(--text-primary);
+  }
+
   .reveal .slides section h3 {
-    font-size: 1.2em;
-    margin-bottom: 0.4em;
+    font-size: 1.3em;
+    margin-bottom: 0.5em;
+    color: var(--accent-primary);
   }
+
+  /* Body text */
+  .reveal .slides section p {
+    font-size: 1em;
+    line-height: 1.8;
+    color: var(--text-secondary);
+    max-width: 90%;
+  }
+
+  /* Lists with custom markers */
   .reveal .slides section ul,
   .reveal .slides section ol {
     display: block;
-    margin-left: 1.5em;
+    margin-left: 0;
+    padding-left: 0;
   }
-  .reveal .slides section li {
-    margin-bottom: 0.5em;
-    font-size: 0.9em;
+
+  .reveal .slides section ul {
+    list-style: none;
+  }
+
+  .reveal .slides section ul li {
+    position: relative;
+    padding-left: 1.5em;
+    margin-bottom: 0.7em;
+    font-size: 1em;
     line-height: 1.7;
+    color: var(--text-secondary);
   }
-  .reveal .slides section p {
-    font-size: 0.9em;
+
+  .reveal .slides section ul li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.6em;
+    width: 6px;
+    height: 6px;
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+    border-radius: 50%;
+  }
+
+  .reveal .slides section ol li {
+    margin-bottom: 0.7em;
+    font-size: 1em;
     line-height: 1.7;
+    color: var(--text-secondary);
+    padding-left: 0.5em;
   }
+
+  /* Strong/bold text with accent */
+  .reveal .slides section strong {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  /* Code blocks with glass effect */
   .reveal .slides section code {
     font-size: 0.85em;
-    padding: 3px 8px;
+    padding: 4px 10px;
     border-radius: 6px;
-    background: rgba(127, 127, 127, 0.15);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--accent-primary);
+    font-family: 'SF Mono', 'Fira Code', monospace;
   }
+
   .reveal .slides section pre {
-    font-size: 0.6em;
+    font-size: 0.65em;
     width: 100%;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    border-radius: 10px;
-    border: 1px solid rgba(127, 127, 127, 0.1);
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    border: 1px solid var(--glass-border);
+    padding: 20px;
+    margin: 1em 0;
   }
+
   .reveal .slides section pre code {
     background: transparent;
+    border: none;
     padding: 0;
+    color: inherit;
   }
+
+  /* Blockquotes with modern styling */
   .reveal .slides section blockquote {
     width: 90%;
-    font-size: 0.9em;
-    padding: 16px 24px;
-    border-left: 4px solid currentColor;
-    opacity: 0.9;
-    font-style: italic;
-    background: rgba(127, 127, 127, 0.05);
-    border-radius: 0 8px 8px 0;
+    font-size: 1.1em;
+    padding: 24px 32px;
+    margin: 1.5em 0;
+    border-left: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.05));
+    border: 1px solid var(--glass-border);
+    font-style: normal;
+    color: var(--text-primary);
+    position: relative;
   }
+
+  .reveal .slides section blockquote::before {
+    content: '"';
+    position: absolute;
+    top: -10px;
+    left: 20px;
+    font-size: 4em;
+    color: var(--accent-primary);
+    opacity: 0.3;
+    font-family: Georgia, serif;
+    line-height: 1;
+  }
+
+  .reveal .slides section blockquote p {
+    color: var(--text-primary);
+    font-size: 1em;
+    margin: 0;
+  }
+
+  /* Tables with glass morphism */
   .reveal .slides section table {
-    font-size: 0.8em;
-    border-collapse: collapse;
+    font-size: 0.85em;
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
   }
+
   .reveal .slides section table th,
   .reveal .slides section table td {
-    padding: 8px 12px;
-    border: 1px solid rgba(127, 127, 127, 0.2);
+    padding: 14px 18px;
+    border: none;
+    border-bottom: 1px solid var(--glass-border);
+    text-align: left;
   }
+
   .reveal .slides section table th {
-    background: rgba(127, 127, 127, 0.1);
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1));
+    color: var(--text-primary);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.75em;
+    letter-spacing: 0.05em;
   }
+
+  .reveal .slides section table td {
+    color: var(--text-secondary);
+  }
+
+  .reveal .slides section table tr:last-child td {
+    border-bottom: none;
+  }
+
+  .reveal .slides section table tr:hover td {
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  /* Images */
   .reveal .slides section img {
     max-height: 50vh;
-    border-radius: 10px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--glass-border);
   }
+
+  /* Mermaid diagrams */
   .reveal .slides section .mermaid {
-    background: transparent;
+    background: var(--glass-bg);
+    border-radius: 12px;
+    border: 1px solid var(--glass-border);
     text-align: center;
-    padding: 16px 0;
+    padding: 24px;
+    margin: 1em 0;
   }
+
   .reveal .slides section .mermaid svg {
-    max-height: 55vh;
+    max-height: 50vh;
     max-width: 100%;
   }
+
+  /* Horizontal rules as gradient dividers */
+  .reveal .slides section hr {
+    border: none;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent-primary), var(--accent-secondary), transparent);
+    margin: 2em 0;
+  }
+
+  /* Hide controls, show minimal progress */
   .reveal .controls { display: none !important; }
-  .reveal .progress { height: 2px; opacity: 0.7; }
+  .reveal .progress {
+    height: 3px;
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .reveal .progress span {
+    background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+  }
+
+  /* Slide number styling */
+  .reveal .slide-number {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: var(--text-muted);
+    font-size: 0.8em;
+  }
 </style>
 </head>
 <body>

@@ -2,7 +2,7 @@
 
 import { segmentTextWithMentions, type ParsedMention } from "@/lib/mentions/mention-parser";
 import { cn } from "@/lib/utils";
-import { Bot, FileText, MessageSquare, Tag } from "lucide-react";
+import { Bot, FileText, MessageSquare, Tag, FolderCode } from "lucide-react";
 
 interface MentionBadgeProps {
   mention: ParsedMention;
@@ -13,6 +13,7 @@ const MENTION_ICONS: Record<ParsedMention["type"], React.ElementType> = {
   file: FileText,
   chat: MessageSquare,
   tag: Tag,
+  codebase: FolderCode,
 };
 
 const MENTION_COLORS: Record<ParsedMention["type"], string> = {
@@ -20,6 +21,7 @@ const MENTION_COLORS: Record<ParsedMention["type"], string> = {
   file: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
   chat: "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20",
   tag: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+  codebase: "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20",
 };
 
 function MentionBadge({ mention }: MentionBadgeProps) {

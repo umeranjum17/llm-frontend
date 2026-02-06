@@ -4,12 +4,13 @@
  * Mention formats:
  * - @agent:id[label]
  * - @file:id[label]
+ * - @codebase:id[label]
  * - #chat:id[label]
  * - #tag:id[label]
  */
 
 export interface ParsedMention {
-  type: "agent" | "file" | "chat" | "tag";
+  type: "agent" | "file" | "chat" | "tag" | "codebase";
   id: string;
   label: string;
   raw: string; // The full matched string
@@ -24,7 +25,7 @@ export interface TextSegment {
 }
 
 // Regex to match all mention patterns: @type:id[label] or #type:id[label]
-const MENTION_REGEX = /[@#](agent|file|chat|tag):([^\[]+)\[([^\]]+)\]/g;
+const MENTION_REGEX = /[@#](agent|file|chat|tag|codebase):([^\[]+)\[([^\]]+)\]/g;
 
 /**
  * Parses a text string and extracts all mentions.

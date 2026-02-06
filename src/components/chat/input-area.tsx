@@ -23,6 +23,7 @@ import type { MessageContentPart, Skill, Agent, Tag, ProjectFile, Chat } from "@
 import { useStreamingStore } from "@/stores/streaming-store";
 import { MentionTextarea } from "@/components/chat/mention-textarea";
 import { MentionItem } from "@/lib/mentions/types";
+import { useClawStore } from "@/stores/claw-store";
 import { useVoiceInput } from "@/hooks/use-voice-input";
 import { SkillQuickSelect } from "@/components/chat/skill-quick-select";
 import { SKILL_COLORS } from "@/lib/constants/skills";
@@ -348,6 +349,8 @@ export function InputArea({ chatId }: InputAreaProps) {
   const agents = useLiveQuery(() => getAllAgents(), []);
   const tags = useLiveQuery(() => getAllTags(), []);
   const skills = useLiveQuery(() => getAllSkills(), []);
+  const codebases = useClawStore((s) => s.codebases);
+  const isClawConnected = useClawStore((s) => s.isConnected);
 
   // Model capabilities for the current chat model
   const modelCaps = useMemo(() => {
@@ -522,8 +525,23 @@ export function InputArea({ chatId }: InputAreaProps) {
       });
     }
 
+    // Codebases (@ trigger) - only show when connected to Claw
+    if (isClawConnected && codebases) {
+      codebases.forEach((cb) => {
+        if (cb.status !== "ready") return; // Only show indexed codebases
+        items.push({
+          id: cb.id,
+          type: "codebase",
+          label: cb.name,
+          value: `@codebase:${cb.id}[${cb.name}]`,
+          description: cb.description || `${cb.fileCount || 0} files indexed`,
+          trigger: "@",
+        });
+      });
+    }
+
     return items;
-  }, [files, otherChats, chatId, agents, tags, skills]);
+  }, [files, otherChats, chatId, agents, tags, skills, codebases, isClawConnected]);
 
   // Handle submit function for keyboard shortcut - delegates to handleSubmit for queue support
   const handleSubmitMessage = () => {
@@ -887,6 +905,8 @@ export function InputArea({ chatId }: InputAreaProps) {
       insertion = `#chat:${item.id}[${item.label}]`;
     } else if (item.type === "tag") {
       insertion = `#tag:${item.id}[${item.label}]`;
+    } else if (item.type === "codebase") {
+      insertion = `@codebase:${item.id}[${item.label}]`;
     } else {
       insertion = item.value;
     }

@@ -1,6 +1,7 @@
 import type {
   ClawStatus, ClawTask, ClawActivity, ClawSchedule, ClawScheduleRun, ClawInitiative, ClawConfig,
   ClawBriefing, ClawMonitor, ClawPipelineRun,
+  Codebase, CodebaseStats, CodebaseFile, CodebaseSearchResult,
 } from "./types";
 
 export class ClawClient {
@@ -184,5 +185,76 @@ export class ClawClient {
     return new EventSource(
       `${this.baseUrl}/events?token=${encodeURIComponent(this.secret)}`
     );
+  }
+
+  // --- Codebases ---
+
+  async listCodebases(): Promise<{ codebases: Codebase[] }> {
+    return this.request("/codebases");
+  }
+
+  async getCodebase(id: string): Promise<{
+    codebase: Codebase;
+    stats: CodebaseStats;
+    files: CodebaseFile[];
+  }> {
+    return this.request(`/codebases/${id}`);
+  }
+
+  async registerCodebase(
+    name: string,
+    path: string,
+    description?: string
+  ): Promise<{ codebase: Codebase }> {
+    return this.request("/codebases", {
+      method: "POST",
+      body: JSON.stringify({ name, path, description }),
+    });
+  }
+
+  async indexCodebase(
+    id: string,
+    incremental = false
+  ): Promise<{ message: string; codebaseId: string }> {
+    return this.request(`/codebases/${id}/index`, {
+      method: "POST",
+      body: JSON.stringify({ incremental }),
+    });
+  }
+
+  async getCodebaseStatus(id: string): Promise<{
+    id: string;
+    status: string;
+    lastIndexedAt?: number;
+    fileCount?: number;
+    chunkCount?: number;
+    error?: string;
+  }> {
+    return this.request(`/codebases/${id}/status`);
+  }
+
+  async searchCodebase(
+    id: string,
+    query: string,
+    options?: { limit?: number; language?: string; nodeType?: string }
+  ): Promise<CodebaseSearchResult> {
+    const params = new URLSearchParams({ q: query });
+    if (options?.limit) params.set("limit", String(options.limit));
+    if (options?.language) params.set("language", options.language);
+    if (options?.nodeType) params.set("nodeType", options.nodeType);
+    return this.request(`/codebases/${id}/search?${params}`);
+  }
+
+  async searchAllCodebases(
+    query: string,
+    limit = 10
+  ): Promise<CodebaseSearchResult> {
+    return this.request(
+      `/codebases/search/all?q=${encodeURIComponent(query)}&limit=${limit}`
+    );
+  }
+
+  async deleteCodebase(id: string): Promise<{ message: string }> {
+    return this.request(`/codebases/${id}`, { method: "DELETE" });
   }
 }

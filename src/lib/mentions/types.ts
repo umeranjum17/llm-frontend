@@ -1,5 +1,5 @@
 
-export type MentionType = "agent" | "prompt" | "file" | "command" | "action" | "chat" | "tag" | "skill";
+export type MentionType = "agent" | "prompt" | "file" | "command" | "action" | "chat" | "tag" | "skill" | "codebase";
 
 export type TriggerChar = "@" | "#" | "/";
 

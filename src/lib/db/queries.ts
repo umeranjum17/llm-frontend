@@ -1655,3 +1655,13 @@ export async function getDraft(chatId: string): Promise<string> {
 export async function deleteDraft(chatId: string): Promise<void> {
   await db.drafts.delete(chatId);
 }
+
+// ============= CLAW CONFIG QUERIES =============
+
+export async function getClawConfig(): Promise<{ url: string; secret: string } | null> {
+  const settings = await getSettings();
+  if (settings?.clawUrl && settings?.clawSecret) {
+    return { url: settings.clawUrl, secret: settings.clawSecret };
+  }
+  return null;
+}

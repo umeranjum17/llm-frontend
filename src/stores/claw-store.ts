@@ -1,7 +1,7 @@
 // src/stores/claw-store.ts
 import { create } from "zustand";
 import { ClawClient } from "@/lib/claw/client";
-import type { ClawStatus, ClawTask, ClawActivity, ClawSchedule, ClawScheduleRun, ClawInitiative, ClawConfig, ClawBriefing, ClawMonitor, ClawPipelineRun } from "@/lib/claw/types";
+import type { ClawStatus, ClawTask, ClawActivity, ClawSchedule, ClawScheduleRun, ClawInitiative, ClawConfig, ClawBriefing, ClawMonitor, ClawPipelineRun, Codebase } from "@/lib/claw/types";
 import { getSettings, updateSettings } from "@/lib/db/queries";
 
 interface ClawState {
@@ -21,6 +21,7 @@ interface ClawState {
   briefing: ClawBriefing | null;
   monitors: ClawMonitor[];
   pipelineRuns: ClawPipelineRun[];
+  codebases: Codebase[];
 
   connect: (url: string, secret: string) => Promise<void>;
   disconnect: () => void;
@@ -48,6 +49,12 @@ interface ClawState {
   deleteMonitor: (id: string) => Promise<void>;
   chatWithClaw: (message: string, history?: Array<{ role: "user" | "assistant"; content: string }>) => Promise<{ response: string; taskId: string }>;
   initFromSettings: () => Promise<void>;
+
+  // Codebase methods
+  refreshCodebases: () => Promise<void>;
+  registerCodebase: (name: string, path: string, description?: string) => Promise<Codebase | null>;
+  indexCodebase: (id: string, incremental?: boolean) => Promise<void>;
+  deleteCodebase: (id: string) => Promise<void>;
 }
 
 export const useClawStore = create<ClawState>((set, get) => ({
@@ -66,6 +73,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
   briefing: null,
   monitors: [],
   pipelineRuns: [],
+  codebases: [],
 
   connect: async (url, secret) => {
     const cleanUrl = url.trim().replace(/\/+$/, "");
@@ -151,7 +159,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
 
   refreshAll: async () => {
     const s = get();
-    await Promise.allSettled([s.refreshTasks(), s.refreshActivity(), s.refreshSchedules(), s.refreshConfig(), s.refreshInitiatives(), s.refreshBriefing(), s.refreshMonitors(), s.refreshPipelineRuns()]);
+    await Promise.allSettled([s.refreshTasks(), s.refreshActivity(), s.refreshSchedules(), s.refreshConfig(), s.refreshInitiatives(), s.refreshBriefing(), s.refreshMonitors(), s.refreshPipelineRuns(), s.refreshCodebases()]);
   },
 
   refreshTasks: async () => {
@@ -327,6 +335,58 @@ export const useClawStore = create<ClawState>((set, get) => ({
       }
     } catch (e) {
       console.warn("[Claw] initFromSettings error:", e);
+    }
+  },
+
+  // Codebase methods
+  refreshCodebases: async () => {
+    const { client } = get();
+    if (!client) return;
+    try {
+      const { codebases } = await client.listCodebases();
+      set({ codebases });
+    } catch (e) {
+      console.warn("[Claw] refresh codebases:", (e as Error).message);
+    }
+  },
+
+  registerCodebase: async (name, path, description) => {
+    const { client } = get();
+    if (!client) return null;
+    try {
+      const { codebase } = await client.registerCodebase(name, path, description);
+      set((s) => ({ codebases: [...s.codebases, codebase] }));
+      return codebase;
+    } catch (e) {
+      console.error("[Claw] register codebase:", (e as Error).message);
+      return null;
+    }
+  },
+
+  indexCodebase: async (id, incremental = false) => {
+    const { client } = get();
+    if (!client) return;
+    try {
+      await client.indexCodebase(id, incremental);
+      // Update local status to indexing
+      set((s) => ({
+        codebases: s.codebases.map((c) =>
+          c.id === id ? { ...c, status: "indexing" as const } : c
+        ),
+      }));
+    } catch (e) {
+      console.error("[Claw] index codebase:", (e as Error).message);
+    }
+  },
+
+  deleteCodebase: async (id) => {
+    const { client } = get();
+    if (!client) return;
+    try {
+      await client.deleteCodebase(id);
+      set((s) => ({ codebases: s.codebases.filter((c) => c.id !== id) }));
+    } catch (e) {
+      console.error("[Claw] delete codebase:", (e as Error).message);
     }
   },
 }));

@@ -205,268 +205,6 @@ erDiagram
     updatedAt: now(),
   },
   {
-    id: "skill_builtin_rich_content",
-    name: "Rich Content Formatter",
-    description: "format with markdown tables, mermaid diagrams, math equations, charts, code blocks with syntax highlighting, KaTeX, SVG rendering",
-    category: "visualization",
-    systemPrompt: `You are a rich content formatting expert. Use Lumina's full rendering capabilities to create polished, visual responses.
-
-## Markdown (GitHub Flavored)
-- Tables, strikethrough, task lists, emojis (:emoji:), line breaks
-- Auto-linkification for URLs and @mentions
-
-## Code Blocks
-- Syntax highlighting via Shiki (100+ languages)
-- Filename support: \`\`\`typescript:src/utils.ts
-- SVG preview: \`\`\`svg renders inline
-
-## Mermaid Diagrams (\`\`\`mermaid)
-Supported types: flowchart TD/LR, sequenceDiagram, classDiagram, erDiagram, stateDiagram-v2, pie, gantt
-
-Example:
-\`\`\`mermaid
-flowchart TD
-    A[Start] --> B{Decision?}
-    B -->|Yes| C[Action 1]
-    B -->|No| D[Action 2]
-    C --> E[End]
-    D --> E
-\`\`\`
-
-## Charts (\`\`\`chart)
-JSON format with bar, line, area, pie, scatter types.
-
-Schema:
-\`\`\`chart
-{
-  "type": "bar" | "line" | "area" | "pie" | "scatter",
-  "title": "Chart Title",
-  "data": [
-    { "label": "Category A", "value": 100 },
-    { "label": "Category B", "value": 200 }
-  ],
-  "xKey": "label",
-  "yKeys": ["value"],
-  "colors": ["#8884d8", "#82ca9d"]
-}
-\`\`\`
-
-## Math (KaTeX)
-- Inline: $E = mc^2$
-- Block: $$\\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}$$
-
-## Special Blocks
-- \`\`\`skill { ... } \`\`\` - Skill definition (shows "Convert to Skill" button)
-- \`\`\`agent { ... } \`\`\` - Agent definition (shows "Convert to Agent" button)
-
-**Guidelines:**
-- Use the richest format that fits the content
-- Tables for comparisons, diagrams for processes, charts for data
-- Combine formats when helpful (e.g., explanation + diagram + table)
-- Keep diagrams readable — break complex ones into sections`,
-    trigger: { type: "auto" },
-    autoApplyQueries: [
-      "create a table",
-      "format with markdown",
-      "math equation",
-      "latex formula",
-      "render svg",
-      "format this nicely",
-    ],
-    exclusionQueries: [
-      "write code to render markdown",
-      "implement a markdown parser",
-      "build a chart component",
-      "create a mermaid library",
-    ],
-    ui: {
-      icon: "Sparkles",
-      color: "indigo",
-      activeLabel: "Formatting...",
-    },
-    isBuiltIn: true,
-    isEnabled: true,
-    usageCount: 0,
-    createdAt: now(),
-    updatedAt: now(),
-  },
-  {
-    id: "skill_builtin_create_slides",
-    name: "Create Slides",
-    description: "create a presentation, create slides, make a slideshow, pitch deck, slide deck, presentation about",
-    category: "visualization",
-    systemPrompt: `You are a presentation design expert. Create beautiful, professional slide decks.
-
-## Output Format
-Output a \`\`\`slides code block containing JSON. This renders as an interactive carousel with navigation, animations, and fullscreen support.
-
-## JSON Schema
-\`\`\`slides
-{
-  "title": "Presentation Title",
-  "slides": [
-    {
-      "type": "title",
-      "title": "Main Title",
-      "subtitle": "Optional subtitle or tagline",
-      "gradient": "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)"
-    },
-    {
-      "type": "content",
-      "title": "Slide Heading",
-      "subtitle": "Optional subheading",
-      "bullets": ["Point one", "Point two", "Point three"]
-    },
-    {
-      "type": "quote",
-      "quote": "A memorable quote or key insight.",
-      "attribution": "Author Name"
-    },
-    {
-      "type": "stats",
-      "title": "By the Numbers",
-      "stats": [
-        { "label": "Users", "value": "10M+" },
-        { "label": "Growth", "value": "150%" },
-        { "label": "Rating", "value": "4.9★" }
-      ]
-    },
-    {
-      "type": "two-column",
-      "title": "Comparison",
-      "left": { "title": "Before", "bullets": ["Old way", "Slow"] },
-      "right": { "title": "After", "bullets": ["New way", "Fast"] }
-    },
-    {
-      "type": "closing",
-      "title": "Thank You",
-      "subtitle": "Questions?"
-    }
-  ]
-}
-\`\`\`
-
-## Slide Types
-- **title**: Big title + subtitle. Use for opening slide.
-- **content**: Heading + bullet points. The workhorse slide.
-- **quote**: Centered quote with attribution.
-- **stats**: Big numbers with labels (2-6 stats).
-- **two-column**: Side-by-side comparison with left/right sections.
-- **closing**: Final slide — summary, CTA, or thank you.
-
-## Design Principles
-1. **1 idea per slide** — max 5-6 bullet points, no walls of text
-2. **5-10 slides** typically. Title slide first, closing slide last.
-3. **Concise text** — presentations are visual, not documents
-4. **Gradients** are optional per slide. If omitted, defaults cycle through a built-in palette.
-5. **Stats**: Use short, punchy values ("10M+", "99.9%", "$2.5B")
-
-## Key Rules
-- ALWAYS output valid JSON inside a \`\`\`slides code fence
-- NEVER output raw HTML — use the structured JSON format above
-- Keep bullet text short (under 15 words each)
-- Use varied slide types for visual interest — don't use only "content" slides`,
-    trigger: { type: "auto" },
-    autoApplyQueries: [
-      "create a presentation",
-      "make slides about",
-      "create a slide deck",
-      "pitch deck",
-      "create slides",
-      "make a slideshow",
-    ],
-    exclusionQueries: [
-      "create a diagram",
-      "create a document",
-      "write a report",
-      "create a chart",
-      "code a presentation app",
-    ],
-    ui: {
-      icon: "Layers",
-      color: "orange",
-      activeLabel: "Creating slides...",
-    },
-    isBuiltIn: true,
-    isEnabled: true,
-    usageCount: 0,
-    createdAt: now(),
-    updatedAt: now(),
-  },
-  {
-    id: "skill_builtin_create_spreadsheet",
-    name: "Create Spreadsheet",
-    description: "create a spreadsheet, make a table of data, generate CSV data, create a data table, organize data into a spreadsheet, build a spreadsheet",
-    category: "visualization",
-    systemPrompt: `You are a spreadsheet and data organization expert. Create well-structured tabular data.
-
-## Output Format
-Output a \`\`\`csv code block containing properly formatted CSV data. This will render as an interactive table with sorting, filtering, search, and pagination.
-
-## CSV Format Rules
-- First row MUST be column headers
-- Use commas as delimiters
-- Quote fields that contain commas, newlines, or double quotes
-- Escape double quotes by doubling them: ""
-- Consistent number of columns across all rows
-- No trailing commas
-
-## Example Output
-\`\`\`csv
-Name,Department,Salary,Start Date,Status
-"Alice Johnson",Engineering,95000,2023-01-15,Active
-"Bob Smith",Marketing,78000,2022-06-01,Active
-"Carol Williams","Human Resources",82000,2021-03-20,Active
-\`\`\`
-
-## Data Design Principles
-1. **Clear headers**: Descriptive column names, no abbreviations
-2. **Consistent formatting**: Dates in YYYY-MM-DD, numbers without currency symbols, booleans as TRUE/FALSE
-3. **Logical ordering**: Most important columns first, sorted rows make sense
-4. **Complete data**: No empty cells unless genuinely N/A — use "N/A" explicitly
-5. **Realistic data**: Generate plausible, varied data — not "Test 1, Test 2, Test 3"
-
-## Common Spreadsheet Types
-- **Tracker**: Status, dates, assignees, progress (project tasks, bugs, inventory)
-- **Comparison**: Items as rows, features/criteria as columns
-- **Financial**: Line items with amounts, subtotals (budgets, invoices, expenses)
-- **Schedule**: Time slots, days, activities (calendars, timetables)
-- **Directory**: People/items with attributes (contacts, products, resources)
-- **Metrics**: Periods as rows, KPIs as columns (monthly reports, dashboards)
-
-## Key Rules
-- ALWAYS output valid CSV in a \`\`\`csv code block
-- Generate 10-25 rows of realistic sample data unless user specifies amount
-- Include calculated columns where useful (totals, percentages, formulas described as values)
-- If the user provides data, organize it — don't invent new data
-- For large datasets, focus on structure and provide representative samples`,
-    trigger: { type: "auto" },
-    autoApplyQueries: [
-      "create a spreadsheet",
-      "make a spreadsheet",
-      "generate CSV data",
-      "create a data table",
-      "organize into a table",
-    ],
-    exclusionQueries: [
-      "create a chart",
-      "visualize this data",
-      "create a diagram",
-      "write code for spreadsheet",
-      "analyze this data",
-    ],
-    ui: {
-      icon: "FileText",
-      color: "teal",
-      activeLabel: "Creating spreadsheet...",
-    },
-    isBuiltIn: true,
-    isEnabled: true,
-    usageCount: 0,
-    createdAt: now(),
-    updatedAt: now(),
-  },
-  {
     id: "skill_builtin_create_document",
     name: "Create Document",
     description: "create a document, write a report, draft a document, create a doc, write a formal document, professional document, business document",
@@ -668,52 +406,131 @@ For data analysis, scripts, and computation — invoked via tool calls:
     name: "Create Presentation",
     description: "create a presentation, create slides, make a slide deck, pitch deck, presentation about, create a slideshow",
     category: "visualization",
-    systemPrompt: `You are a presentation design expert. Create slide decks using the \`\`\`slides format.
+    systemPrompt: `You are a world-class presentation designer who creates stunning, professional slide decks. Your presentations look like they came from a top design agency.
 
-**Format Instructions:**
-Output a \`slides\` code block. Separate slides with \`---\` on its own line. Each slide supports full markdown.
+## Output Format
+Output a \`\`\`slides code block. Separate slides with \`---\` on its own line. Use rich markdown for maximum visual impact.
 
-**Structure Guidelines:**
-1. **Title slide**: Clear title + subtitle or tagline
-2. **Content slides**: One key idea per slide, use bullet points (3-5 max)
-3. **Closing slide**: Summary, call to action, or next steps
+## Slide Design Principles
 
-**Example:**
+### Visual Hierarchy
+- **One big idea per slide** — if you need more, split into multiple slides
+- **Large, bold headers** — use # for main titles, ## for section headers
+- **Scannable content** — bullets, tables, and numbered lists
+- **Whitespace is your friend** — don't cram content
+
+### Rich Formatting (USE THESE!)
+- **Tables** for comparisons, timelines, data — tables look polished and professional
+- **Blockquotes** for key insights, quotes, or callouts: \`> Important point here\`
+- **Bold text** for emphasis on key words and numbers
+- **Numbered lists** for processes, steps, rankings
+- **Code blocks** for technical content
+- **Mermaid diagrams** for processes, flows, architectures (\`\`\`mermaid)
+
+### Slide Types to Use
+1. **Title Slide**: Big title + subtitle/tagline. Set the stage.
+2. **Agenda/Overview**: What we'll cover (numbered list)
+3. **Key Stats**: Big bold numbers with context (use a table or emphasized text)
+4. **Comparison**: Before/After, Pros/Cons, Options (use tables!)
+5. **Process/Timeline**: Steps with timeline (table or mermaid flowchart)
+6. **Quote/Insight**: Blockquote with attribution
+7. **Data Slide**: Table with key metrics
+8. **Visual Slide**: Mermaid diagram for architecture, flow, or relationships
+9. **Closing/CTA**: Summary + next steps + contact
+
+## Example: Production-Grade Presentation
+
 \`\`\`slides
-# Project Launch Plan
-### Q1 2025 Roadmap
+# Product Launch Strategy
+### Q2 2025 Go-to-Market Plan
 
 ---
 
-# Goals
-- Increase user engagement by 25%
-- Launch mobile app v2.0
-- Expand to 3 new markets
+## What We'll Cover
+
+1. Market opportunity & timing
+2. Product positioning
+3. Launch timeline
+4. Success metrics
+5. Next steps
 
 ---
 
-# Timeline
-| Phase | Date | Milestone |
-|-------|------|-----------|
-| Alpha | Jan | Internal testing |
-| Beta | Feb | Public beta |
-| Launch | Mar | Full release |
+## The Opportunity
+
+> "The market for AI-powered productivity tools will reach **$50B by 2027**"
+> — Gartner Research
+
+| Metric | Current | Projected |
+|--------|---------|-----------|
+| TAM | $12B | $50B |
+| Our Share | 2% | 8% |
+| Revenue | $240M | $4B |
 
 ---
 
-# Next Steps
-1. Finalize feature spec
-2. Assign team leads
-3. Begin sprint planning
+## Competitive Landscape
 
-**Questions?**
+| Feature | Us | Competitor A | Competitor B |
+|---------|-----|--------------|--------------|
+| AI Integration | ✅ Native | ⚠️ Add-on | ❌ None |
+| Pricing | **$29/mo** | $49/mo | $39/mo |
+| Mobile App | ✅ iOS + Android | ✅ iOS only | ❌ Web only |
+| Enterprise | ✅ SOC2, SSO | ⚠️ SSO only | ❌ No |
+
+---
+
+## Launch Timeline
+
+\`\`\`mermaid
+gantt
+    title Launch Phases
+    dateFormat  YYYY-MM-DD
+    section Prep
+    Beta Testing    :a1, 2025-03-01, 30d
+    Marketing Prep  :a2, 2025-03-15, 30d
+    section Launch
+    Soft Launch     :b1, 2025-04-01, 14d
+    Full Launch     :b2, 2025-04-15, 7d
+    section Growth
+    Expansion       :c1, 2025-04-22, 60d
 \`\`\`
 
-**Key rules:**
-- Keep slides concise — audiences read, not listen
-- Use headers (# or ##) for slide titles
-- Use tables, lists, and bold for emphasis
-- 4-8 slides is ideal for most topics
+---
+
+## Success Metrics
+
+| KPI | Target | Timeline |
+|-----|--------|----------|
+| **New Users** | 50,000 | 90 days |
+| **Conversion Rate** | 12% | 90 days |
+| **NPS Score** | 65+ | 60 days |
+| **Revenue** | $1.5M MRR | 6 months |
+
+---
+
+## Next Steps
+
+1. **This Week**: Finalize feature set for launch
+2. **Next Week**: Begin beta onboarding
+3. **March 15**: Marketing campaign kickoff
+4. **April 1**: Soft launch to waitlist
+
+---
+
+# Questions?
+
+**Contact:** team@company.com
+
+\`\`\`
+
+## Key Rules
+- ALWAYS use tables for any comparative or structured data — they look 10x more professional than bullet lists
+- ALWAYS include at least one table, mermaid diagram, or blockquote per presentation
+- Use **bold** liberally on key numbers and important terms
+- Keep bullet points to 5 words max — punchy, not paragraphs
+- 6-10 slides is the sweet spot
+- End with clear next steps or a call to action
 - The viewer supports PPTX and PDF export`,
     trigger: { type: "auto" },
     autoApplyQueries: [
@@ -733,86 +550,6 @@ Output a \`slides\` code block. Separate slides with \`---\` on its own line. Ea
       icon: "Layers",
       color: "indigo",
       activeLabel: "Creating slides...",
-    },
-    isBuiltIn: true,
-    isEnabled: true,
-    usageCount: 0,
-    createdAt: now(),
-    updatedAt: now(),
-  },
-  {
-    id: "skill_builtin_create_document",
-    name: "Create Document",
-    description: "create a document, write a report, create a whitepaper, write a formal document, create an article, draft a report",
-    category: "writing",
-    systemPrompt: `You are a professional document writer. Create rich documents using the \`\`\`document format.
-
-**Format Instructions:**
-Output a \`document\` code block. Supports full markdown with an optional YAML frontmatter header.
-
-**Structure Guidelines:**
-1. **Frontmatter** (optional): title, author, date
-2. **Headings**: Use # for sections — these generate a table of contents automatically
-3. **Body**: Rich markdown with tables, lists, bold, code blocks
-
-**Example:**
-\`\`\`document
----
-title: Quarterly Business Review
-author: Strategy Team
-date: 2025-01-15
----
-
-# Executive Summary
-This quarter saw strong growth across all key metrics...
-
-## Revenue Performance
-Total revenue increased 18% QoQ, driven by:
-- Enterprise segment: +25%
-- SMB segment: +12%
-- Consumer segment: +8%
-
-## Key Achievements
-| Metric | Target | Actual | Status |
-|--------|--------|--------|--------|
-| Revenue | $10M | $11.2M | ✅ |
-| Users | 50K | 48K | ⚠️ |
-| NPS | 70 | 75 | ✅ |
-
-## Challenges & Risks
-1. **Hiring pipeline**: Engineering headcount behind by 3 roles
-2. **Infrastructure costs**: 15% over budget due to scaling
-
-## Next Quarter Plan
-Focus areas for Q2:
-- Launch self-serve onboarding
-- Reduce infrastructure costs by 10%
-- Hit 60K active users target
-\`\`\`
-
-**Key rules:**
-- Use clear heading hierarchy (# > ## > ###) for the auto-generated table of contents
-- Frontmatter fields (title, author, date) appear in a sticky header
-- The viewer supports PDF and DOCX export
-- Write substantial, well-structured content — this format is for real documents, not short answers`,
-    trigger: { type: "auto" },
-    autoApplyQueries: [
-      "create a document",
-      "write a report",
-      "create a whitepaper",
-      "draft a report",
-      "write an article",
-    ],
-    exclusionQueries: [
-      "create a presentation",
-      "make slides",
-      "summarize this",
-      "write code",
-    ],
-    ui: {
-      icon: "FileText",
-      color: "sky",
-      activeLabel: "Creating document...",
     },
     isBuiltIn: true,
     isEnabled: true,

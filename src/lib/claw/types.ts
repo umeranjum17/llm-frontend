@@ -99,3 +99,52 @@ export interface ClawPipelineRun {
   durationMs?: number;
   createdAt: string;
 }
+
+// --- Codebase Indexing ---
+
+export interface Codebase {
+  id: string;
+  name: string;
+  path: string;
+  description?: string;
+  language?: string;
+  status: "pending" | "indexing" | "ready" | "error";
+  lastIndexedAt?: number;
+  fileCount?: number;
+  chunkCount?: number;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CodebaseStats {
+  chunkCount: number;
+  languages: Record<string, number>;
+  nodeTypes: Record<string, number>;
+}
+
+export interface CodebaseFile {
+  id: string;
+  codebaseId: string;
+  relativePath: string;
+  language?: string;
+  hash: string;
+  chunkCount: number;
+  indexedAt: number;
+}
+
+export interface CodebaseSearchResult {
+  query: string;
+  codebase?: { id: string; name: string };
+  results: Array<{
+    file: string;
+    name: string;
+    type: string;
+    language: string;
+    lines: string;
+    code: string;
+    codebaseName?: string;
+    codebasePath?: string;
+    distance?: number;
+  }>;
+}

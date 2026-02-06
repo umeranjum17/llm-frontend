@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Settings, Home, ListTodo, Calendar, Lightbulb } from "lucide-react";
+import { ArrowLeft, Settings, Home, ListTodo, Calendar, Lightbulb, FolderCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClawStatusBar } from "@/components/claw/claw-status-bar";
@@ -12,6 +12,7 @@ import { ClawLiveFeed } from "@/components/claw/claw-live-feed";
 import { ClawTasksPanel } from "@/components/claw/claw-tasks-panel";
 import { ClawSchedulesPanel } from "@/components/claw/claw-schedules-panel";
 import { ClawInitiativesPanel } from "@/components/claw/claw-initiatives-panel";
+import { ClawCodebasesPanel } from "@/components/claw/claw-codebases-panel";
 import { useClawStore } from "@/stores/claw-store";
 
 export default function ClawDashboardPage() {
@@ -69,7 +70,7 @@ export default function ClawDashboardPage() {
           {/* Mobile: Tabbed interface */}
           <div className="lg:hidden mt-4">
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="w-full grid grid-cols-4 h-10">
+              <TabsList className="w-full grid grid-cols-5 h-10">
                 <TabsTrigger value="overview" className="text-xs gap-1">
                   <Home className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">Overview</span>
@@ -81,6 +82,10 @@ export default function ClawDashboardPage() {
                 <TabsTrigger value="schedules" className="text-xs gap-1">
                   <Calendar className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">Schedules</span>
+                </TabsTrigger>
+                <TabsTrigger value="codebases" className="text-xs gap-1">
+                  <FolderCode className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Code</span>
                 </TabsTrigger>
                 <TabsTrigger value="ideas" className="text-xs gap-1">
                   <Lightbulb className="h-3.5 w-3.5" />
@@ -102,6 +107,10 @@ export default function ClawDashboardPage() {
                 <ClawSchedulesPanel />
               </TabsContent>
 
+              <TabsContent value="codebases" className="mt-4">
+                <ClawCodebasesPanel />
+              </TabsContent>
+
               <TabsContent value="ideas" className="mt-4">
                 <ClawInitiativesPanel />
               </TabsContent>
@@ -120,6 +129,7 @@ export default function ClawDashboardPage() {
               <div className="space-y-4">
                 <ClawTasksPanel />
                 <ClawSchedulesPanel />
+                <ClawCodebasesPanel />
               </div>
             </div>
 

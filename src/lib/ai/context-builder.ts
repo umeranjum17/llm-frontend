@@ -1,10 +1,11 @@
-import { getChatById, getAgentById, getAgentsByIds, getProjectFilesByIds, getChatsWithMessagesByIds, getModelAlias, getSettings, getAllSkills, getProjectFiles, getChatFiles } from "@/lib/db/queries";
+import { getChatById, getAgentById, getAgentsByIds, getProjectFilesByIds, getChatsWithMessagesByIds, getModelAlias, getSettings, getAllSkills, getProjectFiles, getChatFiles, getClawConfig } from "@/lib/db/queries";
 import type { Message, Skill } from "@/lib/db/schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { retrieveContext } from "@/lib/rag/retrieval";
 import { searchSimilar } from "@/lib/rag/vector-store";
 import { searchMemories, getAllMemories, type MemoryItem } from "@/lib/memory";
 import { getLuminaGlobalContext } from "@/lib/constants/prompts/capabilities";
+import { ClawClient } from "@/lib/claw/client";
 
 /**
  * RAG retrieval result type
@@ -13,6 +14,19 @@ export interface RagResult {
   text: string;
   similarity: number;
   metadata?: any;
+}
+
+/**
+ * Codebase search result from Claw
+ */
+export interface CodebaseContextResult {
+  codebaseName: string;
+  file: string;
+  name: string;
+  type: string;
+  language: string;
+  lines: string;
+  code: string;
 }
 
 /**
@@ -29,6 +43,7 @@ export interface ContextBuilderResult {
   dynamicContext: {
     memory: MemoryItem[] | null;
     rag: RagResult[] | null;
+    codebase: CodebaseContextResult[] | null;
   };
 }
 
@@ -68,6 +83,17 @@ export function formatDynamicContext(dynamicContext: ContextBuilderResult['dynam
         .join("\n\n---\n\n");
       parts.push(`## Related Context\n${ragContext}`);
     }
+  }
+
+  // Format codebase context — code snippets from indexed codebases
+  if (dynamicContext.codebase && dynamicContext.codebase.length > 0) {
+    const codebaseContext = dynamicContext.codebase
+      .map((result) => {
+        const header = `[${result.codebaseName}] ${result.file}:${result.lines} (${result.type}: ${result.name})`;
+        return `${header}\n\`\`\`${result.language}\n${result.code}\n\`\`\``;
+      })
+      .join("\n\n");
+    parts.push(`## Relevant Code from Codebase\n\n${codebaseContext}`);
   }
 
   if (parts.length === 0) {
@@ -178,10 +204,12 @@ export async function parseReferences(content: string): Promise<{
   fileReferences: Array<{ id: string; name: string }>;
   chatReferences: Array<{ id: string; name: string }>;
   agentReferences: Array<{ id: string; name: string }>;
+  codebaseReferences: Array<{ id: string; name: string }>;
 }> {
   const fileReferences: Array<{ id: string; name: string }> = [];
   const chatReferences: Array<{ id: string; name: string }> = [];
   const agentReferences: Array<{ id: string; name: string }> = [];
+  const codebaseReferences: Array<{ id: string; name: string }> = [];
 
   // Extract file references: @file:id[name] (limited to MAX_FILE_MENTIONS)
   const fileMatches = content.matchAll(/@file:([^\[]+)\[([^\]]+)\]/g);
@@ -205,13 +233,20 @@ export async function parseReferences(content: string): Promise<{
     agentReferences.push({ id: match[1], name: match[2] });
   }
 
+  // Extract codebase references: @codebase:id[name]
+  const codebaseMatches = content.matchAll(/@codebase:([^\[]+)\[([^\]]+)\]/g);
+  for (const match of codebaseMatches) {
+    codebaseReferences.push({ id: match[1], name: match[2] });
+  }
+
   // Clean content (remove reference markup but keep names)
   let cleanContent = content;
   cleanContent = cleanContent.replace(/@file:[^\[]+\[([^\]]+)\]/g, "[$1]");
   cleanContent = cleanContent.replace(/#chat:[^\[]+\[([^\]]+)\]/g, "[$1]");
   cleanContent = cleanContent.replace(/@agent:[^\[]+\[([^\]]+)\]/g, "@$1");
+  cleanContent = cleanContent.replace(/@codebase:[^\[]+\[([^\]]+)\]/g, "[$1]");
 
-  return { cleanContent, fileReferences, chatReferences, agentReferences };
+  return { cleanContent, fileReferences, chatReferences, agentReferences, codebaseReferences };
 }
 
 export async function buildContextMessages(
@@ -235,9 +270,10 @@ export async function buildContextMessages(
   // This is critical for prompt caching: keeps the static prefix stable across turns
   let dynamicMemory: MemoryItem[] | null = null;
   let dynamicRag: RagResult[] | null = null;
+  let dynamicCodebase: CodebaseContextResult[] | null = null;
 
   // Parse references from user message FIRST (needed for batch queries)
-  const { cleanContent, fileReferences, chatReferences, agentReferences } = await parseReferences(userMessage);
+  const { cleanContent, fileReferences, chatReferences, agentReferences, codebaseReferences } = await parseReferences(userMessage);
 
   // Batch fetch all needed data upfront to avoid N+1 queries
   const [settings, chat] = await Promise.all([
@@ -580,11 +616,53 @@ export async function buildContextMessages(
     }
   }
 
+  // 10. Codebase context (from @codebase mentions - DYNAMIC, fetched from Claw)
+  if (codebaseReferences.length > 0) {
+    try {
+      const clawConfig = await getClawConfig();
+      if (clawConfig?.url && clawConfig?.secret) {
+        const clawClient = new ClawClient(clawConfig.url, clawConfig.secret);
+
+        for (const codebaseRef of codebaseReferences) {
+          try {
+            // Search the codebase for relevant code based on the user's query
+            const searchResult = await clawClient.searchCodebase(codebaseRef.id, cleanContent, {
+              limit: 5,
+            });
+
+            if (searchResult.results && searchResult.results.length > 0) {
+              const codebaseResults: CodebaseContextResult[] = searchResult.results.map((r) => ({
+                codebaseName: codebaseRef.name,
+                file: r.file,
+                name: r.name,
+                type: r.type,
+                language: r.language,
+                lines: r.lines,
+                code: r.code,
+              }));
+
+              if (dynamicCodebase) {
+                dynamicCodebase.push(...codebaseResults);
+              } else {
+                dynamicCodebase = codebaseResults;
+              }
+            }
+          } catch (error) {
+            console.error(`[Context] Failed to search codebase ${codebaseRef.name}:`, error);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("[Context] Failed to load claw config for codebase search:", error);
+    }
+  }
+
   return {
     staticMessages: messages,
     dynamicContext: {
       memory: dynamicMemory,
       rag: dynamicRag,
+      codebase: dynamicCodebase,
     },
   };
 }
