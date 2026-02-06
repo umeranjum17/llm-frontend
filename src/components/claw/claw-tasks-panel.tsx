@@ -85,12 +85,12 @@ export function ClawTasksPanel() {
           </DialogContent>
         </Dialog>
       </div>
-      <div className="p-2">
+      <div className="p-2 max-h-[400px] overflow-y-auto">
         {tasks.length === 0 ? (
           <p className="px-2 py-4 text-center text-sm text-muted-foreground">No tasks yet.</p>
         ) : (
           <div className="space-y-1">
-            {tasks.slice(0, 10).map((task) => {
+            {tasks.slice(0, 20).map((task) => {
               const isLong = task.title.length > 80;
               const isExpanded = expandedTasks.has(task.id);
               return (

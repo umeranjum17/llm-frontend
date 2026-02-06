@@ -57,14 +57,14 @@ export function ClawBriefingCard() {
           Generate Now
         </Button>
       </div>
-      <div className="p-4">
+      <div className="p-4 max-h-[300px] overflow-y-auto">
         {!briefing ? (
           <p className="text-sm text-muted-foreground">
             No briefing yet. Generate one to get an overview of current activity.
           </p>
         ) : (
           <div className="space-y-3">
-            <div className="text-sm prose-sm">
+            <div className="text-sm prose-sm prose-invert max-w-none">
               <MarkdownRenderer content={briefing.content} />
             </div>
             {briefing.sections?.length > 0 && (

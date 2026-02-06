@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useSettingsStore } from "@/stores/settings-store";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { ClawTrigger } from "./claw-sidebar-widget/claw-trigger";
 import { ClawPopoverContent } from "./claw-sidebar-widget/claw-popover-content";
 import { ClawDisabledCTA } from "./claw-sidebar-widget/claw-disabled-cta";
@@ -26,7 +26,9 @@ export function ClawSidebarWidget() {
         <SheetContent
           side="bottom"
           className="p-0 rounded-t-xl max-h-[85vh] overflow-auto"
+          hideCloseButton
         >
+          <SheetTitle className="sr-only">Claw Agent</SheetTitle>
           {content}
         </SheetContent>
       </Sheet>

@@ -215,7 +215,7 @@ export function ClawLiveFeed() {
           </Button>
         </div>
       </div>
-      <ScrollArea className="h-[400px]" ref={scrollRef}>
+      <ScrollArea className="h-[250px] lg:h-[400px]" ref={scrollRef}>
         {liveEvents.length === 0 ? (
           <p className="py-12 text-center text-xs text-muted-foreground">
             No activity yet. Events will appear here in real-time.

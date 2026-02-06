@@ -77,36 +77,36 @@ function InitiativeItem({
           {initiative.priority}
         </Badge>
       </div>
-      <div className="flex items-center gap-1.5 mt-2.5">
+      <div className="flex items-center gap-2 mt-3">
         <Button
           size="sm"
           variant="default"
-          className="h-7 text-[11px] px-2.5 gap-1"
+          className="h-8 text-xs px-3 gap-1.5 flex-1"
           onClick={() => handleAction("approve", onApprove)}
           disabled={loading !== null}
         >
-          {loading === "approve" ? <Loader2 className="h-3 w-3 motion-safe:animate-spin" /> : <Check className="h-3 w-3" />}
+          {loading === "approve" ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <Check className="h-3.5 w-3.5" />}
           Approve
         </Button>
         <Button
           size="sm"
-          variant="outline"
-          className="h-7 text-[11px] px-2.5 gap-1"
-          onClick={() => handleAction("reject", onReject)}
-          disabled={loading !== null}
-        >
-          {loading === "reject" ? <Loader2 className="h-3 w-3 motion-safe:animate-spin" /> : <X className="h-3 w-3" />}
-          Reject
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-7 text-[11px] px-2.5 gap-1 text-muted-foreground"
+          variant="secondary"
+          className="h-8 text-xs px-3 gap-1.5"
           onClick={() => handleAction("defer", onDefer)}
           disabled={loading !== null}
         >
-          {loading === "defer" ? <Loader2 className="h-3 w-3 motion-safe:animate-spin" /> : <Clock className="h-3 w-3" />}
-          Later
+          {loading === "defer" ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <Clock className="h-3.5 w-3.5" />}
+          Defer
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 text-xs px-3 gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10"
+          onClick={() => handleAction("reject", onReject)}
+          disabled={loading !== null}
+        >
+          {loading === "reject" ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <X className="h-3.5 w-3.5" />}
+          Reject
         </Button>
       </div>
     </div>

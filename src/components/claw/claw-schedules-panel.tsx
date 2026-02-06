@@ -154,7 +154,7 @@ export function ClawSchedulesPanel() {
           </DialogContent>
         </Dialog>
       </div>
-      <div className="p-2">
+      <div className="p-2 max-h-[400px] overflow-y-auto">
         {schedules.length === 0 ? (
           <p className="px-2 py-4 text-center text-sm text-muted-foreground">No schedules.</p>
         ) : (
