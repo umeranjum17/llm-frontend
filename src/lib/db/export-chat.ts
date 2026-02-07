@@ -39,6 +39,8 @@ export function chatToMarkdown(data: ChatExport): string {
   // Header
   lines.push(`# ${data.chat.title}`);
   lines.push("");
+  lines.push(`**Target:** ${data.chat.executionTarget ?? "lumina"}`);
+  lines.push("");
   lines.push(`**Model:** ${data.chat.modelId}`);
   if (data.chat.agentId) {
     lines.push(`**Agent:** ${data.chat.agentId}`);
@@ -91,6 +93,7 @@ export function chatToJson(data: ChatExport): string {
   // Clean up the data for export (remove internal fields)
   const exportData = {
     title: data.chat.title,
+    executionTarget: data.chat.executionTarget ?? "lumina",
     model: data.chat.modelId,
     agent: data.chat.agentId,
     created: new Date(data.chat.createdAt).toISOString(),

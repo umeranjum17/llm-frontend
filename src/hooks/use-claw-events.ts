@@ -34,9 +34,6 @@ const ACTIVITY_EVENTS: ClawEventType[] = [
 export function useClawEvents() {
   const client = useClawStore((s) => s.client);
   const isConnected = useClawStore((s) => s.isConnected);
-  const refreshTasks = useClawStore((s) => s.refreshTasks);
-  const refreshActivity = useClawStore((s) => s.refreshActivity);
-  const refreshSchedules = useClawStore((s) => s.refreshSchedules);
   const esRef = useRef<EventSource | null>(null);
   const prevTasksRef = useRef<Map<string, string>>(new Map());
 
@@ -62,8 +59,9 @@ export function useClawEvents() {
     const es = client.createEventSource();
     esRef.current = es;
 
+    // Use getState() for all store method calls to avoid dependency issues
     const onTaskUpdated = async () => {
-      await refreshTasks();
+      await useClawStore.getState().refreshTasks();
       const newTasks = useClawStore.getState().tasks;
       const prev = prevTasksRef.current;
 
@@ -97,21 +95,21 @@ export function useClawEvents() {
     };
 
     const onTaskCreated = () => {
-      refreshTasks();
+      useClawStore.getState().refreshTasks();
     };
 
-    const onTaskDeleted = () => refreshTasks();
+    const onTaskDeleted = () => useClawStore.getState().refreshTasks();
 
     const onActivity = async () => {
-      await refreshActivity();
+      await useClawStore.getState().refreshActivity();
     };
 
     const onScheduleCreated = () => {
-      refreshSchedules();
+      useClawStore.getState().refreshSchedules();
     };
 
     const onScheduleDeleted = () => {
-      refreshSchedules();
+      useClawStore.getState().refreshSchedules();
     };
 
     const onScheduleCompleted = (e: MessageEvent) => {
@@ -119,7 +117,7 @@ export function useClawEvents() {
         const data = JSON.parse(e.data);
         if (data.scheduleId) {
           useClawStore.getState().fetchScheduleRuns(data.scheduleId);
-          refreshSchedules();
+          useClawStore.getState().refreshSchedules();
         }
       } catch {}
     };
@@ -207,5 +205,6 @@ export function useClawEvents() {
       es.close();
       esRef.current = null;
     };
-  }, [isConnected, client, refreshTasks, refreshActivity, refreshSchedules]);
+    // Only depend on connection state - use getState() for store methods
+  }, [isConnected, client]);
 }

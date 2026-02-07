@@ -451,6 +451,7 @@ export function InputArea({ chatId }: InputAreaProps) {
       const builtInIds = new Set(BUILTIN_AGENTS.map((agent) => agent.id));
       agents.forEach((a: Agent) => {
         if (!a.isActive) return;
+        if (a.id === "agent_builtin_claw") return;
         if (a.isBuiltIn && !builtInIds.has(a.id)) return;
         items.push({
           id: a.id,

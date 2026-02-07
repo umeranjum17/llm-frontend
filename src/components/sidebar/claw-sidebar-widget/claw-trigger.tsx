@@ -14,6 +14,8 @@ export const ClawTrigger = forwardRef<
   const pendingInitiatives = useClawStore((s) =>
     s.initiatives.filter((i) => i.status === 'proposed').length
   )
+  const pendingQuestions = useClawStore((s) => s.questions.length)
+  const needsAttention = pendingInitiatives + pendingQuestions
 
   return (
     <Button
@@ -33,10 +35,10 @@ export const ClawTrigger = forwardRef<
         )}
       />
 
-      {/* Attention badge - only for initiatives needing action */}
-      {pendingInitiatives > 0 && (
+      {/* Attention badge - initiatives + questions needing action */}
+      {needsAttention > 0 && (
         <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-black">
-          {pendingInitiatives}
+          {needsAttention > 9 ? '9+' : needsAttention}
         </span>
       )}
     </Button>

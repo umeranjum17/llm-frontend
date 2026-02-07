@@ -77,11 +77,11 @@ function InitiativeItem({
           {initiative.priority}
         </Badge>
       </div>
-      <div className="flex items-center gap-2 mt-3">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button
           size="sm"
           variant="default"
-          className="h-8 text-xs px-3 gap-1.5 flex-1"
+          className="h-8 min-w-[8rem] flex-1 text-xs px-3 gap-1.5"
           onClick={() => handleAction("approve", onApprove)}
           disabled={loading !== null}
         >
@@ -91,7 +91,7 @@ function InitiativeItem({
         <Button
           size="sm"
           variant="secondary"
-          className="h-8 text-xs px-3 gap-1.5"
+          className="h-8 min-w-[6.5rem] text-xs px-3 gap-1.5"
           onClick={() => handleAction("defer", onDefer)}
           disabled={loading !== null}
         >
@@ -101,7 +101,7 @@ function InitiativeItem({
         <Button
           size="sm"
           variant="outline"
-          className="h-8 text-xs px-3 gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10"
+          className="h-8 min-w-[6.5rem] text-xs px-3 gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10"
           onClick={() => handleAction("reject", onReject)}
           disabled={loading !== null}
         >
@@ -144,6 +144,7 @@ export function ClawPopoverContent() {
   const tasks = useClawStore((s) => s.tasks);
   const schedules = useClawStore((s) => s.schedules);
   const initiatives = useClawStore((s) => s.initiatives);
+  const questions = useClawStore((s) => s.questions);
   const createTask = useClawStore((s) => s.createTask);
   const updateInitiative = useClawStore((s) => s.updateInitiative);
   const connect = useClawStore((s) => s.connect);
@@ -278,9 +279,9 @@ export function ClawPopoverContent() {
 
   // Connected state - simplified dashboard
   return (
-    <div>
+    <div className="flex min-h-0 max-h-[min(85vh,42rem)] flex-col overflow-hidden">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-border/50">
+      <div className="shrink-0 border-b border-border/50 px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="relative">
@@ -336,7 +337,7 @@ export function ClawPopoverContent() {
 
       {/* Quick Task Input (collapsible) */}
       {showTaskInput && (
-        <div className="px-4 py-3 border-b border-border/50 bg-muted/30 motion-safe:animate-slide-in-item">
+        <div className="shrink-0 border-b border-border/50 bg-muted/30 px-4 py-3 motion-safe:animate-slide-in-item">
           <div className="flex gap-2">
             <Input
               ref={inputRef}
@@ -370,22 +371,35 @@ export function ClawPopoverContent() {
       )}
 
       {/* Quick Stats */}
-      <div className="px-4 py-3 grid grid-cols-2 gap-2 border-b border-border/50">
+      <div className="shrink-0 border-b border-border/50 px-4 py-3">
+        <div className="grid grid-cols-3 gap-2">
         <StatCard value={runningTasks} label="Running" highlight={runningTasks > 0} />
         <StatCard value={activeSchedules} label="Schedules" />
+        <StatCard value={questions.length} label="Needs Input" highlight={questions.length > 0} />
+        </div>
       </div>
 
-      {/* Attention Items (Proposed Initiatives) */}
-      {proposedInitiatives.length > 0 && (
-        <div className="px-4 py-3 border-b border-border/50 bg-amber-500/5">
-          <div className="flex items-center gap-2 mb-2">
+      {/* Attention Items (Questions + Proposed Initiatives) */}
+      {(proposedInitiatives.length > 0 || questions.length > 0) && (
+        <div className="flex min-h-0 flex-1 flex-col border-b border-border/50 bg-amber-500/5 px-4 py-3">
+          <div className="mb-2 flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-amber-500" />
             <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">Needs Attention</span>
             <Badge variant="secondary" className="text-[10px] h-5 px-1.5 ml-auto font-medium">
-              {proposedInitiatives.length}
+              {proposedInitiatives.length + questions.length}
             </Badge>
           </div>
-          <div className="max-h-44 overflow-y-auto">
+          <div className="min-h-0 max-h-72 overflow-x-hidden overflow-y-auto pr-1 scrollbar-thin">
+            {/* Pending Questions (higher priority) */}
+            {questions.slice(0, 2).map((q) => (
+              <div key={q.id} className="py-2 border-b border-border/30 last:border-0">
+                <div className="text-xs font-medium text-foreground break-words">{q.question}</div>
+                <Link href="/claw" className="text-[10px] text-amber-600 hover:underline mt-1 inline-block">
+                  Answer on dashboard
+                </Link>
+              </div>
+            ))}
+            {/* Initiatives */}
             {proposedInitiatives.slice(0, 3).map((initiative) => (
               <InitiativeItem
                 key={initiative.id}
@@ -395,12 +409,12 @@ export function ClawPopoverContent() {
                 onDefer={() => updateInitiative(initiative.id, "deferred")}
               />
             ))}
-            {proposedInitiatives.length > 3 && (
+            {(proposedInitiatives.length > 3 || questions.length > 2) && (
               <Link
-                href="/claw?tab=initiatives"
+                href="/claw"
                 className="flex items-center justify-center gap-1 py-2.5 text-[11px] text-amber-600 hover:text-amber-700 font-medium transition-colors"
               >
-                View {proposedInitiatives.length - 3} more
+                View all on dashboard
                 <ArrowRight className="h-3 w-3" />
               </Link>
             )}
@@ -409,7 +423,7 @@ export function ClawPopoverContent() {
       )}
 
       {/* Footer */}
-      <div className="px-4 py-2.5 flex items-center justify-between bg-muted/20">
+      <div className="shrink-0 bg-muted/20 px-4 py-2.5 flex items-center justify-between">
         <Link
           href="/settings?tab=claw"
           className="text-[11px] text-muted-foreground hover:text-foreground font-medium transition-colors"

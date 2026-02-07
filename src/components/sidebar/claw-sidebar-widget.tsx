@@ -45,7 +45,8 @@ export function ClawSidebarWidget() {
         align="end"
         side="bottom"
         sideOffset={8}
-        className="w-80 p-0 shadow-lg"
+        collisionPadding={12}
+        className="w-[min(36rem,calc(100vw-1.5rem))] max-w-[36rem] max-h-[85vh] overflow-hidden p-0 shadow-lg"
       >
         {content}
       </PopoverContent>

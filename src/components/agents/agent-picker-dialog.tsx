@@ -60,7 +60,10 @@ export function AgentPickerDialog({
     const list = agents || [];
     const q = query.trim();
     const builtInIds = new Set(BUILTIN_AGENTS.map((agent: Agent) => agent.id));
-    const visibleAgents = list.filter((agent: Agent) => !agent.isBuiltIn || builtInIds.has(agent.id));
+    const visibleAgents = list.filter((agent: Agent) => {
+      if (agent.id === "agent_builtin_claw") return false;
+      return !agent.isBuiltIn || builtInIds.has(agent.id);
+    });
     if (!q) return visibleAgents.filter((a: Agent) => a.isActive);
     return visibleAgents.filter((a: Agent) => a.isActive && matches(a, q));
   }, [agents, query]);
@@ -223,4 +226,3 @@ export function AgentPickerDialog({
     </Dialog>
   );
 }
-

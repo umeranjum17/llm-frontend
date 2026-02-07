@@ -45,8 +45,14 @@ function ConnectionTab() {
       return;
     }
     await connect(url, secret);
-    await updateClawSettings(url, secret, true);
-    setEnabled(true);
+    const connected = useClawStore.getState().isConnected;
+    if (connected) {
+      const latestUrl = useSettingsStore.getState().clawUrl;
+      if (latestUrl && latestUrl !== url) {
+        setUrl(latestUrl);
+      }
+      setEnabled(true);
+    }
   };
 
   const handleDisconnect = () => {
@@ -265,13 +271,13 @@ export function ClawSettings() {
     if (!isConnected) {
       initFromSettings();
     }
-  }, []);
+  }, [isConnected, initFromSettings]);
 
   useEffect(() => {
     if (isConnected) {
       refreshAll();
     }
-  }, [isConnected]);
+  }, [isConnected, refreshAll]);
 
   return (
     <div className="space-y-4 sm:space-y-6">

@@ -1,63 +1,62 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
-import { ArrowLeft, Settings, Home, ListTodo, Calendar, Lightbulb, FolderCode } from "lucide-react";
+import { ArrowLeft, Settings, LayoutDashboard, ListTodo, Calendar, Activity, Wrench, Lightbulb, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ClawStatusBar } from "@/components/claw/claw-status-bar";
-import { ClawStatCards } from "@/components/claw/claw-stat-cards";
-import { ClawBriefingCard } from "@/components/claw/claw-briefing-card";
+import { ClawSystemOverview } from "@/components/claw/claw-system-overview";
+import { ClawActionRequired } from "@/components/claw/claw-action-required";
+import { ClawIntelligence } from "@/components/claw/claw-intelligence";
 import { ClawLiveFeed } from "@/components/claw/claw-live-feed";
-import { ClawTasksPanel } from "@/components/claw/claw-tasks-panel";
-import { ClawSchedulesPanel } from "@/components/claw/claw-schedules-panel";
-import { ClawInitiativesPanel } from "@/components/claw/claw-initiatives-panel";
-import { ClawCodebasesPanel } from "@/components/claw/claw-codebases-panel";
+import { ClawHistory } from "@/components/claw/claw-history";
+import { ClawTasksTab } from "@/components/claw/claw-tasks-tab";
+import { ClawSchedulesTab } from "@/components/claw/claw-schedules-tab";
+import { ClawTracesTab } from "@/components/claw/claw-traces-tab";
+import { ClawToolCallsTab } from "@/components/claw/claw-tool-calls-tab";
+import { ClawInitiativesTab } from "@/components/claw/claw-initiatives-tab";
+import { ClawControlTab } from "@/components/claw/claw-control-tab";
+import { ClawSkillsTab } from "@/components/claw/claw-skills-tab";
+import ClawConfigTab from "@/components/claw/claw-config-tab";
 import { useClawStore } from "@/stores/claw-store";
 
 export default function ClawDashboardPage() {
   const isConnected = useClawStore((s) => s.isConnected);
-  const initFromSettings = useClawStore((s) => s.initFromSettings);
-  const refreshAll = useClawStore((s) => s.refreshAll);
-  const [activeTab, setActiveTab] = useState("overview");
+  const didInit = useRef(false);
 
   useEffect(() => {
-    if (!isConnected) {
-      initFromSettings();
+    if (didInit.current) return;
+    didInit.current = true;
+    const { isConnected: connected, initFromSettings, refreshAll } = useClawStore.getState();
+    if (!connected) {
+      void initFromSettings();
+    } else {
+      void refreshAll();
     }
   }, []);
 
-  useEffect(() => {
-    if (isConnected) {
-      refreshAll();
-    }
-  }, [isConnected]);
-
   return (
-    <div className="mx-auto max-w-6xl px-4 py-4 lg:py-6">
+    <div className="mx-auto max-w-6xl px-3 sm:px-4 py-3 sm:py-4 lg:py-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3 sm:mb-4">
         <div className="flex items-center gap-2">
-          <Link href="/">
-            <Button variant="ghost" size="icon" className="h-8 w-8">
+          <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
+            <Link href="/">
               <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <h1 className="text-lg font-semibold">Claw Dashboard</h1>
+            </Link>
+          </Button>
+          <h1 className="text-lg font-semibold">Claw</h1>
         </div>
-        <Link href="/settings?tab=claw">
-          <Button variant="ghost" size="sm" className="h-8">
+        <Button variant="ghost" size="sm" className="h-8" asChild>
+          <Link href="/settings?tab=claw">
             <Settings className="h-4 w-4 lg:mr-1.5" />
             <span className="hidden lg:inline">Settings</span>
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </div>
 
-      {/* Status bar */}
-      <ClawStatusBar />
-
       {!isConnected ? (
-        <div className="rounded-lg border bg-card py-16 text-center mt-4">
+        <div className="rounded-lg border bg-card py-16 text-center">
           <p className="text-sm text-muted-foreground">
             Not connected to Claw.{" "}
             <Link href="/settings?tab=claw" className="underline">
@@ -66,76 +65,88 @@ export default function ClawDashboardPage() {
           </p>
         </div>
       ) : (
-        <>
-          {/* Mobile: Tabbed interface */}
-          <div className="lg:hidden mt-4">
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="w-full grid grid-cols-5 h-10">
-                <TabsTrigger value="overview" className="text-xs gap-1">
-                  <Home className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Overview</span>
-                </TabsTrigger>
-                <TabsTrigger value="tasks" className="text-xs gap-1">
-                  <ListTodo className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Tasks</span>
-                </TabsTrigger>
-                <TabsTrigger value="schedules" className="text-xs gap-1">
-                  <Calendar className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Schedules</span>
-                </TabsTrigger>
-                <TabsTrigger value="codebases" className="text-xs gap-1">
-                  <FolderCode className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Code</span>
-                </TabsTrigger>
-                <TabsTrigger value="ideas" className="text-xs gap-1">
-                  <Lightbulb className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Ideas</span>
-                </TabsTrigger>
-              </TabsList>
+        <Tabs defaultValue="overview" className="space-y-3 sm:space-y-4">
+          <TabsList className="w-full justify-start overflow-x-auto">
+            <TabsTrigger value="overview" className="gap-1.5 text-xs sm:text-sm">
+              <LayoutDashboard className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Overview</span>
+            </TabsTrigger>
+            <TabsTrigger value="tasks" className="gap-1.5 text-xs sm:text-sm">
+              <ListTodo className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Tasks</span>
+            </TabsTrigger>
+            <TabsTrigger value="schedules" className="gap-1.5 text-xs sm:text-sm">
+              <Calendar className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Schedules</span>
+            </TabsTrigger>
+            <TabsTrigger value="traces" className="gap-1.5 text-xs sm:text-sm">
+              <Activity className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Traces</span>
+            </TabsTrigger>
+            <TabsTrigger value="tool-calls" className="gap-1.5 text-xs sm:text-sm">
+              <Wrench className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Tool Calls</span>
+            </TabsTrigger>
+            <TabsTrigger value="initiatives" className="gap-1.5 text-xs sm:text-sm">
+              <Lightbulb className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Initiatives</span>
+            </TabsTrigger>
+            <TabsTrigger value="skills" className="gap-1.5 text-xs sm:text-sm">
+              <Package className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Skills</span>
+            </TabsTrigger>
+            <TabsTrigger value="control" className="gap-1.5 text-xs sm:text-sm">
+              <Wrench className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Control</span>
+            </TabsTrigger>
+            <TabsTrigger value="config" className="gap-1.5 text-xs sm:text-sm">
+              <Settings className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Config</span>
+            </TabsTrigger>
+          </TabsList>
 
-              <TabsContent value="overview" className="space-y-4 mt-4">
-                <ClawStatCards />
-                <ClawBriefingCard />
-                <ClawLiveFeed />
-              </TabsContent>
-
-              <TabsContent value="tasks" className="mt-4">
-                <ClawTasksPanel />
-              </TabsContent>
-
-              <TabsContent value="schedules" className="mt-4">
-                <ClawSchedulesPanel />
-              </TabsContent>
-
-              <TabsContent value="codebases" className="mt-4">
-                <ClawCodebasesPanel />
-              </TabsContent>
-
-              <TabsContent value="ideas" className="mt-4">
-                <ClawInitiativesPanel />
-              </TabsContent>
-            </Tabs>
-          </div>
-
-          {/* Desktop: Grid layout */}
-          <div className="hidden lg:block space-y-4 mt-4">
-            <ClawStatCards />
-
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div className="space-y-4">
-                <ClawBriefingCard />
-                <ClawLiveFeed />
-              </div>
-              <div className="space-y-4">
-                <ClawTasksPanel />
-                <ClawSchedulesPanel />
-                <ClawCodebasesPanel />
-              </div>
+          <TabsContent value="overview" className="space-y-3 sm:space-y-4">
+            <ClawSystemOverview />
+            <ClawActionRequired />
+            <ClawIntelligence />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+              <ClawLiveFeed />
+              <ClawHistory />
             </div>
+          </TabsContent>
 
-            <ClawInitiativesPanel />
-          </div>
-        </>
+          <TabsContent value="tasks">
+            <ClawTasksTab />
+          </TabsContent>
+
+          <TabsContent value="schedules">
+            <ClawSchedulesTab />
+          </TabsContent>
+
+          <TabsContent value="traces">
+            <ClawTracesTab />
+          </TabsContent>
+
+          <TabsContent value="tool-calls">
+            <ClawToolCallsTab />
+          </TabsContent>
+
+          <TabsContent value="initiatives">
+            <ClawInitiativesTab />
+          </TabsContent>
+
+          <TabsContent value="skills">
+            <ClawSkillsTab />
+          </TabsContent>
+
+          <TabsContent value="control">
+            <ClawControlTab />
+          </TabsContent>
+
+          <TabsContent value="config">
+            <ClawConfigTab />
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );

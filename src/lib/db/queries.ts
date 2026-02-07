@@ -200,6 +200,8 @@ export async function createChat(chat: Omit<Chat, "id" | "createdAt" | "updatedA
     ...chat,
     // Default to Personal project if no projectId provided
     projectId: chat.projectId || DEFAULT_PROJECT_ID,
+    // Keep existing chats on Lumina unless explicitly targeted to Claw runtime.
+    executionTarget: chat.executionTarget ?? "lumina",
     id: crypto.randomUUID(),
     createdAt: now,
     updatedAt: now,
@@ -742,6 +744,7 @@ export async function getSettings() {
     settings = {
       id: "default",
       theme: "system",
+      defaultExecutionTarget: "lumina",
       defaultModelId: DEFAULT_MODEL.id,
       defaultModelIdsByProvider: {},
       defaultMcpServerIds: [],

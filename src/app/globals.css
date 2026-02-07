@@ -207,7 +207,7 @@
 
   /* Glassmorphism - more subtle */
   .glass {
-    @apply bg-white/3 backdrop-blur-sm border border-white/5;
+    @apply bg-white/5 backdrop-blur-sm border border-white/5;
   }
 
   /* Hide scrollbar but keep functionality */
