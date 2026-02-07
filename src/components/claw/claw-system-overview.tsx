@@ -8,6 +8,8 @@ import {
   DollarSign,
   Loader2,
   Send,
+  FolderOpen,
+  GitBranch,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,6 +54,9 @@ export function ClawSystemOverview() {
   const schedules = useClawStore((s) => s.schedules);
   const monitors = useClawStore((s) => s.monitors);
   const cost = useClawStore((s) => s.cost);
+  const openProjects = useClawStore((s) => s.openProjects);
+  const focusedProject = useClawStore((s) => s.focusedProject);
+  const focusProjectAction = useClawStore((s) => s.focusProject);
   const createTask = useClawStore((s) => s.createTask);
   const currentTask = useClawActivityStore((s) => s.currentTask);
   const isAutonomousRunning = useClawActivityStore(
@@ -153,6 +158,41 @@ export function ClawSystemOverview() {
               accent={budgetPct > 80 ? "text-red-500" : "text-emerald-500"}
             />
           )}
+        </div>
+      )}
+
+      {/* Workspace info */}
+      {isConnected && openProjects.length > 0 && (
+        <div className="px-4 pb-3 border-t pt-3">
+          <div className="flex items-center gap-2 mb-2">
+            <FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground">
+              {openProjects.length} project{openProjects.length !== 1 ? "s" : ""} open
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {openProjects.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => !p.isFocused && focusProjectAction(p.id)}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs transition-colors",
+                  p.isFocused
+                    ? "bg-primary/10 text-primary border border-primary/30 font-medium"
+                    : "bg-muted/50 text-muted-foreground hover:bg-muted cursor-pointer"
+                )}
+              >
+                {p.isFocused && <span className="text-amber-500">★</span>}
+                {p.name}
+                {p.gitBranch && (
+                  <span className="inline-flex items-center gap-0.5 text-[10px] opacity-60">
+                    <GitBranch className="h-2.5 w-2.5" />
+                    {p.gitBranch}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

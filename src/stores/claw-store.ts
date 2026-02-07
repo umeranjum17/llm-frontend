@@ -1,7 +1,7 @@
 // src/stores/claw-store.ts
 import { create } from "zustand";
 import { ClawClient } from "@/lib/claw/client";
-import type { ClawStatus, ClawTask, ClawActivity, ClawSchedule, ClawScheduleRun, ClawInitiative, ClawConfig, ClawBriefing, ClawMonitor, ClawPipelineRun, CostData, PendingQuestion, Codebase, ClawTrace, ClawToolCall, ToolCallStats } from "@/lib/claw/types";
+import type { ClawStatus, ClawTask, ClawActivity, ClawSchedule, ClawScheduleRun, ClawInitiative, ClawConfig, ClawBriefing, ClawMonitor, ClawPipelineRun, CostData, PendingQuestion, Codebase, ClawTrace, ClawToolCall, ToolCallStats, ClawProject } from "@/lib/claw/types";
 import { getSettings, updateSettings } from "@/lib/db/queries";
 
 function getLocalhostFallbackUrl(url: string): string | null {
@@ -57,6 +57,8 @@ interface ClawState {
   cost: CostData | null;
   questions: PendingQuestion[];
   codebases: Codebase[];
+  openProjects: ClawProject[];
+  focusedProject: ClawProject | null;
   traces: ClawTrace[];
   toolCalls: ClawToolCall[];
   toolCallsTotal: number;
@@ -106,6 +108,12 @@ interface ClawState {
   registerCodebase: (name: string, path: string, description?: string) => Promise<Codebase | null>;
   indexCodebase: (id: string, incremental?: boolean) => Promise<void>;
   deleteCodebase: (id: string) => Promise<void>;
+
+  // Workspace methods
+  refreshOpenProjects: () => Promise<void>;
+  openProjectByPath: (path: string) => Promise<ClawProject | null>;
+  focusProject: (id: string) => Promise<void>;
+  closeProject: (id: string) => Promise<void>;
 }
 
 export const useClawStore = create<ClawState>((set, get) => ({
@@ -127,6 +135,8 @@ export const useClawStore = create<ClawState>((set, get) => ({
   cost: null,
   questions: [],
   codebases: [],
+  openProjects: [],
+  focusedProject: null,
   traces: [],
   toolCalls: [],
   toolCallsTotal: 0,
@@ -223,7 +233,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
   },
 
   disconnect: async () => {
-    set({ isConnected: false, client: null, status: null, tasks: [], activity: [], schedules: [], scheduleRuns: {}, initiatives: [], briefing: null, monitors: [], pipelineRuns: [], cost: null, questions: [], config: null, error: null, keysSynced: false, codebases: [], traces: [], toolCalls: [], toolCallsTotal: 0, toolCallStats: null });
+    set({ isConnected: false, client: null, status: null, tasks: [], activity: [], schedules: [], scheduleRuns: {}, initiatives: [], briefing: null, monitors: [], pipelineRuns: [], cost: null, questions: [], config: null, error: null, keysSynced: false, codebases: [], openProjects: [], focusedProject: null, traces: [], toolCalls: [], toolCallsTotal: 0, toolCallStats: null });
     // Persist disabled state so auto-connect doesn't re-enable on next startup
     const { useSettingsStore } = await import("@/stores/settings-store");
     const settings = useSettingsStore.getState();
@@ -234,7 +244,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
 
   refreshAll: async () => {
     const s = get();
-    await Promise.allSettled([s.refreshTasks(), s.refreshActivity(), s.refreshSchedules(), s.refreshConfig(), s.refreshInitiatives(), s.refreshBriefing(), s.refreshMonitors(), s.refreshPipelineRuns(), s.refreshCodebases(), s.refreshCost(), s.refreshQuestions(), s.refreshTraces(), s.refreshToolCalls(), s.refreshToolCallStats()]);
+    await Promise.allSettled([s.refreshTasks(), s.refreshActivity(), s.refreshSchedules(), s.refreshConfig(), s.refreshInitiatives(), s.refreshBriefing(), s.refreshMonitors(), s.refreshPipelineRuns(), s.refreshCodebases(), s.refreshOpenProjects(), s.refreshCost(), s.refreshQuestions(), s.refreshTraces(), s.refreshToolCalls(), s.refreshToolCallStats()]);
   },
 
   refreshTasks: async () => {
@@ -527,6 +537,57 @@ export const useClawStore = create<ClawState>((set, get) => ({
       set((s) => ({ codebases: s.codebases.filter((c) => c.id !== id) }));
     } catch (e) {
       console.error("[Claw] delete codebase:", (e as Error).message);
+    }
+  },
+
+  // Workspace methods
+  refreshOpenProjects: async () => {
+    const { client } = get();
+    if (!client) return;
+    try {
+      const { projects } = await client.getOpenProjects();
+      const focused = projects.find((p) => p.isFocused) ?? null;
+      set({ openProjects: projects, focusedProject: focused });
+    } catch (e) {
+      console.warn("[Claw] refresh open projects:", (e as Error).message);
+    }
+  },
+
+  openProjectByPath: async (path) => {
+    const { client } = get();
+    if (!client) return null;
+    try {
+      const { project } = await client.openProject(path);
+      await get().refreshOpenProjects();
+      return project;
+    } catch (e) {
+      console.error("[Claw] open project:", (e as Error).message);
+      return null;
+    }
+  },
+
+  focusProject: async (id) => {
+    const { client } = get();
+    if (!client) return;
+    try {
+      await client.focusProject(id);
+      await get().refreshOpenProjects();
+    } catch (e) {
+      console.error("[Claw] focus project:", (e as Error).message);
+    }
+  },
+
+  closeProject: async (id) => {
+    const { client } = get();
+    if (!client) return;
+    try {
+      await client.closeProject(id);
+      set((s) => ({
+        openProjects: s.openProjects.filter((p) => p.id !== id),
+        focusedProject: s.focusedProject?.id === id ? null : s.focusedProject,
+      }));
+    } catch (e) {
+      console.error("[Claw] close project:", (e as Error).message);
     }
   },
 }));

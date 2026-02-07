@@ -177,6 +177,58 @@ export function useClawEvents() {
     };
     es.addEventListener("pipeline:completed", onPipelineCompleted);
 
+    // Workspace events
+    const onProjectOpened = (e: MessageEvent) => {
+      useClawStore.getState().refreshOpenProjects();
+      try {
+        const data = JSON.parse(e.data);
+        toast.success(`Opened: ${data?.name || "project"}`);
+      } catch {}
+    };
+    es.addEventListener("project:opened", onProjectOpened);
+
+    const onProjectFocused = (e: MessageEvent) => {
+      useClawStore.getState().refreshOpenProjects();
+      try {
+        const data = JSON.parse(e.data);
+        addNotification({
+          type: "project:focused" as any,
+          title: "Project Focused",
+          message: data?.name || "Project focused",
+        });
+      } catch {}
+    };
+    es.addEventListener("project:focused", onProjectFocused);
+
+    const onProjectClosed = () => {
+      useClawStore.getState().refreshOpenProjects();
+    };
+    es.addEventListener("project:closed", onProjectClosed);
+
+    // Codebase indexing events
+    const onCodebaseIndexing = () => {
+      useClawStore.getState().refreshCodebases();
+    };
+    es.addEventListener("codebase:indexing_progress", onCodebaseIndexing);
+
+    const onCodebaseIndexed = (e: MessageEvent) => {
+      useClawStore.getState().refreshCodebases();
+      try {
+        const data = JSON.parse(e.data);
+        toast.success(`Codebase indexed: ${data?.fileCount || 0} files`);
+      } catch {}
+    };
+    es.addEventListener("codebase:indexed", onCodebaseIndexed);
+
+    const onCodebaseError = (e: MessageEvent) => {
+      useClawStore.getState().refreshCodebases();
+      try {
+        const data = JSON.parse(e.data);
+        toast.error(`Indexing error: ${data?.error || "unknown"}`);
+      } catch {}
+    };
+    es.addEventListener("codebase:index_error", onCodebaseError);
+
     // Auto-sync keys when Claw requests them
     const onKeysNeeded = () => {
       console.log("[Claw SSE] Claw requested keys, auto-syncing...");

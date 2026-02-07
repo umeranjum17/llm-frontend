@@ -5,6 +5,7 @@ import type {
   ClawTrace, ClawToolCall, ToolCallStats, ClawControlCapabilitiesResponse, ClawControlExecuteResponse,
   ClawStreamEvent,
   ClawSkillsAvailable, ClawSkillSearchResult, ClawHubCategory, ClawSkillInstallResult,
+  ClawProject,
 } from "./types";
 
 const REQUEST_TIMEOUT_MS = 8000;
@@ -318,6 +319,31 @@ export class ClawClient {
 
   async emergencyStop(): Promise<{ ok: boolean; message: string }> {
     return this.request("/emergency-stop", { method: "POST" });
+  }
+
+  // --- Workspaces ---
+
+  async openProject(path: string): Promise<{ project: ClawProject; codebaseId: string | null; indexingStatus: string }> {
+    return this.request("/projects/open", {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    });
+  }
+
+  async getOpenProjects(): Promise<{ projects: ClawProject[] }> {
+    return this.request("/projects/open");
+  }
+
+  async getFocusedProject(): Promise<{ project: ClawProject | null }> {
+    return this.request("/projects/focused");
+  }
+
+  async focusProject(id: string): Promise<{ ok: boolean; project: ClawProject }> {
+    return this.request(`/projects/${id}/focus`, { method: "POST" });
+  }
+
+  async closeProject(id: string): Promise<{ ok: boolean }> {
+    return this.request(`/projects/${id}/close`, { method: "POST" });
   }
 
   // --- Codebases ---

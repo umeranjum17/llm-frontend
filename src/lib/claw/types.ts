@@ -133,6 +133,29 @@ export interface PendingQuestion {
   answer: string | null;
 }
 
+// --- Projects / Workspaces ---
+
+export interface ClawProject {
+  id: string;
+  name: string;
+  path: string;
+  description?: string;
+  projectType?: string;
+  isGitRepo: boolean;
+  gitRemoteUrl?: string;
+  gitBranch?: string;
+  gitLastCommit?: string;
+  isOpen: boolean;
+  isFocused: boolean;
+  toolCallCount: number;
+  totalFilesChanged: number;
+  totalGitOps: number;
+  status: string;
+  createdAt: string;
+  lastAccessedAt: string;
+  updatedAt: string;
+}
+
 // --- Codebase Indexing ---
 
 export interface Codebase {

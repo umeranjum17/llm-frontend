@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import Link from "next/link";
-import { ArrowLeft, Settings, LayoutDashboard, ListTodo, Calendar, Activity, Wrench, Lightbulb, Package } from "lucide-react";
+import { ArrowLeft, Settings, LayoutDashboard, ListTodo, Calendar, Activity, Wrench, Lightbulb, Package, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClawSystemOverview } from "@/components/claw/claw-system-overview";
@@ -18,6 +18,7 @@ import { ClawInitiativesTab } from "@/components/claw/claw-initiatives-tab";
 import { ClawControlTab } from "@/components/claw/claw-control-tab";
 import { ClawSkillsTab } from "@/components/claw/claw-skills-tab";
 import ClawConfigTab from "@/components/claw/claw-config-tab";
+import { ClawWorkspacesTab } from "@/components/claw/claw-workspaces-tab";
 import { useClawStore } from "@/stores/claw-store";
 
 export default function ClawDashboardPage() {
@@ -71,6 +72,10 @@ export default function ClawDashboardPage() {
               <LayoutDashboard className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Overview</span>
             </TabsTrigger>
+            <TabsTrigger value="workspaces" className="gap-1.5 text-xs sm:text-sm">
+              <FolderOpen className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Workspaces</span>
+            </TabsTrigger>
             <TabsTrigger value="tasks" className="gap-1.5 text-xs sm:text-sm">
               <ListTodo className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Tasks</span>
@@ -113,6 +118,10 @@ export default function ClawDashboardPage() {
               <ClawLiveFeed />
               <ClawHistory />
             </div>
+          </TabsContent>
+
+          <TabsContent value="workspaces">
+            <ClawWorkspacesTab />
           </TabsContent>
 
           <TabsContent value="tasks">
