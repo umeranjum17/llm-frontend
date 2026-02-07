@@ -6,7 +6,7 @@ export function getDefaultChatConfig(settings?: Partial<UserSettings> | null) {
   const modelIdFromProvider =
     providerId ? settings?.defaultModelIdsByProvider?.[providerId] : undefined;
   const modelId = modelIdFromProvider || settings?.defaultModelId || DEFAULT_MODEL.id;
+  const executionTarget = settings?.defaultExecutionTarget ?? "lumina";
 
-  return { providerId, modelId };
+  return { providerId, modelId, executionTarget };
 }
-

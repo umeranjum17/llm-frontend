@@ -156,6 +156,7 @@ export function ChatShell() {
   const keys = useApiKeysStore((s) => s.keys);
   const models = useModelsStore((state) => state.models);
   const autoTaggingEnabled = useSettingsStore((state) => state.autoTaggingEnabled);
+  const defaultExecutionTarget = useSettingsStore((state) => state.defaultExecutionTarget);
   const lastProviderIdByModel = useSettingsStore((state) => state.lastProviderIdByModel);
   const updateLastProviderForModel = useSettingsStore((state) => state.updateLastProviderForModel);
   const clawEnabled = useSettingsStore((state) => state.clawEnabled);
@@ -210,6 +211,7 @@ export function ChatShell() {
     title: "New Chat",
     modelId: draftChatConfig.modelId,
     providerId: draftChatConfig.providerId,
+    executionTarget: draftChatConfig.executionTarget || defaultExecutionTarget || "lumina",
     projectId: draftChatConfig.projectId || "",
     activeMcpServerIds: draftChatConfig.activeMcpServerIds || [],
     reasoningLevel: draftChatConfig.reasoningLevel || "medium",
@@ -218,6 +220,8 @@ export function ChatShell() {
     createdAt: Date.now(),
     updatedAt: Date.now(),
   } as any : chatFromDb;
+  const executionTarget = chat?.executionTarget ?? "lumina";
+  const isClawRuntimeTarget = executionTarget === "claw_runtime";
 
   const messagesQuery = useLiveQueryWithTimeout(
     () => (activeChatId ? getMessages(activeChatId) : undefined),
@@ -567,17 +571,19 @@ export function ChatShell() {
       if (!state.isLoaded) {
         await state.loadSettings();
       }
-      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultMcpServerIds, defaultReasoningLevel, defaultTemperature, defaultMaxTokens } =
+      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultExecutionTarget, defaultMcpServerIds, defaultReasoningLevel, defaultTemperature, defaultMaxTokens } =
         useSettingsStore.getState();
-      const { providerId, modelId } = getDefaultChatConfig({
+      const { providerId, modelId, executionTarget } = getDefaultChatConfig({
         defaultProviderId,
         defaultModelId,
         defaultModelIdsByProvider,
+        defaultExecutionTarget,
       });
       const newChat = await createChat({
         title: "New Chat",
         modelId,
         providerId: providerId || undefined,
+        executionTarget,
         activeMcpServerIds: defaultMcpServerIds,
         reasoningLevel: (defaultReasoningLevel as "low" | "medium" | "high" | "xhigh") || "medium",
         temperature: defaultTemperature,
@@ -705,6 +711,11 @@ export function ChatShell() {
                       Draft
                     </Badge>
                   )}
+                  {isClawRuntimeTarget && (
+                    <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-medium border-blue-500/40 text-blue-600 dark:text-blue-400 bg-blue-500/10">
+                      Runtime
+                    </Badge>
+                  )}
                   {activeStreamCount > 0 && (
                     <button
                       onClick={() => window.dispatchEvent(new CustomEvent("lumina:open-sidebar"))}
@@ -723,50 +734,63 @@ export function ChatShell() {
                 <div className="flex items-center gap-1">
                   {/* Agent Selector - hidden on mobile for cleaner look */}
                   {!isMultiModelMode && chat && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="hidden sm:flex h-8 gap-1.5 px-3 text-xs font-medium border-border/50 relative"
-                      onClick={() => setAgentPickerOpen(true)}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        {currentAgent ? (
-                          <>
-                            <div className="relative">
-                              <span className="text-sm leading-none">{currentAgent.avatar || "🤖"}</span>
-                              {clawEnabled && (
-                                <span className={`absolute -bottom-0.5 -right-1 h-1.5 w-1.5 rounded-full ring-1 ring-background ${
-                                  clawError ? "bg-red-500" : clawIsConnecting ? "bg-blue-500 animate-pulse" : clawIsConnected && clawKeysSynced ? "bg-emerald-500" : clawIsConnected ? "bg-yellow-500" : "bg-muted-foreground"
-                                }`} />
-                              )}
-                            </div>
-                            <div className="flex flex-col items-start leading-none">
-                              <span className="max-w-[120px] truncate font-medium">
-                                {currentAgent.name}
-                              </span>
-                              {currentAgent.executionType === "pipeline" && currentAgent.pipeline?.steps?.length ? (
-                                <span className="text-[10px] text-muted-foreground">
-                                  Pipeline ({currentAgent.pipeline.steps.length} steps)
-                                </span>
-                              ) : currentAgent.modelId && (
-                                <span className="text-[10px] text-muted-foreground">
-                                  {getModelById(currentAgent.modelId)?.name || currentAgent.modelId.split("/").pop()}
-                                </span>
-                              )}
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <Bot className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-muted-foreground">Agent</span>
-                          </>
-                        )}
+                    isClawRuntimeTarget ? (
+                      <div className="hidden sm:flex h-8 items-center gap-2 px-3 text-xs font-medium border border-border/50 rounded-md bg-blue-500/5">
+                        <span className="text-sm leading-none">🦀</span>
+                        <div className="flex flex-col items-start leading-none">
+                          <span className="max-w-[130px] truncate font-medium">Claw Runtime</span>
+                          <span className="text-[10px] text-muted-foreground">Backend autonomous target</span>
+                        </div>
+                        <span className={`h-1.5 w-1.5 rounded-full ${
+                          clawError ? "bg-red-500" : clawIsConnecting ? "bg-blue-500 animate-pulse" : clawIsConnected && clawKeysSynced ? "bg-emerald-500" : clawIsConnected ? "bg-yellow-500" : "bg-muted-foreground"
+                        }`} />
                       </div>
-                    </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="hidden sm:flex h-8 gap-1.5 px-3 text-xs font-medium border-border/50 relative"
+                        onClick={() => setAgentPickerOpen(true)}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          {currentAgent ? (
+                            <>
+                              <div className="relative">
+                                <span className="text-sm leading-none">{currentAgent.avatar || "🤖"}</span>
+                                {clawEnabled && (
+                                  <span className={`absolute -bottom-0.5 -right-1 h-1.5 w-1.5 rounded-full ring-1 ring-background ${
+                                    clawError ? "bg-red-500" : clawIsConnecting ? "bg-blue-500 animate-pulse" : clawIsConnected && clawKeysSynced ? "bg-emerald-500" : clawIsConnected ? "bg-yellow-500" : "bg-muted-foreground"
+                                  }`} />
+                                )}
+                              </div>
+                              <div className="flex flex-col items-start leading-none">
+                                <span className="max-w-[120px] truncate font-medium">
+                                  {currentAgent.name}
+                                </span>
+                                {currentAgent.executionType === "pipeline" && currentAgent.pipeline?.steps?.length ? (
+                                  <span className="text-[10px] text-muted-foreground">
+                                    Pipeline ({currentAgent.pipeline.steps.length} steps)
+                                  </span>
+                                ) : currentAgent.modelId && (
+                                  <span className="text-[10px] text-muted-foreground">
+                                    {getModelById(currentAgent.modelId)?.name || currentAgent.modelId.split("/").pop()}
+                                  </span>
+                                )}
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <Bot className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-muted-foreground">Agent</span>
+                            </>
+                          )}
+                        </div>
+                      </Button>
+                    )
                   )}
 
                   {/* Model Selector - simplified on mobile */}
-                  {!isMultiModelMode && chat && !(currentAgent?.executionType === "pipeline" && currentAgent.pipeline?.steps?.length) && (
+                  {!isMultiModelMode && chat && !isClawRuntimeTarget && !(currentAgent?.executionType === "pipeline" && currentAgent.pipeline?.steps?.length) && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button

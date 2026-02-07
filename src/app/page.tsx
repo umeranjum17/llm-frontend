@@ -222,18 +222,20 @@ export default function Home() {
           await state.loadSettings();
         }
 
-        const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, currentProjectId, defaultReasoningLevel, defaultMcpServerIds, defaultTemperature, defaultMaxTokens } =
+        const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultExecutionTarget, currentProjectId, defaultReasoningLevel, defaultMcpServerIds, defaultTemperature, defaultMaxTokens } =
           useSettingsStore.getState();
-        const { providerId, modelId } = getDefaultChatConfig({
+        const { providerId, modelId, executionTarget } = getDefaultChatConfig({
           defaultProviderId,
           defaultModelId,
           defaultModelIdsByProvider,
+          defaultExecutionTarget,
         });
 
         // Set draft mode - don't create chat yet
         useUIStore.getState().setDraftChatConfig({
           modelId,
           providerId: providerId || undefined,
+          executionTarget,
           projectId: currentProjectId,
           activeMcpServerIds: defaultMcpServerIds,
           reasoningLevel: (defaultReasoningLevel as "low" | "medium" | "high" | "xhigh") || "medium",

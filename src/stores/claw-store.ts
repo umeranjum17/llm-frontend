@@ -1,8 +1,41 @@
 // src/stores/claw-store.ts
 import { create } from "zustand";
 import { ClawClient } from "@/lib/claw/client";
-import type { ClawStatus, ClawTask, ClawActivity, ClawSchedule, ClawScheduleRun, ClawInitiative, ClawConfig, ClawBriefing, ClawMonitor, ClawPipelineRun, Codebase } from "@/lib/claw/types";
+import type { ClawStatus, ClawTask, ClawActivity, ClawSchedule, ClawScheduleRun, ClawInitiative, ClawConfig, ClawBriefing, ClawMonitor, ClawPipelineRun, CostData, PendingQuestion, Codebase, ClawTrace, ClawToolCall, ToolCallStats } from "@/lib/claw/types";
 import { getSettings, updateSettings } from "@/lib/db/queries";
+
+function getLocalhostFallbackUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname !== "localhost") return null;
+    // If Lumina is served from localhost, keep Claw on localhost as well.
+    // Some CSPs allow localhost but block 127.0.0.1, which causes a retry loop.
+    if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+      return null;
+    }
+    parsed.hostname = "127.0.0.1";
+    return parsed.toString().replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
+}
+
+function normalizeLocalClawUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (
+      typeof window !== "undefined" &&
+      window.location.hostname === "localhost" &&
+      parsed.hostname === "127.0.0.1"
+    ) {
+      parsed.hostname = "localhost";
+      return parsed.toString().replace(/\/+$/, "");
+    }
+  } catch {
+    // Fall through and return as-is.
+  }
+  return url;
+}
 
 interface ClawState {
   isConnected: boolean;
@@ -21,7 +54,13 @@ interface ClawState {
   briefing: ClawBriefing | null;
   monitors: ClawMonitor[];
   pipelineRuns: ClawPipelineRun[];
+  cost: CostData | null;
+  questions: PendingQuestion[];
   codebases: Codebase[];
+  traces: ClawTrace[];
+  toolCalls: ClawToolCall[];
+  toolCallsTotal: number;
+  toolCallStats: ToolCallStats | null;
 
   connect: (url: string, secret: string) => Promise<void>;
   disconnect: () => void;
@@ -50,6 +89,18 @@ interface ClawState {
   chatWithClaw: (message: string, history?: Array<{ role: "user" | "assistant"; content: string }>) => Promise<{ response: string; taskId: string }>;
   initFromSettings: () => Promise<void>;
 
+  // Cost & Questions
+  refreshCost: () => Promise<void>;
+  refreshQuestions: () => Promise<void>;
+  answerQuestion: (id: string, answer: string) => Promise<void>;
+  dismissQuestion: (id: string) => Promise<void>;
+  emergencyStop: () => Promise<{ ok: boolean; message: string } | null>;
+
+  // Traces & Tool Calls
+  refreshTraces: (source?: string) => Promise<void>;
+  refreshToolCalls: (filters?: { toolName?: string; source?: string; success?: boolean; limit?: number; offset?: number }) => Promise<void>;
+  refreshToolCallStats: () => Promise<void>;
+
   // Codebase methods
   refreshCodebases: () => Promise<void>;
   registerCodebase: (name: string, path: string, description?: string) => Promise<Codebase | null>;
@@ -73,16 +124,40 @@ export const useClawStore = create<ClawState>((set, get) => ({
   briefing: null,
   monitors: [],
   pipelineRuns: [],
+  cost: null,
+  questions: [],
   codebases: [],
+  traces: [],
+  toolCalls: [],
+  toolCallsTotal: 0,
+  toolCallStats: null,
 
   connect: async (url, secret) => {
-    const cleanUrl = url.trim().replace(/\/+$/, "");
+    if (get().isConnecting) {
+      return;
+    }
+    const cleanUrl = normalizeLocalClawUrl(url.trim().replace(/\/+$/, ""));
     set({ isConnecting: true, error: null });
     try {
-      const client = new ClawClient(cleanUrl, secret);
-      const status = await client.getStatus();
+      let resolvedUrl = cleanUrl;
+      let client = new ClawClient(cleanUrl, secret);
+      let status: ClawStatus;
+      try {
+        status = await client.getStatus();
+      } catch (primaryErr) {
+        const fallbackUrl = getLocalhostFallbackUrl(cleanUrl);
+        if (!fallbackUrl) {
+          throw primaryErr;
+        }
+        console.warn(`[Claw] Primary URL failed (${cleanUrl}); retrying with ${fallbackUrl}`);
+        client = new ClawClient(fallbackUrl, secret);
+        status = await client.getStatus();
+        resolvedUrl = fallbackUrl;
+      }
+      // /status is intentionally public; validate the secret against a protected route.
+      await client.verifyAuth();
       set({ client, isConnected: true, isConnecting: false, status, keysSynced: false });
-      await updateSettings({ clawUrl: cleanUrl, clawSecret: secret, clawEnabled: true });
+      await updateSettings({ clawUrl: resolvedUrl, clawSecret: secret, clawEnabled: true });
       await get().refreshAll();
       // Auto-sync keys with retry
       await get().syncKeys();
@@ -148,7 +223,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
   },
 
   disconnect: async () => {
-    set({ isConnected: false, client: null, status: null, tasks: [], activity: [], schedules: [], scheduleRuns: {}, initiatives: [], briefing: null, monitors: [], pipelineRuns: [], config: null, error: null, keysSynced: false });
+    set({ isConnected: false, client: null, status: null, tasks: [], activity: [], schedules: [], scheduleRuns: {}, initiatives: [], briefing: null, monitors: [], pipelineRuns: [], cost: null, questions: [], config: null, error: null, keysSynced: false, codebases: [], traces: [], toolCalls: [], toolCallsTotal: 0, toolCallStats: null });
     // Persist disabled state so auto-connect doesn't re-enable on next startup
     const { useSettingsStore } = await import("@/stores/settings-store");
     const settings = useSettingsStore.getState();
@@ -159,7 +234,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
 
   refreshAll: async () => {
     const s = get();
-    await Promise.allSettled([s.refreshTasks(), s.refreshActivity(), s.refreshSchedules(), s.refreshConfig(), s.refreshInitiatives(), s.refreshBriefing(), s.refreshMonitors(), s.refreshPipelineRuns(), s.refreshCodebases()]);
+    await Promise.allSettled([s.refreshTasks(), s.refreshActivity(), s.refreshSchedules(), s.refreshConfig(), s.refreshInitiatives(), s.refreshBriefing(), s.refreshMonitors(), s.refreshPipelineRuns(), s.refreshCodebases(), s.refreshCost(), s.refreshQuestions(), s.refreshTraces(), s.refreshToolCalls(), s.refreshToolCallStats()]);
   },
 
   refreshTasks: async () => {
@@ -325,8 +400,14 @@ export const useClawStore = create<ClawState>((set, get) => ({
 
   initFromSettings: async () => {
     try {
+      if (get().isConnected || get().isConnecting) {
+        return;
+      }
       const settings = await getSettings();
       if (settings.clawEnabled && settings.clawUrl && settings.clawSecret) {
+        if (get().isConnected || get().isConnecting) {
+          return;
+        }
         console.log("[Claw] Auto-connecting to", settings.clawUrl);
         await get().connect(settings.clawUrl, settings.clawSecret);
         console.log("[Claw] Auto-connect result:", get().isConnected ? "connected" : "failed", get().error);
@@ -336,6 +417,65 @@ export const useClawStore = create<ClawState>((set, get) => ({
     } catch (e) {
       console.warn("[Claw] initFromSettings error:", e);
     }
+  },
+
+  refreshCost: async () => {
+    const { client } = get();
+    if (!client) return;
+    try { const { cost } = await client.getCost(); set({ cost }); }
+    catch (e) { console.warn("[Claw] refresh cost:", (e as Error).message); }
+  },
+
+  refreshQuestions: async () => {
+    const { client } = get();
+    if (!client) return;
+    try { const { questions } = await client.getQuestions(); set({ questions }); }
+    catch (e) { console.warn("[Claw] refresh questions:", (e as Error).message); }
+  },
+
+  answerQuestion: async (id, answer) => {
+    const { client } = get();
+    if (!client) return;
+    await client.answerQuestion(id, answer);
+    set((s) => ({ questions: s.questions.filter((q) => q.id !== id) }));
+  },
+
+  dismissQuestion: async (id) => {
+    const { client } = get();
+    if (!client) return;
+    await client.dismissQuestion(id);
+    set((s) => ({ questions: s.questions.filter((q) => q.id !== id) }));
+  },
+
+  emergencyStop: async () => {
+    const { client } = get();
+    if (!client) return null;
+    return client.emergencyStop();
+  },
+
+  // Traces & Tool Calls
+  refreshTraces: async (source?: string) => {
+    const { client } = get();
+    if (!client) return;
+    try { const { traces } = await client.getTraces(source); set({ traces }); }
+    catch (e) { console.warn("[Claw] refresh traces:", (e as Error).message); }
+  },
+
+  refreshToolCalls: async (filters) => {
+    const { client } = get();
+    if (!client) return;
+    try {
+      const { toolCalls, total } = await client.getToolCalls(filters);
+      set({ toolCalls, toolCallsTotal: total });
+    }
+    catch (e) { console.warn("[Claw] refresh tool calls:", (e as Error).message); }
+  },
+
+  refreshToolCallStats: async () => {
+    const { client } = get();
+    if (!client) return;
+    try { const { stats } = await client.getToolCallStats(); set({ toolCallStats: stats }); }
+    catch (e) { console.warn("[Claw] refresh tool call stats:", (e as Error).message); }
   },
 
   // Codebase methods

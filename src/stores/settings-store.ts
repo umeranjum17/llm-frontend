@@ -9,6 +9,7 @@ interface SettingsState extends Partial<UserSettings> {
   loadSettings: () => Promise<void>;
   updateTheme: (theme: "light" | "dark" | "system") => Promise<void>;
   updateDisplayName: (name: string | undefined) => Promise<void>;
+  updateDefaultExecutionTarget: (target: "lumina" | "claw_runtime") => Promise<void>;
   updateDefaultModel: (modelId: string) => Promise<void>;
   updateDefaultChatDefaults: (opts: {
     defaultProviderId?: string;
@@ -33,6 +34,7 @@ interface SettingsState extends Partial<UserSettings> {
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   isLoaded: false,
   theme: "system",
+  defaultExecutionTarget: "lumina",
   defaultModelIdsByProvider: {},
   defaultMcpServerIds: [],
   enabledTools: [],
@@ -53,6 +55,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         // Preserve defaults for arrays that might be undefined in DB
         set({
           ...settings,
+          defaultExecutionTarget: settings.defaultExecutionTarget ?? "lumina",
           defaultMcpServerIds: settings.defaultMcpServerIds ?? [],
           enabledTools: settings.enabledTools ?? [],
           shortcuts: settings.shortcuts ?? {},
@@ -84,6 +87,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           console.warn("[Settings Store] Max retries reached, using defaults");
           set({
             theme: "system",
+            defaultExecutionTarget: "lumina",
             defaultModelIdsByProvider: {},
             defaultMcpServerIds: [],
             enabledTools: [],
@@ -113,6 +117,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateDisplayName: async (name) => {
     await updateSettings({ displayName: name });
     set({ displayName: name });
+  },
+
+  updateDefaultExecutionTarget: async (target) => {
+    await updateSettings({ defaultExecutionTarget: target });
+    set({ defaultExecutionTarget: target });
   },
 
   updateDefaultModel: async (modelId) => {

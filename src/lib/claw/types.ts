@@ -69,6 +69,17 @@ export interface ClawConfig {
   pipelineIntervalMinutes: number;
   port: number;
   host: string;
+  briefingEnabled?: boolean;
+  briefingTime?: string;
+  computerUseEnabled?: boolean;
+  playwrightBrowserEnabled?: boolean;
+  gitToolEnabled?: boolean;
+  systemToolEnabled?: boolean;
+  databaseToolEnabled?: boolean;
+  networkToolEnabled?: boolean;
+  mediaToolEnabled?: boolean;
+  dailyTokenBudget?: number;
+  emergencyStopEnabled?: boolean;
 }
 
 export interface ClawBriefing {
@@ -98,6 +109,28 @@ export interface ClawPipelineRun {
   actionsCount: number;
   durationMs?: number;
   createdAt: string;
+}
+
+// --- Cost ---
+
+export interface CostData {
+  totalUsd: number;
+  byTier: Record<string, number>;
+  budgetUsd: number;
+}
+
+// --- Pending Questions ---
+
+export interface PendingQuestion {
+  id: string;
+  scheduleId: string | null;
+  taskId: string | null;
+  question: string;
+  context: string | null;
+  status: string;
+  createdAt: string;
+  answeredAt: string | null;
+  answer: string | null;
 }
 
 // --- Codebase Indexing ---
@@ -147,4 +180,135 @@ export interface CodebaseSearchResult {
     codebasePath?: string;
     distance?: number;
   }>;
+}
+
+// --- Traces ---
+
+export interface TraceStep {
+  toolName: string;
+  label?: string;
+  input?: string;
+  result?: string;
+}
+
+export interface ClawTrace {
+  id: string;
+  source: "chat" | "cron" | "heartbeat" | "ambient" | "reflection" | "pipeline" | "watcher";
+  input: string;
+  output?: string;
+  error?: string;
+  taskId?: string;
+  scheduleId?: string;
+  initiativeId?: string;
+  steps: TraceStep[];
+  toolCount: number;
+  startedAt: string;
+  completedAt?: string;
+  durationMs?: number;
+}
+
+// --- Tool Calls ---
+
+export interface ClawToolCall {
+  id: string;
+  toolName: string;
+  toolLabel?: string;
+  source: string;
+  taskId?: string;
+  scheduleId?: string;
+  initiativeId?: string;
+  args?: string;
+  result?: string;
+  sideEffects?: string;
+  success?: boolean;
+  error?: string;
+  reasoning?: string;
+  startedAt: string;
+  completedAt?: string;
+  durationMs?: number;
+}
+
+export interface ToolCallStats {
+  total: number;
+  success: number;
+  failed: number;
+  byTool: Record<string, number>;
+  bySource: Record<string, number>;
+  avgDuration: number | null;
+}
+
+// --- Control Plane ---
+
+export interface ClawControlCapability {
+  name: string;
+  description: string;
+  dangerous: boolean;
+  inputSchemaType: string | null;
+}
+
+export interface ClawControlCapabilitiesResponse {
+  enabled: boolean;
+  allowlist: string[];
+  toolCount: number;
+  tools: ClawControlCapability[];
+}
+
+export interface ClawControlExecuteResponse {
+  ok: boolean;
+  toolName: string;
+  taskId?: string;
+  dryRun?: boolean;
+  dangerous?: boolean;
+  error?: string;
+  result?: unknown;
+}
+
+// --- Streaming ---
+
+export type ClawStreamEvent =
+  | { type: "text-delta"; text: string }
+  | { type: "tool-call"; taskId: string; toolCallId?: string; toolName: string; toolLabel: string; args: any }
+  | { type: "tool-result"; taskId: string; toolCallId?: string; toolName: string; summary: string }
+  | { type: "reasoning"; text: string }
+  | { type: "error"; error: string }
+  | { type: "completed"; taskId: string; response: string }
+  | { type: "done" };
+
+// --- Skills ---
+
+export interface ClawSkillLocal {
+  name: string;
+  description: string;
+  userInvocable: boolean;
+  source: string;
+}
+
+export interface ClawSkillSearchResult {
+  slug: string;
+  name: string;
+  description: string;
+  author: string;
+  version: string;
+  downloads: number;
+  rating: number;
+  tags: string[];
+  updatedAt: string;
+}
+
+export interface ClawHubCategory {
+  name: string;
+  slug: string;
+  count: number;
+}
+
+export interface ClawSkillsAvailable {
+  local: ClawSkillLocal[];
+  hub: string[];
+}
+
+export interface ClawSkillInstallResult {
+  installed: boolean;
+  path: string;
+  slug: string;
+  version: string;
 }

@@ -30,6 +30,7 @@ export interface Chat {
   id: string;
   projectId?: string;
   title: string;
+  executionTarget?: "lumina" | "claw_runtime"; // Chat execution backend (default: lumina)
   modelId: string;
   providerId?: string; // Preferred provider for this chat (optional)
   agentId?: string;
@@ -140,6 +141,7 @@ export interface UserSettings {
   id: string; // Always 'default'
   theme: "light" | "dark" | "system";
   displayName?: string; // User's display name (shows initial in avatar)
+  defaultExecutionTarget?: "lumina" | "claw_runtime";
   defaultProviderId?: string;
   defaultModelId?: string;
   defaultModelIdsByProvider?: Record<string, string>;

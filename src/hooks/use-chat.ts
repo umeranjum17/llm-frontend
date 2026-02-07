@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useApiKeysStore } from "@/stores/api-keys-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import { useUIStore } from "@/stores/ui-store";
 import { useStreamingStore, type ActiveSkill, type PendingSkillApproval, type ImageGenerationStage, type ContextCompactionState } from "@/stores/streaming-store";
 import { useComposioStore, selectHasValidSession } from "@/stores/composio-store";
@@ -781,7 +782,148 @@ export function useChat(chatId: string | null) {
     // Use chat.modelId for the model - agent's default is copied there when selected,
     // and user changes via dropdown update chat.modelId
     const agent = chat.agentId ? await getAgentById(chat.agentId) : undefined;
+    const executionTarget = chat.executionTarget ?? "lumina";
     const modelId = overrideModelId || chat.modelId;
+
+    // Route to Claw runtime only when explicitly selected.
+    if (executionTarget === "claw_runtime") {
+      const { useClawStore } = await import("@/stores/claw-store");
+      const clawStore = useClawStore.getState();
+
+      if (!clawStore.isConnected) {
+        const errMsg = await addMessage({
+          chatId: effectiveChatId,
+          role: "assistant",
+          content: "Claw Runtime is not connected. Go to Settings > Claw to configure the connection.",
+          parentId: parentUserMessageId,
+        });
+        await updateChat(effectiveChatId, { activeBranchLeafId: errMsg.id });
+        return;
+      }
+
+      const cleanedMessage = cleanReferencesForLLM(getTextFromMessageContent(messageContent));
+
+      // Load conversation history for Claw context
+      let clawHistory: Array<{ role: "user" | "assistant"; content: string }> = [];
+      try {
+        const history = parentUserMessageId
+          ? await getMessagesForBranch(effectiveChatId, parentUserMessageId)
+          : await getMessages(effectiveChatId);
+        clawHistory = history
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .slice(-20)
+          .map((m) => ({
+            role: m.role as "user" | "assistant",
+            content: getTextFromMessageContent(m.content),
+          }))
+          .filter((m) => m.content.trim());
+      } catch (e) {
+        console.warn("[Claw] Failed to load conversation history:", e);
+      }
+
+      // Create placeholder message to show loading skeleton
+      const placeholderMsg = await addMessage({
+        chatId: effectiveChatId,
+        role: "assistant",
+        content: "",
+        parentId: parentUserMessageId,
+      });
+      await updateChat(effectiveChatId, { activeBranchLeafId: placeholderMsg.id });
+      setStreamingMessage(effectiveChatId, placeholderMsg.id);
+      const finalizeClawStreaming = () => {
+        if (streamingClearTimeoutRef.current) {
+          clearTimeout(streamingClearTimeoutRef.current);
+        }
+        streamingClearTimeoutRef.current = setTimeout(() => {
+          clearStreaming(effectiveChatId);
+          streamingClearTimeoutRef.current = null;
+          void processNextInQueue(effectiveChatId);
+        }, 150);
+      };
+
+      try {
+        const client = clawStore.client;
+        if (!client) {
+          throw new Error("Claw client not available");
+        }
+
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
+        let fullContent = "";
+        let clawTaskId = "";
+        const streamToolCalls: any[] = [];
+        const streamToolResults: any[] = [];
+
+        for await (const event of client.chatStream(cleanedMessage, clawHistory, controller.signal)) {
+          switch (event.type) {
+            case "text-delta":
+              fullContent += event.text;
+              appendStreamingContent(effectiveChatId, event.text);
+              break;
+            case "tool-call":
+              streamToolCalls.push({
+                id: event.toolCallId,
+                toolCallId: event.toolCallId,
+                toolName: event.toolName,
+                toolLabel: event.toolLabel,
+                args: event.args,
+                startTime: Date.now(),
+              });
+              setStreamingToolCalls(effectiveChatId, [...streamToolCalls]);
+              await updateMessage(placeholderMsg.id, { toolCalls: [...streamToolCalls] });
+              break;
+            case "tool-result":
+              streamToolResults.push({
+                id: event.toolCallId,
+                toolCallId: event.toolCallId,
+                toolName: event.toolName,
+                summary: event.summary,
+                result: event.summary,
+                endTime: Date.now(),
+              });
+              setStreamingToolResults(effectiveChatId, [...streamToolResults]);
+              await updateMessage(placeholderMsg.id, { toolResults: [...streamToolResults] });
+              break;
+            case "reasoning":
+              appendStreamingReasoning(effectiveChatId, event.text);
+              break;
+            case "completed":
+              clawTaskId = event.taskId;
+              if (!fullContent && event.response) {
+                fullContent = event.response;
+              }
+              break;
+            case "error":
+              throw new Error(event.error || "Unknown Claw stream error");
+            case "done":
+              break;
+          }
+        }
+
+        const finalContent = fullContent
+          ? (clawTaskId ? `${fullContent}\n\n*Task ID: ${clawTaskId}*` : fullContent)
+          : "Claw Runtime returned an empty response. This usually means a configuration issue — check Settings > Claw.";
+        await updateMessage(placeholderMsg.id, {
+          content: finalContent,
+          toolCalls: streamToolCalls.length > 0 ? streamToolCalls : undefined,
+          toolResults: streamToolResults.length > 0 ? streamToolResults : undefined,
+        });
+        abortControllerRef.current = null;
+        finalizeClawStreaming();
+        return;
+      } catch (e) {
+        const partialContent = useStreamingStore.getState().getChatStream(effectiveChatId)?.streamingContent || "";
+        const errorMsg = (e as Error).message;
+        const content = partialContent
+          ? `${partialContent}\n\n---\n*Stream interrupted: ${errorMsg}*`
+          : `Claw Runtime error: ${errorMsg}`;
+        await updateMessage(placeholderMsg.id, { content });
+        abortControllerRef.current = null;
+        finalizeClawStreaming();
+        return;
+      }
+    }
 
     const llmProviderIds = Array.from(
       new Set(
@@ -829,67 +971,6 @@ export function useChat(chatId: string | null) {
         `${modelId} doesn't support image attachments. ` +
         `Switch to a vision model (e.g., Gemini 3 Flash, Claude Sonnet 4.5, GPT-5) or remove images to send.`
       );
-    }
-
-    // Special routing for Claw agent
-    if (agent?.id === "agent_builtin_claw") {
-      const { useClawStore } = await import("@/stores/claw-store");
-      const clawStore = useClawStore.getState();
-
-      if (!clawStore.isConnected) {
-        const errMsg = await addMessage({
-          chatId: effectiveChatId,
-          role: "assistant",
-          content: "Claw is not connected. Go to Settings > Claw to configure the connection.",
-          parentId: parentUserMessageId,
-        });
-        await updateChat(effectiveChatId, { activeBranchLeafId: errMsg.id });
-        return;
-      }
-
-      const cleanedMessage = cleanReferencesForLLM(getTextFromMessageContent(messageContent));
-
-      // Load conversation history for Claw context
-      let clawHistory: Array<{ role: "user" | "assistant"; content: string }> = [];
-      try {
-        const history = parentUserMessageId
-          ? await getMessagesForBranch(effectiveChatId, parentUserMessageId)
-          : await getMessages(effectiveChatId);
-        clawHistory = history
-          .filter((m) => m.role === "user" || m.role === "assistant")
-          .slice(-20)
-          .map((m) => ({
-            role: m.role as "user" | "assistant",
-            content: getTextFromMessageContent(m.content),
-          }))
-          .filter((m) => m.content.trim());
-      } catch (e) {
-        console.warn("[Claw] Failed to load conversation history:", e);
-      }
-
-      // Create placeholder message to show loading skeleton
-      const placeholderMsg = await addMessage({
-        chatId: effectiveChatId,
-        role: "assistant",
-        content: "",
-        parentId: parentUserMessageId,
-      });
-      await updateChat(effectiveChatId, { activeBranchLeafId: placeholderMsg.id });
-      setStreamingMessage(effectiveChatId, placeholderMsg.id);
-
-      try {
-        const { response, taskId } = await clawStore.chatWithClaw(cleanedMessage, clawHistory);
-        const content = response
-          ? (taskId ? `${response}\n\n*Task ID: ${taskId}*` : response)
-          : "Claw returned an empty response. This usually means a configuration issue — check that API keys are set up in Settings → Claw → Key Sync.";
-        await updateMessage(placeholderMsg.id, { content });
-        clearStreaming(effectiveChatId);
-        return;
-      } catch (e) {
-        await updateMessage(placeholderMsg.id, { content: `Claw error: ${(e as Error).message}` });
-        clearStreaming(effectiveChatId);
-        return;
-      }
     }
 
     // Check if this is a pipeline agent
@@ -1968,6 +2049,7 @@ export function useChat(chatId: string | null) {
           title: "New Chat",
           modelId: draftChatConfig.modelId,
           providerId: draftChatConfig.providerId,
+          executionTarget: draftChatConfig.executionTarget || useSettingsStore.getState().defaultExecutionTarget || "lumina",
           projectId: draftChatConfig.projectId,
           activeMcpServerIds: draftChatConfig.activeMcpServerIds || [],
           reasoningLevel: (draftChatConfig.reasoningLevel as "low" | "medium" | "high" | "xhigh") || "medium",

@@ -15,17 +15,19 @@ export function useKeyboardShortcuts() {
   useHotkeys("mod+n", async (e) => {
     e.preventDefault();
     try {
-      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultMcpServerIds, defaultReasoningLevel, defaultTemperature, defaultMaxTokens } =
+      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultExecutionTarget, defaultMcpServerIds, defaultReasoningLevel, defaultTemperature, defaultMaxTokens } =
         useSettingsStore.getState();
-      const { providerId, modelId } = getDefaultChatConfig({
+      const { providerId, modelId, executionTarget } = getDefaultChatConfig({
         defaultProviderId,
         defaultModelId,
         defaultModelIdsByProvider,
+        defaultExecutionTarget,
       });
       const newChat = await createChat({
         title: "New Chat",
         modelId,
         providerId: providerId || undefined,
+        executionTarget,
         activeMcpServerIds: defaultMcpServerIds,
         reasoningLevel: (defaultReasoningLevel as "low" | "medium" | "high" | "xhigh") || "medium",
         temperature: defaultTemperature,

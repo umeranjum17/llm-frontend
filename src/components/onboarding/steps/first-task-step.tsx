@@ -30,7 +30,7 @@ export function FirstTaskStep({
   onComplete,
 }: FirstTaskStepProps) {
   const { getKeyForProvider, isProviderKeyLocked, requestVaultUnlock } = useApiKeysStore();
-  const { defaultModelId, defaultTemperature, defaultMaxTokens } = useSettingsStore();
+  const { defaultModelId, defaultExecutionTarget, defaultTemperature, defaultMaxTokens } = useSettingsStore();
   const [prompt, setPrompt] = useState(
     PROMPTS_BY_USE_CASE[useCase] || PROMPTS_BY_USE_CASE.chat
   );
@@ -65,6 +65,7 @@ export function FirstTaskStep({
         title: "First Task",
         projectId: "personal",
         modelId,
+        executionTarget: defaultExecutionTarget ?? "lumina",
         temperature: defaultTemperature,
         maxTokens: defaultMaxTokens,
       });

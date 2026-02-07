@@ -170,17 +170,19 @@ export function CommandPalette() {
     if (!state.isLoaded) {
       await state.loadSettings();
     }
-    const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultMcpServerIds, defaultReasoningLevel, defaultTemperature, defaultMaxTokens } =
+    const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultExecutionTarget, defaultMcpServerIds, defaultReasoningLevel, defaultTemperature, defaultMaxTokens } =
       useSettingsStore.getState();
-    const { providerId, modelId } = getDefaultChatConfig({
+    const { providerId, modelId, executionTarget } = getDefaultChatConfig({
       defaultProviderId,
       defaultModelId,
       defaultModelIdsByProvider,
+      defaultExecutionTarget,
     });
     const newChat = await createChat({
       title: "New Chat",
       modelId,
       providerId: providerId || undefined,
+      executionTarget,
       activeMcpServerIds: defaultMcpServerIds,
       reasoningLevel: (defaultReasoningLevel as "low" | "medium" | "high" | "xhigh") || "medium",
       temperature: defaultTemperature,
@@ -202,10 +204,11 @@ export function CommandPalette() {
     if (!state.isLoaded) {
       await state.loadSettings();
     }
-    const { defaultMcpServerIds, defaultReasoningLevel, defaultTemperature, defaultMaxTokens } = useSettingsStore.getState();
+    const { defaultExecutionTarget, defaultMcpServerIds, defaultReasoningLevel, defaultTemperature, defaultMaxTokens } = useSettingsStore.getState();
     const newChat = await createChat({
       title: "New Chat",
       modelId,
+      executionTarget: defaultExecutionTarget ?? "lumina",
       activeMcpServerIds: defaultMcpServerIds,
       reasoningLevel: (defaultReasoningLevel as "low" | "medium" | "high" | "xhigh") || "medium",
       temperature: defaultTemperature,

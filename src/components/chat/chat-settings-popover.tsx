@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { SlidersHorizontal, Bot, Brain, DollarSign, Swords, Thermometer, Hash, EyeOff, Layers, BookOpen } from "lucide-react";
+import { SlidersHorizontal, Bot, Brain, DollarSign, Swords, Thermometer, Hash, EyeOff, Layers, BookOpen, Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -20,8 +20,11 @@ import { reindexProjectFiles } from "@/lib/rag/file-indexer";
 import { toast } from "sonner";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useApiKeysStore } from "@/stores/api-keys-store";
+import { useClawStore } from "@/stores/claw-store";
+import { useUIStore } from "@/stores/ui-store";
 
 type ReasoningLevel = "low" | "medium" | "high" | "xhigh";
+type ExecutionTarget = "lumina" | "claw_runtime";
 
 const REASONING_LEVELS: { value: ReasoningLevel; label: string }[] = [
   { value: "low", label: "Low" },
@@ -62,8 +65,13 @@ export function ChatSettingsPopover({
     [chatId]
   );
   const mem0ApiKey = useApiKeysStore((state) => state.getKeyForProvider("mem0"));
+  const isClawConnected = useClawStore((state) => state.isConnected);
+  const draftChatConfig = useUIStore((state) => state.draftChatConfig);
+  const setDraftChatConfig = useUIStore((state) => state.setDraftChatConfig);
 
   const hasMem0ApiKey = !!mem0ApiKey?.key;
+  const defaultExecutionTarget = (settings?.defaultExecutionTarget ?? "lumina") as ExecutionTarget;
+  const executionTarget = (chat?.executionTarget ?? draftChatConfig?.executionTarget ?? defaultExecutionTarget) as ExecutionTarget;
   const ragEnabled = chat?.ragEnabled ?? false;
   const hasProjectFiles = (projectFiles?.length ?? 0) > 0;
   const incognitoMode = chat?.incognitoMode ?? false;
@@ -78,6 +86,7 @@ export function ChatSettingsPopover({
 
   const defaultReasoningLevel = (settings?.defaultReasoningLevel as ReasoningLevel) || "medium";
   const updateDefaultReasoningLevel = useSettingsStore((state) => state.updateDefaultReasoningLevel);
+  const updateDefaultExecutionTarget = useSettingsStore((state) => state.updateDefaultExecutionTarget);
   const updateDefaultTemperature = useSettingsStore((state) => state.updateDefaultTemperature);
   const updateDefaultMaxTokens = useSettingsStore((state) => state.updateDefaultMaxTokens);
 
@@ -158,6 +167,22 @@ export function ChatSettingsPopover({
     // No toast - action is confirmed by "Set as Default" button press
   };
 
+  const setExecutionTarget = async (target: ExecutionTarget) => {
+    if (chatId && target !== executionTarget) {
+      await updateChat(chatId, { executionTarget: target });
+    } else if (!chatId && draftChatConfig && target !== executionTarget) {
+      setDraftChatConfig({ ...draftChatConfig, executionTarget: target });
+    }
+
+    if (target !== defaultExecutionTarget) {
+      await updateDefaultExecutionTarget(target);
+    }
+
+    if (target === "claw_runtime" && !isClawConnected) {
+      toast.info("Claw Runtime is selected but not connected yet. Configure it in Settings > Claw.");
+    }
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -174,19 +199,53 @@ export function ChatSettingsPopover({
         <DropdownMenuLabel>Chat Settings</DropdownMenuLabel>
         <DropdownMenuSeparator />
 
-        {/* Agent */}
-        <button
-          onClick={onOpenAgentPicker}
-          className="w-full flex items-center justify-between px-2 py-1.5 text-sm hover:bg-accent rounded-sm transition-colors"
-        >
-          <div className="flex items-center gap-2">
-            <Bot className="h-4 w-4 text-muted-foreground" />
-            <span>Agent</span>
+        {/* Execution Target */}
+        <div className="px-2 py-1.5">
+          <div className="flex items-center gap-2 mb-1.5">
+            <Server className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm">Target</span>
           </div>
-          <span className="text-xs text-muted-foreground">
-            {currentAgent ? (currentAgent.avatar ? `${currentAgent.avatar} ` : "") + currentAgent.name : "Default"}
-          </span>
-        </button>
+          <div className="ml-6 flex gap-1">
+            <button
+              onClick={() => void setExecutionTarget("lumina")}
+              className={cn(
+                "px-2 py-0.5 text-xs rounded transition-colors",
+                executionTarget === "lumina"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted hover:bg-muted/80 text-muted-foreground"
+              )}
+            >
+              Lumina
+            </button>
+            <button
+              onClick={() => void setExecutionTarget("claw_runtime")}
+              className={cn(
+                "px-2 py-0.5 text-xs rounded transition-colors",
+                executionTarget === "claw_runtime"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted hover:bg-muted/80 text-muted-foreground"
+              )}
+            >
+              Claw Runtime
+            </button>
+          </div>
+        </div>
+
+        {/* Agent */}
+        {executionTarget === "lumina" && (
+          <button
+            onClick={onOpenAgentPicker}
+            className="w-full flex items-center justify-between px-2 py-1.5 text-sm hover:bg-accent rounded-sm transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Bot className="h-4 w-4 text-muted-foreground" />
+              <span>Agent</span>
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {currentAgent ? (currentAgent.avatar ? `${currentAgent.avatar} ` : "") + currentAgent.name : "Default"}
+            </span>
+          </button>
+        )}
 
         {/* Reasoning Level */}
         <div className="px-2 py-1.5">
