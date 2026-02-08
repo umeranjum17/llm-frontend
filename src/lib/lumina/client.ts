@@ -3,7 +3,7 @@ import type {
   LuminaBriefing, LuminaMonitor, LuminaPipelineRun, CostData, PendingQuestion,
   Codebase, CodebaseStats, CodebaseFile, CodebaseSearchResult,
   LuminaTrace, LuminaToolCall, ToolCallStats, LuminaControlCapabilitiesResponse, LuminaControlExecuteResponse,
-  LuminaStreamEvent,
+  LuminaStreamEvent, LuminaApproval,
   LuminaSkillsAvailable, LuminaSkillSearchResult, LuminaHubCategory, LuminaSkillInstallResult,
   LuminaProject,
 } from "./types";
@@ -321,6 +321,19 @@ export class LuminaClient {
     return this.request("/emergency-stop", { method: "POST" });
   }
 
+  // --- Approvals ---
+
+  async getApprovals(): Promise<{ approvals: LuminaApproval[] }> {
+    return this.request("/approvals");
+  }
+
+  async respondToApproval(id: string, approved: boolean): Promise<{ ok: boolean; approved: boolean }> {
+    return this.request(`/approvals/${id}`, {
+      method: "POST",
+      body: JSON.stringify({ approved }),
+    });
+  }
+
   // --- Workspaces ---
 
   async openProject(path: string): Promise<{ project: LuminaProject; codebaseId: string | null; indexingStatus: string }> {
@@ -378,6 +391,7 @@ export class LuminaClient {
     return this.request(`/codebases/${id}/index`, {
       method: "POST",
       body: JSON.stringify({ incremental }),
+      timeoutMs: CONTROL_TIMEOUT_MS,
     });
   }
 
@@ -401,7 +415,9 @@ export class LuminaClient {
     if (options?.limit) params.set("limit", String(options.limit));
     if (options?.language) params.set("language", options.language);
     if (options?.nodeType) params.set("nodeType", options.nodeType);
-    return this.request(`/codebases/${id}/search?${params}`);
+    return this.request(`/codebases/${id}/search?${params}`, {
+      timeoutMs: CHAT_TIMEOUT_MS,
+    });
   }
 
   async searchAllCodebases(
@@ -409,7 +425,8 @@ export class LuminaClient {
     limit = 10
   ): Promise<CodebaseSearchResult> {
     return this.request(
-      `/codebases/search/all?q=${encodeURIComponent(query)}&limit=${limit}`
+      `/codebases/search/all?q=${encodeURIComponent(query)}&limit=${limit}`,
+      { timeoutMs: CHAT_TIMEOUT_MS }
     );
   }
 

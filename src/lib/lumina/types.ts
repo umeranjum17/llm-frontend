@@ -286,6 +286,18 @@ export interface LuminaControlExecuteResponse {
   result?: unknown;
 }
 
+// --- Approvals ---
+
+export interface LuminaApproval {
+  id: string;
+  toolName: string;
+  args: Record<string, unknown>;
+  source: string;
+  taskId: string;
+  reason?: string;
+  createdAt: number;
+}
+
 // --- Streaming ---
 
 export type LuminaStreamEvent =
