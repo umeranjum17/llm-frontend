@@ -20,19 +20,19 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ p
 }
 
 async function proxyRequest(req: NextRequest, params: { path: string[] }) {
-  const clawUrl = req.headers.get("x-claw-url");
-  const clawSecret = req.headers.get("x-claw-secret");
+  const luminaUrl = req.headers.get("x-lumina-url");
+  const luminaSecret = req.headers.get("x-lumina-secret");
 
-  if (!clawUrl || !clawSecret) {
-    return NextResponse.json({ error: "Missing x-claw-url or x-claw-secret headers" }, { status: 400 });
+  if (!luminaUrl || !luminaSecret) {
+    return NextResponse.json({ error: "Missing x-lumina-url or x-lumina-secret headers" }, { status: 400 });
   }
 
   const path = "/" + params.path.join("/");
-  const url = new URL(path, clawUrl);
+  const url = new URL(path, luminaUrl);
   url.search = req.nextUrl.search;
 
   const headers: HeadersInit = {
-    Authorization: `Bearer ${clawSecret}`,
+    Authorization: `Bearer ${luminaSecret}`,
     "Content-Type": "application/json",
   };
 
