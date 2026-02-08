@@ -9,7 +9,7 @@ interface SettingsState extends Partial<UserSettings> {
   loadSettings: () => Promise<void>;
   updateTheme: (theme: "light" | "dark" | "system") => Promise<void>;
   updateDisplayName: (name: string | undefined) => Promise<void>;
-  updateDefaultExecutionTarget: (target: "lumina" | "claw_runtime") => Promise<void>;
+  updateDefaultExecutionTarget: (target: "lumina" | "lumina_cli") => Promise<void>;
   updateDefaultModel: (modelId: string) => Promise<void>;
   updateDefaultChatDefaults: (opts: {
     defaultProviderId?: string;

@@ -67,6 +67,7 @@ import {
   Bot,
   FileEdit,
   Plus,
+  Terminal,
 } from "lucide-react";
 import {
   Tooltip,
@@ -221,7 +222,7 @@ export function ChatShell() {
     updatedAt: Date.now(),
   } as any : chatFromDb;
   const executionTarget = chat?.executionTarget ?? "lumina";
-  const isClawRuntimeTarget = executionTarget === "claw_runtime";
+  const isClawRuntimeTarget = executionTarget === "lumina_cli";
 
   const messagesQuery = useLiveQueryWithTimeout(
     () => (activeChatId ? getMessages(activeChatId) : undefined),
@@ -736,10 +737,10 @@ export function ChatShell() {
                   {!isMultiModelMode && chat && (
                     isClawRuntimeTarget ? (
                       <div className="hidden sm:flex h-8 items-center gap-2 px-3 text-xs font-medium border border-border/50 rounded-md bg-blue-500/5">
-                        <span className="text-sm leading-none">🦀</span>
+                        <Terminal className="h-3.5 w-3.5 text-blue-500" />
                         <div className="flex flex-col items-start leading-none">
-                          <span className="max-w-[130px] truncate font-medium">Claw Runtime</span>
-                          <span className="text-[10px] text-muted-foreground">Backend autonomous target</span>
+                          <span className="max-w-[130px] truncate font-medium">Lumina CLI</span>
+                          <span className="text-[10px] text-muted-foreground">Backend autonomous agent</span>
                         </div>
                         <span className={`h-1.5 w-1.5 rounded-full ${
                           clawError ? "bg-red-500" : clawIsConnecting ? "bg-blue-500 animate-pulse" : clawIsConnected && clawKeysSynced ? "bg-emerald-500" : clawIsConnected ? "bg-yellow-500" : "bg-muted-foreground"

@@ -16,7 +16,7 @@ export interface Artifact {
 export interface DraftChatConfig {
   modelId: string;
   providerId?: string;
-  executionTarget?: "lumina" | "claw_runtime";
+  executionTarget?: "lumina" | "lumina_cli";
   agentId?: string;
   activeMcpServerIds?: string[];
   reasoningLevel?: string;

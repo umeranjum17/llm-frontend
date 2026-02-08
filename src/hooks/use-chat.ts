@@ -785,8 +785,8 @@ export function useChat(chatId: string | null) {
     const executionTarget = chat.executionTarget ?? "lumina";
     const modelId = overrideModelId || chat.modelId;
 
-    // Route to Claw runtime only when explicitly selected.
-    if (executionTarget === "claw_runtime") {
+    // Route to Lumina CLI runtime only when explicitly selected.
+    if (executionTarget === "lumina_cli") {
       const { useClawStore } = await import("@/stores/claw-store");
       const clawStore = useClawStore.getState();
 

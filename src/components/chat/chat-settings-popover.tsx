@@ -24,7 +24,7 @@ import { useClawStore } from "@/stores/claw-store";
 import { useUIStore } from "@/stores/ui-store";
 
 type ReasoningLevel = "low" | "medium" | "high" | "xhigh";
-type ExecutionTarget = "lumina" | "claw_runtime";
+type ExecutionTarget = "lumina" | "lumina_cli";
 
 const REASONING_LEVELS: { value: ReasoningLevel; label: string }[] = [
   { value: "low", label: "Low" },
@@ -178,8 +178,8 @@ export function ChatSettingsPopover({
       await updateDefaultExecutionTarget(target);
     }
 
-    if (target === "claw_runtime" && !isClawConnected) {
-      toast.info("Claw Runtime is selected but not connected yet. Configure it in Settings > Claw.");
+    if (target === "lumina_cli" && !isClawConnected) {
+      toast.info("Lumina CLI is selected but not connected yet. Configure it in Settings > Lumina CLI.");
     }
   };
 
@@ -218,15 +218,15 @@ export function ChatSettingsPopover({
               Lumina
             </button>
             <button
-              onClick={() => void setExecutionTarget("claw_runtime")}
+              onClick={() => void setExecutionTarget("lumina_cli")}
               className={cn(
                 "px-2 py-0.5 text-xs rounded transition-colors",
-                executionTarget === "claw_runtime"
+                executionTarget === "lumina_cli"
                   ? "bg-primary text-primary-foreground"
                   : "bg-muted hover:bg-muted/80 text-muted-foreground"
               )}
             >
-              Claw Runtime
+              Lumina CLI
             </button>
           </div>
         </div>

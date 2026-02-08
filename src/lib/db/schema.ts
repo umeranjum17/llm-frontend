@@ -2,7 +2,7 @@ import Dexie, { type EntityTable } from "dexie";
 import { TABLE_REGISTRY, getStoresForVersion } from "./table-registry";
 
 // Current schema version - update this when adding new tables or indexes
-export const DB_SCHEMA_VERSION = 32;
+export const DB_SCHEMA_VERSION = 33;
 
 // Type definitions
 export interface Project {
@@ -30,7 +30,7 @@ export interface Chat {
   id: string;
   projectId?: string;
   title: string;
-  executionTarget?: "lumina" | "claw_runtime"; // Chat execution backend (default: lumina)
+  executionTarget?: "lumina" | "lumina_cli"; // Chat execution backend (default: lumina)
   modelId: string;
   providerId?: string; // Preferred provider for this chat (optional)
   agentId?: string;
@@ -141,7 +141,7 @@ export interface UserSettings {
   id: string; // Always 'default'
   theme: "light" | "dark" | "system";
   displayName?: string; // User's display name (shows initial in avatar)
-  defaultExecutionTarget?: "lumina" | "claw_runtime";
+  defaultExecutionTarget?: "lumina" | "lumina_cli";
   defaultProviderId?: string;
   defaultModelId?: string;
   defaultModelIdsByProvider?: Record<string, string>;
@@ -634,10 +634,40 @@ export class LuminaDB extends Dexie {
     for (let version = 1; version <= DB_SCHEMA_VERSION; version++) {
       const schema = this.version(version).stores(getStoresForVersion(version));
 
+      // Version 33: Migrate "claw_runtime" to "lumina_cli"
+      if (version === 33) {
+        schema.upgrade(async (tx) => {
+          console.log("[DB] Running v33 upgrade: Migrating claw_runtime → lumina_cli");
+
+          // Migrate Chat.executionTarget
+          const chatsToUpdate = await tx.table("chats").toArray();
+          let chatsMigrated = 0;
+          for (const chat of chatsToUpdate) {
+            if (chat.executionTarget === "claw_runtime") {
+              await tx.table("chats").update(chat.id, { executionTarget: "lumina_cli" });
+              chatsMigrated++;
+            }
+          }
+          console.log(`[DB] Migrated ${chatsMigrated} chats from claw_runtime to lumina_cli`);
+
+          // Migrate UserSettings.defaultExecutionTarget
+          const settings = await tx.table("settings").toArray();
+          let settingsMigrated = 0;
+          for (const setting of settings) {
+            if (setting.defaultExecutionTarget === "claw_runtime") {
+              await tx.table("settings").update(setting.id, { defaultExecutionTarget: "lumina_cli" });
+              settingsMigrated++;
+            }
+          }
+          console.log(`[DB] Migrated ${settingsMigrated} settings from claw_runtime to lumina_cli`);
+
+          console.log("[DB] ✓ v33 migration complete");
+        });
+      }
+
+      // Ensure all required tables exist (runs on latest version)
       if (version === DB_SCHEMA_VERSION) {
         schema.upgrade(async (tx) => {
-          // Ensure all required tables exist by accessing them in the transaction
-          // This is a safety check - Dexie should create them automatically from .stores()
           const stores = getStoresForVersion(version);
           const expectedTables = Object.keys(stores);
           const idb = tx.idbtrans?.db;

@@ -65,11 +65,11 @@ function ConnectionTab() {
     <Card>
       <CardHeader>
         <CardTitle>Connection</CardTitle>
-        <CardDescription>Connect to your Claw agent instance</CardDescription>
+        <CardDescription>Connect to your Lumina CLI instance</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center justify-between">
-          <Label htmlFor="claw-enabled">Enable Claw</Label>
+          <Label htmlFor="claw-enabled">Enable Lumina CLI</Label>
           <Switch id="claw-enabled" checked={enabled} onCheckedChange={handleToggle} />
         </div>
 
@@ -136,7 +136,7 @@ function ConnectionTab() {
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            Control which Claw events show as notifications
+            Control which Lumina CLI events show as notifications
           </p>
         </div>
       </CardContent>
@@ -175,7 +175,7 @@ function ConfigTab() {
     <Card>
       <CardHeader>
         <CardTitle>Config</CardTitle>
-        <CardDescription>Edit Claw configuration</CardDescription>
+        <CardDescription>Edit Lumina CLI configuration</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
@@ -239,7 +239,7 @@ function KeySyncTab() {
         return;
       }
       const updated = await pushKeys(keyMap);
-      toast.success(`Synced ${updated.length} key(s) to Claw`);
+      toast.success(`Synced ${updated.length} key(s) to Lumina CLI`);
     } catch {
       toast.error("Failed to sync keys");
     } finally {
@@ -251,13 +251,13 @@ function KeySyncTab() {
     <Card>
       <CardHeader>
         <CardTitle>Key Sync</CardTitle>
-        <CardDescription>Sync API keys from Lumina to Claw</CardDescription>
+        <CardDescription>Sync API keys from Lumina to Lumina CLI</CardDescription>
       </CardHeader>
       <CardContent>
         <Button onClick={handleSync} disabled={!isConnected || syncing}>
           {syncing && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
           <Key className="h-4 w-4 mr-2" />
-          Sync API Keys to Claw
+          Sync API Keys to Lumina CLI
         </Button>
       </CardContent>
     </Card>
@@ -282,9 +282,9 @@ export function ClawSettings() {
   return (
     <div className="space-y-4 sm:space-y-6">
       <div>
-        <h3 className="text-base sm:text-lg font-medium">Claw Settings</h3>
+        <h3 className="text-base sm:text-lg font-medium">Lumina CLI Settings</h3>
         <p className="text-xs sm:text-sm text-muted-foreground">
-          Manage your Claw agent connection and configuration
+          Manage your Lumina CLI connection and configuration
         </p>
       </div>
 
