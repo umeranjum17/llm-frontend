@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type ClawEventType =
+export type LuminaEventType =
   | "brain:started"
   | "brain:tool_call"
   | "brain:tool_result"
@@ -25,32 +25,32 @@ export type ClawEventType =
   | "monitor:checked"
   | "monitor:alert";
 
-export interface ClawLiveEvent {
+export interface LuminaLiveEvent {
   id: string;
-  type: ClawEventType;
+  type: LuminaEventType;
   timestamp: number;
   data: Record<string, any>;
 }
 
 const MAX_EVENTS = 200;
 
-interface ClawActivityState {
-  liveEvents: ClawLiveEvent[];
+interface LuminaActivityState {
+  liveEvents: LuminaLiveEvent[];
   currentTask: { id: string; title: string; status: "running" | "completed" | "error" } | null;
   isAutonomousRunning: boolean;
 
-  pushEvent: (type: ClawEventType, data: Record<string, any>) => void;
+  pushEvent: (type: LuminaEventType, data: Record<string, any>) => void;
   clearEvents: () => void;
 }
 
-export const useClawActivityStore = create<ClawActivityState>((set) => ({
+export const useLuminaActivityStore = create<LuminaActivityState>((set) => ({
   liveEvents: [],
   currentTask: null,
   isAutonomousRunning: false,
 
   pushEvent: (type, data) =>
     set((state) => {
-      const event: ClawLiveEvent = {
+      const event: LuminaLiveEvent = {
         id: crypto.randomUUID(),
         type,
         timestamp: Date.now(),

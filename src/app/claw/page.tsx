@@ -19,16 +19,16 @@ import { ClawControlTab } from "@/components/claw/claw-control-tab";
 import { ClawSkillsTab } from "@/components/claw/claw-skills-tab";
 import ClawConfigTab from "@/components/claw/claw-config-tab";
 import { ClawWorkspacesTab } from "@/components/claw/claw-workspaces-tab";
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 
 export default function ClawDashboardPage() {
-  const isConnected = useClawStore((s) => s.isConnected);
+  const isConnected = useLuminaStore((s) => s.isConnected);
   const didInit = useRef(false);
 
   useEffect(() => {
     if (didInit.current) return;
     didInit.current = true;
-    const { isConnected: connected, initFromSettings, refreshAll } = useClawStore.getState();
+    const { isConnected: connected, initFromSettings, refreshAll } = useLuminaStore.getState();
     if (!connected) {
       void initFromSettings();
     } else {

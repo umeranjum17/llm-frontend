@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { useClawNotificationStore } from '../claw-notification-store';
+import { useLuminaNotificationStore } from '../lumina-notification-store';
 
-describe('claw-notification-store', () => {
+describe('lumina-notification-store', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     // Reset store state before each test
-    useClawNotificationStore.getState().clearAll();
+    useLuminaNotificationStore.getState().clearAll();
     // Reset deduplication and batching state
-    useClawNotificationStore.getState()._resetDedupState?.();
+    useLuminaNotificationStore.getState()._resetDedupState?.();
   });
 
   afterEach(() => {
@@ -16,35 +16,35 @@ describe('claw-notification-store', () => {
 
   describe('basic functionality', () => {
     it('adds a notification', () => {
-      const store = useClawNotificationStore.getState();
+      const store = useLuminaNotificationStore.getState();
       store.addNotification({
         type: 'task:completed',
         title: 'Task Done',
         message: 'Your task completed successfully',
       });
 
-      const notifications = useClawNotificationStore.getState().notifications;
+      const notifications = useLuminaNotificationStore.getState().notifications;
       expect(notifications).toHaveLength(1);
       expect(notifications[0].title).toBe('Task Done');
       expect(notifications[0].read).toBe(false);
     });
 
     it('marks notification as read', () => {
-      const store = useClawNotificationStore.getState();
+      const store = useLuminaNotificationStore.getState();
       store.addNotification({
         type: 'task:completed',
         title: 'Task Done',
         message: 'Your task completed successfully',
       });
 
-      const id = useClawNotificationStore.getState().notifications[0].id;
+      const id = useLuminaNotificationStore.getState().notifications[0].id;
       store.markAsRead(id);
 
-      expect(useClawNotificationStore.getState().notifications[0].read).toBe(true);
+      expect(useLuminaNotificationStore.getState().notifications[0].read).toBe(true);
     });
 
     it('marks all notifications as read', () => {
-      const store = useClawNotificationStore.getState();
+      const store = useLuminaNotificationStore.getState();
       store.addNotification({
         type: 'task:completed',
         title: 'Task 1',
@@ -58,12 +58,12 @@ describe('claw-notification-store', () => {
 
       store.markAllAsRead();
 
-      const notifications = useClawNotificationStore.getState().notifications;
+      const notifications = useLuminaNotificationStore.getState().notifications;
       expect(notifications.every(n => n.read)).toBe(true);
     });
 
     it('clears all notifications', () => {
-      const store = useClawNotificationStore.getState();
+      const store = useLuminaNotificationStore.getState();
       store.addNotification({
         type: 'task:completed',
         title: 'Task 1',
@@ -72,13 +72,13 @@ describe('claw-notification-store', () => {
 
       store.clearAll();
 
-      expect(useClawNotificationStore.getState().notifications).toHaveLength(0);
+      expect(useLuminaNotificationStore.getState().notifications).toHaveLength(0);
     });
   });
 
   describe('deduplication', () => {
     it('deduplicates keys:synced notifications within 60 second window', () => {
-      const store = useClawNotificationStore.getState();
+      const store = useLuminaNotificationStore.getState();
 
       // First notification should be added
       store.addNotification({
@@ -87,7 +87,7 @@ describe('claw-notification-store', () => {
         message: 'API keys have been synced',
       });
 
-      expect(useClawNotificationStore.getState().notifications).toHaveLength(1);
+      expect(useLuminaNotificationStore.getState().notifications).toHaveLength(1);
 
       // Second notification within window should be skipped
       vi.advanceTimersByTime(30_000); // 30 seconds
@@ -97,7 +97,7 @@ describe('claw-notification-store', () => {
         message: 'API keys have been synced again',
       });
 
-      expect(useClawNotificationStore.getState().notifications).toHaveLength(1);
+      expect(useLuminaNotificationStore.getState().notifications).toHaveLength(1);
 
       // Third notification within window should also be skipped
       vi.advanceTimersByTime(20_000); // 50 seconds total
@@ -108,11 +108,11 @@ describe('claw-notification-store', () => {
       });
 
       // 3 rapid keys:synced calls should result in 1 notification
-      expect(useClawNotificationStore.getState().notifications).toHaveLength(1);
+      expect(useLuminaNotificationStore.getState().notifications).toHaveLength(1);
     });
 
     it('allows keys:synced notification after 60 second window expires', () => {
-      const store = useClawNotificationStore.getState();
+      const store = useLuminaNotificationStore.getState();
 
       // First notification
       store.addNotification({
@@ -121,7 +121,7 @@ describe('claw-notification-store', () => {
         message: 'API keys have been synced',
       });
 
-      expect(useClawNotificationStore.getState().notifications).toHaveLength(1);
+      expect(useLuminaNotificationStore.getState().notifications).toHaveLength(1);
 
       // Wait for window to expire
       vi.advanceTimersByTime(61_000); // 61 seconds
@@ -133,11 +133,11 @@ describe('claw-notification-store', () => {
         message: 'API keys have been synced again',
       });
 
-      expect(useClawNotificationStore.getState().notifications).toHaveLength(2);
+      expect(useLuminaNotificationStore.getState().notifications).toHaveLength(2);
     });
 
     it('deduplicates schedule:triggered notifications within 60 second window', () => {
-      const store = useClawNotificationStore.getState();
+      const store = useLuminaNotificationStore.getState();
 
       store.addNotification({
         type: 'schedule:triggered',
@@ -145,7 +145,7 @@ describe('claw-notification-store', () => {
         message: 'Daily backup started',
       });
 
-      expect(useClawNotificationStore.getState().notifications).toHaveLength(1);
+      expect(useLuminaNotificationStore.getState().notifications).toHaveLength(1);
 
       vi.advanceTimersByTime(30_000);
       store.addNotification({
@@ -154,11 +154,11 @@ describe('claw-notification-store', () => {
         message: 'Another trigger',
       });
 
-      expect(useClawNotificationStore.getState().notifications).toHaveLength(1);
+      expect(useLuminaNotificationStore.getState().notifications).toHaveLength(1);
     });
 
     it('does not deduplicate different notification types', () => {
-      const store = useClawNotificationStore.getState();
+      const store = useLuminaNotificationStore.getState();
 
       store.addNotification({
         type: 'keys:synced',
@@ -172,13 +172,13 @@ describe('claw-notification-store', () => {
         message: 'Task completed',
       });
 
-      expect(useClawNotificationStore.getState().notifications).toHaveLength(2);
+      expect(useLuminaNotificationStore.getState().notifications).toHaveLength(2);
     });
   });
 
   describe('batching', () => {
     it('batches rapid activity:new notifications within 2 second window', () => {
-      const store = useClawNotificationStore.getState();
+      const store = useLuminaNotificationStore.getState();
 
       // Add 5 activity notifications rapidly
       store.addNotification({
@@ -212,12 +212,12 @@ describe('claw-notification-store', () => {
       });
 
       // Before timeout, no notification should be added yet
-      expect(useClawNotificationStore.getState().notifications).toHaveLength(0);
+      expect(useLuminaNotificationStore.getState().notifications).toHaveLength(0);
 
       // After batch window expires, batched notification should appear
       vi.advanceTimersByTime(2_100);
 
-      const notifications = useClawNotificationStore.getState().notifications;
+      const notifications = useLuminaNotificationStore.getState().notifications;
       // 5 rapid activity:new calls should batch into 1 notification with count=5
       expect(notifications).toHaveLength(1);
       expect(notifications[0].title).toBe('5 new activities');
@@ -225,7 +225,7 @@ describe('claw-notification-store', () => {
     });
 
     it('creates single notification when only one activity in batch window', () => {
-      const store = useClawNotificationStore.getState();
+      const store = useLuminaNotificationStore.getState();
 
       store.addNotification({
         type: 'activity:new',
@@ -235,7 +235,7 @@ describe('claw-notification-store', () => {
 
       vi.advanceTimersByTime(2_100);
 
-      const notifications = useClawNotificationStore.getState().notifications;
+      const notifications = useLuminaNotificationStore.getState().notifications;
       expect(notifications).toHaveLength(1);
       expect(notifications[0].title).toBe('New Activity');
       expect(notifications[0].message).toBe('User logged in');
@@ -243,7 +243,7 @@ describe('claw-notification-store', () => {
     });
 
     it('continues batching if new events arrive before window expires', () => {
-      const store = useClawNotificationStore.getState();
+      const store = useLuminaNotificationStore.getState();
 
       store.addNotification({
         type: 'activity:new',
@@ -270,13 +270,13 @@ describe('claw-notification-store', () => {
 
       vi.advanceTimersByTime(2_100); // Now window expires
 
-      const notifications = useClawNotificationStore.getState().notifications;
+      const notifications = useLuminaNotificationStore.getState().notifications;
       expect(notifications).toHaveLength(1);
       expect(notifications[0].count).toBe(3);
     });
 
     it('does not batch non-batchable notification types', () => {
-      const store = useClawNotificationStore.getState();
+      const store = useLuminaNotificationStore.getState();
 
       store.addNotification({
         type: 'task:completed',
@@ -291,13 +291,13 @@ describe('claw-notification-store', () => {
       });
 
       // These should be added immediately without batching
-      expect(useClawNotificationStore.getState().notifications).toHaveLength(2);
+      expect(useLuminaNotificationStore.getState().notifications).toHaveLength(2);
     });
   });
 
   describe('batching and deduplication combined', () => {
     it('handles mixed notification types correctly', () => {
-      const store = useClawNotificationStore.getState();
+      const store = useLuminaNotificationStore.getState();
 
       // Add deduplicated type
       store.addNotification({
@@ -334,12 +334,12 @@ describe('claw-notification-store', () => {
       });
 
       // Before batch window expires
-      expect(useClawNotificationStore.getState().notifications).toHaveLength(2); // keys:synced + task:completed
+      expect(useLuminaNotificationStore.getState().notifications).toHaveLength(2); // keys:synced + task:completed
 
       // After batch window expires
       vi.advanceTimersByTime(2_100);
 
-      expect(useClawNotificationStore.getState().notifications).toHaveLength(3); // + batched activity
+      expect(useLuminaNotificationStore.getState().notifications).toHaveLength(3); // + batched activity
     });
   });
 });

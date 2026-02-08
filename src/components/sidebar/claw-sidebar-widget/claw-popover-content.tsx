@@ -20,8 +20,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { useClawStore } from "@/stores/claw-store";
-import { useClawActivityStore } from "@/stores/claw-activity-store";
+import { useLuminaStore } from "@/stores/lumina-store";
+import { useLuminaActivityStore } from "@/stores/lumina-activity-store";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -138,17 +138,17 @@ function SkeletonLine({ width }: { width: string }) {
 
 export function ClawPopoverContent() {
   const router = useRouter();
-  const isConnected = useClawStore((s) => s.isConnected);
-  const isConnecting = useClawStore((s) => s.isConnecting);
-  const error = useClawStore((s) => s.error);
-  const tasks = useClawStore((s) => s.tasks);
-  const schedules = useClawStore((s) => s.schedules);
-  const initiatives = useClawStore((s) => s.initiatives);
-  const questions = useClawStore((s) => s.questions);
-  const createTask = useClawStore((s) => s.createTask);
-  const updateInitiative = useClawStore((s) => s.updateInitiative);
-  const connect = useClawStore((s) => s.connect);
-  const isAutonomousRunning = useClawActivityStore((s) => s.isAutonomousRunning);
+  const isConnected = useLuminaStore((s) => s.isConnected);
+  const isConnecting = useLuminaStore((s) => s.isConnecting);
+  const error = useLuminaStore((s) => s.error);
+  const tasks = useLuminaStore((s) => s.tasks);
+  const schedules = useLuminaStore((s) => s.schedules);
+  const initiatives = useLuminaStore((s) => s.initiatives);
+  const questions = useLuminaStore((s) => s.questions);
+  const createTask = useLuminaStore((s) => s.createTask);
+  const updateInitiative = useLuminaStore((s) => s.updateInitiative);
+  const connect = useLuminaStore((s) => s.connect);
+  const isAutonomousRunning = useLuminaActivityStore((s) => s.isAutonomousRunning);
 
   const [taskInput, setTaskInput] = useState("");
   const [sending, setSending] = useState(false);

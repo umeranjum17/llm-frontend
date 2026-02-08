@@ -15,12 +15,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useSettingsStore } from "@/stores/settings-store";
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 import {
-  useClawNotificationStore,
+  useLuminaNotificationStore,
   useUnreadCount,
   type LuminaNotification,
-} from "@/stores/claw-notification-store";
+} from "@/stores/lumina-notification-store";
 import { useClawSurface } from "@/hooks/use-claw-surface";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
@@ -50,7 +50,7 @@ function formatRelativeTime(timestamp: number) {
 }
 
 function NotificationItem({ notification }: { notification: LuminaNotification }) {
-  const markAsRead = useClawNotificationStore((s) => s.markAsRead);
+  const markAsRead = useLuminaNotificationStore((s) => s.markAsRead);
   const { icon: Icon, color } = ICON_MAP[notification.type] || {
     icon: Activity,
     color: "text-muted-foreground",
@@ -85,10 +85,10 @@ export function ClawFloatingNotifications() {
   const { showFloating } = useClawSurface();
   const isMobile = useMediaQuery("(max-width: 640px)");
   const { clawEnabled } = useSettingsStore();
-  const isConnected = useClawStore((s) => s.isConnected);
-  const notifications = useClawNotificationStore((s) => s.notifications);
-  const markAllAsRead = useClawNotificationStore((s) => s.markAllAsRead);
-  const clearAll = useClawNotificationStore((s) => s.clearAll);
+  const isConnected = useLuminaStore((s) => s.isConnected);
+  const notifications = useLuminaNotificationStore((s) => s.notifications);
+  const markAllAsRead = useLuminaNotificationStore((s) => s.markAllAsRead);
+  const clearAll = useLuminaNotificationStore((s) => s.clearAll);
   const unreadCount = useUnreadCount();
   const [isExpanded, setIsExpanded] = useState(false);
   const [dismissed, setDismissed] = useState(false);

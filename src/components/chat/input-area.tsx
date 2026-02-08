@@ -23,7 +23,7 @@ import type { MessageContentPart, Skill, Agent, Tag, ProjectFile, Chat } from "@
 import { useStreamingStore } from "@/stores/streaming-store";
 import { MentionTextarea } from "@/components/chat/mention-textarea";
 import { MentionItem } from "@/lib/mentions/types";
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 import { useVoiceInput } from "@/hooks/use-voice-input";
 import { SkillQuickSelect } from "@/components/chat/skill-quick-select";
 import { SKILL_COLORS } from "@/lib/constants/skills";
@@ -349,8 +349,8 @@ export function InputArea({ chatId }: InputAreaProps) {
   const agents = useLiveQuery(() => getAllAgents(), []);
   const tags = useLiveQuery(() => getAllTags(), []);
   const skills = useLiveQuery(() => getAllSkills(), []);
-  const codebases = useClawStore((s) => s.codebases);
-  const isClawConnected = useClawStore((s) => s.isConnected);
+  const codebases = useLuminaStore((s) => s.codebases);
+  const isClawConnected = useLuminaStore((s) => s.isConnected);
 
   // Model capabilities for the current chat model
   const modelCaps = useMemo(() => {

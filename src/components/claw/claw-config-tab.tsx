@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 import type { LuminaConfig } from "@/lib/lumina/types";
 
 interface EditableConfig {
@@ -135,8 +135,8 @@ function toEditableConfig(form: ConfigFormState, initial: EditableConfig): Edita
 }
 
 export default function ClawConfigTab() {
-  const client = useClawStore((s) => s.client);
-  const isConnected = useClawStore((s) => s.isConnected);
+  const client = useLuminaStore((s) => s.client);
+  const isConnected = useLuminaStore((s) => s.isConnected);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);

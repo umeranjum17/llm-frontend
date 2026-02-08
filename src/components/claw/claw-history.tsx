@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronRight, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 
 function StatusBadge({ status }: { status: string }) {
   switch (status) {
@@ -45,8 +45,8 @@ function formatDate(dateStr: string): string {
 }
 
 export function ClawHistory() {
-  const tasks = useClawStore((s) => s.tasks);
-  const activity = useClawStore((s) => s.activity);
+  const tasks = useLuminaStore((s) => s.tasks);
+  const activity = useLuminaStore((s) => s.activity);
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
 
   // Sort tasks newest first

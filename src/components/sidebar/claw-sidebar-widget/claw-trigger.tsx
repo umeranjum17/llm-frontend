@@ -2,7 +2,7 @@
 
 import { forwardRef } from 'react'
 import { Cpu } from 'lucide-react'
-import { useClawStore } from '@/stores/claw-store'
+import { useLuminaStore } from '@/stores/lumina-store'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
@@ -10,11 +10,11 @@ export const ClawTrigger = forwardRef<
   HTMLButtonElement,
   React.ComponentPropsWithoutRef<typeof Button>
 >(({ className, ...props }, ref) => {
-  const isConnected = useClawStore((s) => s.isConnected)
-  const pendingInitiatives = useClawStore((s) =>
+  const isConnected = useLuminaStore((s) => s.isConnected)
+  const pendingInitiatives = useLuminaStore((s) =>
     s.initiatives.filter((i) => i.status === 'proposed').length
   )
-  const pendingQuestions = useClawStore((s) => s.questions.length)
+  const pendingQuestions = useLuminaStore((s) => s.questions.length)
   const needsAttention = pendingInitiatives + pendingQuestions
 
   return (

@@ -10,7 +10,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
 import { toast } from "sonner";
 
@@ -37,11 +37,11 @@ function formatTimeUntil(iso: string) {
 }
 
 export function ClawIntelligence() {
-  const briefing = useClawStore((s) => s.briefing);
-  const generateBriefing = useClawStore((s) => s.generateBriefing);
-  const monitors = useClawStore((s) => s.monitors);
-  const pipelineRuns = useClawStore((s) => s.pipelineRuns);
-  const schedules = useClawStore((s) => s.schedules);
+  const briefing = useLuminaStore((s) => s.briefing);
+  const generateBriefing = useLuminaStore((s) => s.generateBriefing);
+  const monitors = useLuminaStore((s) => s.monitors);
+  const pipelineRuns = useLuminaStore((s) => s.pipelineRuns);
+  const schedules = useLuminaStore((s) => s.schedules);
 
   const [generating, setGenerating] = useState(false);
 

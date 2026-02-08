@@ -5,12 +5,12 @@ import { Search, Download, Trash2, Package, RefreshCw, Star, ExternalLink, Loade
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 import type { LuminaSkillLocal, LuminaSkillSearchResult, LuminaHubCategory } from "@/lib/lumina/types";
 import { toast } from "sonner";
 
 export function ClawSkillsTab() {
-  const client = useClawStore((s) => s.client);
+  const client = useLuminaStore((s) => s.client);
 
   const [installed, setInstalled] = useState<LuminaSkillLocal[]>([]);
   const [hubInstalled, setHubInstalled] = useState<string[]>([]);

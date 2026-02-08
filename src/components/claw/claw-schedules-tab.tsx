@@ -21,7 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 import type { LuminaSchedule } from "@/lib/lumina/types";
 import { cn } from "@/lib/utils";
 
@@ -39,7 +39,7 @@ function statusBadge(status: "running" | "success" | "error") {
 }
 
 function SchedulesRunHistory({ scheduleId }: { scheduleId: string }) {
-  const runs = useClawStore((s) => s.scheduleRuns[scheduleId] ?? []);
+  const runs = useLuminaStore((s) => s.scheduleRuns[scheduleId] ?? []);
 
   return (
     <div className="space-y-2">
@@ -66,12 +66,12 @@ function SchedulesRunHistory({ scheduleId }: { scheduleId: string }) {
 }
 
 export function ClawSchedulesTab() {
-  const isConnected = useClawStore((s) => s.isConnected);
-  const schedules = useClawStore((s) => s.schedules);
-  const refreshSchedules = useClawStore((s) => s.refreshSchedules);
-  const createSchedule = useClawStore((s) => s.createSchedule);
-  const deleteSchedule = useClawStore((s) => s.deleteSchedule);
-  const fetchScheduleRuns = useClawStore((s) => s.fetchScheduleRuns);
+  const isConnected = useLuminaStore((s) => s.isConnected);
+  const schedules = useLuminaStore((s) => s.schedules);
+  const refreshSchedules = useLuminaStore((s) => s.refreshSchedules);
+  const createSchedule = useLuminaStore((s) => s.createSchedule);
+  const deleteSchedule = useLuminaStore((s) => s.deleteSchedule);
+  const fetchScheduleRuns = useLuminaStore((s) => s.fetchScheduleRuns);
 
   const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);

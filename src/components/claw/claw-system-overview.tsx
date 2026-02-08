@@ -14,8 +14,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ClawEmergencyStop } from "@/components/claw/claw-emergency-stop";
-import { useClawStore } from "@/stores/claw-store";
-import { useClawActivityStore } from "@/stores/claw-activity-store";
+import { useLuminaStore } from "@/stores/lumina-store";
+import { useLuminaActivityStore } from "@/stores/lumina-activity-store";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -48,18 +48,18 @@ function StatPill({
 }
 
 export function ClawSystemOverview() {
-  const isConnected = useClawStore((s) => s.isConnected);
-  const status = useClawStore((s) => s.status);
-  const tasks = useClawStore((s) => s.tasks);
-  const schedules = useClawStore((s) => s.schedules);
-  const monitors = useClawStore((s) => s.monitors);
-  const cost = useClawStore((s) => s.cost);
-  const openProjects = useClawStore((s) => s.openProjects);
-  const focusedProject = useClawStore((s) => s.focusedProject);
-  const focusProjectAction = useClawStore((s) => s.focusProject);
-  const createTask = useClawStore((s) => s.createTask);
-  const currentTask = useClawActivityStore((s) => s.currentTask);
-  const isAutonomousRunning = useClawActivityStore(
+  const isConnected = useLuminaStore((s) => s.isConnected);
+  const status = useLuminaStore((s) => s.status);
+  const tasks = useLuminaStore((s) => s.tasks);
+  const schedules = useLuminaStore((s) => s.schedules);
+  const monitors = useLuminaStore((s) => s.monitors);
+  const cost = useLuminaStore((s) => s.cost);
+  const openProjects = useLuminaStore((s) => s.openProjects);
+  const focusedProject = useLuminaStore((s) => s.focusedProject);
+  const focusProjectAction = useLuminaStore((s) => s.focusProject);
+  const createTask = useLuminaStore((s) => s.createTask);
+  const currentTask = useLuminaActivityStore((s) => s.currentTask);
+  const isAutonomousRunning = useLuminaActivityStore(
     (s) => s.isAutonomousRunning
   );
 

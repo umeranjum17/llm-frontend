@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Loader2, Newspaper, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
 import { toast } from "sonner";
 
@@ -19,8 +19,8 @@ function formatRelativeTime(iso: string) {
 }
 
 export function ClawBriefingCard() {
-  const briefing = useClawStore((s) => s.briefing);
-  const generateBriefing = useClawStore((s) => s.generateBriefing);
+  const briefing = useLuminaStore((s) => s.briefing);
+  const generateBriefing = useLuminaStore((s) => s.generateBriefing);
   const [generating, setGenerating] = useState(false);
 
   const handleGenerate = async () => {

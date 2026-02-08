@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { useClawStore } from "@/stores/claw-store";
-import { useClawControlStore } from "@/stores/claw-control-store";
+import { useLuminaStore } from "@/stores/lumina-store";
+import { useLuminaControlStore } from "@/stores/lumina-control-store";
 import type { LuminaControlCapability } from "@/lib/lumina/types";
 
 const ARG_TEMPLATES: Record<string, string> = {
@@ -57,14 +57,14 @@ const getToolCategory = (toolName: string): ToolCategory => {
 const formatTimestamp = (value: string) => new Date(value).toLocaleString(undefined, { hour12: false });
 
 export function ClawControlTab() {
-  const client = useClawStore((s) => s.client);
-  const isConnected = useClawStore((s) => s.isConnected);
-  const loading = useClawControlStore((s) => s.loading);
-  const executing = useClawControlStore((s) => s.executing);
-  const error = useClawControlStore((s) => s.error);
-  const capabilities = useClawControlStore((s) => s.capabilities);
-  const refreshCapabilities = useClawControlStore((s) => s.refreshCapabilities);
-  const executeTool = useClawControlStore((s) => s.executeTool);
+  const client = useLuminaStore((s) => s.client);
+  const isConnected = useLuminaStore((s) => s.isConnected);
+  const loading = useLuminaControlStore((s) => s.loading);
+  const executing = useLuminaControlStore((s) => s.executing);
+  const error = useLuminaControlStore((s) => s.error);
+  const capabilities = useLuminaControlStore((s) => s.capabilities);
+  const refreshCapabilities = useLuminaControlStore((s) => s.refreshCapabilities);
+  const executeTool = useLuminaControlStore((s) => s.executeTool);
 
   const [toolName, setToolName] = useState("");
   const [toolFilter, setToolFilter] = useState("");
@@ -122,7 +122,7 @@ export function ClawControlTab() {
 
     setLastAttempt(next);
     const res = await executeTool(normalizedTool, parsedArgs, { dryRun: next.dryRun });
-    const latestError = useClawControlStore.getState().error;
+    const latestError = useLuminaControlStore.getState().error;
     const success = Boolean(res?.ok);
     const errorMessage = success ? undefined : res?.error ?? latestError ?? "Tool execution failed";
 

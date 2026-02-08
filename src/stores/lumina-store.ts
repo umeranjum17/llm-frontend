@@ -1,4 +1,4 @@
-// src/stores/claw-store.ts
+// src/stores/lumina-store.ts
 import { create } from "zustand";
 import { LuminaClient } from "@/lib/lumina/client";
 import type { LuminaStatus, LuminaTask, LuminaActivity, LuminaSchedule, LuminaScheduleRun, LuminaInitiative, LuminaConfig, LuminaBriefing, LuminaMonitor, LuminaPipelineRun, CostData, PendingQuestion, Codebase, LuminaTrace, LuminaToolCall, ToolCallStats, LuminaProject } from "@/lib/lumina/types";
@@ -8,7 +8,7 @@ function getLocalhostFallbackUrl(url: string): string | null {
   try {
     const parsed = new URL(url);
     if (parsed.hostname !== "localhost") return null;
-    // If Lumina is served from localhost, keep Claw on localhost as well.
+    // If Lumina is served from localhost, keep Lumina on localhost as well.
     // Some CSPs allow localhost but block 127.0.0.1, which causes a retry loop.
     if (typeof window !== "undefined" && window.location.hostname === "localhost") {
       return null;
@@ -20,7 +20,7 @@ function getLocalhostFallbackUrl(url: string): string | null {
   }
 }
 
-function normalizeLocalClawUrl(url: string): string {
+function normalizeLocalLuminaUrl(url: string): string {
   try {
     const parsed = new URL(url);
     if (
@@ -37,7 +37,7 @@ function normalizeLocalClawUrl(url: string): string {
   return url;
 }
 
-interface ClawState {
+interface LuminaState {
   isConnected: boolean;
   isConnecting: boolean;
   error: string | null;
@@ -88,7 +88,7 @@ interface ClawState {
   runPipeline: () => Promise<void>;
   createMonitor: (data: { name: string; type: string; config: Record<string, any> }) => Promise<string | null>;
   deleteMonitor: (id: string) => Promise<void>;
-  chatWithClaw: (message: string, history?: Array<{ role: "user" | "assistant"; content: string }>) => Promise<{ response: string; taskId: string }>;
+  chatWithLumina: (message: string, history?: Array<{ role: "user" | "assistant"; content: string }>) => Promise<{ response: string; taskId: string }>;
   initFromSettings: () => Promise<void>;
 
   // Cost & Questions
@@ -116,7 +116,7 @@ interface ClawState {
   closeProject: (id: string) => Promise<void>;
 }
 
-export const useClawStore = create<ClawState>((set, get) => ({
+export const useLuminaStore = create<LuminaState>((set, get) => ({
   isConnected: false,
   isConnecting: false,
   error: null,
@@ -146,7 +146,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
     if (get().isConnecting) {
       return;
     }
-    const cleanUrl = normalizeLocalClawUrl(url.trim().replace(/\/+$/, ""));
+    const cleanUrl = normalizeLocalLuminaUrl(url.trim().replace(/\/+$/, ""));
     set({ isConnecting: true, error: null });
     try {
       let resolvedUrl = cleanUrl;
@@ -159,7 +159,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
         if (!fallbackUrl) {
           throw primaryErr;
         }
-        console.warn(`[Claw] Primary URL failed (${cleanUrl}); retrying with ${fallbackUrl}`);
+        console.warn(`[Lumina] Primary URL failed (${cleanUrl}); retrying with ${fallbackUrl}`);
         client = new LuminaClient(fallbackUrl, secret);
         status = await client.getStatus();
         resolvedUrl = fallbackUrl;
@@ -208,13 +208,13 @@ export const useClawStore = create<ClawState>((set, get) => ({
         keyMap["MEM0_USER_ID"] = settings.memoryUserId || "default-user";
         if (Object.keys(keyMap).length > 0) {
           await client.pushKeys(keyMap);
-          console.log(`[Claw] Keys synced successfully (attempt ${attempt})`);
+          console.log(`[Lumina] Keys synced successfully (attempt ${attempt})`);
           set({ keysSynced: true });
-          const { useClawNotificationStore } = await import("@/stores/claw-notification-store");
-          useClawNotificationStore.getState().addNotification({
+          const { useLuminaNotificationStore } = await import("@/stores/lumina-notification-store");
+          useLuminaNotificationStore.getState().addNotification({
             type: "keys:synced",
             title: "Keys Synced",
-            message: `${Object.keys(keyMap).length} key(s) pushed to Claw`,
+            message: `${Object.keys(keyMap).length} key(s) pushed to Lumina`,
           });
           return true;
         }
@@ -222,13 +222,13 @@ export const useClawStore = create<ClawState>((set, get) => ({
         set({ keysSynced: true });
         return true;
       } catch (syncErr) {
-        console.warn(`[Claw] Key sync attempt ${attempt}/${maxRetries} failed:`, syncErr);
+        console.warn(`[Lumina] Key sync attempt ${attempt}/${maxRetries} failed:`, syncErr);
         if (attempt < maxRetries) {
           await new Promise((r) => setTimeout(r, attempt * 1000));
         }
       }
     }
-    console.error("[Claw] Key sync failed after all retries");
+    console.error("[Lumina] Key sync failed after all retries");
     return false;
   },
 
@@ -251,28 +251,28 @@ export const useClawStore = create<ClawState>((set, get) => ({
     const { client } = get();
     if (!client) return;
     try { const { tasks } = await client.getTasks(); set({ tasks }); }
-    catch (e) { console.warn("[Claw] refresh tasks:", (e as Error).message); }
+    catch (e) { console.warn("[Lumina] refresh tasks:", (e as Error).message); }
   },
 
   refreshActivity: async () => {
     const { client } = get();
     if (!client) return;
     try { const { activity } = await client.getActivity(50); set({ activity }); }
-    catch (e) { console.warn("[Claw] refresh activity:", (e as Error).message); }
+    catch (e) { console.warn("[Lumina] refresh activity:", (e as Error).message); }
   },
 
   refreshSchedules: async () => {
     const { client } = get();
     if (!client) return;
     try { const { schedules } = await client.getSchedules(); set({ schedules }); }
-    catch (e) { console.warn("[Claw] refresh schedules:", (e as Error).message); }
+    catch (e) { console.warn("[Lumina] refresh schedules:", (e as Error).message); }
   },
 
   refreshConfig: async () => {
     const { client } = get();
     if (!client) return;
     try { const { config } = await client.getConfig(); set({ config }); }
-    catch (e) { console.warn("[Claw] refresh config:", (e as Error).message); }
+    catch (e) { console.warn("[Lumina] refresh config:", (e as Error).message); }
   },
 
   createTask: async (instruction) => {
@@ -322,7 +322,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
     const { client } = get();
     if (!client) return;
     try { const { initiatives } = await client.getInitiatives(); set({ initiatives }); }
-    catch (e) { console.warn("[Claw] refresh initiatives:", (e as Error).message); }
+    catch (e) { console.warn("[Lumina] refresh initiatives:", (e as Error).message); }
   },
 
   updateInitiative: async (id, status) => {
@@ -336,21 +336,21 @@ export const useClawStore = create<ClawState>((set, get) => ({
     const { client } = get();
     if (!client) return;
     try { const { briefing } = await client.getLatestBriefing(); set({ briefing }); }
-    catch (e) { console.warn("[Claw] refresh briefing:", (e as Error).message); }
+    catch (e) { console.warn("[Lumina] refresh briefing:", (e as Error).message); }
   },
 
   refreshMonitors: async () => {
     const { client } = get();
     if (!client) return;
     try { const { monitors } = await client.getMonitors(); set({ monitors }); }
-    catch (e) { console.warn("[Claw] refresh monitors:", (e as Error).message); }
+    catch (e) { console.warn("[Lumina] refresh monitors:", (e as Error).message); }
   },
 
   refreshPipelineRuns: async () => {
     const { client } = get();
     if (!client) return;
     try { const { runs } = await client.getPipelineRuns(10); set({ pipelineRuns: runs }); }
-    catch (e) { console.warn("[Claw] refresh pipeline runs:", (e as Error).message); }
+    catch (e) { console.warn("[Lumina] refresh pipeline runs:", (e as Error).message); }
   },
 
   generateBriefing: async () => {
@@ -361,7 +361,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
       set({ briefing });
       return briefing;
     } catch (e) {
-      console.warn("[Claw] generate briefing:", (e as Error).message);
+      console.warn("[Lumina] generate briefing:", (e as Error).message);
       return null;
     }
   },
@@ -394,13 +394,13 @@ export const useClawStore = create<ClawState>((set, get) => ({
       const { runs } = await client.getScheduleRuns(scheduleId);
       set((s) => ({ scheduleRuns: { ...s.scheduleRuns, [scheduleId]: runs } }));
     } catch (e) {
-      console.warn("[Claw] fetch schedule runs:", (e as Error).message);
+      console.warn("[Lumina] fetch schedule runs:", (e as Error).message);
     }
   },
 
-  chatWithClaw: async (message, history) => {
+  chatWithLumina: async (message, history) => {
     const { client, keysSynced } = get();
-    if (!client) throw new Error("Not connected to Claw");
+    if (!client) throw new Error("Not connected to Lumina");
     // Ensure keys are synced before first chat
     if (!keysSynced) {
       await get().syncKeys();
@@ -418,14 +418,14 @@ export const useClawStore = create<ClawState>((set, get) => ({
         if (get().isConnected || get().isConnecting) {
           return;
         }
-        console.log("[Claw] Auto-connecting to", settings.clawUrl);
+        console.log("[Lumina] Auto-connecting to", settings.clawUrl);
         await get().connect(settings.clawUrl, settings.clawSecret);
-        console.log("[Claw] Auto-connect result:", get().isConnected ? "connected" : "failed", get().error);
+        console.log("[Lumina] Auto-connect result:", get().isConnected ? "connected" : "failed", get().error);
       } else {
-        console.log("[Claw] Skipping auto-connect — enabled:", settings.clawEnabled, "url:", !!settings.clawUrl, "secret:", !!settings.clawSecret);
+        console.log("[Lumina] Skipping auto-connect — enabled:", settings.clawEnabled, "url:", !!settings.clawUrl, "secret:", !!settings.clawSecret);
       }
     } catch (e) {
-      console.warn("[Claw] initFromSettings error:", e);
+      console.warn("[Lumina] initFromSettings error:", e);
     }
   },
 
@@ -433,14 +433,14 @@ export const useClawStore = create<ClawState>((set, get) => ({
     const { client } = get();
     if (!client) return;
     try { const { cost } = await client.getCost(); set({ cost }); }
-    catch (e) { console.warn("[Claw] refresh cost:", (e as Error).message); }
+    catch (e) { console.warn("[Lumina] refresh cost:", (e as Error).message); }
   },
 
   refreshQuestions: async () => {
     const { client } = get();
     if (!client) return;
     try { const { questions } = await client.getQuestions(); set({ questions }); }
-    catch (e) { console.warn("[Claw] refresh questions:", (e as Error).message); }
+    catch (e) { console.warn("[Lumina] refresh questions:", (e as Error).message); }
   },
 
   answerQuestion: async (id, answer) => {
@@ -468,7 +468,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
     const { client } = get();
     if (!client) return;
     try { const { traces } = await client.getTraces(source); set({ traces }); }
-    catch (e) { console.warn("[Claw] refresh traces:", (e as Error).message); }
+    catch (e) { console.warn("[Lumina] refresh traces:", (e as Error).message); }
   },
 
   refreshToolCalls: async (filters) => {
@@ -478,14 +478,14 @@ export const useClawStore = create<ClawState>((set, get) => ({
       const { toolCalls, total } = await client.getToolCalls(filters);
       set({ toolCalls, toolCallsTotal: total });
     }
-    catch (e) { console.warn("[Claw] refresh tool calls:", (e as Error).message); }
+    catch (e) { console.warn("[Lumina] refresh tool calls:", (e as Error).message); }
   },
 
   refreshToolCallStats: async () => {
     const { client } = get();
     if (!client) return;
     try { const { stats } = await client.getToolCallStats(); set({ toolCallStats: stats }); }
-    catch (e) { console.warn("[Claw] refresh tool call stats:", (e as Error).message); }
+    catch (e) { console.warn("[Lumina] refresh tool call stats:", (e as Error).message); }
   },
 
   // Codebase methods
@@ -496,7 +496,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
       const { codebases } = await client.listCodebases();
       set({ codebases });
     } catch (e) {
-      console.warn("[Claw] refresh codebases:", (e as Error).message);
+      console.warn("[Lumina] refresh codebases:", (e as Error).message);
     }
   },
 
@@ -508,7 +508,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
       set((s) => ({ codebases: [...s.codebases, codebase] }));
       return codebase;
     } catch (e) {
-      console.error("[Claw] register codebase:", (e as Error).message);
+      console.error("[Lumina] register codebase:", (e as Error).message);
       return null;
     }
   },
@@ -525,7 +525,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
         ),
       }));
     } catch (e) {
-      console.error("[Claw] index codebase:", (e as Error).message);
+      console.error("[Lumina] index codebase:", (e as Error).message);
     }
   },
 
@@ -536,7 +536,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
       await client.deleteCodebase(id);
       set((s) => ({ codebases: s.codebases.filter((c) => c.id !== id) }));
     } catch (e) {
-      console.error("[Claw] delete codebase:", (e as Error).message);
+      console.error("[Lumina] delete codebase:", (e as Error).message);
     }
   },
 
@@ -549,7 +549,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
       const focused = projects.find((p) => p.isFocused) ?? null;
       set({ openProjects: projects, focusedProject: focused });
     } catch (e) {
-      console.warn("[Claw] refresh open projects:", (e as Error).message);
+      console.warn("[Lumina] refresh open projects:", (e as Error).message);
     }
   },
 
@@ -561,7 +561,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
       await get().refreshOpenProjects();
       return project;
     } catch (e) {
-      console.error("[Claw] open project:", (e as Error).message);
+      console.error("[Lumina] open project:", (e as Error).message);
       return null;
     }
   },
@@ -573,7 +573,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
       await client.focusProject(id);
       await get().refreshOpenProjects();
     } catch (e) {
-      console.error("[Claw] focus project:", (e as Error).message);
+      console.error("[Lumina] focus project:", (e as Error).message);
     }
   },
 
@@ -587,7 +587,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
         focusedProject: s.focusedProject?.id === id ? null : s.focusedProject,
       }));
     } catch (e) {
-      console.error("[Claw] close project:", (e as Error).message);
+      console.error("[Lumina] close project:", (e as Error).message);
     }
   },
 }));

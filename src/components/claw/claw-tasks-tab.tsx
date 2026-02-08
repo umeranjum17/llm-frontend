@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 import type { LuminaTask } from "@/lib/lumina/types";
 import { cn } from "@/lib/utils";
 
@@ -114,10 +114,10 @@ function TaskDetail({ task }: { task: LuminaTask }) {
 }
 
 export function ClawTasksTab() {
-  const isConnected = useClawStore((s) => s.isConnected);
-  const tasks = useClawStore((s) => s.tasks);
-  const refreshTasks = useClawStore((s) => s.refreshTasks);
-  const deleteTask = useClawStore((s) => s.deleteTask);
+  const isConnected = useLuminaStore((s) => s.isConnected);
+  const tasks = useLuminaStore((s) => s.tasks);
+  const refreshTasks = useLuminaStore((s) => s.refreshTasks);
+  const deleteTask = useLuminaStore((s) => s.deleteTask);
 
   const [selectedTask, setSelectedTask] = useState<LuminaTask | null>(null);
   const [statusFilter, setStatusFilter] = useState<TaskStatusFilter>("all");

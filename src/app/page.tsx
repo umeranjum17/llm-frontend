@@ -83,8 +83,8 @@ export default function Home() {
   // Auto-connect to Claw if enabled in settings
   useEffect(() => {
     if (settingsLoaded) {
-      import("@/stores/claw-store").then(({ useClawStore }) => {
-        useClawStore.getState().initFromSettings();
+      import("@/stores/lumina-store").then(({ useLuminaStore }) => {
+        useLuminaStore.getState().initFromSettings();
       });
     }
   }, [settingsLoaded]);

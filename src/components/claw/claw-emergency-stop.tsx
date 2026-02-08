@@ -14,11 +14,11 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 import { toast } from "sonner";
 
 export function ClawEmergencyStop() {
-  const emergencyStop = useClawStore((s) => s.emergencyStop);
+  const emergencyStop = useLuminaStore((s) => s.emergencyStop);
   const [stopping, setStopping] = useState(false);
 
   const handleStop = async () => {

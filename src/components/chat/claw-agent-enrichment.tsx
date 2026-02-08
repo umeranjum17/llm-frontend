@@ -1,6 +1,6 @@
 "use client";
 
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useClawSurface } from "@/hooks/use-claw-surface";
 import { cn } from "@/lib/utils";
@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 export function ClawAgentEnrichment() {
   const { showChatEnrichment } = useClawSurface();
   const { clawEnabled } = useSettingsStore();
-  const isConnected = useClawStore((s) => s.isConnected);
+  const isConnected = useLuminaStore((s) => s.isConnected);
 
   if (!showChatEnrichment || !clawEnabled) return null;
 

@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -32,12 +32,12 @@ const TYPE_ICONS: Record<string, string> = {
 };
 
 export function ClawWorkspacesTab() {
-  const openProjects = useClawStore((s) => s.openProjects);
-  const codebases = useClawStore((s) => s.codebases);
-  const focusProject = useClawStore((s) => s.focusProject);
-  const closeProject = useClawStore((s) => s.closeProject);
-  const openProjectByPath = useClawStore((s) => s.openProjectByPath);
-  const client = useClawStore((s) => s.client);
+  const openProjects = useLuminaStore((s) => s.openProjects);
+  const codebases = useLuminaStore((s) => s.codebases);
+  const focusProject = useLuminaStore((s) => s.focusProject);
+  const closeProject = useLuminaStore((s) => s.closeProject);
+  const openProjectByPath = useLuminaStore((s) => s.openProjectByPath);
+  const client = useLuminaStore((s) => s.client);
 
   const [showAdd, setShowAdd] = useState(false);
   const [newPath, setNewPath] = useState("");

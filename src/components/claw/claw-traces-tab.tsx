@@ -24,7 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 import type { LuminaTrace } from "@/lib/lumina/types";
 import { cn } from "@/lib/utils";
 
@@ -117,9 +117,9 @@ function TraceDetail({ trace }: { trace: LuminaTrace }) {
 }
 
 export function ClawTracesTab() {
-  const isConnected = useClawStore((s) => s.isConnected);
-  const traces = useClawStore((s) => s.traces);
-  const refreshTraces = useClawStore((s) => s.refreshTraces);
+  const isConnected = useLuminaStore((s) => s.isConnected);
+  const traces = useLuminaStore((s) => s.traces);
+  const refreshTraces = useLuminaStore((s) => s.refreshTraces);
 
   const [sourceFilter, setSourceFilter] = useState<TraceSourceFilter>("all");
   const [selectedTrace, setSelectedTrace] = useState<LuminaTrace | null>(null);

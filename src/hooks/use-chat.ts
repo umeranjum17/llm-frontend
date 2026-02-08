@@ -787,8 +787,8 @@ export function useChat(chatId: string | null) {
 
     // Route to Lumina CLI runtime only when explicitly selected.
     if (executionTarget === "lumina_cli") {
-      const { useClawStore } = await import("@/stores/claw-store");
-      const clawStore = useClawStore.getState();
+      const { useLuminaStore } = await import("@/stores/lumina-store");
+      const clawStore = useLuminaStore.getState();
 
       if (!clawStore.isConnected) {
         const errMsg = await addMessage({

@@ -1,11 +1,11 @@
 import { useEffect, useRef } from "react";
-import { useClawStore } from "@/stores/claw-store";
-import { useClawNotificationStore } from "@/stores/claw-notification-store";
-import { useClawActivityStore } from "@/stores/claw-activity-store";
-import type { ClawEventType } from "@/stores/claw-activity-store";
+import { useLuminaStore } from "@/stores/lumina-store";
+import { useLuminaNotificationStore } from "@/stores/lumina-notification-store";
+import { useLuminaActivityStore } from "@/stores/lumina-activity-store";
+import type { LuminaEventType } from "@/stores/lumina-activity-store";
 import { toast } from "sonner";
 
-const ACTIVITY_EVENTS: ClawEventType[] = [
+const ACTIVITY_EVENTS: LuminaEventType[] = [
   "brain:started",
   "brain:tool_call",
   "brain:tool_result",
@@ -32,8 +32,8 @@ const ACTIVITY_EVENTS: ClawEventType[] = [
 ];
 
 export function useClawEvents() {
-  const client = useClawStore((s) => s.client);
-  const isConnected = useClawStore((s) => s.isConnected);
+  const client = useLuminaStore((s) => s.client);
+  const isConnected = useLuminaStore((s) => s.isConnected);
   const esRef = useRef<EventSource | null>(null);
   const prevTasksRef = useRef<Map<string, string>>(new Map());
 
@@ -45,7 +45,7 @@ export function useClawEvents() {
     }
 
     // Snapshot current tasks when connection is established
-    const currentTasks = useClawStore.getState().tasks;
+    const currentTasks = useLuminaStore.getState().tasks;
     const taskMap = new Map<string, string>();
     for (const t of currentTasks) {
       taskMap.set(t.id, t.status);
@@ -53,16 +53,16 @@ export function useClawEvents() {
     prevTasksRef.current = taskMap;
 
     const addNotification =
-      useClawNotificationStore.getState().addNotification;
-    const pushEvent = useClawActivityStore.getState().pushEvent;
+      useLuminaNotificationStore.getState().addNotification;
+    const pushEvent = useLuminaActivityStore.getState().pushEvent;
 
     const es = client.createEventSource();
     esRef.current = es;
 
     // Use getState() for all store method calls to avoid dependency issues
     const onTaskUpdated = async () => {
-      await useClawStore.getState().refreshTasks();
-      const newTasks = useClawStore.getState().tasks;
+      await useLuminaStore.getState().refreshTasks();
+      const newTasks = useLuminaStore.getState().tasks;
       const prev = prevTasksRef.current;
 
       for (const task of newTasks) {
@@ -95,29 +95,29 @@ export function useClawEvents() {
     };
 
     const onTaskCreated = () => {
-      useClawStore.getState().refreshTasks();
+      useLuminaStore.getState().refreshTasks();
     };
 
-    const onTaskDeleted = () => useClawStore.getState().refreshTasks();
+    const onTaskDeleted = () => useLuminaStore.getState().refreshTasks();
 
     const onActivity = async () => {
-      await useClawStore.getState().refreshActivity();
+      await useLuminaStore.getState().refreshActivity();
     };
 
     const onScheduleCreated = () => {
-      useClawStore.getState().refreshSchedules();
+      useLuminaStore.getState().refreshSchedules();
     };
 
     const onScheduleDeleted = () => {
-      useClawStore.getState().refreshSchedules();
+      useLuminaStore.getState().refreshSchedules();
     };
 
     const onScheduleCompleted = (e: MessageEvent) => {
       try {
         const data = JSON.parse(e.data);
         if (data.scheduleId) {
-          useClawStore.getState().fetchScheduleRuns(data.scheduleId);
-          useClawStore.getState().refreshSchedules();
+          useLuminaStore.getState().fetchScheduleRuns(data.scheduleId);
+          useLuminaStore.getState().refreshSchedules();
         }
       } catch {}
     };
@@ -131,7 +131,7 @@ export function useClawEvents() {
     es.addEventListener("schedule:completed", onScheduleCompleted);
 
     const onInitiativeUpdate = (e: MessageEvent) => {
-      useClawStore.getState().refreshInitiatives();
+      useLuminaStore.getState().refreshInitiatives();
       try {
         const data = JSON.parse(e.data);
         if (data.status === "proposed") {
@@ -148,18 +148,18 @@ export function useClawEvents() {
 
     // Pipeline/briefing/monitor events
     const onBriefingGenerated = () => {
-      useClawStore.getState().refreshBriefing();
+      useLuminaStore.getState().refreshBriefing();
     };
     es.addEventListener("briefing:generated", onBriefingGenerated);
 
     const onMonitorChange = () => {
-      useClawStore.getState().refreshMonitors();
+      useLuminaStore.getState().refreshMonitors();
     };
     es.addEventListener("monitor:created", onMonitorChange);
     es.addEventListener("monitor:deleted", onMonitorChange);
 
     const onMonitorAlert = (e: MessageEvent) => {
-      useClawStore.getState().refreshMonitors();
+      useLuminaStore.getState().refreshMonitors();
       try {
         const data = JSON.parse(e.data);
         addNotification({
@@ -173,13 +173,13 @@ export function useClawEvents() {
     es.addEventListener("monitor:alert", onMonitorAlert);
 
     const onPipelineCompleted = () => {
-      useClawStore.getState().refreshPipelineRuns();
+      useLuminaStore.getState().refreshPipelineRuns();
     };
     es.addEventListener("pipeline:completed", onPipelineCompleted);
 
     // Workspace events
     const onProjectOpened = (e: MessageEvent) => {
-      useClawStore.getState().refreshOpenProjects();
+      useLuminaStore.getState().refreshOpenProjects();
       try {
         const data = JSON.parse(e.data);
         toast.success(`Opened: ${data?.name || "project"}`);
@@ -188,7 +188,7 @@ export function useClawEvents() {
     es.addEventListener("project:opened", onProjectOpened);
 
     const onProjectFocused = (e: MessageEvent) => {
-      useClawStore.getState().refreshOpenProjects();
+      useLuminaStore.getState().refreshOpenProjects();
       try {
         const data = JSON.parse(e.data);
         addNotification({
@@ -201,18 +201,18 @@ export function useClawEvents() {
     es.addEventListener("project:focused", onProjectFocused);
 
     const onProjectClosed = () => {
-      useClawStore.getState().refreshOpenProjects();
+      useLuminaStore.getState().refreshOpenProjects();
     };
     es.addEventListener("project:closed", onProjectClosed);
 
     // Codebase indexing events
     const onCodebaseIndexing = () => {
-      useClawStore.getState().refreshCodebases();
+      useLuminaStore.getState().refreshCodebases();
     };
     es.addEventListener("codebase:indexing_progress", onCodebaseIndexing);
 
     const onCodebaseIndexed = (e: MessageEvent) => {
-      useClawStore.getState().refreshCodebases();
+      useLuminaStore.getState().refreshCodebases();
       try {
         const data = JSON.parse(e.data);
         toast.success(`Codebase indexed: ${data?.fileCount || 0} files`);
@@ -221,7 +221,7 @@ export function useClawEvents() {
     es.addEventListener("codebase:indexed", onCodebaseIndexed);
 
     const onCodebaseError = (e: MessageEvent) => {
-      useClawStore.getState().refreshCodebases();
+      useLuminaStore.getState().refreshCodebases();
       try {
         const data = JSON.parse(e.data);
         toast.error(`Indexing error: ${data?.error || "unknown"}`);
@@ -232,7 +232,7 @@ export function useClawEvents() {
     // Auto-sync keys when Claw requests them
     const onKeysNeeded = () => {
       console.log("[Claw SSE] Claw requested keys, auto-syncing...");
-      useClawStore.getState().syncKeys().catch((err: any) => {
+      useLuminaStore.getState().syncKeys().catch((err: any) => {
         console.warn("[Claw SSE] Auto key sync failed:", err);
       });
     };

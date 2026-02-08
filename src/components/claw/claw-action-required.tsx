@@ -12,16 +12,16 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { toast } from "sonner";
 
 export function ClawActionRequired() {
-  const questions = useClawStore((s) => s.questions);
-  const tasks = useClawStore((s) => s.tasks);
-  const initiatives = useClawStore((s) => s.initiatives);
-  const answerQuestion = useClawStore((s) => s.answerQuestion);
-  const dismissQuestion = useClawStore((s) => s.dismissQuestion);
+  const questions = useLuminaStore((s) => s.questions);
+  const tasks = useLuminaStore((s) => s.tasks);
+  const initiatives = useLuminaStore((s) => s.initiatives);
+  const answerQuestion = useLuminaStore((s) => s.answerQuestion);
+  const dismissQuestion = useLuminaStore((s) => s.dismissQuestion);
   const clawUrl = useSettingsStore((s) => s.clawUrl);
 
   const [answerInputs, setAnswerInputs] = useState<Record<string, string>>({});

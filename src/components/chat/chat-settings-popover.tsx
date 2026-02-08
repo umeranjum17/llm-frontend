@@ -20,7 +20,7 @@ import { reindexProjectFiles } from "@/lib/rag/file-indexer";
 import { toast } from "sonner";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useApiKeysStore } from "@/stores/api-keys-store";
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 import { useUIStore } from "@/stores/ui-store";
 
 type ReasoningLevel = "low" | "medium" | "high" | "xhigh";
@@ -65,7 +65,7 @@ export function ChatSettingsPopover({
     [chatId]
   );
   const mem0ApiKey = useApiKeysStore((state) => state.getKeyForProvider("mem0"));
-  const isClawConnected = useClawStore((state) => state.isConnected);
+  const isClawConnected = useLuminaStore((state) => state.isConnected);
   const draftChatConfig = useUIStore((state) => state.draftChatConfig);
   const setDraftChatConfig = useUIStore((state) => state.setDraftChatConfig);
 

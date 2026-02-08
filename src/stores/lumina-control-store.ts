@@ -1,11 +1,11 @@
 import { create } from "zustand";
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 import type {
   LuminaControlCapability,
   LuminaControlExecuteResponse,
 } from "@/lib/lumina/types";
 
-interface ClawControlState {
+interface LuminaControlState {
   loading: boolean;
   executing: boolean;
   error: string | null;
@@ -21,7 +21,7 @@ interface ClawControlState {
   clearResult: () => void;
 }
 
-export const useClawControlStore = create<ClawControlState>((set) => ({
+export const useLuminaControlStore = create<LuminaControlState>((set) => ({
   loading: false,
   executing: false,
   error: null,
@@ -30,9 +30,9 @@ export const useClawControlStore = create<ClawControlState>((set) => ({
   lastResult: null,
 
   refreshCapabilities: async () => {
-    const client = useClawStore.getState().client;
+    const client = useLuminaStore.getState().client;
     if (!client) {
-      set({ error: "Not connected to Claw" });
+      set({ error: "Not connected to Lumina" });
       return;
     }
 
@@ -50,9 +50,9 @@ export const useClawControlStore = create<ClawControlState>((set) => ({
   },
 
   executeTool: async (toolName, args, options) => {
-    const client = useClawStore.getState().client;
+    const client = useLuminaStore.getState().client;
     if (!client) {
-      set({ error: "Not connected to Claw" });
+      set({ error: "Not connected to Lumina" });
       return null;
     }
 

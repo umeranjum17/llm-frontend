@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, XCircle, ChevronDown, ChevronRight, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 
 const STATUS_STYLES: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
   proposed: { variant: "outline", label: "Proposed" },
@@ -27,10 +27,10 @@ function formatRelativeTime(iso: string) {
 }
 
 export function ClawInitiativesPanel() {
-  const initiatives = useClawStore((s) => s.initiatives);
-  const refreshInitiatives = useClawStore((s) => s.refreshInitiatives);
-  const updateInitiative = useClawStore((s) => s.updateInitiative);
-  const isConnected = useClawStore((s) => s.isConnected);
+  const initiatives = useLuminaStore((s) => s.initiatives);
+  const refreshInitiatives = useLuminaStore((s) => s.refreshInitiatives);
+  const updateInitiative = useLuminaStore((s) => s.updateInitiative);
+  const isConnected = useLuminaStore((s) => s.isConnected);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
 

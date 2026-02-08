@@ -97,7 +97,7 @@ import { toast } from "sonner";
 import { getActionableError } from "@/lib/utils/error-messages";
 import { EmptyState } from "@/components/ui/empty-state";
 import { EmptyStateWelcome } from "@/components/chat/empty-state-welcome";
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 import { MessageSquare, Eye, Brain, Wrench, Code, Zap, DollarSign, Sparkles, AlertTriangle, ImageIcon } from "lucide-react";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { formatModelCost } from "@/components/model-picker/model-item";
@@ -161,10 +161,10 @@ export function ChatShell() {
   const lastProviderIdByModel = useSettingsStore((state) => state.lastProviderIdByModel);
   const updateLastProviderForModel = useSettingsStore((state) => state.updateLastProviderForModel);
   const clawEnabled = useSettingsStore((state) => state.clawEnabled);
-  const clawIsConnected = useClawStore((s) => s.isConnected);
-  const clawIsConnecting = useClawStore((s) => s.isConnecting);
-  const clawKeysSynced = useClawStore((s) => s.keysSynced);
-  const clawError = useClawStore((s) => s.error);
+  const clawIsConnected = useLuminaStore((s) => s.isConnected);
+  const clawIsConnecting = useLuminaStore((s) => s.isConnecting);
+  const clawKeysSynced = useLuminaStore((s) => s.keysSynced);
+  const clawError = useLuminaStore((s) => s.error);
 
   const llmProviderIds = useMemo(
     () =>

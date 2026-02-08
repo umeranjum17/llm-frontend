@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { useClawPreferencesStore } from "./claw-preferences-store";
+import { useLuminaPreferencesStore } from "./lumina-preferences-store";
 
 export interface LuminaNotification {
   id: string;
@@ -38,7 +38,7 @@ let lastEmitByType: Record<string, number> = {};
 let pendingBatch: Map<string, { title: string; messages: string[] }> = new Map();
 let batchTimeouts: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
-interface ClawNotificationState {
+interface LuminaNotificationState {
   notifications: LuminaNotification[];
   addNotification: (
     n: Omit<LuminaNotification, "id" | "timestamp" | "read" | "count">,
@@ -49,13 +49,13 @@ interface ClawNotificationState {
   _resetDedupState?: () => void; // For testing only
 }
 
-export const useClawNotificationStore = create<ClawNotificationState>(
+export const useLuminaNotificationStore = create<LuminaNotificationState>(
   (set, get) => ({
     notifications: [],
 
     addNotification: (n) => {
       // Filter based on notification level preference
-      const level = useClawPreferencesStore.getState().notificationLevel;
+      const level = useLuminaPreferencesStore.getState().notificationLevel;
 
       if (level === 'none') return;
       if (level === 'minimal' && !MINIMAL_TYPES.has(n.type)) return;
@@ -162,15 +162,15 @@ export const useClawNotificationStore = create<ClawNotificationState>(
 );
 
 export const useUnreadCount = () =>
-  useClawNotificationStore(
+  useLuminaNotificationStore(
     (state) => state.notifications.filter((n) => !n.read).length,
   );
 
-// Count proposed initiatives that need attention (computed from claw-store)
+// Count proposed initiatives that need attention (computed from lumina-store)
 export const useAttentionCount = () => {
   // Import dynamically to avoid circular dependency
-  const { useClawStore } = require("@/stores/claw-store");
-  return useClawStore((s: { initiatives: Array<{ status: string }> }) =>
+  const { useLuminaStore } = require("@/stores/lumina-store");
+  return useLuminaStore((s: { initiatives: Array<{ status: string }> }) =>
     s.initiatives.filter((i) => i.status === "proposed").length
   );
 };

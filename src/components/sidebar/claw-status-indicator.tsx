@@ -6,7 +6,7 @@ import { Bot, Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 import { useSettingsStore } from "@/stores/settings-store";
 
 function formatUptime(seconds: number): string {
@@ -18,7 +18,7 @@ function formatUptime(seconds: number): string {
 
 export function ClawStatusIndicator() {
   const { clawEnabled } = useSettingsStore();
-  const { isConnected, isConnecting, keysSynced, status, error, createTask } = useClawStore();
+  const { isConnected, isConnecting, keysSynced, status, error, createTask } = useLuminaStore();
   const [taskInput, setTaskInput] = useState("");
   const [sending, setSending] = useState(false);
 

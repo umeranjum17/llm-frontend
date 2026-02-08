@@ -26,7 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 import type { LuminaToolCall } from "@/lib/lumina/types";
 import { cn } from "@/lib/utils";
 
@@ -167,12 +167,12 @@ function ToolCallDetail({ call }: { call: LuminaToolCall }) {
 }
 
 export function ClawToolCallsTab() {
-  const isConnected = useClawStore((s) => s.isConnected);
-  const toolCalls = useClawStore((s) => s.toolCalls);
-  const toolCallsTotal = useClawStore((s) => s.toolCallsTotal);
-  const toolCallStats = useClawStore((s) => s.toolCallStats);
-  const refreshToolCalls = useClawStore((s) => s.refreshToolCalls);
-  const refreshToolCallStats = useClawStore((s) => s.refreshToolCallStats);
+  const isConnected = useLuminaStore((s) => s.isConnected);
+  const toolCalls = useLuminaStore((s) => s.toolCalls);
+  const toolCallsTotal = useLuminaStore((s) => s.toolCallsTotal);
+  const toolCallStats = useLuminaStore((s) => s.toolCallStats);
+  const refreshToolCalls = useLuminaStore((s) => s.refreshToolCalls);
+  const refreshToolCallStats = useLuminaStore((s) => s.refreshToolCallStats);
 
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState<ToolCallSourceFilter>("all");

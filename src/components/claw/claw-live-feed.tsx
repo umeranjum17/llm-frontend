@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { useClawActivityStore, type ClawLiveEvent } from "@/stores/claw-activity-store";
+import { useLuminaActivityStore, type LuminaLiveEvent } from "@/stores/lumina-activity-store";
 
 const EVENT_CONFIG: Record<
   string,
@@ -156,7 +156,7 @@ function formatTime(ts: number): string {
   });
 }
 
-function LiveEventRow({ event }: { event: ClawLiveEvent }) {
+function LiveEventRow({ event }: { event: LuminaLiveEvent }) {
   const config = EVENT_CONFIG[event.type] || {
     icon: Brain,
     color: "text-muted-foreground",
@@ -178,8 +178,8 @@ function LiveEventRow({ event }: { event: ClawLiveEvent }) {
 }
 
 export function ClawLiveFeed() {
-  const liveEvents = useClawActivityStore((s) => s.liveEvents);
-  const clearEvents = useClawActivityStore((s) => s.clearEvents);
+  const liveEvents = useLuminaActivityStore((s) => s.liveEvents);
+  const clearEvents = useLuminaActivityStore((s) => s.clearEvents);
   const [paused, setPaused] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 

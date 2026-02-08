@@ -17,18 +17,18 @@ import {
   Settings,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useModelsStore } from "@/stores/models-store";
-import { useClawPreferencesStore, NotificationLevel } from "@/stores/claw-preferences-store";
+import { useLuminaPreferencesStore, NotificationLevel } from "@/stores/lumina-preferences-store";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 function ConnectionTab() {
-  const { isConnected, isConnecting, error, connect, disconnect } = useClawStore();
+  const { isConnected, isConnecting, error, connect, disconnect } = useLuminaStore();
   const { clawUrl, clawSecret, clawEnabled, updateClawSettings } = useSettingsStore();
-  const notificationLevel = useClawPreferencesStore((s) => s.notificationLevel);
-  const setNotificationLevel = useClawPreferencesStore((s) => s.setNotificationLevel);
+  const notificationLevel = useLuminaPreferencesStore((s) => s.notificationLevel);
+  const setNotificationLevel = useLuminaPreferencesStore((s) => s.setNotificationLevel);
 
   const [url, setUrl] = useState(clawUrl || "");
   const [secret, setSecret] = useState(clawSecret || "");
@@ -45,7 +45,7 @@ function ConnectionTab() {
       return;
     }
     await connect(url, secret);
-    const connected = useClawStore.getState().isConnected;
+    const connected = useLuminaStore.getState().isConnected;
     if (connected) {
       const latestUrl = useSettingsStore.getState().clawUrl;
       if (latestUrl && latestUrl !== url) {
@@ -145,7 +145,7 @@ function ConnectionTab() {
 }
 
 function ConfigTab() {
-  const { config, updateConfig, isConnected } = useClawStore();
+  const { config, updateConfig, isConnected } = useLuminaStore();
   const allModels = useModelsStore((s) => s.models);
   const [model, setModel] = useState(config?.openrouterModel ?? "");
   const [heartbeat, setHeartbeat] = useState(
@@ -212,7 +212,7 @@ function ConfigTab() {
 }
 
 function KeySyncTab() {
-  const { pushKeys, isConnected } = useClawStore();
+  const { pushKeys, isConnected } = useLuminaStore();
   const { keys } = useApiKeysStore();
   const settings = useSettingsStore();
   const [syncing, setSyncing] = useState(false);
@@ -265,7 +265,7 @@ function KeySyncTab() {
 }
 
 export function ClawSettings() {
-  const { isConnected, refreshAll, initFromSettings } = useClawStore();
+  const { isConnected, refreshAll, initFromSettings } = useLuminaStore();
 
   useEffect(() => {
     if (!isConnected) {

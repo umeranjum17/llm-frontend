@@ -12,7 +12,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { useClawStore } from "@/stores/claw-store";
+import { useLuminaStore } from "@/stores/lumina-store";
 import type { LuminaInitiative } from "@/lib/lumina/types";
 import { cn } from "@/lib/utils";
 
@@ -139,10 +139,10 @@ function InitiativeCard({
 }
 
 export function ClawInitiativesTab() {
-  const isConnected = useClawStore((s) => s.isConnected);
-  const initiatives = useClawStore((s) => s.initiatives);
-  const refreshInitiatives = useClawStore((s) => s.refreshInitiatives);
-  const updateInitiative = useClawStore((s) => s.updateInitiative);
+  const isConnected = useLuminaStore((s) => s.isConnected);
+  const initiatives = useLuminaStore((s) => s.initiatives);
+  const refreshInitiatives = useLuminaStore((s) => s.refreshInitiatives);
+  const updateInitiative = useLuminaStore((s) => s.updateInitiative);
 
   const [selectedInitiative, setSelectedInitiative] = useState<LuminaInitiative | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
