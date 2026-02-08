@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { useClawPreferencesStore } from "./claw-preferences-store";
 
-export interface ClawNotification {
+export interface LuminaNotification {
   id: string;
   type:
     | "task:completed"
@@ -26,12 +26,12 @@ const MAX_NOTIFICATIONS = 50;
 // Deduplication and batching constants
 const DEDUPE_WINDOW_MS = 60_000;
 const BATCH_WINDOW_MS = 2_000;
-const DEDUPE_TYPES: Set<ClawNotification["type"]> = new Set(["keys:synced", "schedule:triggered"]);
-const BATCH_TYPES: Set<ClawNotification["type"]> = new Set(["activity:new"]);
+const DEDUPE_TYPES: Set<LuminaNotification["type"]> = new Set(["keys:synced", "schedule:triggered"]);
+const BATCH_TYPES: Set<LuminaNotification["type"]> = new Set(["activity:new"]);
 
 // Notification level filtering sets
-const IMPORTANT_TYPES: Set<ClawNotification["type"]> = new Set(["task:completed", "task:failed", "initiative:proposed", "monitor:alert"]);
-const MINIMAL_TYPES: Set<ClawNotification["type"]> = new Set(["task:failed", "initiative:proposed", "monitor:alert"]);
+const IMPORTANT_TYPES: Set<LuminaNotification["type"]> = new Set(["task:completed", "task:failed", "initiative:proposed", "monitor:alert"]);
+const MINIMAL_TYPES: Set<LuminaNotification["type"]> = new Set(["task:failed", "initiative:proposed", "monitor:alert"]);
 
 // Module-level state for deduplication and batching
 let lastEmitByType: Record<string, number> = {};
@@ -39,9 +39,9 @@ let pendingBatch: Map<string, { title: string; messages: string[] }> = new Map()
 let batchTimeouts: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
 interface ClawNotificationState {
-  notifications: ClawNotification[];
+  notifications: LuminaNotification[];
   addNotification: (
-    n: Omit<ClawNotification, "id" | "timestamp" | "read" | "count">,
+    n: Omit<LuminaNotification, "id" | "timestamp" | "read" | "count">,
   ) => void;
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
@@ -95,9 +95,9 @@ export const useClawNotificationStore = create<ClawNotificationState>(
           const batch = pendingBatch.get(type);
           if (batch) {
             const count = batch.messages.length;
-            const notification: ClawNotification = {
+            const notification: LuminaNotification = {
               id: crypto.randomUUID(),
-              type: type as ClawNotification["type"],
+              type: type as LuminaNotification["type"],
               title: count > 1 ? `${count} new activities` : batch.title,
               message: count > 1 ? batch.messages.join(", ") : batch.messages[0],
               timestamp: Date.now(),

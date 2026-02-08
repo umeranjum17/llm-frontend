@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useClawStore } from "@/stores/claw-store";
 import { useClawControlStore } from "@/stores/claw-control-store";
-import type { ClawControlCapability } from "@/lib/claw/types";
+import type { LuminaControlCapability } from "@/lib/lumina/types";
 
 const ARG_TEMPLATES: Record<string, string> = {
   list_directory: '{\n  "path": "."\n}',
@@ -91,7 +91,7 @@ export function ClawControlTab() {
   );
 
   const groupedCapabilities = useMemo(() => {
-    const grouped = CATEGORY_ORDER.reduce((acc, category) => ((acc[category] = []), acc), {} as Record<ToolCategory, ClawControlCapability[]>);
+    const grouped = CATEGORY_ORDER.reduce((acc, category) => ((acc[category] = []), acc), {} as Record<ToolCategory, LuminaControlCapability[]>);
 
     for (const cap of filteredCapabilities) {
       grouped[getToolCategory(cap.name)].push(cap);

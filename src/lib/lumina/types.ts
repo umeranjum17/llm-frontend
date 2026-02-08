@@ -1,10 +1,10 @@
-export interface ClawStatus {
+export interface LuminaStatus {
   status: string;
   uptime: number;
   startedAt: string;
 }
 
-export interface ClawTask {
+export interface LuminaTask {
   id: string;
   title: string;
   description?: string;
@@ -17,7 +17,7 @@ export interface ClawTask {
   metadata?: string;
 }
 
-export interface ClawActivity {
+export interface LuminaActivity {
   id: string;
   taskId?: string;
   action: string;
@@ -25,7 +25,7 @@ export interface ClawActivity {
   timestamp: string;
 }
 
-export interface ClawSchedule {
+export interface LuminaSchedule {
   id: string;
   name: string;
   cronExpression: string;
@@ -36,7 +36,7 @@ export interface ClawSchedule {
   createdAt: string;
 }
 
-export interface ClawScheduleRun {
+export interface LuminaScheduleRun {
   id: string;
   scheduleId: string;
   taskId?: string;
@@ -48,7 +48,7 @@ export interface ClawScheduleRun {
   durationMs?: number;
 }
 
-export interface ClawInitiative {
+export interface LuminaInitiative {
   id: string;
   title: string;
   description: string;
@@ -63,7 +63,7 @@ export interface ClawInitiative {
   reviewedAt?: string;
 }
 
-export interface ClawConfig {
+export interface LuminaConfig {
   openrouterModel: string;
   heartbeatIntervalMinutes: number;
   pipelineIntervalMinutes: number;
@@ -82,7 +82,7 @@ export interface ClawConfig {
   emergencyStopEnabled?: boolean;
 }
 
-export interface ClawBriefing {
+export interface LuminaBriefing {
   id: string;
   type: "morning" | "evening" | "on_demand";
   content: string;
@@ -90,7 +90,7 @@ export interface ClawBriefing {
   createdAt: string;
 }
 
-export interface ClawMonitor {
+export interface LuminaMonitor {
   id: string;
   name: string;
   type: "github_repo" | "keyword" | "email" | "reddit" | "url";
@@ -101,7 +101,7 @@ export interface ClawMonitor {
   createdAt: string;
 }
 
-export interface ClawPipelineRun {
+export interface LuminaPipelineRun {
   id: string;
   phase: string;
   sourcesChecked: number;
@@ -135,7 +135,7 @@ export interface PendingQuestion {
 
 // --- Projects / Workspaces ---
 
-export interface ClawProject {
+export interface LuminaProject {
   id: string;
   name: string;
   path: string;
@@ -214,7 +214,7 @@ export interface TraceStep {
   result?: string;
 }
 
-export interface ClawTrace {
+export interface LuminaTrace {
   id: string;
   source: "chat" | "cron" | "heartbeat" | "ambient" | "reflection" | "pipeline" | "watcher";
   input: string;
@@ -232,7 +232,7 @@ export interface ClawTrace {
 
 // --- Tool Calls ---
 
-export interface ClawToolCall {
+export interface LuminaToolCall {
   id: string;
   toolName: string;
   toolLabel?: string;
@@ -262,21 +262,21 @@ export interface ToolCallStats {
 
 // --- Control Plane ---
 
-export interface ClawControlCapability {
+export interface LuminaControlCapability {
   name: string;
   description: string;
   dangerous: boolean;
   inputSchemaType: string | null;
 }
 
-export interface ClawControlCapabilitiesResponse {
+export interface LuminaControlCapabilitiesResponse {
   enabled: boolean;
   allowlist: string[];
   toolCount: number;
-  tools: ClawControlCapability[];
+  tools: LuminaControlCapability[];
 }
 
-export interface ClawControlExecuteResponse {
+export interface LuminaControlExecuteResponse {
   ok: boolean;
   toolName: string;
   taskId?: string;
@@ -288,7 +288,7 @@ export interface ClawControlExecuteResponse {
 
 // --- Streaming ---
 
-export type ClawStreamEvent =
+export type LuminaStreamEvent =
   | { type: "text-delta"; text: string }
   | { type: "tool-call"; taskId: string; toolCallId?: string; toolName: string; toolLabel: string; args: any }
   | { type: "tool-result"; taskId: string; toolCallId?: string; toolName: string; summary: string }
@@ -299,14 +299,14 @@ export type ClawStreamEvent =
 
 // --- Skills ---
 
-export interface ClawSkillLocal {
+export interface LuminaSkillLocal {
   name: string;
   description: string;
   userInvocable: boolean;
   source: string;
 }
 
-export interface ClawSkillSearchResult {
+export interface LuminaSkillSearchResult {
   slug: string;
   name: string;
   description: string;
@@ -318,18 +318,18 @@ export interface ClawSkillSearchResult {
   updatedAt: string;
 }
 
-export interface ClawHubCategory {
+export interface LuminaHubCategory {
   name: string;
   slug: string;
   count: number;
 }
 
-export interface ClawSkillsAvailable {
-  local: ClawSkillLocal[];
+export interface LuminaSkillsAvailable {
+  local: LuminaSkillLocal[];
   hub: string[];
 }
 
-export interface ClawSkillInstallResult {
+export interface LuminaSkillInstallResult {
   installed: boolean;
   path: string;
   slug: string;

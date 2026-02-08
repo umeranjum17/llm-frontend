@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useClawStore } from "@/stores/claw-store";
-import type { ClawConfig } from "@/lib/claw/types";
+import type { LuminaConfig } from "@/lib/lumina/types";
 
 interface EditableConfig {
   openrouterModel: string;
@@ -80,7 +80,7 @@ const toSafeNumber = (value: string | number | undefined, fallback: number) => {
   return Number.isFinite(next) ? next : fallback;
 };
 
-function normalizeConfig(config: ClawConfig): EditableConfig {
+function normalizeConfig(config: LuminaConfig): EditableConfig {
   return {
     openrouterModel: config.openrouterModel ?? DEFAULT_EDITABLE_CONFIG.openrouterModel,
     pipelineIntervalMinutes: toSafeNumber(config.pipelineIntervalMinutes, DEFAULT_EDITABLE_CONFIG.pipelineIntervalMinutes),
@@ -174,9 +174,9 @@ export default function ClawConfigTab() {
   }, [form, initialConfig]);
 
   const changedFields = useMemo(() => {
-    if (!initialConfig || !currentConfig) return {} as Partial<ClawConfig>;
+    if (!initialConfig || !currentConfig) return {} as Partial<LuminaConfig>;
 
-    const changes: Partial<ClawConfig> = {};
+    const changes: Partial<LuminaConfig> = {};
     for (const key of EDITABLE_KEYS) {
       if (currentConfig[key] !== initialConfig[key]) {
         changes[key] = currentConfig[key] as never;

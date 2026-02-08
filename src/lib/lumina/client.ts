@@ -1,18 +1,18 @@
 import type {
-  ClawStatus, ClawTask, ClawActivity, ClawSchedule, ClawScheduleRun, ClawInitiative, ClawConfig,
-  ClawBriefing, ClawMonitor, ClawPipelineRun, CostData, PendingQuestion,
+  LuminaStatus, LuminaTask, LuminaActivity, LuminaSchedule, LuminaScheduleRun, LuminaInitiative, LuminaConfig,
+  LuminaBriefing, LuminaMonitor, LuminaPipelineRun, CostData, PendingQuestion,
   Codebase, CodebaseStats, CodebaseFile, CodebaseSearchResult,
-  ClawTrace, ClawToolCall, ToolCallStats, ClawControlCapabilitiesResponse, ClawControlExecuteResponse,
-  ClawStreamEvent,
-  ClawSkillsAvailable, ClawSkillSearchResult, ClawHubCategory, ClawSkillInstallResult,
-  ClawProject,
+  LuminaTrace, LuminaToolCall, ToolCallStats, LuminaControlCapabilitiesResponse, LuminaControlExecuteResponse,
+  LuminaStreamEvent,
+  LuminaSkillsAvailable, LuminaSkillSearchResult, LuminaHubCategory, LuminaSkillInstallResult,
+  LuminaProject,
 } from "./types";
 
 const REQUEST_TIMEOUT_MS = 8000;
 const CHAT_TIMEOUT_MS = 120_000;
 const CONTROL_TIMEOUT_MS = 915_000;
 
-export class ClawClient {
+export class LuminaClient {
   constructor(baseUrl: string, private secret: string) {
     // Trim whitespace and trailing slashes from URL
     this.baseUrl = baseUrl.trim().replace(/\/+$/, "");
@@ -74,12 +74,12 @@ export class ClawClient {
     }
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(body.error || `Claw API error ${res.status} for ${url}`);
+      throw new Error(body.error || `Lumina API error ${res.status} for ${url}`);
     }
     return res.json();
   }
 
-  async getStatus(): Promise<ClawStatus> {
+  async getStatus(): Promise<LuminaStatus> {
     return this.request("/status");
   }
 
@@ -87,11 +87,11 @@ export class ClawClient {
     await this.request("/config/keys");
   }
 
-  async getTasks(): Promise<{ tasks: ClawTask[] }> {
+  async getTasks(): Promise<{ tasks: LuminaTask[] }> {
     return this.request("/tasks");
   }
 
-  async getTask(id: string): Promise<{ task: ClawTask }> {
+  async getTask(id: string): Promise<{ task: LuminaTask }> {
     return this.request(`/tasks/${id}`);
   }
 
@@ -102,7 +102,7 @@ export class ClawClient {
     });
   }
 
-  async updateTask(id: string, data: Partial<ClawTask>): Promise<{ ok: boolean }> {
+  async updateTask(id: string, data: Partial<LuminaTask>): Promise<{ ok: boolean }> {
     return this.request(`/tasks/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
@@ -113,11 +113,11 @@ export class ClawClient {
     return this.request(`/tasks/${id}`, { method: "DELETE" });
   }
 
-  async getActivity(limit = 20): Promise<{ activity: ClawActivity[] }> {
+  async getActivity(limit = 20): Promise<{ activity: LuminaActivity[] }> {
     return this.request(`/activity?limit=${limit}`);
   }
 
-  async getSchedules(): Promise<{ schedules: ClawSchedule[] }> {
+  async getSchedules(): Promise<{ schedules: LuminaSchedule[] }> {
     return this.request("/schedules");
   }
 
@@ -132,15 +132,15 @@ export class ClawClient {
     return this.request(`/schedules/${id}`, { method: "DELETE" });
   }
 
-  async getScheduleRuns(scheduleId: string, limit = 20): Promise<{ runs: ClawScheduleRun[] }> {
+  async getScheduleRuns(scheduleId: string, limit = 20): Promise<{ runs: LuminaScheduleRun[] }> {
     return this.request(`/schedules/${scheduleId}/runs?limit=${limit}`);
   }
 
-  async getScheduleRun(scheduleId: string, runId: string): Promise<{ run: ClawScheduleRun }> {
+  async getScheduleRun(scheduleId: string, runId: string): Promise<{ run: LuminaScheduleRun }> {
     return this.request(`/schedules/${scheduleId}/runs/${runId}`);
   }
 
-  async getInitiatives(status?: string): Promise<{ initiatives: ClawInitiative[] }> {
+  async getInitiatives(status?: string): Promise<{ initiatives: LuminaInitiative[] }> {
     const query = status ? `?status=${status}` : "";
     return this.request(`/initiatives${query}`);
   }
@@ -152,11 +152,11 @@ export class ClawClient {
     });
   }
 
-  async getConfig(): Promise<{ config: ClawConfig }> {
+  async getConfig(): Promise<{ config: LuminaConfig }> {
     return this.request("/config");
   }
 
-  async updateConfig(data: Partial<ClawConfig>): Promise<{ ok: boolean }> {
+  async updateConfig(data: Partial<LuminaConfig>): Promise<{ ok: boolean }> {
     return this.request("/config", {
       method: "PATCH",
       body: JSON.stringify(data),
@@ -186,7 +186,7 @@ export class ClawClient {
     message: string,
     history?: Array<{ role: "user" | "assistant"; content: string }>,
     signal?: AbortSignal,
-  ): AsyncGenerator<ClawStreamEvent> {
+  ): AsyncGenerator<LuminaStreamEvent> {
     const url = `${this.baseUrl}/chat/stream`;
     const res = await fetch(url, {
       method: "POST",
@@ -200,7 +200,7 @@ export class ClawClient {
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(body.error || `Claw API error ${res.status}`);
+      throw new Error(body.error || `Lumina API error ${res.status}`);
     }
 
     const reader = res.body?.getReader();
@@ -225,12 +225,12 @@ export class ClawClient {
           } else if (line.startsWith("data: ") && currentEvent) {
             const dataStr = line.slice(6);
             if (currentEvent === "done") {
-              yield { type: "done" } as ClawStreamEvent;
+              yield { type: "done" } as LuminaStreamEvent;
               return;
             }
             try {
               const data = JSON.parse(dataStr);
-              yield { type: currentEvent, ...data } as ClawStreamEvent;
+              yield { type: currentEvent, ...data } as LuminaStreamEvent;
             } catch {
               // Skip malformed JSON
             }
@@ -245,21 +245,21 @@ export class ClawClient {
 
   // --- Briefings ---
 
-  async getLatestBriefing(): Promise<{ briefing: ClawBriefing | null }> {
+  async getLatestBriefing(): Promise<{ briefing: LuminaBriefing | null }> {
     return this.request("/briefing");
   }
 
-  async getBriefingHistory(limit = 20): Promise<{ briefings: ClawBriefing[] }> {
+  async getBriefingHistory(limit = 20): Promise<{ briefings: LuminaBriefing[] }> {
     return this.request(`/briefing/history?limit=${limit}`);
   }
 
-  async generateBriefing(): Promise<{ briefing: ClawBriefing }> {
+  async generateBriefing(): Promise<{ briefing: LuminaBriefing }> {
     return this.request("/briefing/generate", { method: "POST", timeoutMs: CHAT_TIMEOUT_MS });
   }
 
   // --- Monitors ---
 
-  async getMonitors(): Promise<{ monitors: ClawMonitor[] }> {
+  async getMonitors(): Promise<{ monitors: LuminaMonitor[] }> {
     return this.request("/monitors");
   }
 
@@ -277,7 +277,7 @@ export class ClawClient {
 
   // --- Pipeline ---
 
-  async getPipelineRuns(limit = 50): Promise<{ runs: ClawPipelineRun[] }> {
+  async getPipelineRuns(limit = 50): Promise<{ runs: LuminaPipelineRun[] }> {
     return this.request(`/pipeline/runs?limit=${limit}`);
   }
 
@@ -323,22 +323,22 @@ export class ClawClient {
 
   // --- Workspaces ---
 
-  async openProject(path: string): Promise<{ project: ClawProject; codebaseId: string | null; indexingStatus: string }> {
+  async openProject(path: string): Promise<{ project: LuminaProject; codebaseId: string | null; indexingStatus: string }> {
     return this.request("/projects/open", {
       method: "POST",
       body: JSON.stringify({ path }),
     });
   }
 
-  async getOpenProjects(): Promise<{ projects: ClawProject[] }> {
+  async getOpenProjects(): Promise<{ projects: LuminaProject[] }> {
     return this.request("/projects/open");
   }
 
-  async getFocusedProject(): Promise<{ project: ClawProject | null }> {
+  async getFocusedProject(): Promise<{ project: LuminaProject | null }> {
     return this.request("/projects/focused");
   }
 
-  async focusProject(id: string): Promise<{ ok: boolean; project: ClawProject }> {
+  async focusProject(id: string): Promise<{ ok: boolean; project: LuminaProject }> {
     return this.request(`/projects/${id}/focus`, { method: "POST" });
   }
 
@@ -419,13 +419,13 @@ export class ClawClient {
 
   // --- Traces ---
 
-  async getTraces(source?: string, limit = 50): Promise<{ traces: ClawTrace[] }> {
+  async getTraces(source?: string, limit = 50): Promise<{ traces: LuminaTrace[] }> {
     const params = new URLSearchParams({ limit: String(limit) });
     if (source) params.set("source", source);
     return this.request(`/traces?${params}`);
   }
 
-  async getTrace(id: string): Promise<{ trace: ClawTrace }> {
+  async getTrace(id: string): Promise<{ trace: LuminaTrace }> {
     return this.request(`/traces/${id}`);
   }
 
@@ -439,7 +439,7 @@ export class ClawClient {
     since?: string;
     limit?: number;
     offset?: number;
-  }): Promise<{ toolCalls: ClawToolCall[]; total: number }> {
+  }): Promise<{ toolCalls: LuminaToolCall[]; total: number }> {
     const params = new URLSearchParams();
     if (filters?.toolName) params.set("toolName", filters.toolName);
     if (filters?.source) params.set("source", filters.source);
@@ -451,7 +451,7 @@ export class ClawClient {
     return this.request(`/tool-calls?${params}`);
   }
 
-  async getToolCall(id: string): Promise<{ toolCall: ClawToolCall }> {
+  async getToolCall(id: string): Promise<{ toolCall: LuminaToolCall }> {
     return this.request(`/tool-calls/${id}`);
   }
 
@@ -462,7 +462,7 @@ export class ClawClient {
 
   // --- Control Plane ---
 
-  async getControlCapabilities(): Promise<ClawControlCapabilitiesResponse> {
+  async getControlCapabilities(): Promise<LuminaControlCapabilitiesResponse> {
     return this.request("/control/capabilities");
   }
 
@@ -470,7 +470,7 @@ export class ClawClient {
     toolName: string,
     args: Record<string, unknown> = {},
     options?: { sessionId?: string; dryRun?: boolean; timeoutMs?: number }
-  ): Promise<ClawControlExecuteResponse> {
+  ): Promise<LuminaControlExecuteResponse> {
     return this.request("/control/execute", {
       method: "POST",
       body: JSON.stringify({
@@ -485,11 +485,11 @@ export class ClawClient {
 
   // --- Skills ---
 
-  async getSkillsAvailable(): Promise<ClawSkillsAvailable> {
+  async getSkillsAvailable(): Promise<LuminaSkillsAvailable> {
     return this.request("/skills/available");
   }
 
-  async searchSkills(query: string, options?: { limit?: number; tags?: string[]; category?: string }): Promise<{ skills: ClawSkillSearchResult[]; source: string }> {
+  async searchSkills(query: string, options?: { limit?: number; tags?: string[]; category?: string }): Promise<{ skills: LuminaSkillSearchResult[]; source: string }> {
     const params = new URLSearchParams({ q: query });
     if (options?.limit) params.set("limit", String(options.limit));
     if (options?.tags?.length) params.set("tags", options.tags.join(","));
@@ -497,11 +497,11 @@ export class ClawClient {
     return this.request(`/skills/search?${params}`);
   }
 
-  async getSkillCategories(): Promise<{ categories: ClawHubCategory[] }> {
+  async getSkillCategories(): Promise<{ categories: LuminaHubCategory[] }> {
     return this.request("/skills/categories");
   }
 
-  async installSkill(slug: string, options?: { version?: string; target?: "user" | "workspace" }): Promise<ClawSkillInstallResult> {
+  async installSkill(slug: string, options?: { version?: string; target?: "user" | "workspace" }): Promise<LuminaSkillInstallResult> {
     return this.request("/skills/install", {
       method: "POST",
       body: JSON.stringify({ slug, version: options?.version, target: options?.target ?? "user" }),

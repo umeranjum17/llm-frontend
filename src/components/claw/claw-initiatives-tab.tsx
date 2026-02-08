@@ -13,7 +13,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useClawStore } from "@/stores/claw-store";
-import type { ClawInitiative } from "@/lib/claw/types";
+import type { LuminaInitiative } from "@/lib/lumina/types";
 import { cn } from "@/lib/utils";
 
 type InitiativeColumnKey = "proposed" | "approved" | "in_progress" | "completed" | "rejected";
@@ -33,7 +33,7 @@ function formatRelativeTime(value?: string) {
   return formatDistanceToNow(date, { addSuffix: true });
 }
 
-function priorityBadge(priority: ClawInitiative["priority"]) {
+function priorityBadge(priority: LuminaInitiative["priority"]) {
   const cls =
     priority === "high"
       ? "border-red-500/20 bg-red-500/10 text-red-500"
@@ -47,7 +47,7 @@ function priorityBadge(priority: ClawInitiative["priority"]) {
   );
 }
 
-function DetailContent({ initiative }: { initiative: ClawInitiative }) {
+function DetailContent({ initiative }: { initiative: LuminaInitiative }) {
   return (
     <div className="space-y-4 text-sm">
       <div>
@@ -79,7 +79,7 @@ function InitiativeCard({
   onSelect,
   onAction,
 }: {
-  initiative: ClawInitiative;
+  initiative: LuminaInitiative;
   showActions: boolean;
   isSelected: boolean;
   onSelect: () => void;
@@ -144,7 +144,7 @@ export function ClawInitiativesTab() {
   const refreshInitiatives = useClawStore((s) => s.refreshInitiatives);
   const updateInitiative = useClawStore((s) => s.updateInitiative);
 
-  const [selectedInitiative, setSelectedInitiative] = useState<ClawInitiative | null>(null);
+  const [selectedInitiative, setSelectedInitiative] = useState<LuminaInitiative | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [expandedColumn, setExpandedColumn] = useState<InitiativeColumnKey | null>("proposed");
 
@@ -155,7 +155,7 @@ export function ClawInitiativesTab() {
   }, [isConnected, refreshInitiatives]);
 
   const grouped = useMemo(() => {
-    const initial: Record<InitiativeColumnKey, ClawInitiative[]> = {
+    const initial: Record<InitiativeColumnKey, LuminaInitiative[]> = {
       proposed: [],
       approved: [],
       in_progress: [],
@@ -180,7 +180,7 @@ export function ClawInitiativesTab() {
     await refreshInitiatives();
   };
 
-  const handleSelect = (initiative: ClawInitiative) => {
+  const handleSelect = (initiative: LuminaInitiative) => {
     setSelectedInitiative(initiative);
     if (typeof window !== "undefined" && window.innerWidth < 768) {
       setMobileOpen(true);

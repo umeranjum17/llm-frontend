@@ -27,7 +27,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useClawStore } from "@/stores/claw-store";
-import type { ClawToolCall } from "@/lib/claw/types";
+import type { LuminaToolCall } from "@/lib/lumina/types";
 import { cn } from "@/lib/utils";
 
 type ToolCallSourceFilter = "all" | "chat" | "cron" | "heartbeat" | "ambient" | "reflection" | "watcher";
@@ -107,7 +107,7 @@ function DetailSection({
   );
 }
 
-function ToolCallDetail({ call }: { call: ClawToolCall }) {
+function ToolCallDetail({ call }: { call: LuminaToolCall }) {
   const sideEffects = parseJson(call.sideEffects) as
     | { fileChanges?: unknown; gitOps?: unknown; [key: string]: unknown }
     | null;
@@ -176,7 +176,7 @@ export function ClawToolCallsTab() {
 
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState<ToolCallSourceFilter>("all");
-  const [selectedCall, setSelectedCall] = useState<ClawToolCall | null>(null);
+  const [selectedCall, setSelectedCall] = useState<LuminaToolCall | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
@@ -198,7 +198,7 @@ export function ClawToolCallsTab() {
     return toolCalls.filter((call) => call.toolName.toLowerCase().includes(q));
   }, [search, toolCalls]);
 
-  const handleSelectCall = (call: ClawToolCall) => {
+  const handleSelectCall = (call: LuminaToolCall) => {
     setSelectedCall(call);
     if (typeof window !== "undefined" && window.innerWidth < 768) {
       setMobileOpen(true);

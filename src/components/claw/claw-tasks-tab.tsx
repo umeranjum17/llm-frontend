@@ -20,10 +20,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useClawStore } from "@/stores/claw-store";
-import type { ClawTask } from "@/lib/claw/types";
+import type { LuminaTask } from "@/lib/lumina/types";
 import { cn } from "@/lib/utils";
 
-type TaskStatusFilter = "all" | ClawTask["status"];
+type TaskStatusFilter = "all" | LuminaTask["status"];
 
 const STATUS_FILTERS: TaskStatusFilter[] = [
   "all",
@@ -40,14 +40,14 @@ function formatRelativeTime(value?: string) {
   return formatDistanceToNow(date, { addSuffix: true });
 }
 
-function statusIcon(status: ClawTask["status"]) {
+function statusIcon(status: LuminaTask["status"]) {
   if (status === "pending") return <Clock className="h-3.5 w-3.5 text-muted-foreground" />;
   if (status === "running") return <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />;
   if (status === "completed") return <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />;
   return <XCircle className="h-3.5 w-3.5 text-red-500" />;
 }
 
-function statusBadge(status: ClawTask["status"]) {
+function statusBadge(status: LuminaTask["status"]) {
   const cls =
     status === "completed"
       ? "bg-green-500/10 text-green-500 border-green-500/20"
@@ -63,7 +63,7 @@ function statusBadge(status: ClawTask["status"]) {
   );
 }
 
-function priorityBadge(priority: ClawTask["priority"]) {
+function priorityBadge(priority: LuminaTask["priority"]) {
   const cls =
     priority === "high"
       ? "bg-red-500/10 text-red-500 border-red-500/20"
@@ -86,7 +86,7 @@ function prettyJson(value?: string) {
   }
 }
 
-function TaskDetail({ task }: { task: ClawTask }) {
+function TaskDetail({ task }: { task: LuminaTask }) {
   return (
     <div className="space-y-4 text-sm">
       <div className="flex items-center gap-2">{statusBadge(task.status)}</div>
@@ -119,7 +119,7 @@ export function ClawTasksTab() {
   const refreshTasks = useClawStore((s) => s.refreshTasks);
   const deleteTask = useClawStore((s) => s.deleteTask);
 
-  const [selectedTask, setSelectedTask] = useState<ClawTask | null>(null);
+  const [selectedTask, setSelectedTask] = useState<LuminaTask | null>(null);
   const [statusFilter, setStatusFilter] = useState<TaskStatusFilter>("all");
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -134,7 +134,7 @@ export function ClawTasksTab() {
     return tasks.filter((task) => task.status === statusFilter);
   }, [statusFilter, tasks]);
 
-  const handleSelectTask = (task: ClawTask) => {
+  const handleSelectTask = (task: LuminaTask) => {
     setSelectedTask(task);
     if (typeof window !== "undefined" && window.innerWidth < 768) {
       setMobileOpen(true);

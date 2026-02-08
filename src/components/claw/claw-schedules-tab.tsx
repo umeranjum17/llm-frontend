@@ -22,7 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useClawStore } from "@/stores/claw-store";
-import type { ClawSchedule } from "@/lib/claw/types";
+import type { LuminaSchedule } from "@/lib/lumina/types";
 import { cn } from "@/lib/utils";
 
 function formatRelativeTime(value?: string) {
@@ -98,7 +98,7 @@ export function ClawSchedulesTab() {
     setIsCreateOpen(false);
   };
 
-  const handleSelectSchedule = async (schedule: ClawSchedule) => {
+  const handleSelectSchedule = async (schedule: LuminaSchedule) => {
     setSelectedScheduleId(schedule.id);
     await fetchScheduleRuns(schedule.id);
     if (typeof window !== "undefined" && window.innerWidth < 768) {

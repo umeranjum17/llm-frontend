@@ -6,16 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useClawStore } from "@/stores/claw-store";
-import type { ClawSkillLocal, ClawSkillSearchResult, ClawHubCategory } from "@/lib/claw/types";
+import type { LuminaSkillLocal, LuminaSkillSearchResult, LuminaHubCategory } from "@/lib/lumina/types";
 import { toast } from "sonner";
 
 export function ClawSkillsTab() {
   const client = useClawStore((s) => s.client);
 
-  const [installed, setInstalled] = useState<ClawSkillLocal[]>([]);
+  const [installed, setInstalled] = useState<LuminaSkillLocal[]>([]);
   const [hubInstalled, setHubInstalled] = useState<string[]>([]);
-  const [searchResults, setSearchResults] = useState<ClawSkillSearchResult[]>([]);
-  const [categories, setCategories] = useState<ClawHubCategory[]>([]);
+  const [searchResults, setSearchResults] = useState<LuminaSkillSearchResult[]>([]);
+  const [categories, setCategories] = useState<LuminaHubCategory[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);

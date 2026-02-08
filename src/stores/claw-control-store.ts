@@ -1,23 +1,23 @@
 import { create } from "zustand";
 import { useClawStore } from "@/stores/claw-store";
 import type {
-  ClawControlCapability,
-  ClawControlExecuteResponse,
-} from "@/lib/claw/types";
+  LuminaControlCapability,
+  LuminaControlExecuteResponse,
+} from "@/lib/lumina/types";
 
 interface ClawControlState {
   loading: boolean;
   executing: boolean;
   error: string | null;
-  capabilities: ClawControlCapability[];
+  capabilities: LuminaControlCapability[];
   allowlist: string[];
-  lastResult: ClawControlExecuteResponse | null;
+  lastResult: LuminaControlExecuteResponse | null;
   refreshCapabilities: () => Promise<void>;
   executeTool: (
     toolName: string,
     args: Record<string, unknown>,
     options?: { dryRun?: boolean; sessionId?: string }
-  ) => Promise<ClawControlExecuteResponse | null>;
+  ) => Promise<LuminaControlExecuteResponse | null>;
   clearResult: () => void;
 }
 

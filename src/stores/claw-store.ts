@@ -1,7 +1,7 @@
 // src/stores/claw-store.ts
 import { create } from "zustand";
-import { ClawClient } from "@/lib/claw/client";
-import type { ClawStatus, ClawTask, ClawActivity, ClawSchedule, ClawScheduleRun, ClawInitiative, ClawConfig, ClawBriefing, ClawMonitor, ClawPipelineRun, CostData, PendingQuestion, Codebase, ClawTrace, ClawToolCall, ToolCallStats, ClawProject } from "@/lib/claw/types";
+import { LuminaClient } from "@/lib/lumina/client";
+import type { LuminaStatus, LuminaTask, LuminaActivity, LuminaSchedule, LuminaScheduleRun, LuminaInitiative, LuminaConfig, LuminaBriefing, LuminaMonitor, LuminaPipelineRun, CostData, PendingQuestion, Codebase, LuminaTrace, LuminaToolCall, ToolCallStats, LuminaProject } from "@/lib/lumina/types";
 import { getSettings, updateSettings } from "@/lib/db/queries";
 
 function getLocalhostFallbackUrl(url: string): string | null {
@@ -41,26 +41,26 @@ interface ClawState {
   isConnected: boolean;
   isConnecting: boolean;
   error: string | null;
-  client: ClawClient | null;
+  client: LuminaClient | null;
   keysSynced: boolean;
 
-  status: ClawStatus | null;
-  tasks: ClawTask[];
-  activity: ClawActivity[];
-  schedules: ClawSchedule[];
-  config: ClawConfig | null;
-  scheduleRuns: Record<string, ClawScheduleRun[]>;
-  initiatives: ClawInitiative[];
-  briefing: ClawBriefing | null;
-  monitors: ClawMonitor[];
-  pipelineRuns: ClawPipelineRun[];
+  status: LuminaStatus | null;
+  tasks: LuminaTask[];
+  activity: LuminaActivity[];
+  schedules: LuminaSchedule[];
+  config: LuminaConfig | null;
+  scheduleRuns: Record<string, LuminaScheduleRun[]>;
+  initiatives: LuminaInitiative[];
+  briefing: LuminaBriefing | null;
+  monitors: LuminaMonitor[];
+  pipelineRuns: LuminaPipelineRun[];
   cost: CostData | null;
   questions: PendingQuestion[];
   codebases: Codebase[];
-  openProjects: ClawProject[];
-  focusedProject: ClawProject | null;
-  traces: ClawTrace[];
-  toolCalls: ClawToolCall[];
+  openProjects: LuminaProject[];
+  focusedProject: LuminaProject | null;
+  traces: LuminaTrace[];
+  toolCalls: LuminaToolCall[];
   toolCallsTotal: number;
   toolCallStats: ToolCallStats | null;
 
@@ -76,7 +76,7 @@ interface ClawState {
   deleteTask: (id: string) => Promise<void>;
   createSchedule: (name: string, cron: string) => Promise<void>;
   deleteSchedule: (id: string) => Promise<void>;
-  updateConfig: (data: Partial<ClawConfig>) => Promise<void>;
+  updateConfig: (data: Partial<LuminaConfig>) => Promise<void>;
   pushKeys: (keys: Record<string, string>) => Promise<string[]>;
   fetchScheduleRuns: (scheduleId: string) => Promise<void>;
   refreshInitiatives: () => Promise<void>;
@@ -84,7 +84,7 @@ interface ClawState {
   refreshBriefing: () => Promise<void>;
   refreshMonitors: () => Promise<void>;
   refreshPipelineRuns: () => Promise<void>;
-  generateBriefing: () => Promise<ClawBriefing | null>;
+  generateBriefing: () => Promise<LuminaBriefing | null>;
   runPipeline: () => Promise<void>;
   createMonitor: (data: { name: string; type: string; config: Record<string, any> }) => Promise<string | null>;
   deleteMonitor: (id: string) => Promise<void>;
@@ -111,7 +111,7 @@ interface ClawState {
 
   // Workspace methods
   refreshOpenProjects: () => Promise<void>;
-  openProjectByPath: (path: string) => Promise<ClawProject | null>;
+  openProjectByPath: (path: string) => Promise<LuminaProject | null>;
   focusProject: (id: string) => Promise<void>;
   closeProject: (id: string) => Promise<void>;
 }
@@ -150,8 +150,8 @@ export const useClawStore = create<ClawState>((set, get) => ({
     set({ isConnecting: true, error: null });
     try {
       let resolvedUrl = cleanUrl;
-      let client = new ClawClient(cleanUrl, secret);
-      let status: ClawStatus;
+      let client = new LuminaClient(cleanUrl, secret);
+      let status: LuminaStatus;
       try {
         status = await client.getStatus();
       } catch (primaryErr) {
@@ -160,7 +160,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
           throw primaryErr;
         }
         console.warn(`[Claw] Primary URL failed (${cleanUrl}); retrying with ${fallbackUrl}`);
-        client = new ClawClient(fallbackUrl, secret);
+        client = new LuminaClient(fallbackUrl, secret);
         status = await client.getStatus();
         resolvedUrl = fallbackUrl;
       }

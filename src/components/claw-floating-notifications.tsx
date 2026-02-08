@@ -19,14 +19,14 @@ import { useClawStore } from "@/stores/claw-store";
 import {
   useClawNotificationStore,
   useUnreadCount,
-  type ClawNotification,
+  type LuminaNotification,
 } from "@/stores/claw-notification-store";
 import { useClawSurface } from "@/hooks/use-claw-surface";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 
 const ICON_MAP: Record<
-  ClawNotification["type"],
+  LuminaNotification["type"],
   { icon: typeof Bell; color: string }
 > = {
   "task:completed": { icon: CheckCheck, color: "text-green-500" },
@@ -49,7 +49,7 @@ function formatRelativeTime(timestamp: number) {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
-function NotificationItem({ notification }: { notification: ClawNotification }) {
+function NotificationItem({ notification }: { notification: LuminaNotification }) {
   const markAsRead = useClawNotificationStore((s) => s.markAsRead);
   const { icon: Icon, color } = ICON_MAP[notification.type] || {
     icon: Activity,

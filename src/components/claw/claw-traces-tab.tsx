@@ -25,7 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useClawStore } from "@/stores/claw-store";
-import type { ClawTrace } from "@/lib/claw/types";
+import type { LuminaTrace } from "@/lib/lumina/types";
 import { cn } from "@/lib/utils";
 
 type TraceSourceFilter = "all" | "chat" | "cron" | "heartbeat" | "ambient" | "reflection" | "watcher";
@@ -69,7 +69,7 @@ function truncate(value: string, length = 80) {
   return `${value.slice(0, length)}...`;
 }
 
-function TraceDetail({ trace }: { trace: ClawTrace }) {
+function TraceDetail({ trace }: { trace: LuminaTrace }) {
   const [openSteps, setOpenSteps] = useState<Record<string, boolean>>({});
 
   return (
@@ -122,7 +122,7 @@ export function ClawTracesTab() {
   const refreshTraces = useClawStore((s) => s.refreshTraces);
 
   const [sourceFilter, setSourceFilter] = useState<TraceSourceFilter>("all");
-  const [selectedTrace, setSelectedTrace] = useState<ClawTrace | null>(null);
+  const [selectedTrace, setSelectedTrace] = useState<LuminaTrace | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
@@ -136,7 +136,7 @@ export function ClawTracesTab() {
     return traces.filter((trace) => trace.source === sourceFilter);
   }, [sourceFilter, traces]);
 
-  const handleSelectTrace = (trace: ClawTrace) => {
+  const handleSelectTrace = (trace: LuminaTrace) => {
     setSelectedTrace(trace);
     if (typeof window !== "undefined" && window.innerWidth < 768) {
       setMobileOpen(true);

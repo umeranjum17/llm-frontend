@@ -5,7 +5,7 @@ import { retrieveContext } from "@/lib/rag/retrieval";
 import { searchSimilar } from "@/lib/rag/vector-store";
 import { searchMemories, getAllMemories, type MemoryItem } from "@/lib/memory";
 import { getLuminaGlobalContext } from "@/lib/constants/prompts/capabilities";
-import { ClawClient } from "@/lib/claw/client";
+import { LuminaClient } from "@/lib/lumina/client";
 
 /**
  * RAG retrieval result type
@@ -621,7 +621,7 @@ export async function buildContextMessages(
     try {
       const clawConfig = await getClawConfig();
       if (clawConfig?.url && clawConfig?.secret) {
-        const clawClient = new ClawClient(clawConfig.url, clawConfig.secret);
+        const clawClient = new LuminaClient(clawConfig.url, clawConfig.secret);
 
         for (const codebaseRef of codebaseReferences) {
           try {
