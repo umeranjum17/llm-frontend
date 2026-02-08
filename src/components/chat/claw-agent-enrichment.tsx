@@ -2,7 +2,7 @@
 
 import { useLuminaStore } from "@/stores/lumina-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import { useClawSurface } from "@/hooks/use-claw-surface";
+import { useLuminaSurface } from "@/hooks/use-lumina-surface";
 import { cn } from "@/lib/utils";
 
 /**
@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
  * is handled by sidebar widget or floating notifications.
  */
 export function ClawAgentEnrichment() {
-  const { showChatEnrichment } = useClawSurface();
+  const { showChatEnrichment } = useLuminaSurface();
   const { clawEnabled } = useSettingsStore();
   const isConnected = useLuminaStore((s) => s.isConnected);
 

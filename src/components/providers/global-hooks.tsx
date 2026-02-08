@@ -6,7 +6,7 @@ import { useDBHealth } from "@/hooks/use-db-health";
 import { useCacheCleanup } from "@/hooks/use-cache-cleanup";
 import { useSyncInit } from "@/hooks/use-sync-init";
 import { useAutoSync } from "@/hooks/use-auto-sync";
-import { useClawEvents } from "@/hooks/use-claw-events";
+import { useLuminaEvents } from "@/hooks/use-lumina-events";
 
 /**
  * Client component to run global initialization hooks.
@@ -29,7 +29,7 @@ export function GlobalHooks() {
   useAutoSync();
 
   // Subscribe to Claw SSE events for real-time notifications (no-op when Claw is disabled)
-  useClawEvents();
+  useLuminaEvents();
 
   // Localhost recovery: stale Workbox state can trap requests behind old CSP/network rules.
   useEffect(() => {

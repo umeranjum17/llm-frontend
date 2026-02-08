@@ -31,7 +31,7 @@ const ACTIVITY_EVENTS: LuminaEventType[] = [
   "monitor:alert",
 ];
 
-export function useClawEvents() {
+export function useLuminaEvents() {
   const client = useLuminaStore((s) => s.client);
   const isConnected = useLuminaStore((s) => s.isConnected);
   const esRef = useRef<EventSource | null>(null);
@@ -229,11 +229,11 @@ export function useClawEvents() {
     };
     es.addEventListener("codebase:index_error", onCodebaseError);
 
-    // Auto-sync keys when Claw requests them
+    // Auto-sync keys when Lumina requests them
     const onKeysNeeded = () => {
-      console.log("[Claw SSE] Claw requested keys, auto-syncing...");
+      console.log("[Lumina SSE] Lumina requested keys, auto-syncing...");
       useLuminaStore.getState().syncKeys().catch((err: any) => {
-        console.warn("[Claw SSE] Auto key sync failed:", err);
+        console.warn("[Lumina SSE] Auto key sync failed:", err);
       });
     };
     es.addEventListener("keys:needed", onKeysNeeded);
@@ -251,7 +251,7 @@ export function useClawEvents() {
     }
 
     es.onerror = () =>
-      console.warn("[Claw SSE] Connection error, auto-reconnecting...");
+      console.warn("[Lumina SSE] Connection error, auto-reconnecting...");
 
     return () => {
       es.close();

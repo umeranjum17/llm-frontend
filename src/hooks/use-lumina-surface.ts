@@ -4,14 +4,14 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { useUIStore } from "@/stores/ui-store";
 
 /**
- * Controls which Claw surface should be shown based on device/layout context.
+ * Controls which Lumina surface should be shown based on device/layout context.
  *
  * Architecture:
  * - DESKTOP (sidebar visible): Sidebar widget is PRIMARY, hide floating
  * - MOBILE (sidebar hidden): Floating is PRIMARY
  * - CHAT: Minimal status dot only (not full notifications)
  */
-export function useClawSurface() {
+export function useLuminaSurface() {
   const isMobile = useMediaQuery("(max-width: 768px)");
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
 

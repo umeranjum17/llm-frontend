@@ -21,7 +21,7 @@ import {
   useUnreadCount,
   type LuminaNotification,
 } from "@/stores/lumina-notification-store";
-import { useClawSurface } from "@/hooks/use-claw-surface";
+import { useLuminaSurface } from "@/hooks/use-lumina-surface";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 
@@ -82,7 +82,7 @@ function NotificationItem({ notification }: { notification: LuminaNotification }
 }
 
 export function ClawFloatingNotifications() {
-  const { showFloating } = useClawSurface();
+  const { showFloating } = useLuminaSurface();
   const isMobile = useMediaQuery("(max-width: 640px)");
   const { clawEnabled } = useSettingsStore();
   const isConnected = useLuminaStore((s) => s.isConnected);
