@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import Link from "next/link";
-import { ArrowLeft, Settings, LayoutDashboard, ListTodo, Calendar, Activity, Wrench, Lightbulb, Package, FolderOpen } from "lucide-react";
+import { ArrowLeft, Settings, LayoutDashboard, ListTodo, Calendar, Activity, Wrench, Lightbulb, Package, FolderOpen, ShieldCheck, MessageCircleQuestion } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LuminaSystemOverview } from "@/components/lumina/lumina-system-overview";
@@ -19,10 +19,15 @@ import { LuminaControlTab } from "@/components/lumina/lumina-control-tab";
 import { LuminaSkillsTab } from "@/components/lumina/lumina-skills-tab";
 import LuminaConfigTab from "@/components/lumina/lumina-config-tab";
 import { LuminaWorkspacesTab } from "@/components/lumina/lumina-workspaces-tab";
+import { LuminaApprovalsTab } from "@/components/lumina/lumina-approvals-tab";
+import { LuminaQuestionsTab } from "@/components/lumina/lumina-questions-tab";
+import { Badge } from "@/components/ui/badge";
 import { useLuminaStore } from "@/stores/lumina-store";
 
 export default function LuminaDashboardPage() {
   const isConnected = useLuminaStore((s) => s.isConnected);
+  const approvals = useLuminaStore((s) => s.approvals);
+  const questions = useLuminaStore((s) => s.questions);
   const didInit = useRef(false);
 
   useEffect(() => {
@@ -72,6 +77,24 @@ export default function LuminaDashboardPage() {
               <LayoutDashboard className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Overview</span>
             </TabsTrigger>
+            <TabsTrigger value="approvals" className="gap-1.5 text-xs sm:text-sm">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Approvals</span>
+              {approvals.length > 0 && (
+                <Badge variant="destructive" className="h-4 min-w-4 px-1 text-[10px] leading-none">
+                  {approvals.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="questions" className="gap-1.5 text-xs sm:text-sm">
+              <MessageCircleQuestion className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Questions</span>
+              {questions.length > 0 && (
+                <Badge variant="destructive" className="h-4 min-w-4 px-1 text-[10px] leading-none">
+                  {questions.length}
+                </Badge>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="workspaces" className="gap-1.5 text-xs sm:text-sm">
               <FolderOpen className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Workspaces</span>
@@ -118,6 +141,14 @@ export default function LuminaDashboardPage() {
               <LuminaLiveFeed />
               <LuminaHistory />
             </div>
+          </TabsContent>
+
+          <TabsContent value="approvals">
+            <LuminaApprovalsTab />
+          </TabsContent>
+
+          <TabsContent value="questions">
+            <LuminaQuestionsTab />
           </TabsContent>
 
           <TabsContent value="workspaces">
