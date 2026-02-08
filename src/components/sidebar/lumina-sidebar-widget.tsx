@@ -10,11 +10,11 @@ import { LuminaDisabledCTA } from "./lumina-sidebar-widget/lumina-disabled-cta";
 import { useMediaQuery } from "@/hooks/use-media-query";
 
 export function LuminaSidebarWidget() {
-  const clawEnabled = useSettingsStore((s) => s.clawEnabled);
+  const luminaEnabled = useSettingsStore((s) => s.luminaEnabled);
   const [open, setOpen] = useState(false);
   const isMobile = useMediaQuery("(max-width: 640px)");
 
-  const content = clawEnabled ? <LuminaPopoverContent /> : <LuminaDisabledCTA />;
+  const content = luminaEnabled ? <LuminaPopoverContent /> : <LuminaDisabledCTA />;
 
   // On mobile, use a bottom Sheet instead of Popover (works better inside parent Sheet)
   if (isMobile) {

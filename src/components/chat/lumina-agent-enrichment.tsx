@@ -12,10 +12,10 @@ import { cn } from "@/lib/utils";
  */
 export function LuminaAgentEnrichment() {
   const { showChatEnrichment } = useLuminaSurface();
-  const { clawEnabled } = useSettingsStore();
+  const { luminaEnabled } = useSettingsStore();
   const isConnected = useLuminaStore((s) => s.isConnected);
 
-  if (!showChatEnrichment || !clawEnabled) return null;
+  if (!showChatEnrichment || !luminaEnabled) return null;
 
   // Minimal: just a status dot
   return (

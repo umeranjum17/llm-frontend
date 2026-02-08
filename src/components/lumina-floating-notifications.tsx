@@ -84,7 +84,7 @@ function NotificationItem({ notification }: { notification: LuminaNotification }
 export function LuminaFloatingNotifications() {
   const { showFloating } = useLuminaSurface();
   const isMobile = useMediaQuery("(max-width: 640px)");
-  const { clawEnabled } = useSettingsStore();
+  const { luminaEnabled } = useSettingsStore();
   const isConnected = useLuminaStore((s) => s.isConnected);
   const notifications = useLuminaNotificationStore((s) => s.notifications);
   const markAllAsRead = useLuminaNotificationStore((s) => s.markAllAsRead);
@@ -101,7 +101,7 @@ export function LuminaFloatingNotifications() {
   // Don't render if sidebar widget is handling it
   if (!showFloating) return null;
 
-  if (!clawEnabled || !isConnected) return null;
+  if (!luminaEnabled || !isConnected) return null;
 
   // Only show the bubble when there are unread notifications (unless expanded)
   if (unreadCount === 0 && !isExpanded) return null;

@@ -200,7 +200,7 @@ export async function createChat(chat: Omit<Chat, "id" | "createdAt" | "updatedA
     ...chat,
     // Default to Personal project if no projectId provided
     projectId: chat.projectId || DEFAULT_PROJECT_ID,
-    // Keep existing chats on Lumina unless explicitly targeted to Claw runtime.
+    // Keep existing chats on Lumina unless explicitly targeted to Lumina CLI runtime.
     executionTarget: chat.executionTarget ?? "lumina",
     id: crypto.randomUUID(),
     createdAt: now,
@@ -1659,12 +1659,12 @@ export async function deleteDraft(chatId: string): Promise<void> {
   await db.drafts.delete(chatId);
 }
 
-// ============= CLAW CONFIG QUERIES =============
+// ============= LUMINA CONFIG QUERIES =============
 
-export async function getClawConfig(): Promise<{ url: string; secret: string } | null> {
+export async function getLuminaConfig(): Promise<{ url: string; secret: string } | null> {
   const settings = await getSettings();
-  if (settings?.clawUrl && settings?.clawSecret) {
-    return { url: settings.clawUrl, secret: settings.clawSecret };
+  if (settings?.luminaUrl && settings?.luminaSecret) {
+    return { url: settings.luminaUrl, secret: settings.luminaSecret };
   }
   return null;
 }

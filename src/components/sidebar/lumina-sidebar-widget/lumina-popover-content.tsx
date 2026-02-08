@@ -192,9 +192,9 @@ export function LuminaPopoverContent() {
     setRetrying(true);
     try {
       const { useSettingsStore } = await import("@/stores/settings-store");
-      const { clawUrl, clawSecret } = useSettingsStore.getState();
-      if (clawUrl && clawSecret) {
-        await connect(clawUrl, clawSecret);
+      const { luminaUrl, luminaSecret } = useSettingsStore.getState();
+      if (luminaUrl && luminaSecret) {
+        await connect(luminaUrl, luminaSecret);
       }
     } finally {
       setRetrying(false);

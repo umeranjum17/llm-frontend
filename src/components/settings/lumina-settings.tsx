@@ -26,17 +26,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 function ConnectionTab() {
   const { isConnected, isConnecting, error, connect, disconnect } = useLuminaStore();
-  const { clawUrl, clawSecret, clawEnabled, updateClawSettings } = useSettingsStore();
+  const { luminaUrl, luminaSecret, luminaEnabled, updateLuminaSettings } = useSettingsStore();
   const notificationLevel = useLuminaPreferencesStore((s) => s.notificationLevel);
   const setNotificationLevel = useLuminaPreferencesStore((s) => s.setNotificationLevel);
 
-  const [url, setUrl] = useState(clawUrl || "");
-  const [secret, setSecret] = useState(clawSecret || "");
-  const [enabled, setEnabled] = useState(clawEnabled ?? false);
+  const [url, setUrl] = useState(luminaUrl || "");
+  const [secret, setSecret] = useState(luminaSecret || "");
+  const [enabled, setEnabled] = useState(luminaEnabled ?? false);
 
   const handleToggle = (checked: boolean) => {
     setEnabled(checked);
-    updateClawSettings(url, secret, checked);
+    updateLuminaSettings(url, secret, checked);
   };
 
   const handleConnect = async () => {
@@ -47,7 +47,7 @@ function ConnectionTab() {
     await connect(url, secret);
     const connected = useLuminaStore.getState().isConnected;
     if (connected) {
-      const latestUrl = useSettingsStore.getState().clawUrl;
+      const latestUrl = useSettingsStore.getState().luminaUrl;
       if (latestUrl && latestUrl !== url) {
         setUrl(latestUrl);
       }
@@ -57,7 +57,7 @@ function ConnectionTab() {
 
   const handleDisconnect = () => {
     disconnect();
-    updateClawSettings(url, secret, false);
+    updateLuminaSettings(url, secret, false);
     setEnabled(false);
   };
 

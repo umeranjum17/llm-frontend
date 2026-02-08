@@ -22,7 +22,7 @@ export function LuminaActionRequired() {
   const initiatives = useLuminaStore((s) => s.initiatives);
   const answerQuestion = useLuminaStore((s) => s.answerQuestion);
   const dismissQuestion = useLuminaStore((s) => s.dismissQuestion);
-  const clawUrl = useSettingsStore((s) => s.clawUrl);
+  const luminaUrl = useSettingsStore((s) => s.luminaUrl);
 
   const [answerInputs, setAnswerInputs] = useState<Record<string, string>>({});
   const [answering, setAnswering] = useState<string | null>(null);
@@ -38,8 +38,8 @@ export function LuminaActionRequired() {
 
   if (!hasAnything) return null;
 
-  const dashboardUrl = clawUrl
-    ? `${clawUrl.replace(/\/$/, "")}/dashboard`
+  const dashboardUrl = luminaUrl
+    ? `${luminaUrl.replace(/\/$/, "")}/dashboard`
     : "http://localhost:8000/dashboard";
 
   const handleAnswer = async (id: string) => {

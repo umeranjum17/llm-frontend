@@ -160,7 +160,7 @@ export function ChatShell() {
   const defaultExecutionTarget = useSettingsStore((state) => state.defaultExecutionTarget);
   const lastProviderIdByModel = useSettingsStore((state) => state.lastProviderIdByModel);
   const updateLastProviderForModel = useSettingsStore((state) => state.updateLastProviderForModel);
-  const luminaEnabled = useSettingsStore((state) => state.clawEnabled);
+  const luminaEnabled = useSettingsStore((state) => state.luminaEnabled);
   const luminaIsConnected = useLuminaStore((s) => s.isConnected);
   const luminaIsConnecting = useLuminaStore((s) => s.isConnecting);
   const luminaKeysSynced = useLuminaStore((s) => s.keysSynced);

@@ -2,7 +2,7 @@ import Dexie, { type EntityTable } from "dexie";
 import { TABLE_REGISTRY, getStoresForVersion } from "./table-registry";
 
 // Current schema version - update this when adding new tables or indexes
-export const DB_SCHEMA_VERSION = 33;
+export const DB_SCHEMA_VERSION = 34;
 
 // Type definitions
 export interface Project {
@@ -200,10 +200,10 @@ export interface UserSettings {
   memoryDecayEnabled?: boolean;        // Auto-prune old memories (default: false)
   memoryDecayDays?: number;            // Age threshold in days (default: 60, range 14-365)
   lastMemoryDecayAt?: number;          // Timestamp of last decay run
-  // Claw agent integration
-  clawUrl?: string;           // e.g. "http://100.x.x.x:8000" (Tailscale IP)
-  clawSecret?: string;        // Bearer token matching Claw's CLAW_SECRET env var
-  clawEnabled?: boolean;      // Master toggle for Claw integration
+  // Lumina agent integration
+  luminaUrl?: string;           // e.g. "http://100.x.x.x:8000" (Tailscale IP)
+  luminaSecret?: string;        // Bearer token matching Lumina's LUMINA_SECRET env var
+  luminaEnabled?: boolean;      // Master toggle for Lumina integration
 }
 
 export interface ModelFavorite {
@@ -662,6 +662,37 @@ export class LuminaDB extends Dexie {
           console.log(`[DB] Migrated ${settingsMigrated} settings from claw_runtime to lumina_cli`);
 
           console.log("[DB] ✓ v33 migration complete");
+        });
+      }
+
+      // Version 34: Rename clawUrl/clawSecret/clawEnabled to luminaUrl/luminaSecret/luminaEnabled
+      if (version === 34) {
+        schema.upgrade(async (tx) => {
+          console.log("[DB] Running v34 upgrade: Renaming clawUrl/Secret/Enabled → luminaUrl/Secret/Enabled");
+
+          const settings = await tx.table("settings").toArray();
+          let migrated = 0;
+          for (const setting of settings) {
+            const updates: Record<string, any> = {};
+            if (setting.clawUrl !== undefined) {
+              updates.luminaUrl = setting.clawUrl;
+              updates.clawUrl = undefined;
+            }
+            if (setting.clawSecret !== undefined) {
+              updates.luminaSecret = setting.clawSecret;
+              updates.clawSecret = undefined;
+            }
+            if (setting.clawEnabled !== undefined) {
+              updates.luminaEnabled = setting.clawEnabled;
+              updates.clawEnabled = undefined;
+            }
+            if (Object.keys(updates).length > 0) {
+              await tx.table("settings").update(setting.id, updates);
+              migrated++;
+            }
+          }
+          console.log(`[DB] Migrated ${migrated} settings records`);
+          console.log("[DB] ✓ v34 migration complete");
         });
       }
 

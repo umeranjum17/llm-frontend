@@ -17,12 +17,12 @@ function formatUptime(seconds: number): string {
 }
 
 export function LuminaStatusIndicator() {
-  const { clawEnabled } = useSettingsStore();
+  const { luminaEnabled } = useSettingsStore();
   const { isConnected, isConnecting, keysSynced, status, error, createTask } = useLuminaStore();
   const [taskInput, setTaskInput] = useState("");
   const [sending, setSending] = useState(false);
 
-  if (!clawEnabled) return null;
+  if (!luminaEnabled) return null;
 
   let tone = "text-muted-foreground";
   let label = "Disconnected";

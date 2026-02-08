@@ -1,4 +1,4 @@
-import { getChatById, getAgentById, getAgentsByIds, getProjectFilesByIds, getChatsWithMessagesByIds, getModelAlias, getSettings, getAllSkills, getProjectFiles, getChatFiles, getClawConfig } from "@/lib/db/queries";
+import { getChatById, getAgentById, getAgentsByIds, getProjectFilesByIds, getChatsWithMessagesByIds, getModelAlias, getSettings, getAllSkills, getProjectFiles, getChatFiles, getLuminaConfig } from "@/lib/db/queries";
 import type { Message, Skill } from "@/lib/db/schema";
 import { getTextFromMessageContent } from "@/lib/utils/message-content";
 import { retrieveContext } from "@/lib/rag/retrieval";
@@ -619,14 +619,14 @@ export async function buildContextMessages(
   // 10. Codebase context (from @codebase mentions - DYNAMIC, fetched from Lumina)
   if (codebaseReferences.length > 0) {
     try {
-      const clawConfig = await getClawConfig();
-      if (clawConfig?.url && clawConfig?.secret) {
-        const clawClient = new LuminaClient(clawConfig.url, clawConfig.secret);
+      const luminaConfig = await getLuminaConfig();
+      if (luminaConfig?.url && luminaConfig?.secret) {
+        const luminaClient = new LuminaClient(luminaConfig.url, luminaConfig.secret);
 
         for (const codebaseRef of codebaseReferences) {
           try {
             // Search the codebase for relevant code based on the user's query
-            const searchResult = await clawClient.searchCodebase(codebaseRef.id, cleanContent, {
+            const searchResult = await luminaClient.searchCodebase(codebaseRef.id, cleanContent, {
               limit: 5,
             });
 

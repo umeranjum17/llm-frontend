@@ -167,7 +167,7 @@ export const useLuminaStore = create<LuminaState>((set, get) => ({
       // /status is intentionally public; validate the secret against a protected route.
       await client.verifyAuth();
       set({ client, isConnected: true, isConnecting: false, status, keysSynced: false });
-      await updateSettings({ clawUrl: resolvedUrl, clawSecret: secret, clawEnabled: true });
+      await updateSettings({ luminaUrl: resolvedUrl, luminaSecret: secret, luminaEnabled: true });
       await get().refreshAll();
       // Auto-sync keys with retry
       await get().syncKeys();
@@ -237,8 +237,8 @@ export const useLuminaStore = create<LuminaState>((set, get) => ({
     // Persist disabled state so auto-connect doesn't re-enable on next startup
     const { useSettingsStore } = await import("@/stores/settings-store");
     const settings = useSettingsStore.getState();
-    if (settings.clawUrl) {
-      await settings.updateClawSettings(settings.clawUrl, settings.clawSecret ?? "", false);
+    if (settings.luminaUrl) {
+      await settings.updateLuminaSettings(settings.luminaUrl, settings.luminaSecret ?? "", false);
     }
   },
 
@@ -414,15 +414,15 @@ export const useLuminaStore = create<LuminaState>((set, get) => ({
         return;
       }
       const settings = await getSettings();
-      if (settings.clawEnabled && settings.clawUrl && settings.clawSecret) {
+      if (settings.luminaEnabled && settings.luminaUrl && settings.luminaSecret) {
         if (get().isConnected || get().isConnecting) {
           return;
         }
-        console.log("[Lumina] Auto-connecting to", settings.clawUrl);
-        await get().connect(settings.clawUrl, settings.clawSecret);
+        console.log("[Lumina] Auto-connecting to", settings.luminaUrl);
+        await get().connect(settings.luminaUrl, settings.luminaSecret);
         console.log("[Lumina] Auto-connect result:", get().isConnected ? "connected" : "failed", get().error);
       } else {
-        console.log("[Lumina] Skipping auto-connect — enabled:", settings.clawEnabled, "url:", !!settings.clawUrl, "secret:", !!settings.clawSecret);
+        console.log("[Lumina] Skipping auto-connect — enabled:", settings.luminaEnabled, "url:", !!settings.luminaUrl, "secret:", !!settings.luminaSecret);
       }
     } catch (e) {
       console.warn("[Lumina] initFromSettings error:", e);

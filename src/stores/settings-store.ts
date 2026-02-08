@@ -28,7 +28,7 @@ interface SettingsState extends Partial<UserSettings> {
   updateLastProviderForModel: (modelId: string, providerId: string) => Promise<void>;
   updateDefaultTemperature: (temperature: number) => Promise<void>;
   updateDefaultMaxTokens: (maxTokens: number) => Promise<void>;
-  updateClawSettings: (url: string, secret: string, enabled: boolean) => Promise<void>;
+  updateLuminaSettings: (url: string, secret: string, enabled: boolean) => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -207,8 +207,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ defaultMaxTokens: maxTokens });
   },
 
-  updateClawSettings: async (url, secret, enabled) => {
-    await updateSettings({ clawUrl: url, clawSecret: secret, clawEnabled: enabled });
-    set({ clawUrl: url, clawSecret: secret, clawEnabled: enabled });
+  updateLuminaSettings: async (url, secret, enabled) => {
+    await updateSettings({ luminaUrl: url, luminaSecret: secret, luminaEnabled: enabled });
+    set({ luminaUrl: url, luminaSecret: secret, luminaEnabled: enabled });
   },
 }));
