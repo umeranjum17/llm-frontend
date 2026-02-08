@@ -23,7 +23,19 @@ export type LuminaEventType =
   | "briefing:generated"
   | "briefing:delivered"
   | "monitor:checked"
-  | "monitor:alert";
+  | "monitor:alert"
+  | "coding_agent:started"
+  | "coding_agent:output"
+  | "coding_agent:completed"
+  | "shell:started"
+  | "shell:output"
+  | "shell:completed"
+  | "watcher:event"
+  | "watcher:action"
+  | "skill:proposed"
+  | "skill:generated"
+  | "schedule:auto_paused"
+  | "emergency:stop";
 
 export interface LuminaLiveEvent {
   id: string;

@@ -1,7 +1,7 @@
 // src/stores/lumina-store.ts
 import { create } from "zustand";
 import { LuminaClient } from "@/lib/lumina/client";
-import type { LuminaStatus, LuminaTask, LuminaActivity, LuminaSchedule, LuminaScheduleRun, LuminaInitiative, LuminaConfig, LuminaBriefing, LuminaMonitor, LuminaPipelineRun, CostData, PendingQuestion, Codebase, LuminaTrace, LuminaToolCall, ToolCallStats, LuminaProject } from "@/lib/lumina/types";
+import type { LuminaStatus, LuminaTask, LuminaActivity, LuminaSchedule, LuminaScheduleRun, LuminaInitiative, LuminaConfig, LuminaBriefing, LuminaMonitor, LuminaPipelineRun, CostData, PendingQuestion, Codebase, LuminaTrace, LuminaToolCall, ToolCallStats, LuminaProject, LuminaApproval } from "@/lib/lumina/types";
 import { getSettings, updateSettings } from "@/lib/db/queries";
 
 function getLocalhostFallbackUrl(url: string): string | null {
@@ -63,6 +63,7 @@ interface LuminaState {
   toolCalls: LuminaToolCall[];
   toolCallsTotal: number;
   toolCallStats: ToolCallStats | null;
+  approvals: LuminaApproval[];
 
   connect: (url: string, secret: string) => Promise<void>;
   disconnect: () => void;
@@ -90,6 +91,10 @@ interface LuminaState {
   deleteMonitor: (id: string) => Promise<void>;
   chatWithLumina: (message: string, history?: Array<{ role: "user" | "assistant"; content: string }>) => Promise<{ response: string; taskId: string }>;
   initFromSettings: () => Promise<void>;
+
+  // Approvals
+  refreshApprovals: () => Promise<void>;
+  respondToApproval: (id: string, approved: boolean) => Promise<void>;
 
   // Cost & Questions
   refreshCost: () => Promise<void>;
@@ -141,6 +146,7 @@ export const useLuminaStore = create<LuminaState>((set, get) => ({
   toolCalls: [],
   toolCallsTotal: 0,
   toolCallStats: null,
+  approvals: [],
 
   connect: async (url, secret) => {
     if (get().isConnecting) {
@@ -233,7 +239,7 @@ export const useLuminaStore = create<LuminaState>((set, get) => ({
   },
 
   disconnect: async () => {
-    set({ isConnected: false, client: null, status: null, tasks: [], activity: [], schedules: [], scheduleRuns: {}, initiatives: [], briefing: null, monitors: [], pipelineRuns: [], cost: null, questions: [], config: null, error: null, keysSynced: false, codebases: [], openProjects: [], focusedProject: null, traces: [], toolCalls: [], toolCallsTotal: 0, toolCallStats: null });
+    set({ isConnected: false, client: null, status: null, tasks: [], activity: [], schedules: [], scheduleRuns: {}, initiatives: [], briefing: null, monitors: [], pipelineRuns: [], cost: null, questions: [], config: null, error: null, keysSynced: false, codebases: [], openProjects: [], focusedProject: null, traces: [], toolCalls: [], toolCallsTotal: 0, toolCallStats: null, approvals: [] });
     // Persist disabled state so auto-connect doesn't re-enable on next startup
     const { useSettingsStore } = await import("@/stores/settings-store");
     const settings = useSettingsStore.getState();
@@ -244,7 +250,7 @@ export const useLuminaStore = create<LuminaState>((set, get) => ({
 
   refreshAll: async () => {
     const s = get();
-    await Promise.allSettled([s.refreshTasks(), s.refreshActivity(), s.refreshSchedules(), s.refreshConfig(), s.refreshInitiatives(), s.refreshBriefing(), s.refreshMonitors(), s.refreshPipelineRuns(), s.refreshCodebases(), s.refreshOpenProjects(), s.refreshCost(), s.refreshQuestions(), s.refreshTraces(), s.refreshToolCalls(), s.refreshToolCallStats()]);
+    await Promise.allSettled([s.refreshTasks(), s.refreshActivity(), s.refreshSchedules(), s.refreshConfig(), s.refreshInitiatives(), s.refreshBriefing(), s.refreshMonitors(), s.refreshPipelineRuns(), s.refreshCodebases(), s.refreshOpenProjects(), s.refreshCost(), s.refreshQuestions(), s.refreshApprovals(), s.refreshTraces(), s.refreshToolCalls(), s.refreshToolCallStats()]);
   },
 
   refreshTasks: async () => {
@@ -427,6 +433,23 @@ export const useLuminaStore = create<LuminaState>((set, get) => ({
     } catch (e) {
       console.warn("[Lumina] initFromSettings error:", e);
     }
+  },
+
+  // Approvals
+  refreshApprovals: async () => {
+    const { client } = get();
+    if (!client) return;
+    try { const { approvals } = await client.getApprovals(); set({ approvals }); }
+    catch {}
+  },
+
+  respondToApproval: async (id, approved) => {
+    const { client } = get();
+    if (!client) return;
+    try {
+      await client.respondToApproval(id, approved);
+      set((s) => ({ approvals: s.approvals.filter((a) => a.id !== id) }));
+    } catch {}
   },
 
   refreshCost: async () => {

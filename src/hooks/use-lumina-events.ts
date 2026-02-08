@@ -29,6 +29,18 @@ const ACTIVITY_EVENTS: LuminaEventType[] = [
   "briefing:delivered",
   "monitor:checked",
   "monitor:alert",
+  "coding_agent:started",
+  "coding_agent:output",
+  "coding_agent:completed",
+  "shell:started",
+  "shell:output",
+  "shell:completed",
+  "watcher:event",
+  "watcher:action",
+  "skill:proposed",
+  "skill:generated",
+  "schedule:auto_paused",
+  "emergency:stop",
 ];
 
 export function useLuminaEvents() {
@@ -237,6 +249,62 @@ export function useLuminaEvents() {
       });
     };
     es.addEventListener("keys:needed", onKeysNeeded);
+
+    // Approval events
+    es.addEventListener("approval:requested", (e: MessageEvent) => {
+      useLuminaStore.getState().refreshApprovals();
+      try {
+        const data = JSON.parse(e.data);
+        addNotification({ type: "approval:requested" as any, title: "Approval Needed", message: `${data.toolName} requires approval` });
+      } catch {
+        addNotification({ type: "approval:requested" as any, title: "Approval Needed", message: "A tool requires approval" });
+      }
+    });
+
+    es.addEventListener("approval:responded", () => {
+      useLuminaStore.getState().refreshApprovals();
+    });
+
+    es.addEventListener("approval:timeout", () => {
+      useLuminaStore.getState().refreshApprovals();
+      addNotification({ type: "approval:timeout" as any, title: "Approval Timed Out", message: "Approval expired" });
+    });
+
+    // Question events
+    es.addEventListener("question:pending", () => {
+      useLuminaStore.getState().refreshQuestions();
+      addNotification({ type: "question:pending" as any, title: "Question Pending", message: "Lumina needs your input" });
+    });
+
+    es.addEventListener("question:answered", () => {
+      useLuminaStore.getState().refreshQuestions();
+    });
+
+    es.addEventListener("question:dismissed", () => {
+      useLuminaStore.getState().refreshQuestions();
+    });
+
+    // Additional event listeners with side effects
+    es.addEventListener("schedule:auto_paused", () => {
+      useLuminaStore.getState().refreshSchedules();
+      addNotification({ type: "schedule:auto_paused" as any, title: "Schedule Paused", message: "Schedule auto-paused" });
+    });
+
+    es.addEventListener("emergency:stop", () => {
+      addNotification({ type: "emergency:stop" as any, title: "Emergency Stop", message: "All autonomous operations halted" });
+    });
+
+    es.addEventListener("cost:logged", () => {
+      useLuminaStore.getState().refreshCost();
+    });
+
+    es.addEventListener("skill:generated", () => {
+      addNotification({ type: "skill:generated" as any, title: "Skill Generated", message: "New skill available" });
+    });
+
+    es.addEventListener("watcher:action", () => {
+      addNotification({ type: "watcher:action" as any, title: "Watcher Action", message: "File watcher triggered an action" });
+    });
 
     // Granular activity events → push into activity store
     for (const eventType of ACTIVITY_EVENTS) {
