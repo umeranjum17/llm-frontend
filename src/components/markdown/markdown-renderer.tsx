@@ -231,9 +231,9 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
               );
             }
 
-            // Hide claw-task and claw-schedule blocks — these are internal instructions
+            // Hide lumina-task and lumina-schedule blocks — these are internal instructions
             // that get parsed and executed behind the scenes, never shown to the user
-            if (language === "claw-task" || language === "claw-schedule") {
+            if (language === "lumina-task" || language === "lumina-schedule") {
               return <></>;
             }
 

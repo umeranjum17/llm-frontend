@@ -177,7 +177,7 @@ function LiveEventRow({ event }: { event: LuminaLiveEvent }) {
   );
 }
 
-export function ClawLiveFeed() {
+export function LuminaLiveFeed() {
   const liveEvents = useLuminaActivityStore((s) => s.liveEvents);
   const clearEvents = useLuminaActivityStore((s) => s.clearEvents);
   const [paused, setPaused] = useState(false);

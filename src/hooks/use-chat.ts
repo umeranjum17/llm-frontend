@@ -788,13 +788,13 @@ export function useChat(chatId: string | null) {
     // Route to Lumina CLI runtime only when explicitly selected.
     if (executionTarget === "lumina_cli") {
       const { useLuminaStore } = await import("@/stores/lumina-store");
-      const clawStore = useLuminaStore.getState();
+      const luminaStore = useLuminaStore.getState();
 
-      if (!clawStore.isConnected) {
+      if (!luminaStore.isConnected) {
         const errMsg = await addMessage({
           chatId: effectiveChatId,
           role: "assistant",
-          content: "Claw Runtime is not connected. Go to Settings > Claw to configure the connection.",
+          content: "Lumina Runtime is not connected. Go to Settings > Lumina to configure the connection.",
           parentId: parentUserMessageId,
         });
         await updateChat(effectiveChatId, { activeBranchLeafId: errMsg.id });
@@ -803,13 +803,13 @@ export function useChat(chatId: string | null) {
 
       const cleanedMessage = cleanReferencesForLLM(getTextFromMessageContent(messageContent));
 
-      // Load conversation history for Claw context
-      let clawHistory: Array<{ role: "user" | "assistant"; content: string }> = [];
+      // Load conversation history for Lumina context
+      let luminaHistory: Array<{ role: "user" | "assistant"; content: string }> = [];
       try {
         const history = parentUserMessageId
           ? await getMessagesForBranch(effectiveChatId, parentUserMessageId)
           : await getMessages(effectiveChatId);
-        clawHistory = history
+        luminaHistory = history
           .filter((m) => m.role === "user" || m.role === "assistant")
           .slice(-20)
           .map((m) => ({
@@ -818,7 +818,7 @@ export function useChat(chatId: string | null) {
           }))
           .filter((m) => m.content.trim());
       } catch (e) {
-        console.warn("[Claw] Failed to load conversation history:", e);
+        console.warn("[Lumina] Failed to load conversation history:", e);
       }
 
       // Create placeholder message to show loading skeleton
@@ -830,7 +830,7 @@ export function useChat(chatId: string | null) {
       });
       await updateChat(effectiveChatId, { activeBranchLeafId: placeholderMsg.id });
       setStreamingMessage(effectiveChatId, placeholderMsg.id);
-      const finalizeClawStreaming = () => {
+      const finalizeLuminaStreaming = () => {
         if (streamingClearTimeoutRef.current) {
           clearTimeout(streamingClearTimeoutRef.current);
         }
@@ -842,20 +842,20 @@ export function useChat(chatId: string | null) {
       };
 
       try {
-        const client = clawStore.client;
+        const client = luminaStore.client;
         if (!client) {
-          throw new Error("Claw client not available");
+          throw new Error("Lumina client not available");
         }
 
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
         let fullContent = "";
-        let clawTaskId = "";
+        let luminaTaskId = "";
         const streamToolCalls: any[] = [];
         const streamToolResults: any[] = [];
 
-        for await (const event of client.chatStream(cleanedMessage, clawHistory, controller.signal)) {
+        for await (const event of client.chatStream(cleanedMessage, luminaHistory, controller.signal)) {
           switch (event.type) {
             case "text-delta":
               fullContent += event.text;
@@ -889,38 +889,38 @@ export function useChat(chatId: string | null) {
               appendStreamingReasoning(effectiveChatId, event.text);
               break;
             case "completed":
-              clawTaskId = event.taskId;
+              luminaTaskId = event.taskId;
               if (!fullContent && event.response) {
                 fullContent = event.response;
               }
               break;
             case "error":
-              throw new Error(event.error || "Unknown Claw stream error");
+              throw new Error(event.error || "Unknown Lumina stream error");
             case "done":
               break;
           }
         }
 
         const finalContent = fullContent
-          ? (clawTaskId ? `${fullContent}\n\n*Task ID: ${clawTaskId}*` : fullContent)
-          : "Claw Runtime returned an empty response. This usually means a configuration issue — check Settings > Claw.";
+          ? (luminaTaskId ? `${fullContent}\n\n*Task ID: ${luminaTaskId}*` : fullContent)
+          : "Lumina Runtime returned an empty response. This usually means a configuration issue — check Settings > Lumina.";
         await updateMessage(placeholderMsg.id, {
           content: finalContent,
           toolCalls: streamToolCalls.length > 0 ? streamToolCalls : undefined,
           toolResults: streamToolResults.length > 0 ? streamToolResults : undefined,
         });
         abortControllerRef.current = null;
-        finalizeClawStreaming();
+        finalizeLuminaStreaming();
         return;
       } catch (e) {
         const partialContent = useStreamingStore.getState().getChatStream(effectiveChatId)?.streamingContent || "";
         const errorMsg = (e as Error).message;
         const content = partialContent
           ? `${partialContent}\n\n---\n*Stream interrupted: ${errorMsg}*`
-          : `Claw Runtime error: ${errorMsg}`;
+          : `Lumina Runtime error: ${errorMsg}`;
         await updateMessage(placeholderMsg.id, { content });
         abortControllerRef.current = null;
-        finalizeClawStreaming();
+        finalizeLuminaStreaming();
         return;
       }
     }
@@ -2166,7 +2166,7 @@ export function useChat(chatId: string | null) {
                   threshold,
                   excludeManualOnly: true, // Only match auto-trigger skills
                   conversationContext,
-                  excludePrefix: "skill_builtin_claw_",
+                  excludePrefix: "skill_builtin_lumina_",
                 }
               );
 

@@ -65,7 +65,7 @@ function SchedulesRunHistory({ scheduleId }: { scheduleId: string }) {
   );
 }
 
-export function ClawSchedulesTab() {
+export function LuminaSchedulesTab() {
   const isConnected = useLuminaStore((s) => s.isConnected);
   const schedules = useLuminaStore((s) => s.schedules);
   const refreshSchedules = useLuminaStore((s) => s.refreshSchedules);

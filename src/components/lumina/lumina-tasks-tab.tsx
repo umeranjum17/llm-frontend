@@ -113,7 +113,7 @@ function TaskDetail({ task }: { task: LuminaTask }) {
   );
 }
 
-export function ClawTasksTab() {
+export function LuminaTasksTab() {
   const isConnected = useLuminaStore((s) => s.isConnected);
   const tasks = useLuminaStore((s) => s.tasks);
   const refreshTasks = useLuminaStore((s) => s.refreshTasks);

@@ -5,23 +5,23 @@ import Link from "next/link";
 import { ArrowLeft, Settings, LayoutDashboard, ListTodo, Calendar, Activity, Wrench, Lightbulb, Package, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ClawSystemOverview } from "@/components/claw/claw-system-overview";
-import { ClawActionRequired } from "@/components/claw/claw-action-required";
-import { ClawIntelligence } from "@/components/claw/claw-intelligence";
-import { ClawLiveFeed } from "@/components/claw/claw-live-feed";
-import { ClawHistory } from "@/components/claw/claw-history";
-import { ClawTasksTab } from "@/components/claw/claw-tasks-tab";
-import { ClawSchedulesTab } from "@/components/claw/claw-schedules-tab";
-import { ClawTracesTab } from "@/components/claw/claw-traces-tab";
-import { ClawToolCallsTab } from "@/components/claw/claw-tool-calls-tab";
-import { ClawInitiativesTab } from "@/components/claw/claw-initiatives-tab";
-import { ClawControlTab } from "@/components/claw/claw-control-tab";
-import { ClawSkillsTab } from "@/components/claw/claw-skills-tab";
-import ClawConfigTab from "@/components/claw/claw-config-tab";
-import { ClawWorkspacesTab } from "@/components/claw/claw-workspaces-tab";
+import { LuminaSystemOverview } from "@/components/lumina/lumina-system-overview";
+import { LuminaActionRequired } from "@/components/lumina/lumina-action-required";
+import { LuminaIntelligence } from "@/components/lumina/lumina-intelligence";
+import { LuminaLiveFeed } from "@/components/lumina/lumina-live-feed";
+import { LuminaHistory } from "@/components/lumina/lumina-history";
+import { LuminaTasksTab } from "@/components/lumina/lumina-tasks-tab";
+import { LuminaSchedulesTab } from "@/components/lumina/lumina-schedules-tab";
+import { LuminaTracesTab } from "@/components/lumina/lumina-traces-tab";
+import { LuminaToolCallsTab } from "@/components/lumina/lumina-tool-calls-tab";
+import { LuminaInitiativesTab } from "@/components/lumina/lumina-initiatives-tab";
+import { LuminaControlTab } from "@/components/lumina/lumina-control-tab";
+import { LuminaSkillsTab } from "@/components/lumina/lumina-skills-tab";
+import LuminaConfigTab from "@/components/lumina/lumina-config-tab";
+import { LuminaWorkspacesTab } from "@/components/lumina/lumina-workspaces-tab";
 import { useLuminaStore } from "@/stores/lumina-store";
 
-export default function ClawDashboardPage() {
+export default function LuminaDashboardPage() {
   const isConnected = useLuminaStore((s) => s.isConnected);
   const didInit = useRef(false);
 
@@ -46,10 +46,10 @@ export default function ClawDashboardPage() {
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
-          <h1 className="text-lg font-semibold">Claw</h1>
+          <h1 className="text-lg font-semibold">Lumina</h1>
         </div>
         <Button variant="ghost" size="sm" className="h-8" asChild>
-          <Link href="/settings?tab=claw">
+          <Link href="/settings?tab=lumina">
             <Settings className="h-4 w-4 lg:mr-1.5" />
             <span className="hidden lg:inline">Settings</span>
           </Link>
@@ -59,8 +59,8 @@ export default function ClawDashboardPage() {
       {!isConnected ? (
         <div className="rounded-lg border bg-card py-16 text-center">
           <p className="text-sm text-muted-foreground">
-            Not connected to Claw.{" "}
-            <Link href="/settings?tab=claw" className="underline">
+            Not connected to Lumina.{" "}
+            <Link href="/settings?tab=lumina" className="underline">
               Configure in Settings
             </Link>
           </p>
@@ -111,49 +111,49 @@ export default function ClawDashboardPage() {
           </TabsList>
 
           <TabsContent value="overview" className="space-y-3 sm:space-y-4">
-            <ClawSystemOverview />
-            <ClawActionRequired />
-            <ClawIntelligence />
+            <LuminaSystemOverview />
+            <LuminaActionRequired />
+            <LuminaIntelligence />
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
-              <ClawLiveFeed />
-              <ClawHistory />
+              <LuminaLiveFeed />
+              <LuminaHistory />
             </div>
           </TabsContent>
 
           <TabsContent value="workspaces">
-            <ClawWorkspacesTab />
+            <LuminaWorkspacesTab />
           </TabsContent>
 
           <TabsContent value="tasks">
-            <ClawTasksTab />
+            <LuminaTasksTab />
           </TabsContent>
 
           <TabsContent value="schedules">
-            <ClawSchedulesTab />
+            <LuminaSchedulesTab />
           </TabsContent>
 
           <TabsContent value="traces">
-            <ClawTracesTab />
+            <LuminaTracesTab />
           </TabsContent>
 
           <TabsContent value="tool-calls">
-            <ClawToolCallsTab />
+            <LuminaToolCallsTab />
           </TabsContent>
 
           <TabsContent value="initiatives">
-            <ClawInitiativesTab />
+            <LuminaInitiativesTab />
           </TabsContent>
 
           <TabsContent value="skills">
-            <ClawSkillsTab />
+            <LuminaSkillsTab />
           </TabsContent>
 
           <TabsContent value="control">
-            <ClawControlTab />
+            <LuminaControlTab />
           </TabsContent>
 
           <TabsContent value="config">
-            <ClawConfigTab />
+            <LuminaConfigTab />
           </TabsContent>
         </Tabs>
       )}

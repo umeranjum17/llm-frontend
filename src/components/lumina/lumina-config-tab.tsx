@@ -134,7 +134,7 @@ function toEditableConfig(form: ConfigFormState, initial: EditableConfig): Edita
   };
 }
 
-export default function ClawConfigTab() {
+export default function LuminaConfigTab() {
   const client = useLuminaStore((s) => s.client);
   const isConnected = useLuminaStore((s) => s.isConnected);
 
@@ -221,7 +221,7 @@ export default function ClawConfigTab() {
   if (!isConnected || !client) {
     return (
       <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
-        Connect to Claw first to edit configuration.
+        Connect to Lumina first to edit configuration.
       </div>
     );
   }
@@ -231,9 +231,9 @@ export default function ClawConfigTab() {
       <section className="rounded-lg border bg-card p-4 sm:p-5 space-y-4">
         <div className="text-sm font-medium">Model</div>
         <div className="space-y-2">
-          <Label htmlFor="claw-openrouter-model">OpenRouter Model</Label>
+          <Label htmlFor="lumina-openrouter-model">OpenRouter Model</Label>
           <Input
-            id="claw-openrouter-model"
+            id="lumina-openrouter-model"
             value={form.openrouterModel}
             onChange={(event) => setForm((prev) => ({ ...prev, openrouterModel: event.target.value }))}
             placeholder="openai/gpt-5-mini"
@@ -246,9 +246,9 @@ export default function ClawConfigTab() {
         <div className="text-sm font-medium">Pipeline</div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="claw-pipeline-interval">Pipeline Interval (minutes)</Label>
+            <Label htmlFor="lumina-pipeline-interval">Pipeline Interval (minutes)</Label>
             <Input
-              id="claw-pipeline-interval"
+              id="lumina-pipeline-interval"
               type="number"
               min={1}
               value={form.pipelineIntervalMinutes}
@@ -257,9 +257,9 @@ export default function ClawConfigTab() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="claw-briefing-time">Briefing Time</Label>
+            <Label htmlFor="lumina-briefing-time">Briefing Time</Label>
             <Input
-              id="claw-briefing-time"
+              id="lumina-briefing-time"
               value={form.briefingTime}
               onChange={(event) => setForm((prev) => ({ ...prev, briefingTime: event.target.value }))}
               placeholder="08:30"
@@ -268,9 +268,9 @@ export default function ClawConfigTab() {
           </div>
         </div>
         <div className="flex items-center justify-between rounded-md border p-3">
-          <Label htmlFor="claw-briefing-enabled" className="text-sm">Briefing Enabled</Label>
+          <Label htmlFor="lumina-briefing-enabled" className="text-sm">Briefing Enabled</Label>
           <Switch
-            id="claw-briefing-enabled"
+            id="lumina-briefing-enabled"
             checked={form.briefingEnabled}
             onCheckedChange={(checked) => setForm((prev) => ({ ...prev, briefingEnabled: checked }))}
             disabled={loading || saving}
@@ -282,63 +282,63 @@ export default function ClawConfigTab() {
         <div className="text-sm font-medium">Tools</div>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="flex items-center justify-between rounded-md border p-3">
-            <Label htmlFor="claw-tool-computer-use" className="text-sm">Computer Use</Label>
+            <Label htmlFor="lumina-tool-computer-use" className="text-sm">Computer Use</Label>
             <Switch
-              id="claw-tool-computer-use"
+              id="lumina-tool-computer-use"
               checked={form.computerUseEnabled}
               onCheckedChange={(checked) => setForm((prev) => ({ ...prev, computerUseEnabled: checked }))}
               disabled={loading || saving}
             />
           </div>
           <div className="flex items-center justify-between rounded-md border p-3">
-            <Label htmlFor="claw-tool-playwright" className="text-sm">Playwright Browser</Label>
+            <Label htmlFor="lumina-tool-playwright" className="text-sm">Playwright Browser</Label>
             <Switch
-              id="claw-tool-playwright"
+              id="lumina-tool-playwright"
               checked={form.playwrightBrowserEnabled}
               onCheckedChange={(checked) => setForm((prev) => ({ ...prev, playwrightBrowserEnabled: checked }))}
               disabled={loading || saving}
             />
           </div>
           <div className="flex items-center justify-between rounded-md border p-3">
-            <Label htmlFor="claw-tool-git" className="text-sm">Git Tool</Label>
+            <Label htmlFor="lumina-tool-git" className="text-sm">Git Tool</Label>
             <Switch
-              id="claw-tool-git"
+              id="lumina-tool-git"
               checked={form.gitToolEnabled}
               onCheckedChange={(checked) => setForm((prev) => ({ ...prev, gitToolEnabled: checked }))}
               disabled={loading || saving}
             />
           </div>
           <div className="flex items-center justify-between rounded-md border p-3">
-            <Label htmlFor="claw-tool-system" className="text-sm">System Tool</Label>
+            <Label htmlFor="lumina-tool-system" className="text-sm">System Tool</Label>
             <Switch
-              id="claw-tool-system"
+              id="lumina-tool-system"
               checked={form.systemToolEnabled}
               onCheckedChange={(checked) => setForm((prev) => ({ ...prev, systemToolEnabled: checked }))}
               disabled={loading || saving}
             />
           </div>
           <div className="flex items-center justify-between rounded-md border p-3">
-            <Label htmlFor="claw-tool-database" className="text-sm">Database Tool</Label>
+            <Label htmlFor="lumina-tool-database" className="text-sm">Database Tool</Label>
             <Switch
-              id="claw-tool-database"
+              id="lumina-tool-database"
               checked={form.databaseToolEnabled}
               onCheckedChange={(checked) => setForm((prev) => ({ ...prev, databaseToolEnabled: checked }))}
               disabled={loading || saving}
             />
           </div>
           <div className="flex items-center justify-between rounded-md border p-3">
-            <Label htmlFor="claw-tool-network" className="text-sm">Network Tool</Label>
+            <Label htmlFor="lumina-tool-network" className="text-sm">Network Tool</Label>
             <Switch
-              id="claw-tool-network"
+              id="lumina-tool-network"
               checked={form.networkToolEnabled}
               onCheckedChange={(checked) => setForm((prev) => ({ ...prev, networkToolEnabled: checked }))}
               disabled={loading || saving}
             />
           </div>
           <div className="flex items-center justify-between rounded-md border p-3 sm:col-span-2">
-            <Label htmlFor="claw-tool-media" className="text-sm">Media Tool</Label>
+            <Label htmlFor="lumina-tool-media" className="text-sm">Media Tool</Label>
             <Switch
-              id="claw-tool-media"
+              id="lumina-tool-media"
               checked={form.mediaToolEnabled}
               onCheckedChange={(checked) => setForm((prev) => ({ ...prev, mediaToolEnabled: checked }))}
               disabled={loading || saving}
@@ -350,9 +350,9 @@ export default function ClawConfigTab() {
       <section className="rounded-lg border bg-card p-4 sm:p-5 space-y-4">
         <div className="text-sm font-medium">Guardrails</div>
         <div className="space-y-2">
-          <Label htmlFor="claw-daily-token-budget">Daily Token Budget</Label>
+          <Label htmlFor="lumina-daily-token-budget">Daily Token Budget</Label>
           <Input
-            id="claw-daily-token-budget"
+            id="lumina-daily-token-budget"
             type="number"
             min={0}
             value={form.dailyTokenBudget}
@@ -361,9 +361,9 @@ export default function ClawConfigTab() {
           />
         </div>
         <div className="flex items-center justify-between rounded-md border p-3">
-          <Label htmlFor="claw-emergency-stop" className="text-sm">Emergency Stop Enabled</Label>
+          <Label htmlFor="lumina-emergency-stop" className="text-sm">Emergency Stop Enabled</Label>
           <Switch
-            id="claw-emergency-stop"
+            id="lumina-emergency-stop"
             checked={form.emergencyStopEnabled}
             onCheckedChange={(checked) => setForm((prev) => ({ ...prev, emergencyStopEnabled: checked }))}
             disabled={loading || saving}

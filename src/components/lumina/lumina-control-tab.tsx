@@ -56,7 +56,7 @@ const getToolCategory = (toolName: string): ToolCategory => {
 
 const formatTimestamp = (value: string) => new Date(value).toLocaleString(undefined, { hour12: false });
 
-export function ClawControlTab() {
+export function LuminaControlTab() {
   const client = useLuminaStore((s) => s.client);
   const isConnected = useLuminaStore((s) => s.isConnected);
   const loading = useLuminaControlStore((s) => s.loading);
@@ -158,7 +158,7 @@ export function ClawControlTab() {
   if (!client || !isConnected) {
     return (
       <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
-        Connect to Claw first to use Control.
+        Connect to Lumina first to use Control.
       </div>
     );
   }

@@ -80,7 +80,7 @@ export default function Home() {
     initAndLoad();
   }, [loadSettings, loadKeys, settingsLoaded, keysLoaded]);
 
-  // Auto-connect to Claw if enabled in settings
+  // Auto-connect to Lumina if enabled in settings
   useEffect(() => {
     if (settingsLoaded) {
       import("@/stores/lumina-store").then(({ useLuminaStore }) => {

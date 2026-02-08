@@ -26,7 +26,7 @@ function formatRelativeTime(iso: string) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-export function ClawInitiativesPanel() {
+export function LuminaInitiativesPanel() {
   const initiatives = useLuminaStore((s) => s.initiatives);
   const refreshInitiatives = useLuminaStore((s) => s.refreshInitiatives);
   const updateInitiative = useLuminaStore((s) => s.updateInitiative);
@@ -44,7 +44,7 @@ export function ClawInitiativesPanel() {
         <div className="border-b px-4 py-3">
           <h3 className="text-sm font-medium">Initiatives</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Ideas proposed by Claw during reflection
+            Ideas proposed by Lumina during reflection
           </p>
         </div>
         <p className="px-4 py-8 text-center text-sm text-muted-foreground">
@@ -59,7 +59,7 @@ export function ClawInitiativesPanel() {
       <div className="border-b px-4 py-3">
         <h3 className="text-sm font-medium">Initiatives</h3>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Ideas proposed by Claw during reflection
+          Ideas proposed by Lumina during reflection
         </p>
       </div>
       <div className="divide-y divide-border">

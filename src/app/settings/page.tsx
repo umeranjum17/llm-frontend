@@ -33,7 +33,7 @@ const UsageAnalytics = dynamic(() => import("@/components/settings/usage-analyti
 const ModelAliasSettings = dynamic(() => import("@/components/settings/model-alias-settings").then(m => ({ default: m.ModelAliasSettings })), { loading: LoadingSpinner });
 const ComposioAppsSection = dynamic(() => import("@/components/settings/composio-apps-section").then(m => ({ default: m.ComposioAppsSection })), { loading: LoadingSpinner });
 const SyncSettings = dynamic(() => import("@/components/settings/sync-settings").then(m => ({ default: m.SyncSettings })), { loading: LoadingSpinner });
-const ClawSettings = dynamic(() => import("@/components/settings/claw-settings").then(m => ({ default: m.ClawSettings })), { loading: LoadingSpinner });
+const LuminaSettings = dynamic(() => import("@/components/settings/lumina-settings").then(m => ({ default: m.LuminaSettings })), { loading: LoadingSpinner });
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("general");
@@ -61,7 +61,7 @@ export default function SettingsPage() {
   useEffect(() => {
     const tabParam = new URLSearchParams(window.location.search).get("tab");
     if (!tabParam) return;
-    const allowedTabs = ["general", "mcp", "api-keys", "memory", "theme", "shortcuts", "data", "sync", "agents", "skills", "trust", "analytics", "aliases", "claw"];
+    const allowedTabs = ["general", "mcp", "api-keys", "memory", "theme", "shortcuts", "data", "sync", "agents", "skills", "trust", "analytics", "aliases", "lumina"];
     if (allowedTabs.includes(tabParam)) setActiveTab(tabParam);
   }, []);
 
@@ -161,9 +161,9 @@ export default function SettingsPage() {
                 <SettingsIcon className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Aliases</span>
               </TabsTrigger>
-              <TabsTrigger value="claw" className="gap-1.5 text-xs shrink-0 px-2 sm:px-3">
+              <TabsTrigger value="lumina" className="gap-1.5 text-xs shrink-0 px-2 sm:px-3">
                 <Bot className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Claw</span>
+                <span className="hidden sm:inline">Lumina</span>
               </TabsTrigger>
             </TabsList>
 
@@ -219,8 +219,8 @@ export default function SettingsPage() {
               <ModelAliasSettings />
             </TabsContent>
 
-            <TabsContent value="claw" className="space-y-6">
-              <ClawSettings />
+            <TabsContent value="lumina" className="space-y-6">
+              <LuminaSettings />
             </TabsContent>
           </Tabs>
         </div>

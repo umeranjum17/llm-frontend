@@ -5,7 +5,7 @@ import { Sparkles, Bot, Zap, Clock, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export function ClawDisabledCTA() {
+export function LuminaDisabledCTA() {
   return (
     <div className="p-5 text-center">
       {/* Animated Icon */}
@@ -33,7 +33,7 @@ export function ClawDisabledCTA() {
 
       {/* Value Prop */}
       <p className="text-xs text-muted-foreground mb-5 leading-relaxed max-w-[220px] mx-auto">
-        Let Claw handle background tasks, monitor topics, and keep you briefed automatically.
+        Let Lumina handle background tasks, monitor topics, and keep you briefed automatically.
       </p>
 
       {/* Features Preview - stacks on small screens */}
@@ -61,16 +61,16 @@ export function ClawDisabledCTA() {
           "shadow-sm hover:shadow-md transition-all"
         )}
       >
-        <Link href="/settings?tab=claw">
-          Enable Claw
+        <Link href="/settings?tab=lumina">
+          Enable Lumina
           <ArrowRight className="h-3.5 w-3.5 ml-2" />
         </Link>
       </Button>
 
       {/* Learn more link */}
       <p className="mt-3 text-[10px] text-muted-foreground">
-        <Link href="/claw" className="hover:text-foreground underline-offset-2 hover:underline transition-colors">
-          Learn more about Claw
+        <Link href="/lumina" className="hover:text-foreground underline-offset-2 hover:underline transition-colors">
+          Learn more about Lumina
         </Link>
       </p>
     </div>

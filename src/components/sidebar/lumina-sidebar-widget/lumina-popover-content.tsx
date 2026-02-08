@@ -136,7 +136,7 @@ function SkeletonLine({ width }: { width: string }) {
   return <div className={cn("h-3 bg-muted/60 rounded motion-safe:animate-pulse", width)} />;
 }
 
-export function ClawPopoverContent() {
+export function LuminaPopoverContent() {
   const router = useRouter();
   const isConnected = useLuminaStore((s) => s.isConnected);
   const isConnecting = useLuminaStore((s) => s.isConnecting);
@@ -226,10 +226,10 @@ export function ClawPopoverContent() {
         </Button>
         <div className="mt-4 pt-3 border-t border-border/50">
           <Link
-            href="/settings?tab=claw"
+            href="/settings?tab=lumina"
             className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
           >
-            Claw settings <ExternalLink className="h-3 w-3" />
+            Lumina settings <ExternalLink className="h-3 w-3" />
           </Link>
         </div>
       </div>
@@ -242,7 +242,7 @@ export function ClawPopoverContent() {
       <div className="p-4">
         <div className="flex items-center gap-2 mb-4">
           <Loader2 className="h-4 w-4 motion-safe:animate-spin text-blue-500" />
-          <span className="text-sm font-medium">Connecting to Claw...</span>
+          <span className="text-sm font-medium">Connecting to Lumina...</span>
         </div>
         <div className="space-y-3">
           <SkeletonLine width="w-3/4" />
@@ -262,13 +262,13 @@ export function ClawPopoverContent() {
       <div className="p-4">
         <div className="flex items-center gap-2 text-muted-foreground mb-3">
           <Bot className="h-4 w-4" />
-          <span className="text-sm font-medium">Claw Disconnected</span>
+          <span className="text-sm font-medium">Lumina Disconnected</span>
         </div>
         <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
-          Claw is enabled but not connected. Check your server settings.
+          Lumina is enabled but not connected. Check your server settings.
         </p>
         <Button asChild size="sm" variant="outline" className="w-full h-9">
-          <Link href="/settings?tab=claw">
+          <Link href="/settings?tab=lumina">
             Configure Connection
             <ArrowRight className="h-3.5 w-3.5 ml-2" />
           </Link>
@@ -292,7 +292,7 @@ export function ClawPopoverContent() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-foreground">Claw Agent</span>
+                <span className="text-sm font-semibold text-foreground">Lumina Agent</span>
                 <Badge
                   variant="outline"
                   className={cn(
@@ -327,7 +327,7 @@ export function ClawPopoverContent() {
               variant="ghost"
               className="h-7 w-7 hover:bg-muted"
               title="Open Dashboard"
-              onClick={() => router.push("/claw")}
+              onClick={() => router.push("/lumina")}
             >
               <ExternalLink className="h-4 w-4" />
             </Button>
@@ -344,7 +344,7 @@ export function ClawPopoverContent() {
               value={taskInput}
               onChange={(e) => setTaskInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleCreateTask()}
-              placeholder="What should Claw do?"
+              placeholder="What should Lumina do?"
               className="h-9 text-sm"
               disabled={sending || taskCreated}
             />
@@ -394,7 +394,7 @@ export function ClawPopoverContent() {
             {questions.slice(0, 2).map((q) => (
               <div key={q.id} className="py-2 border-b border-border/30 last:border-0">
                 <div className="text-xs font-medium text-foreground break-words">{q.question}</div>
-                <Link href="/claw" className="text-[10px] text-amber-600 hover:underline mt-1 inline-block">
+                <Link href="/lumina" className="text-[10px] text-amber-600 hover:underline mt-1 inline-block">
                   Answer on dashboard
                 </Link>
               </div>
@@ -411,7 +411,7 @@ export function ClawPopoverContent() {
             ))}
             {(proposedInitiatives.length > 3 || questions.length > 2) && (
               <Link
-                href="/claw"
+                href="/lumina"
                 className="flex items-center justify-center gap-1 py-2.5 text-[11px] text-amber-600 hover:text-amber-700 font-medium transition-colors"
               >
                 View all on dashboard
@@ -425,14 +425,14 @@ export function ClawPopoverContent() {
       {/* Footer */}
       <div className="shrink-0 bg-muted/20 px-4 py-2.5 flex items-center justify-between">
         <Link
-          href="/settings?tab=claw"
+          href="/settings?tab=lumina"
           className="text-[11px] text-muted-foreground hover:text-foreground font-medium transition-colors"
         >
           Settings
         </Link>
         <button
           type="button"
-          onClick={() => router.push("/claw")}
+          onClick={() => router.push("/lumina")}
           className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 font-medium transition-colors"
         >
           Dashboard <ExternalLink className="h-3 w-3" />

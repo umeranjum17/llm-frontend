@@ -18,7 +18,7 @@ function formatRelativeTime(iso: string) {
   return `${days}d ago`;
 }
 
-export function ClawBriefingCard() {
+export function LuminaBriefingCard() {
   const briefing = useLuminaStore((s) => s.briefing);
   const generateBriefing = useLuminaStore((s) => s.generateBriefing);
   const [generating, setGenerating] = useState(false);

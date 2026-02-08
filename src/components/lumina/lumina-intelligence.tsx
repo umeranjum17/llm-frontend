@@ -36,7 +36,7 @@ function formatTimeUntil(iso: string) {
   return `in ${Math.floor(hours / 24)}d`;
 }
 
-export function ClawIntelligence() {
+export function LuminaIntelligence() {
   const briefing = useLuminaStore((s) => s.briefing);
   const generateBriefing = useLuminaStore((s) => s.generateBriefing);
   const monitors = useLuminaStore((s) => s.monitors);

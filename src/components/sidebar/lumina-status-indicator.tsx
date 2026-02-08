@@ -16,7 +16,7 @@ function formatUptime(seconds: number): string {
   return `${m}m`;
 }
 
-export function ClawStatusIndicator() {
+export function LuminaStatusIndicator() {
   const { clawEnabled } = useSettingsStore();
   const { isConnected, isConnecting, keysSynced, status, error, createTask } = useLuminaStore();
   const [taskInput, setTaskInput] = useState("");
@@ -60,7 +60,7 @@ export function ClawStatusIndicator() {
           variant="ghost"
           size="icon"
           className={`h-6 w-6 rounded-full p-0 ${tone}`}
-          aria-label={`Claw: ${label}`}
+          aria-label={`Lumina: ${label}`}
         >
           {isConnecting ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -70,7 +70,7 @@ export function ClawStatusIndicator() {
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" sideOffset={8} className="w-64 p-3">
-        <div className="text-xs font-medium">Claw Agent</div>
+        <div className="text-xs font-medium">Lumina Agent</div>
 
         <div className="mt-3 space-y-1 text-[11px] text-muted-foreground">
           <div>
@@ -115,11 +115,11 @@ export function ClawStatusIndicator() {
 
         <div className="mt-3">
           <Link
-            href="/settings?tab=claw"
+            href="/settings?tab=lumina"
             prefetch={false}
             className="text-[11px] font-medium text-foreground hover:underline"
           >
-            Claw settings
+            Lumina settings
           </Link>
         </div>
       </PopoverContent>

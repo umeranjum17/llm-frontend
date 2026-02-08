@@ -9,7 +9,7 @@ import { useLuminaStore } from "@/stores/lumina-store";
 import type { LuminaSkillLocal, LuminaSkillSearchResult, LuminaHubCategory } from "@/lib/lumina/types";
 import { toast } from "sonner";
 
-export function ClawSkillsTab() {
+export function LuminaSkillsTab() {
   const client = useLuminaStore((s) => s.client);
 
   const [installed, setInstalled] = useState<LuminaSkillLocal[]>([]);
@@ -144,12 +144,12 @@ export function ClawSkillsTab() {
         </div>
       </div>
 
-      {/* ClawHub Search */}
+      {/* LuminaHub Search */}
       <div className="rounded-lg border bg-card">
         <div className="border-b px-4 py-3">
           <h3 className="text-sm font-medium flex items-center gap-2 mb-3">
             <Search className="h-4 w-4" />
-            Browse ClawHub
+            Browse LuminaHub
           </h3>
           <div className="flex gap-2">
             <Input
@@ -181,7 +181,7 @@ export function ClawSkillsTab() {
         <div className="divide-y">
           {searchResults.length === 0 ? (
             <p className="py-8 text-center text-xs text-muted-foreground">
-              {searching ? "Searching..." : "Search ClawHub to discover skills."}
+              {searching ? "Searching..." : "Search LuminaHub to discover skills."}
             </p>
           ) : (
             searchResults.map((skill) => (

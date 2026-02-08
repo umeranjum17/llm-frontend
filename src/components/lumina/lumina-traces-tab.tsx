@@ -116,7 +116,7 @@ function TraceDetail({ trace }: { trace: LuminaTrace }) {
   );
 }
 
-export function ClawTracesTab() {
+export function LuminaTracesTab() {
   const isConnected = useLuminaStore((s) => s.isConnected);
   const traces = useLuminaStore((s) => s.traces);
   const refreshTraces = useLuminaStore((s) => s.refreshTraces);

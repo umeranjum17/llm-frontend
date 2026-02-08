@@ -4,31 +4,31 @@ import { useState } from "react";
 import { useSettingsStore } from "@/stores/settings-store";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
-import { ClawTrigger } from "./claw-sidebar-widget/claw-trigger";
-import { ClawPopoverContent } from "./claw-sidebar-widget/claw-popover-content";
-import { ClawDisabledCTA } from "./claw-sidebar-widget/claw-disabled-cta";
+import { LuminaTrigger } from "./lumina-sidebar-widget/lumina-trigger";
+import { LuminaPopoverContent } from "./lumina-sidebar-widget/lumina-popover-content";
+import { LuminaDisabledCTA } from "./lumina-sidebar-widget/lumina-disabled-cta";
 import { useMediaQuery } from "@/hooks/use-media-query";
 
-export function ClawSidebarWidget() {
+export function LuminaSidebarWidget() {
   const clawEnabled = useSettingsStore((s) => s.clawEnabled);
   const [open, setOpen] = useState(false);
   const isMobile = useMediaQuery("(max-width: 640px)");
 
-  const content = clawEnabled ? <ClawPopoverContent /> : <ClawDisabledCTA />;
+  const content = clawEnabled ? <LuminaPopoverContent /> : <LuminaDisabledCTA />;
 
   // On mobile, use a bottom Sheet instead of Popover (works better inside parent Sheet)
   if (isMobile) {
     return (
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
-          <ClawTrigger />
+          <LuminaTrigger />
         </SheetTrigger>
         <SheetContent
           side="bottom"
           className="p-0 rounded-t-xl max-h-[85vh] overflow-auto"
           hideCloseButton
         >
-          <SheetTitle className="sr-only">Claw Agent</SheetTitle>
+          <SheetTitle className="sr-only">Lumina Agent</SheetTitle>
           {content}
         </SheetContent>
       </Sheet>
@@ -39,7 +39,7 @@ export function ClawSidebarWidget() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <ClawTrigger />
+        <LuminaTrigger />
       </PopoverTrigger>
       <PopoverContent
         align="end"

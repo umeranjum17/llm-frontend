@@ -17,7 +17,7 @@ import {
 import { useLuminaStore } from "@/stores/lumina-store";
 import { toast } from "sonner";
 
-export function ClawEmergencyStop() {
+export function LuminaEmergencyStop() {
   const emergencyStop = useLuminaStore((s) => s.emergencyStop);
   const [stopping, setStopping] = useState(false);
 

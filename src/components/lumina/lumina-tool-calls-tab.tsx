@@ -166,7 +166,7 @@ function ToolCallDetail({ call }: { call: LuminaToolCall }) {
   );
 }
 
-export function ClawToolCallsTab() {
+export function LuminaToolCallsTab() {
   const isConnected = useLuminaStore((s) => s.isConnected);
   const toolCalls = useLuminaStore((s) => s.toolCalls);
   const toolCallsTotal = useLuminaStore((s) => s.toolCallsTotal);

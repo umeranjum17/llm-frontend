@@ -17,7 +17,7 @@ export interface RagResult {
 }
 
 /**
- * Codebase search result from Claw
+ * Codebase search result from Lumina
  */
 export interface CodebaseContextResult {
   codebaseName: string;
@@ -616,7 +616,7 @@ export async function buildContextMessages(
     }
   }
 
-  // 10. Codebase context (from @codebase mentions - DYNAMIC, fetched from Claw)
+  // 10. Codebase context (from @codebase mentions - DYNAMIC, fetched from Lumina)
   if (codebaseReferences.length > 0) {
     try {
       const clawConfig = await getClawConfig();
@@ -653,7 +653,7 @@ export async function buildContextMessages(
         }
       }
     } catch (error) {
-      console.error("[Context] Failed to load claw config for codebase search:", error);
+      console.error("[Context] Failed to load lumina config for codebase search:", error);
     }
   }
 

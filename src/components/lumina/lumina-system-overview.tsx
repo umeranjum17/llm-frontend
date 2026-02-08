@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ClawEmergencyStop } from "@/components/claw/claw-emergency-stop";
+import { LuminaEmergencyStop } from "@/components/lumina/lumina-emergency-stop";
 import { useLuminaStore } from "@/stores/lumina-store";
 import { useLuminaActivityStore } from "@/stores/lumina-activity-store";
 import { cn } from "@/lib/utils";
@@ -47,7 +47,7 @@ function StatPill({
   );
 }
 
-export function ClawSystemOverview() {
+export function LuminaSystemOverview() {
   const isConnected = useLuminaStore((s) => s.isConnected);
   const status = useLuminaStore((s) => s.status);
   const tasks = useLuminaStore((s) => s.tasks);
@@ -126,7 +126,7 @@ export function ClawSystemOverview() {
             </span>
           )}
         </div>
-        {isConnected && <ClawEmergencyStop />}
+        {isConnected && <LuminaEmergencyStop />}
       </div>
 
       {/* Stat pills */}
@@ -204,7 +204,7 @@ export function ClawSystemOverview() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSend()}
             placeholder="Send instruction..."
-            aria-label="Send instruction to Claw"
+            aria-label="Send instruction to Lumina"
             className="h-8 text-sm flex-1"
           />
           <Button

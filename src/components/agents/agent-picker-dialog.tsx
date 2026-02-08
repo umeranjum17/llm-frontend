@@ -61,7 +61,7 @@ export function AgentPickerDialog({
     const q = query.trim();
     const builtInIds = new Set(BUILTIN_AGENTS.map((agent: Agent) => agent.id));
     const visibleAgents = list.filter((agent: Agent) => {
-      if (agent.id === "agent_builtin_claw") return false;
+      if (agent.id === "agent_builtin_lumina") return false;
       return !agent.isBuiltIn || builtInIds.has(agent.id);
     });
     if (!q) return visibleAgents.filter((a: Agent) => a.isActive);

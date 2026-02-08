@@ -81,7 +81,7 @@ function NotificationItem({ notification }: { notification: LuminaNotification }
   );
 }
 
-export function ClawFloatingNotifications() {
+export function LuminaFloatingNotifications() {
   const { showFloating } = useLuminaSurface();
   const isMobile = useMediaQuery("(max-width: 640px)");
   const { clawEnabled } = useSettingsStore();
@@ -167,7 +167,7 @@ export function ClawFloatingNotifications() {
                       )}
                     />
                   </div>
-                  <span className="text-sm font-medium">Claw</span>
+                  <span className="text-sm font-medium">Lumina</span>
                   {unreadCount > 0 && (
                     <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                       {unreadCount} new

@@ -31,7 +31,7 @@ const TYPE_ICONS: Record<string, string> = {
   python: "PY",
 };
 
-export function ClawWorkspacesTab() {
+export function LuminaWorkspacesTab() {
   const openProjects = useLuminaStore((s) => s.openProjects);
   const codebases = useLuminaStore((s) => s.codebases);
   const focusProject = useLuminaStore((s) => s.focusProject);
@@ -139,7 +139,7 @@ export function ClawWorkspacesTab() {
           <p className="text-sm text-muted-foreground">
             No open workspaces. Use{" "}
             <code className="text-xs bg-muted px-1 py-0.5 rounded">
-              claw use .
+              lumina use .
             </code>{" "}
             or click &quot;Open Workspace&quot; above.
           </p>

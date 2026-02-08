@@ -65,7 +65,7 @@ export function ChatSettingsPopover({
     [chatId]
   );
   const mem0ApiKey = useApiKeysStore((state) => state.getKeyForProvider("mem0"));
-  const isClawConnected = useLuminaStore((state) => state.isConnected);
+  const isLuminaConnected = useLuminaStore((state) => state.isConnected);
   const draftChatConfig = useUIStore((state) => state.draftChatConfig);
   const setDraftChatConfig = useUIStore((state) => state.setDraftChatConfig);
 
@@ -178,7 +178,7 @@ export function ChatSettingsPopover({
       await updateDefaultExecutionTarget(target);
     }
 
-    if (target === "lumina_cli" && !isClawConnected) {
+    if (target === "lumina_cli" && !isLuminaConnected) {
       toast.info("Lumina CLI is selected but not connected yet. Configure it in Settings > Lumina CLI.");
     }
   };

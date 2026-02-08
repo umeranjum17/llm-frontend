@@ -28,7 +28,7 @@ export function GlobalHooks() {
   // Auto-sync on focus or interval (if enabled)
   useAutoSync();
 
-  // Subscribe to Claw SSE events for real-time notifications (no-op when Claw is disabled)
+  // Subscribe to Lumina SSE events for real-time notifications (no-op when Lumina is disabled)
   useLuminaEvents();
 
   // Localhost recovery: stale Workbox state can trap requests behind old CSP/network rules.

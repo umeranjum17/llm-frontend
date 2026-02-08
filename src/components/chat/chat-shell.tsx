@@ -160,11 +160,11 @@ export function ChatShell() {
   const defaultExecutionTarget = useSettingsStore((state) => state.defaultExecutionTarget);
   const lastProviderIdByModel = useSettingsStore((state) => state.lastProviderIdByModel);
   const updateLastProviderForModel = useSettingsStore((state) => state.updateLastProviderForModel);
-  const clawEnabled = useSettingsStore((state) => state.clawEnabled);
-  const clawIsConnected = useLuminaStore((s) => s.isConnected);
-  const clawIsConnecting = useLuminaStore((s) => s.isConnecting);
-  const clawKeysSynced = useLuminaStore((s) => s.keysSynced);
-  const clawError = useLuminaStore((s) => s.error);
+  const luminaEnabled = useSettingsStore((state) => state.clawEnabled);
+  const luminaIsConnected = useLuminaStore((s) => s.isConnected);
+  const luminaIsConnecting = useLuminaStore((s) => s.isConnecting);
+  const luminaKeysSynced = useLuminaStore((s) => s.keysSynced);
+  const luminaError = useLuminaStore((s) => s.error);
 
   const llmProviderIds = useMemo(
     () =>
@@ -222,7 +222,7 @@ export function ChatShell() {
     updatedAt: Date.now(),
   } as any : chatFromDb;
   const executionTarget = chat?.executionTarget ?? "lumina";
-  const isClawRuntimeTarget = executionTarget === "lumina_cli";
+  const isLuminaRuntimeTarget = executionTarget === "lumina_cli";
 
   const messagesQuery = useLiveQueryWithTimeout(
     () => (activeChatId ? getMessages(activeChatId) : undefined),
@@ -712,7 +712,7 @@ export function ChatShell() {
                       Draft
                     </Badge>
                   )}
-                  {isClawRuntimeTarget && (
+                  {isLuminaRuntimeTarget && (
                     <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-medium border-blue-500/40 text-blue-600 dark:text-blue-400 bg-blue-500/10">
                       Runtime
                     </Badge>
@@ -735,7 +735,7 @@ export function ChatShell() {
                 <div className="flex items-center gap-1">
                   {/* Agent Selector - hidden on mobile for cleaner look */}
                   {!isMultiModelMode && chat && (
-                    isClawRuntimeTarget ? (
+                    isLuminaRuntimeTarget ? (
                       <div className="hidden sm:flex h-8 items-center gap-2 px-3 text-xs font-medium border border-border/50 rounded-md bg-blue-500/5">
                         <Terminal className="h-3.5 w-3.5 text-blue-500" />
                         <div className="flex flex-col items-start leading-none">
@@ -743,7 +743,7 @@ export function ChatShell() {
                           <span className="text-[10px] text-muted-foreground">Backend autonomous agent</span>
                         </div>
                         <span className={`h-1.5 w-1.5 rounded-full ${
-                          clawError ? "bg-red-500" : clawIsConnecting ? "bg-blue-500 animate-pulse" : clawIsConnected && clawKeysSynced ? "bg-emerald-500" : clawIsConnected ? "bg-yellow-500" : "bg-muted-foreground"
+                          luminaError ? "bg-red-500" : luminaIsConnecting ? "bg-blue-500 animate-pulse" : luminaIsConnected && luminaKeysSynced ? "bg-emerald-500" : luminaIsConnected ? "bg-yellow-500" : "bg-muted-foreground"
                         }`} />
                       </div>
                     ) : (
@@ -758,9 +758,9 @@ export function ChatShell() {
                             <>
                               <div className="relative">
                                 <span className="text-sm leading-none">{currentAgent.avatar || "🤖"}</span>
-                                {clawEnabled && (
+                                {luminaEnabled && (
                                   <span className={`absolute -bottom-0.5 -right-1 h-1.5 w-1.5 rounded-full ring-1 ring-background ${
-                                    clawError ? "bg-red-500" : clawIsConnecting ? "bg-blue-500 animate-pulse" : clawIsConnected && clawKeysSynced ? "bg-emerald-500" : clawIsConnected ? "bg-yellow-500" : "bg-muted-foreground"
+                                    luminaError ? "bg-red-500" : luminaIsConnecting ? "bg-blue-500 animate-pulse" : luminaIsConnected && luminaKeysSynced ? "bg-emerald-500" : luminaIsConnected ? "bg-yellow-500" : "bg-muted-foreground"
                                   }`} />
                                 )}
                               </div>
@@ -791,7 +791,7 @@ export function ChatShell() {
                   )}
 
                   {/* Model Selector - simplified on mobile */}
-                  {!isMultiModelMode && chat && !isClawRuntimeTarget && !(currentAgent?.executionType === "pipeline" && currentAgent.pipeline?.steps?.length) && (
+                  {!isMultiModelMode && chat && !isLuminaRuntimeTarget && !(currentAgent?.executionType === "pipeline" && currentAgent.pipeline?.steps?.length) && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button

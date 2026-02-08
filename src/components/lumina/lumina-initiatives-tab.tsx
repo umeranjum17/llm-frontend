@@ -138,7 +138,7 @@ function InitiativeCard({
   );
 }
 
-export function ClawInitiativesTab() {
+export function LuminaInitiativesTab() {
   const isConnected = useLuminaStore((s) => s.isConnected);
   const initiatives = useLuminaStore((s) => s.initiatives);
   const refreshInitiatives = useLuminaStore((s) => s.refreshInitiatives);

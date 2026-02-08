@@ -44,7 +44,7 @@ function formatDate(dateStr: string): string {
   }
 }
 
-export function ClawHistory() {
+export function LuminaHistory() {
   const tasks = useLuminaStore((s) => s.tasks);
   const activity = useLuminaStore((s) => s.activity);
   const [expandedTask, setExpandedTask] = useState<string | null>(null);

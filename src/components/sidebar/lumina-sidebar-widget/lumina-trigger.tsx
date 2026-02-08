@@ -6,7 +6,7 @@ import { useLuminaStore } from '@/stores/lumina-store'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
-export const ClawTrigger = forwardRef<
+export const LuminaTrigger = forwardRef<
   HTMLButtonElement,
   React.ComponentPropsWithoutRef<typeof Button>
 >(({ className, ...props }, ref) => {
@@ -45,4 +45,4 @@ export const ClawTrigger = forwardRef<
   )
 })
 
-ClawTrigger.displayName = 'ClawTrigger'
+LuminaTrigger.displayName = 'LuminaTrigger'

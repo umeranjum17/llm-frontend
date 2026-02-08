@@ -69,14 +69,14 @@ function ConnectionTab() {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center justify-between">
-          <Label htmlFor="claw-enabled">Enable Lumina CLI</Label>
-          <Switch id="claw-enabled" checked={enabled} onCheckedChange={handleToggle} />
+          <Label htmlFor="lumina-enabled">Enable Lumina CLI</Label>
+          <Switch id="lumina-enabled" checked={enabled} onCheckedChange={handleToggle} />
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="claw-url">URL</Label>
+          <Label htmlFor="lumina-url">URL</Label>
           <Input
-            id="claw-url"
+            id="lumina-url"
             placeholder="http://100.x.x.x:8000"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
@@ -84,9 +84,9 @@ function ConnectionTab() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="claw-secret">Secret</Label>
+          <Label htmlFor="lumina-secret">Secret</Label>
           <Input
-            id="claw-secret"
+            id="lumina-secret"
             type="password"
             value={secret}
             onChange={(e) => setSecret(e.target.value)}
@@ -194,9 +194,9 @@ function ConfigTab() {
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="claw-heartbeat">Heartbeat Interval (minutes)</Label>
+          <Label htmlFor="lumina-heartbeat">Heartbeat Interval (minutes)</Label>
           <Input
-            id="claw-heartbeat"
+            id="lumina-heartbeat"
             type="number"
             value={heartbeat}
             onChange={(e) => setHeartbeat(e.target.value)}
@@ -264,7 +264,7 @@ function KeySyncTab() {
   );
 }
 
-export function ClawSettings() {
+export function LuminaSettings() {
   const { isConnected, refreshAll, initFromSettings } = useLuminaStore();
 
   useEffect(() => {

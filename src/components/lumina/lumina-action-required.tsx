@@ -16,7 +16,7 @@ import { useLuminaStore } from "@/stores/lumina-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { toast } from "sonner";
 
-export function ClawActionRequired() {
+export function LuminaActionRequired() {
   const questions = useLuminaStore((s) => s.questions);
   const tasks = useLuminaStore((s) => s.tasks);
   const initiatives = useLuminaStore((s) => s.initiatives);

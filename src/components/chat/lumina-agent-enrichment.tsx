@@ -6,11 +6,11 @@ import { useLuminaSurface } from "@/hooks/use-lumina-surface";
 import { cn } from "@/lib/utils";
 
 /**
- * Minimal Claw status indicator for chat header.
- * Shows a small status dot with "Claw" label - full functionality
+ * Minimal Lumina status indicator for chat header.
+ * Shows a small status dot with "Lumina" label - full functionality
  * is handled by sidebar widget or floating notifications.
  */
-export function ClawAgentEnrichment() {
+export function LuminaAgentEnrichment() {
   const { showChatEnrichment } = useLuminaSurface();
   const { clawEnabled } = useSettingsStore();
   const isConnected = useLuminaStore((s) => s.isConnected);
@@ -21,7 +21,7 @@ export function ClawAgentEnrichment() {
   return (
     <div
       className="flex items-center gap-1.5 px-2 py-1 text-xs text-zinc-500"
-      title={isConnected ? "Claw connected" : "Claw disconnected"}
+      title={isConnected ? "Lumina connected" : "Lumina disconnected"}
     >
       <span
         className={cn(
@@ -29,7 +29,7 @@ export function ClawAgentEnrichment() {
           isConnected ? "bg-emerald-500" : "bg-zinc-600"
         )}
       />
-      <span className="text-zinc-600 dark:text-zinc-400">Claw</span>
+      <span className="text-zinc-600 dark:text-zinc-400">Lumina</span>
     </div>
   );
 }

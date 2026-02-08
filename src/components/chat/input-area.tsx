@@ -350,7 +350,7 @@ export function InputArea({ chatId }: InputAreaProps) {
   const tags = useLiveQuery(() => getAllTags(), []);
   const skills = useLiveQuery(() => getAllSkills(), []);
   const codebases = useLuminaStore((s) => s.codebases);
-  const isClawConnected = useLuminaStore((s) => s.isConnected);
+  const isLuminaConnected = useLuminaStore((s) => s.isConnected);
 
   // Model capabilities for the current chat model
   const modelCaps = useMemo(() => {
@@ -451,7 +451,7 @@ export function InputArea({ chatId }: InputAreaProps) {
       const builtInIds = new Set(BUILTIN_AGENTS.map((agent) => agent.id));
       agents.forEach((a: Agent) => {
         if (!a.isActive) return;
-        if (a.id === "agent_builtin_claw") return;
+        if (a.id === "agent_builtin_lumina") return;
         if (a.isBuiltIn && !builtInIds.has(a.id)) return;
         items.push({
           id: a.id,
@@ -526,8 +526,8 @@ export function InputArea({ chatId }: InputAreaProps) {
       });
     }
 
-    // Codebases (@ trigger) - only show when connected to Claw
-    if (isClawConnected && codebases) {
+    // Codebases (@ trigger) - only show when connected to Lumina
+    if (isLuminaConnected && codebases) {
       codebases.forEach((cb) => {
         if (cb.status !== "ready") return; // Only show indexed codebases
         items.push({
@@ -542,7 +542,7 @@ export function InputArea({ chatId }: InputAreaProps) {
     }
 
     return items;
-  }, [files, otherChats, chatId, agents, tags, skills, codebases, isClawConnected]);
+  }, [files, otherChats, chatId, agents, tags, skills, codebases, isLuminaConnected]);
 
   // Handle submit function for keyboard shortcut - delegates to handleSubmit for queue support
   const handleSubmitMessage = () => {

@@ -14,6 +14,6 @@ export const useLuminaPreferencesStore = create<LuminaPreferencesState>()(
       notificationLevel: 'important', // Default to important only
       setNotificationLevel: (level) => set({ notificationLevel: level }),
     }),
-    { name: 'claw-preferences' }
+    { name: 'lumina-preferences' }
   )
 )
