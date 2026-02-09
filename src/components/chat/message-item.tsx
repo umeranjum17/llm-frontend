@@ -29,11 +29,13 @@ import { useStreamingStore, type PipelineExecution, type ImageGenerationProgress
 import { nanoid } from "nanoid";
 import { Code2 } from "lucide-react";
 import { ActiveSkillIndicator, SkillBadge } from "@/components/chat/active-skill-indicator";
+import { InlineApprovalCard, type InlineApprovalData } from "@/components/chat/inline-approval-card";
 import { MentionRenderer } from "@/components/chat/mention-renderer";
 import { useLiveQuery } from "dexie-react-hooks";
 import { getSkillById } from "@/lib/db/queries";
 import { toggleMessagePin } from "@/lib/utils/context-compaction";
 import { SelectionCopyToolbar } from "@/components/chat/selection-copy-toolbar";
+import { useLuminaStore } from "@/stores/lumina-store";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -44,8 +46,10 @@ import {
 type ToolCallLike = {
   id?: string;
   toolCallId?: string;
+  taskId?: string;
   name?: string;
   toolName?: string;
+  toolLabel?: string;
   args?: unknown;
   startTime?: number;
   endTime?: number;
@@ -54,8 +58,10 @@ type ToolCallLike = {
 type ToolResultLike = {
   id?: string;
   toolCallId?: string;
+  taskId?: string;
   name?: string;
   toolName?: string;
+  toolLabel?: string;
   args?: unknown;
   result?: unknown;
   startTime?: number;
@@ -256,34 +262,76 @@ function ImageGenerationProgressIndicator({
 /** Collapsible section for tool calls */
 function ToolCallsSection({
   toolEvents,
+  pendingApprovals,
+  onApprovalResolved,
 }: {
   toolEvents: Array<{
     key: string;
     id?: string;
+    taskId?: string;
     name: string;
+    toolLabel?: string;
     args?: unknown;
     result?: unknown;
     startTime?: number;
     endTime?: number;
   }>;
+  pendingApprovals: InlineApprovalData[];
+  onApprovalResolved?: (approvalId: string) => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+
+  useEffect(() => {
+    if (pendingApprovals.length > 0) {
+      setIsExpanded(true);
+    }
+  }, [pendingApprovals.length]);
 
   // Calculate overall status
   // A tool is considered "running" if we haven't received a tool result yet.
   // Do not use truthiness of `result` because some tools can legitimately return falsy values.
   const runningCount = toolEvents.filter(e => e.endTime === undefined).length;
-  const errorCount = toolEvents.filter(e => e.result && (e.result as any).isError).length;
-  const doneCount = toolEvents.length - runningCount - errorCount;
 
   // Get unique friendly tool names for summary, expanding nested tools
   const toolSummary = [...new Set(toolEvents.flatMap(e => {
     const nested = extractNestedTools(e.name, e.args);
-    return nested.length > 0 ? nested : [getToolDisplayName(e.name)];
+    return nested.length > 0 ? nested : [e.toolLabel || getToolDisplayName(e.name)];
   }))];
-  const summaryText = toolSummary.length <= 3
+  const summaryText = toolSummary.length === 0 && pendingApprovals.length > 0
+    ? `${pendingApprovals.length} approval${pendingApprovals.length > 1 ? "s" : ""} pending`
+    : toolSummary.length <= 3
     ? toolSummary.join(", ")
     : `${toolSummary.slice(0, 2).join(", ")} +${toolSummary.length - 2} more`;
+
+  const { approvalsByToolKey, unassignedApprovals } = useMemo(() => {
+    const byKey: Record<string, InlineApprovalData[]> = {};
+    const unassigned: InlineApprovalData[] = [];
+
+    for (const approval of pendingApprovals) {
+      let matchedKey: string | null = null;
+      for (let i = toolEvents.length - 1; i >= 0; i--) {
+        const toolEvent = toolEvents[i];
+        if (toolEvent.endTime !== undefined) continue;
+        if (!toolEvent.taskId) continue;
+        if (toolEvent.taskId !== approval.taskId) continue;
+        if (toolEvent.name !== approval.toolName) continue;
+        matchedKey = toolEvent.key;
+        break;
+      }
+
+      if (!matchedKey) {
+        unassigned.push(approval);
+        continue;
+      }
+
+      if (!byKey[matchedKey]) {
+        byKey[matchedKey] = [];
+      }
+      byKey[matchedKey].push(approval);
+    }
+
+    return { approvalsByToolKey: byKey, unassignedApprovals: unassigned };
+  }, [pendingApprovals, toolEvents]);
 
   return (
     <div className="mt-3 border rounded-lg bg-muted/30 overflow-hidden contain-layout">
@@ -324,10 +372,11 @@ function ToolCallsSection({
         <div className="overflow-hidden">
         <div className="px-3 pb-3 space-y-2 border-t border-border/50">
           {toolEvents.map((toolEvent) => {
-            const displayName = getToolDisplayName(toolEvent.name);
+            const displayName = toolEvent.toolLabel || getToolDisplayName(toolEvent.name);
 
             // Extract nested tools from MULTI_EXECUTE_TOOL args
             const nestedTools = extractNestedTools(toolEvent.name, toolEvent.args);
+            const matchingApprovals = approvalsByToolKey[toolEvent.key] || [];
 
             // Determine status
             let status: "running" | "done" | "error" = "running";
@@ -412,9 +461,37 @@ function ToolCallsSection({
                     </pre>
                   </details>
                 </div>
+
+                {matchingApprovals.length > 0 && (
+                  <div className="px-3 pb-3">
+                    {matchingApprovals.map((approval) => (
+                      <InlineApprovalCard
+                        key={approval.id}
+                        approval={{
+                          ...approval,
+                          toolLabel: approval.toolLabel || toolEvent.toolLabel || displayName,
+                        }}
+                        onResolved={onApprovalResolved}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
+
+          {unassignedApprovals.length > 0 && (
+            <div className="mt-2 rounded-lg border border-amber-300/50 bg-amber-50/30 p-2 dark:border-amber-900/40 dark:bg-amber-950/10">
+              <p className="px-1 text-xs font-medium text-muted-foreground">Pending approvals</p>
+              {unassignedApprovals.map((approval) => (
+                <InlineApprovalCard
+                  key={approval.id}
+                  approval={approval}
+                  onResolved={onApprovalResolved}
+                />
+              ))}
+            </div>
+          )}
         </div>
         </div>
       </div>
@@ -882,11 +959,13 @@ export const MessageItem = memo(function MessageItem({
   const proseRef = useRef<HTMLDivElement>(null);
   const { speak, stop, isPlaying } = useVoiceOutput();
   const { setActiveArtifact, setShowArtifacts } = useUIStore();
+  const removeStreamingApproval = useStreamingStore((state) => state.removeStreamingApproval);
+  const globalApprovals = useLuminaStore((state) => state.approvals);
 
   // Get streaming state for THIS chat for real-time updates
   // Include streamingVersion to ensure re-renders on each content update
   const chatStreamingState = useStreamingStore((state) => state.getChatStream(message.chatId));
-  const { streamingMessageId, streamingContent, streamingReasoning, streamingToolCalls, streamingToolResults, streamingVersion, pipelineExecution, activeSkill, imageGenerationProgress } = chatStreamingState;
+  const { streamingMessageId, streamingContent, streamingReasoning, streamingToolCalls, streamingToolResults, streamingApprovals, streamingVersion, pipelineExecution, activeSkill, imageGenerationProgress } = chatStreamingState;
   const isStreaming = message.id === streamingMessageId;
   const isImageGenerating = imageGenerationProgress?.messageId === message.id && imageGenerationProgress?.isActive;
 
@@ -941,7 +1020,9 @@ export const MessageItem = memo(function MessageItem({
   const toolEvents: Array<{
     key: string;
     id?: string;
+    taskId?: string;
     name: string;
+    toolLabel?: string;
     args?: unknown;
     result?: unknown;
     startTime?: number;
@@ -960,7 +1041,9 @@ export const MessageItem = memo(function MessageItem({
     toolEvents.push({
       key,
       id,
+      taskId: toolCall.taskId || resultObj?.taskId,
       name,
+      toolLabel: toolCall.toolLabel || resultObj?.toolLabel,
       args: toolCall.args,
       result,
       startTime: toolCall.startTime,
@@ -978,12 +1061,79 @@ export const MessageItem = memo(function MessageItem({
     toolEvents.push({
       key,
       id,
+      taskId: toolResult.taskId,
       name,
+      toolLabel: toolResult.toolLabel,
       args: toolResult.args,
       result: toolResult.result,
       endTime: toolResult.endTime
     });
   }
+
+  const pendingApprovals = (() => {
+    const taskIds = new Set(toolEvents.map((event) => event.taskId).filter((taskId): taskId is string => !!taskId));
+    if (taskIds.size === 0) {
+      if (!isStreaming) return [] as InlineApprovalData[];
+      if (streamingApprovals.length > 0) {
+        return streamingApprovals.map((approval) => ({
+          id: approval.id,
+          toolName: approval.toolName,
+          args: approval.args,
+          source: approval.source,
+          taskId: approval.taskId,
+          reason: approval.reason,
+          createdAt: approval.createdAt,
+          timeoutMs: approval.timeoutMs,
+        }));
+      }
+
+      // Fallback for stream reconnect/race: show newly created global approvals
+      // that likely belong to this in-flight assistant message.
+      const streamStartCutoff = message.createdAt - 15_000;
+      const fallbackApprovals = globalApprovals.filter((approval) =>
+        approval.source === "api" && approval.createdAt >= streamStartCutoff
+      );
+      return fallbackApprovals.map((approval) => ({
+        id: approval.id,
+        toolName: approval.toolName,
+        args: approval.args,
+        source: approval.source,
+        taskId: approval.taskId,
+        reason: approval.reason,
+        createdAt: approval.createdAt,
+        timeoutMs: 5 * 60 * 1000,
+      }));
+    }
+
+    const mergedById = new Map<string, InlineApprovalData>();
+
+    for (const approval of globalApprovals) {
+      if (!taskIds.has(approval.taskId)) continue;
+      mergedById.set(approval.id, {
+        id: approval.id,
+        toolName: approval.toolName,
+        args: approval.args,
+        source: approval.source,
+        taskId: approval.taskId,
+        reason: approval.reason,
+        createdAt: approval.createdAt,
+      });
+    }
+
+    for (const approval of streamingApprovals) {
+      if (!taskIds.has(approval.taskId)) continue;
+      mergedById.set(approval.id, {
+        ...mergedById.get(approval.id),
+        ...approval,
+      });
+    }
+
+    return Array.from(mergedById.values());
+  })();
+
+  const handleApprovalResolved = useCallback((approvalId: string) => {
+    removeStreamingApproval(message.chatId, approvalId);
+  }, [message.chatId, removeStreamingApproval]);
 
   const handleCopy = useCallback(async () => {
     const payload = images.length > 0 ? `${textContent}\n\n${images.join("\n")}` : textContent;
@@ -1450,13 +1600,17 @@ export const MessageItem = memo(function MessageItem({
               )}
 
               {/* Tool calls/results - collapsible with fade-in */}
-              {!isEditing && isAssistant && toolEvents.length > 0 && (
+              {!isEditing && isAssistant && (toolEvents.length > 0 || pendingApprovals.length > 0) && (
                 <motion.div
                   initial={{ opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.2, ease: "easeOut" }}
                 >
-                  <ToolCallsSection toolEvents={toolEvents} />
+                  <ToolCallsSection
+                    toolEvents={toolEvents}
+                    pendingApprovals={pendingApprovals}
+                    onApprovalResolved={handleApprovalResolved}
+                  />
                 </motion.div>
               )}
 

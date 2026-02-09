@@ -39,6 +39,8 @@ const ICON_MAP: Record<
   "initiative:rejected": { icon: AlertTriangle, color: "text-red-500" },
   "initiative:deferred": { icon: Calendar, color: "text-muted-foreground" },
   "monitor:alert": { icon: AlertTriangle, color: "text-orange-500" },
+  "approval:requested": { icon: Bell, color: "text-amber-500" },
+  "approval:timeout": { icon: AlertTriangle, color: "text-red-500" },
 };
 
 function formatRelativeTime(timestamp: number) {

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useLuminaStore } from "@/stores/lumina-store";
 import { useLuminaNotificationStore } from "@/stores/lumina-notification-store";
 import { useLuminaActivityStore } from "@/stores/lumina-activity-store";
+import { useStreamingStore } from "@/stores/streaming-store";
 import type { LuminaEventType } from "@/stores/lumina-activity-store";
 import { toast } from "sonner";
 
@@ -255,19 +256,31 @@ export function useLuminaEvents() {
       useLuminaStore.getState().refreshApprovals();
       try {
         const data = JSON.parse(e.data);
-        addNotification({ type: "approval:requested" as any, title: "Approval Needed", message: `${data.toolName} requires approval` });
+        addNotification({ type: "approval:requested", title: "Approval Needed", message: `${data.toolName} requires approval` });
       } catch {
-        addNotification({ type: "approval:requested" as any, title: "Approval Needed", message: "A tool requires approval" });
+        addNotification({ type: "approval:requested", title: "Approval Needed", message: "A tool requires approval" });
       }
     });
 
-    es.addEventListener("approval:responded", () => {
+    es.addEventListener("approval:responded", (e: MessageEvent) => {
       useLuminaStore.getState().refreshApprovals();
+      try {
+        const data = JSON.parse(e.data);
+        if (data?.id) {
+          useStreamingStore.getState().removeStreamingApprovalEverywhere(data.id);
+        }
+      } catch {}
     });
 
-    es.addEventListener("approval:timeout", () => {
+    es.addEventListener("approval:timeout", (e: MessageEvent) => {
       useLuminaStore.getState().refreshApprovals();
-      addNotification({ type: "approval:timeout" as any, title: "Approval Timed Out", message: "Approval expired" });
+      try {
+        const data = JSON.parse(e.data);
+        if (data?.id) {
+          useStreamingStore.getState().removeStreamingApprovalEverywhere(data.id);
+        }
+      } catch {}
+      addNotification({ type: "approval:timeout", title: "Approval Timed Out", message: "Approval expired" });
     });
 
     // Question events

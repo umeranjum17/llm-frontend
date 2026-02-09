@@ -617,6 +617,8 @@ export function useChat(chatId: string | null) {
     appendStreamingReasoning,
     setStreamingToolCalls,
     setStreamingToolResults,
+    upsertStreamingApproval,
+    removeStreamingApproval,
     clearStreaming,
     startPipeline,
     setStepRunning,
@@ -865,6 +867,7 @@ export function useChat(chatId: string | null) {
               streamToolCalls.push({
                 id: event.toolCallId,
                 toolCallId: event.toolCallId,
+                taskId: event.taskId,
                 toolName: event.toolName,
                 toolLabel: event.toolLabel,
                 args: event.args,
@@ -877,6 +880,7 @@ export function useChat(chatId: string | null) {
               streamToolResults.push({
                 id: event.toolCallId,
                 toolCallId: event.toolCallId,
+                taskId: event.taskId,
                 toolName: event.toolName,
                 summary: event.summary,
                 result: event.summary,
@@ -884,6 +888,22 @@ export function useChat(chatId: string | null) {
               });
               setStreamingToolResults(effectiveChatId, [...streamToolResults]);
               await updateMessage(placeholderMsg.id, { toolResults: [...streamToolResults] });
+              break;
+            case "approval-requested":
+              upsertStreamingApproval(effectiveChatId, {
+                id: event.id,
+                toolName: event.toolName,
+                args: event.args || {},
+                source: event.source,
+                taskId: event.taskId,
+                reason: event.reason,
+                createdAt: event.createdAt || Date.now(),
+                timeoutMs: event.timeoutMs,
+              });
+              break;
+            case "approval-responded":
+            case "approval-timeout":
+              removeStreamingApproval(effectiveChatId, event.id);
               break;
             case "reasoning":
               appendStreamingReasoning(effectiveChatId, event.text);
@@ -2003,7 +2023,7 @@ export function useChat(chatId: string | null) {
       // Run memory decay in background (once per day, non-blocking)
       runMemoryDecay().catch(() => {});
     }
-  }, [chatId, getKeyForProvider, isProviderKeyLocked, requestVaultUnlock, keys, scheduleMemoryExtraction, setStreamingMessage, appendStreamingContent, appendStreamingReasoning, setStreamingToolCalls, setStreamingToolResults, clearStreaming, startPipeline, setStepRunning, setStepComplete, setStepError, setStepRetrying, completePipeline, failPipeline, clearPipeline, setActiveSkill, setImageGenerationProgress, clearImageGenerationProgress, setOptimisticMessage, clearOptimisticMessage, setPendingSkillApproval, setContextCompaction]);
+  }, [chatId, getKeyForProvider, isProviderKeyLocked, requestVaultUnlock, keys, scheduleMemoryExtraction, setStreamingMessage, appendStreamingContent, appendStreamingReasoning, setStreamingToolCalls, setStreamingToolResults, upsertStreamingApproval, removeStreamingApproval, clearStreaming, startPipeline, setStepRunning, setStepComplete, setStepError, setStepRetrying, completePipeline, failPipeline, clearPipeline, setActiveSkill, setImageGenerationProgress, clearImageGenerationProgress, setOptimisticMessage, clearOptimisticMessage, setPendingSkillApproval, setContextCompaction]);
 
   // Process next message in queue after streaming completes
   const processNextInQueue = useCallback(async (targetChatId: string) => {

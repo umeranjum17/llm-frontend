@@ -13,7 +13,9 @@ export interface LuminaNotification {
     | "initiative:approved"
     | "initiative:rejected"
     | "initiative:deferred"
-    | "monitor:alert";
+    | "monitor:alert"
+    | "approval:requested"
+    | "approval:timeout";
   title: string;
   message: string;
   timestamp: number;

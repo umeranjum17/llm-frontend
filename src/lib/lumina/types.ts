@@ -300,10 +300,45 @@ export interface LuminaApproval {
 
 // --- Streaming ---
 
+export interface LuminaApprovalRequestedStreamEvent {
+  type: "approval-requested";
+  id: string;
+  toolName: string;
+  args: Record<string, unknown>;
+  source: string;
+  taskId: string;
+  reason?: string;
+  createdAt: number;
+  timeoutMs?: number;
+}
+
+export interface LuminaApprovalRespondedStreamEvent {
+  type: "approval-responded";
+  id: string;
+  toolName: string;
+  source: string;
+  taskId: string;
+  approved: boolean;
+  waitedMs?: number;
+}
+
+export interface LuminaApprovalTimeoutStreamEvent {
+  type: "approval-timeout";
+  id: string;
+  toolName: string;
+  source: string;
+  taskId: string;
+  waitedMs?: number;
+  timeoutMs?: number;
+}
+
 export type LuminaStreamEvent =
   | { type: "text-delta"; text: string }
   | { type: "tool-call"; taskId: string; toolCallId?: string; toolName: string; toolLabel: string; args: any }
   | { type: "tool-result"; taskId: string; toolCallId?: string; toolName: string; summary: string }
+  | LuminaApprovalRequestedStreamEvent
+  | LuminaApprovalRespondedStreamEvent
+  | LuminaApprovalTimeoutStreamEvent
   | { type: "reasoning"; text: string }
   | { type: "error"; error: string }
   | { type: "completed"; taskId: string; response: string }

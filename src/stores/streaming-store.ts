@@ -55,6 +55,17 @@ export interface PendingSkillApproval {
   resolve: (approved: boolean) => void;
 }
 
+export interface StreamingApproval {
+  id: string;
+  toolName: string;
+  args: Record<string, unknown>;
+  source: string;
+  taskId: string;
+  reason?: string;
+  createdAt: number;
+  timeoutMs?: number;
+}
+
 export type ImageGenerationStage = "validating" | "optimizing" | "generating" | "processing";
 
 export interface ImageGenerationProgress {
@@ -87,6 +98,7 @@ export interface ChatStreamingState {
   streamingReasoning: string;
   streamingToolCalls: any[];
   streamingToolResults: any[];
+  streamingApprovals: StreamingApproval[];
   streamingVersion: number;
   pipelineExecution: PipelineExecution | null;
   optimisticMessage: OptimisticMessage | null;
@@ -104,6 +116,7 @@ const createDefaultChatState = (): ChatStreamingState => ({
   streamingReasoning: "",
   streamingToolCalls: [],
   streamingToolResults: [],
+  streamingApprovals: [],
   streamingVersion: 0,
   pipelineExecution: null,
   optimisticMessage: null,
@@ -121,6 +134,7 @@ const DEFAULT_CHAT_STATE: ChatStreamingState = Object.freeze({
   streamingReasoning: "",
   streamingToolCalls: [],
   streamingToolResults: [],
+  streamingApprovals: [],
   streamingVersion: 0,
   pipelineExecution: null,
   optimisticMessage: null,
@@ -152,6 +166,10 @@ interface StreamingState {
   appendStreamingReasoning: (chatId: string, delta: string) => void;
   setStreamingToolCalls: (chatId: string, toolCalls: any[]) => void;
   setStreamingToolResults: (chatId: string, toolResults: any[]) => void;
+  setStreamingApprovals: (chatId: string, approvals: StreamingApproval[]) => void;
+  upsertStreamingApproval: (chatId: string, approval: StreamingApproval) => void;
+  removeStreamingApproval: (chatId: string, approvalId: string) => void;
+  removeStreamingApprovalEverywhere: (approvalId: string) => void;
   clearStreaming: (chatId: string) => void;
   clearAllStreaming: () => void;
 
@@ -219,7 +237,7 @@ const updateChatState = (
 };
 
 // Current state version - increment this when making breaking changes
-const STATE_VERSION = 2;
+const STATE_VERSION = 3;
 
 export const useStreamingStore = create<StreamingState>((set, get) => {
   // Check if we need to reset state due to version mismatch
@@ -310,6 +328,7 @@ export const useStreamingStore = create<StreamingState>((set, get) => {
         streamingReasoning: "",
         streamingToolCalls: [],
         streamingToolResults: [],
+        streamingApprovals: [],
         streamingVersion: 0,
       }),
     })),
@@ -362,6 +381,68 @@ export const useStreamingStore = create<StreamingState>((set, get) => {
       }),
     })),
 
+  setStreamingApprovals: (chatId, approvals) =>
+    set((state) => ({
+      chatStreams: updateChatState(state.chatStreams, chatId, {
+        streamingApprovals: approvals,
+      }),
+    })),
+
+  upsertStreamingApproval: (chatId, approval) =>
+    set((state) => {
+      const currentState = getOrCreateChatState(state.chatStreams, chatId);
+      const existingIndex = currentState.streamingApprovals.findIndex((a) => a.id === approval.id);
+      const nextApprovals = [...currentState.streamingApprovals];
+      if (existingIndex >= 0) {
+        nextApprovals[existingIndex] = {
+          ...nextApprovals[existingIndex],
+          ...approval,
+        };
+      } else {
+        nextApprovals.push(approval);
+      }
+      return {
+        chatStreams: updateChatState(state.chatStreams, chatId, {
+          streamingApprovals: nextApprovals,
+        }),
+      };
+    }),
+
+  removeStreamingApproval: (chatId, approvalId) =>
+    set((state) => {
+      const currentState = getOrCreateChatState(state.chatStreams, chatId);
+      return {
+        chatStreams: updateChatState(state.chatStreams, chatId, {
+          streamingApprovals: currentState.streamingApprovals.filter((approval) => approval.id !== approvalId),
+        }),
+      };
+    }),
+
+  removeStreamingApprovalEverywhere: (approvalId) =>
+    set((state) => {
+      let changed = false;
+      const nextChatStreams: Record<string, ChatStreamingState> = {};
+      for (const [chatId, chatState] of Object.entries(state.chatStreams)) {
+        if (!chatState.streamingApprovals.length) {
+          nextChatStreams[chatId] = chatState;
+          continue;
+        }
+        const nextApprovals = chatState.streamingApprovals.filter((approval) => approval.id !== approvalId);
+        if (nextApprovals.length === chatState.streamingApprovals.length) {
+          nextChatStreams[chatId] = chatState;
+          continue;
+        }
+        changed = true;
+        nextChatStreams[chatId] = {
+          ...chatState,
+          streamingApprovals: nextApprovals,
+          streamingVersion: chatState.streamingVersion + 1,
+        };
+      }
+      if (!changed) return state;
+      return { chatStreams: nextChatStreams };
+    }),
+
   clearStreaming: (chatId) =>
     set((state) => {
       const currentState = getOrCreateChatState(state.chatStreams, chatId);
@@ -375,6 +456,7 @@ export const useStreamingStore = create<StreamingState>((set, get) => {
             streamingReasoning: "",
             streamingToolCalls: [],
             streamingToolResults: [],
+            streamingApprovals: [],
             streamingVersion: 0,
             activeSkill: preservedSkill,
           }),
@@ -389,6 +471,7 @@ export const useStreamingStore = create<StreamingState>((set, get) => {
             streamingReasoning: "",
             streamingToolCalls: [],
             streamingToolResults: [],
+            streamingApprovals: [],
             streamingVersion: 0,
             activeSkill: preservedSkill,
           }),

@@ -25,6 +25,7 @@ describe('streaming-store', () => {
       expect(stream.streamingReasoning).toBe('');
       expect(stream.streamingToolCalls).toEqual([]);
       expect(stream.streamingToolResults).toEqual([]);
+      expect(stream.streamingApprovals).toEqual([]);
     });
 
     it('sets streaming message to null', () => {
@@ -111,6 +112,50 @@ describe('streaming-store', () => {
     });
   });
 
+  describe('streaming approvals', () => {
+    const approval = {
+      id: 'approval-1',
+      toolName: 'run_shell',
+      args: { command: 'rm -rf /tmp/test' },
+      source: 'chat',
+      taskId: 'task-1',
+      reason: 'Need to clean temporary files',
+      createdAt: Date.now(),
+      timeoutMs: 300000,
+    };
+
+    it('sets streaming approvals', () => {
+      const store = useStreamingStore.getState();
+      store.setStreamingApprovals(CHAT_ID, [approval]);
+      expect(useStreamingStore.getState().getChatStream(CHAT_ID).streamingApprovals).toEqual([approval]);
+    });
+
+    it('upserts streaming approval by id', () => {
+      const store = useStreamingStore.getState();
+      store.upsertStreamingApproval(CHAT_ID, approval);
+      store.upsertStreamingApproval(CHAT_ID, { ...approval, reason: 'Updated reason' });
+      const approvals = useStreamingStore.getState().getChatStream(CHAT_ID).streamingApprovals;
+      expect(approvals).toHaveLength(1);
+      expect(approvals[0].reason).toBe('Updated reason');
+    });
+
+    it('removes streaming approval by id', () => {
+      const store = useStreamingStore.getState();
+      store.upsertStreamingApproval(CHAT_ID, approval);
+      store.removeStreamingApproval(CHAT_ID, approval.id);
+      expect(useStreamingStore.getState().getChatStream(CHAT_ID).streamingApprovals).toEqual([]);
+    });
+
+    it('removes streaming approval across all chats', () => {
+      const store = useStreamingStore.getState();
+      store.upsertStreamingApproval(CHAT_ID, approval);
+      store.upsertStreamingApproval('test-chat-2', { ...approval, id: 'approval-2', taskId: 'task-2' });
+      store.removeStreamingApprovalEverywhere('approval-2');
+      expect(useStreamingStore.getState().getChatStream(CHAT_ID).streamingApprovals).toHaveLength(1);
+      expect(useStreamingStore.getState().getChatStream('test-chat-2').streamingApprovals).toEqual([]);
+    });
+  });
+
   describe('clearStreaming', () => {
     it('resets all streaming state', () => {
       const store = useStreamingStore.getState();
@@ -140,6 +185,7 @@ describe('streaming-store', () => {
       expect(stream.streamingReasoning).toBe('');
       expect(stream.streamingToolCalls).toEqual([]);
       expect(stream.streamingToolResults).toEqual([]);
+      expect(stream.streamingApprovals).toEqual([]);
       expect(stream.streamingVersion).toBe(0);
       expect(stream.pipelineExecution).toBeNull();
       expect(stream.optimisticMessage).toBeNull();
