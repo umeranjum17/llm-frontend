@@ -559,7 +559,7 @@ export const useApiKeysStore = create<ApiKeysState>((set, get) => ({
     const { vault, keys } = get();
 
     // System providers that should only have one key
-    const singleKeyProviders = [SYNC_S3_PROVIDER, "mem0", "composio"];
+    const singleKeyProviders = [SYNC_S3_PROVIDER, "composio"];
     const isSingleKeyProvider = singleKeyProviders.includes(provider);
 
     // Find existing key to replace:

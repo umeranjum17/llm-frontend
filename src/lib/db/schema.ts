@@ -162,7 +162,7 @@ export interface UserSettings {
   memoryAutoExtract?: boolean;       // Auto-learn from conversations
   memoryCacheTTL?: number;           // Cache TTL in seconds (default: 30)
   memoryMaxItems?: number;           // Limit total memories
-  memoryUserId?: string;             // Mem0 user ID (default: "default-user")
+  memoryUserId?: string;             // Legacy user ID (default: "default-user")
   titleModelId?: string;             // Which model to use for title generation (deprecated, use titleModelIdsByProvider)
   titleModelIdsByProvider?: Record<string, string>; // Per-provider title generation models
   embeddingsProvider?: "openrouter" | "openai"; // Which provider to use for embeddings (default: openrouter)

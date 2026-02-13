@@ -223,7 +223,6 @@ function KeySyncTab() {
       const keyMap: Record<string, string> = {};
       const providerToEnv: Record<string, string> = {
         openrouter: "OPENROUTER_API_KEY",
-        mem0: "MEM0_API_KEY",
         composio: "COMPOSIO_API_KEY",
       };
       for (const k of keys) {
@@ -232,7 +231,6 @@ function KeySyncTab() {
           keyMap[envName] = k.key;
         }
       }
-      keyMap["MEM0_USER_ID"] = settings.memoryUserId || "default-user";
       if (Object.keys(keyMap).length === 0) {
         toast.error("No keys found to sync");
         setSyncing(false);

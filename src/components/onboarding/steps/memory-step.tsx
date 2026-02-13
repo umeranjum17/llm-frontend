@@ -4,13 +4,10 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Brain, ArrowRight, ArrowLeft, Loader2, CheckCircle2, ExternalLink, Sparkles } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { getSettings, updateSettings } from "@/lib/db/queries";
-import { useApiKeysStore } from "@/stores/api-keys-store";
+import { Brain, ArrowRight, ArrowLeft, Loader2 } from "lucide-react";
+import { updateSettings } from "@/lib/db/queries";
 
 interface MemoryStepProps {
     onComplete: () => void;
@@ -20,9 +17,7 @@ interface MemoryStepProps {
 
 export function MemoryStep({ onComplete, onBack, onSkip }: MemoryStepProps) {
     const [memoryEnabled, setMemoryEnabled] = useState(true);
-    const [mem0ApiKey, setMem0ApiKey] = useState("");
     const [isLoading, setIsLoading] = useState(false);
-    const { addKey, getKeyForProvider } = useApiKeysStore();
 
     const handleContinue = async () => {
         setIsLoading(true);
@@ -30,14 +25,6 @@ export function MemoryStep({ onComplete, onBack, onSkip }: MemoryStepProps) {
             await updateSettings({
                 memoryEnabled,
             });
-
-            // Save mem0 API key if provided
-            if (mem0ApiKey.trim()) {
-                const existingKey = getKeyForProvider("mem0");
-                if (!existingKey) {
-                    await addKey("mem0", mem0ApiKey.trim());
-                }
-            }
 
             onComplete();
         } catch (error) {
@@ -104,36 +91,9 @@ export function MemoryStep({ onComplete, onBack, onSkip }: MemoryStepProps) {
                                 ))}
                             </div>
 
-                            {/* Mem0 API Key (Optional) */}
-                            <div className="space-y-2 pt-2 border-t">
-                                <div className="flex items-center justify-between">
-                                    <Label htmlFor="mem0Key" className="text-sm">Mem0 API Key</Label>
-                                    <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Optional</span>
-                                </div>
-                                <Input
-                                    id="mem0Key"
-                                    type="password"
-                                    placeholder="m0-..."
-                                    value={mem0ApiKey}
-                                    onChange={(e) => setMem0ApiKey(e.target.value)}
-                                    autoComplete="off"
-                                    data-1p-ignore
-                                    data-lpignore="true"
-                                    data-form-type="other"
-                                    className="h-10"
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    For cloud-synced memory across devices.{" "}
-                                    <a
-                                        href="https://app.mem0.ai/dashboard/api-keys"
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-primary hover:underline inline-flex items-center gap-0.5"
-                                    >
-                                        Get key <ExternalLink className="h-2.5 w-2.5" />
-                                    </a>
-                                </p>
-                            </div>
+                            <p className="text-xs text-muted-foreground text-center pt-2">
+                                Memories are stored locally in your browser and synced via S3.
+                            </p>
                         </motion.div>
                     )}
 

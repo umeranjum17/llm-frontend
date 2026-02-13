@@ -19,7 +19,6 @@ import type { Message, ProjectFile } from "@/lib/db/schema";
 import { reindexProjectFiles } from "@/lib/rag/file-indexer";
 import { toast } from "sonner";
 import { useSettingsStore } from "@/stores/settings-store";
-import { useApiKeysStore } from "@/stores/api-keys-store";
 import { useLuminaStore } from "@/stores/lumina-store";
 import { useUIStore } from "@/stores/ui-store";
 
@@ -64,18 +63,16 @@ export function ChatSettingsPopover({
     () => (chatId ? getChatFiles(chatId) : Promise.resolve([])),
     [chatId]
   );
-  const mem0ApiKey = useApiKeysStore((state) => state.getKeyForProvider("mem0"));
   const isLuminaConnected = useLuminaStore((state) => state.isConnected);
   const draftChatConfig = useUIStore((state) => state.draftChatConfig);
   const setDraftChatConfig = useUIStore((state) => state.setDraftChatConfig);
 
-  const hasMem0ApiKey = !!mem0ApiKey?.key;
   const defaultExecutionTarget = (settings?.defaultExecutionTarget ?? "lumina") as ExecutionTarget;
   const executionTarget = (chat?.executionTarget ?? draftChatConfig?.executionTarget ?? defaultExecutionTarget) as ExecutionTarget;
   const ragEnabled = chat?.ragEnabled ?? false;
   const hasProjectFiles = (projectFiles?.length ?? 0) > 0;
   const incognitoMode = chat?.incognitoMode ?? false;
-  const memoryEnabled = settings?.memoryEnabled !== false && hasMem0ApiKey;
+  const memoryEnabled = settings?.memoryEnabled !== false && !incognitoMode;
   const reasoningLevel = chat?.reasoningLevel || "medium";
   const smartCompaction = chat?.smartCompaction !== false; // Default to true
   const defaultTemperature = settings?.defaultTemperature ?? 1;
@@ -357,14 +354,13 @@ export function ChatSettingsPopover({
           <div className="flex items-center gap-2">
             <Brain className={cn("h-4 w-4", incognitoMode ? "text-muted-foreground/50" : "text-muted-foreground")} />
             <span className={cn("text-sm", incognitoMode && "text-muted-foreground/50")}>Memory</span>
-            {!hasMem0ApiKey && <span className="text-[10px] text-muted-foreground/50">(No key)</span>}
-            {incognitoMode && hasMem0ApiKey && <span className="text-[10px] text-muted-foreground/50">(Incognito)</span>}
+            {incognitoMode && <span className="text-[10px] text-muted-foreground/50">(Incognito)</span>}
           </div>
           <Switch
-            checked={memoryEnabled && !incognitoMode}
+            checked={memoryEnabled}
             onCheckedChange={toggleMemory}
             className="scale-90"
-            disabled={!hasMem0ApiKey || incognitoMode}
+            disabled={incognitoMode}
           />
         </div>
 

@@ -204,14 +204,12 @@ export const useLuminaStore = create<LuminaState>((set, get) => ({
         const keyMap: Record<string, string> = {};
         const providerToEnv: Record<string, string> = {
           openrouter: "OPENROUTER_API_KEY",
-          mem0: "MEM0_API_KEY",
           composio: "COMPOSIO_API_KEY",
         };
         for (const k of keys) {
           const envName = providerToEnv[k.provider];
           if (envName) keyMap[envName] = k.key;
         }
-        keyMap["MEM0_USER_ID"] = settings.memoryUserId || "default-user";
         if (Object.keys(keyMap).length > 0) {
           await client.pushKeys(keyMap);
           console.log(`[Lumina] Keys synced successfully (attempt ${attempt})`);

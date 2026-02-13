@@ -42,7 +42,6 @@ const PROVIDERS = [
   { id: "anyscale", name: "Anyscale (OpenAI-compatible)", url: "https://app.endpoints.anyscale.com/credentials", baseUrl: "https://api.endpoints.anyscale.com/v1" },
   { id: "custom-openai", name: "Custom (OpenAI-compatible)", url: "https://platform.openai.com/docs/api-reference", needsBaseUrl: true },
   { id: "composio", name: "Composio (Tool Router)", url: "https://platform.composio.dev" },
-  { id: "mem0", name: "Mem0 (Memory)", url: "https://app.mem0.ai/dashboard/api-keys" },
 ] as const;
 
 // Composio is now stored in the encrypted api-keys store like other providers
@@ -611,7 +610,6 @@ export function ApiKeysSettings() {
           {keys.map((apiKey) => {
             const providerConfig = getProviderConfig(apiKey.provider);
             const isComposio = apiKey.provider === "composio";
-            const isMem0 = apiKey.provider === "mem0";
             const isS3 = apiKey.provider === SYNC_S3_PROVIDER;
             const isLocked = lockedKeyIds.includes(apiKey.id);
 
@@ -632,11 +630,9 @@ export function ApiKeysSettings() {
 
             const borderClass = isComposio
               ? "border-purple-500/30 bg-purple-500/5"
-              : isMem0
-                ? "border-blue-500/30 bg-blue-500/5"
-                : isS3
-                  ? "border-green-500/30 bg-green-500/5"
-                  : "";
+              : isS3
+                ? "border-green-500/30 bg-green-500/5"
+                : "";
 
             return (
               <div
@@ -654,17 +650,12 @@ export function ApiKeysSettings() {
                         Tools
                       </Badge>
                     )}
-                    {isMem0 && (
-                      <Badge variant="secondary" className="text-xs bg-blue-500/20 text-blue-400">
-                        Memory
-                      </Badge>
-                    )}
                     {isS3 && (
                       <Badge variant="secondary" className="text-xs bg-green-500/20 text-green-400">
                         Sync
                       </Badge>
                     )}
-                    {apiKey.label && !isComposio && !isMem0 && !isS3 && (
+                    {apiKey.label && !isComposio && !isS3 && (
                       <Badge variant="secondary" className="text-xs">
                         {apiKey.label}
                       </Badge>
