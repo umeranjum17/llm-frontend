@@ -637,6 +637,10 @@ export function useChat(chatId: string | null) {
     clearImageGenerationProgress,
     getChatStream,
     setContextCompaction,
+    setCodingAgentStarted,
+    appendCodingAgentOutput,
+    setCodingAgentCompleted,
+    addCodingAgentEvent,
   } = useStreamingStore();
 
   // Sync loading state with streaming store when chatId changes
@@ -803,6 +807,11 @@ export function useChat(chatId: string | null) {
         return;
       }
 
+      // Ensure keys are synced before streaming (mirrors chatWithLumina guard)
+      if (!luminaStore.keysSynced) {
+        await useLuminaStore.getState().syncKeys();
+      }
+
       const cleanedMessage = cleanReferencesForLLM(getTextFromMessageContent(messageContent));
 
       // Load conversation history for Lumina context
@@ -843,6 +852,8 @@ export function useChat(chatId: string | null) {
         }, 150);
       };
 
+      const streamToolCalls: any[] = [];
+      const streamToolResults: any[] = [];
       try {
         const client = luminaStore.client;
         if (!client) {
@@ -854,8 +865,6 @@ export function useChat(chatId: string | null) {
 
         let fullContent = "";
         let luminaTaskId = "";
-        const streamToolCalls: any[] = [];
-        const streamToolResults: any[] = [];
 
         for await (const event of client.chatStream(cleanedMessage, luminaHistory, controller.signal)) {
           switch (event.type) {
@@ -905,6 +914,26 @@ export function useChat(chatId: string | null) {
             case "approval-timeout":
               removeStreamingApproval(effectiveChatId, event.id);
               break;
+            case "coding-agent-started":
+              setCodingAgentStarted(effectiveChatId, { provider: event.provider, prompt: event.prompt, cwd: event.cwd });
+              break;
+            case "coding-agent-output":
+              appendCodingAgentOutput(effectiveChatId, event.chunk);
+              break;
+            case "coding-agent-completed":
+              setCodingAgentCompleted(effectiveChatId, event.exitCode);
+              break;
+            case "coding-agent-event":
+              addCodingAgentEvent(effectiveChatId, event.event);
+              break;
+            case "artifact-created":
+              addCodingAgentEvent(effectiveChatId, {
+                type: "file_change",
+                path: event.path,
+                action: "created",
+                language: event.language,
+              });
+              break;
             case "reasoning":
               appendStreamingReasoning(effectiveChatId, event.text);
               break;
@@ -924,10 +953,16 @@ export function useChat(chatId: string | null) {
         const finalContent = fullContent
           ? (luminaTaskId ? `${fullContent}\n\n*Task ID: ${luminaTaskId}*` : fullContent)
           : "Lumina Runtime returned an empty response. This usually means a configuration issue — check Settings > Lumina.";
+        // Snapshot coding agent state before clearStreaming wipes it
+        const successStreamState = useStreamingStore.getState().getChatStream(effectiveChatId);
+        const successCodingAgent = successStreamState?.codingAgent;
+        const successCodingEvents = successStreamState?.codingAgentEvents;
         await updateMessage(placeholderMsg.id, {
           content: finalContent,
           toolCalls: streamToolCalls.length > 0 ? streamToolCalls : undefined,
           toolResults: streamToolResults.length > 0 ? streamToolResults : undefined,
+          codingAgent: successCodingAgent ? { provider: successCodingAgent.provider, prompt: successCodingAgent.prompt, cwd: successCodingAgent.cwd, status: successCodingAgent.status, exitCode: successCodingAgent.exitCode } : undefined,
+          codingAgentEvents: successCodingEvents?.length ? successCodingEvents : undefined,
         });
         abortControllerRef.current = null;
         finalizeLuminaStreaming();
@@ -938,7 +973,29 @@ export function useChat(chatId: string | null) {
         const content = partialContent
           ? `${partialContent}\n\n---\n*Stream interrupted: ${errorMsg}*`
           : `Lumina Runtime error: ${errorMsg}`;
-        await updateMessage(placeholderMsg.id, { content });
+        // Mark any in-flight tool calls as errored so they don't stay stuck in "running" state
+        const errorToolResults = streamToolCalls
+          .filter(tc => !streamToolResults.some(tr => (tr.id || tr.toolCallId) === (tc.id || tc.toolCallId)))
+          .map(tc => ({
+            id: tc.id || tc.toolCallId,
+            toolCallId: tc.id || tc.toolCallId,
+            taskId: tc.taskId,
+            toolName: tc.toolName,
+            result: { isError: true, error: errorMsg },
+            summary: `Error: ${errorMsg}`,
+            endTime: Date.now(),
+          }));
+        const allToolResults = [...streamToolResults, ...errorToolResults];
+        // Snapshot coding agent state before clearStreaming wipes it
+        const errorStreamState = useStreamingStore.getState().getChatStream(effectiveChatId);
+        const errorCodingAgent = errorStreamState?.codingAgent;
+        const errorCodingEvents = errorStreamState?.codingAgentEvents;
+        await updateMessage(placeholderMsg.id, {
+          content,
+          toolResults: allToolResults.length > 0 ? allToolResults : undefined,
+          codingAgent: errorCodingAgent ? { provider: errorCodingAgent.provider, prompt: errorCodingAgent.prompt, cwd: errorCodingAgent.cwd, status: errorCodingAgent.status, exitCode: errorCodingAgent.exitCode } : undefined,
+          codingAgentEvents: errorCodingEvents?.length ? errorCodingEvents : undefined,
+        });
         abortControllerRef.current = null;
         finalizeLuminaStreaming();
         return;

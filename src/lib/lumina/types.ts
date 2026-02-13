@@ -332,6 +332,11 @@ export interface LuminaApprovalTimeoutStreamEvent {
   timeoutMs?: number;
 }
 
+export interface CodingAgentEvent {
+  type: string;
+  [key: string]: any;
+}
+
 export type LuminaStreamEvent =
   | { type: "text-delta"; text: string }
   | { type: "tool-call"; taskId: string; toolCallId?: string; toolName: string; toolLabel: string; args: any }
@@ -339,7 +344,12 @@ export type LuminaStreamEvent =
   | LuminaApprovalRequestedStreamEvent
   | LuminaApprovalRespondedStreamEvent
   | LuminaApprovalTimeoutStreamEvent
+  | { type: "coding-agent-started"; provider: string; prompt: string; cwd: string }
+  | { type: "coding-agent-output"; provider: string; stream: string; chunk: string }
+  | { type: "coding-agent-event"; taskId: string; provider: string; event: CodingAgentEvent }
+  | { type: "coding-agent-completed"; provider: string; exitCode: number }
   | { type: "reasoning"; text: string }
+  | { type: "artifact-created"; taskId: string; provider: string; path: string; fullPath: string; language: string; content: string; cwd: string }
   | { type: "error"; error: string }
   | { type: "completed"; taskId: string; response: string }
   | { type: "done" };

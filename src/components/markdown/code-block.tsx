@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Copy, Check, Maximize2, ChevronRight, Eye, Code, FolderOpen, Play, WrapText } from "lucide-react";
 import { codeToHtml } from "shiki";
 import { useUIStore } from "@/stores/ui-store";
-import { cn, sanitizeSvgHtml } from "@/lib/utils";
+import { cn, sanitizeSvgHtml, wrapHtmlForSandbox } from "@/lib/utils";
 import { CodeBlockContext } from "./markdown-renderer";
 import { RUNNABLE_LANGUAGES } from "@/components/artifacts/code-runner";
 
@@ -416,7 +416,7 @@ export function CodeBlock({ language, code, filename, isStreaming = false }: Cod
             <div className="relative bg-white rounded-b-lg">
               {/* Sandboxed iframe — user-generated HTML runs in isolated context */}
               <iframe
-                srcDoc={code}
+                srcDoc={wrapHtmlForSandbox(code)}
                 sandbox="allow-scripts"
                 className="w-full rounded-b-lg border-0"
                 style={{ height: '400px' }}

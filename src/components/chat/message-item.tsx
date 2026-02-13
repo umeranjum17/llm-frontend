@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download, ThumbsUp, ThumbsDown, Volume2, VolumeX, ChevronDown, ChevronRight, Wrench, Loader2, Brain, RefreshCw, Pin, PinOff, AlertTriangle, FileText } from "lucide-react";
+import { Copy, Check, User, Bot, CornerDownRight, Pencil, X as XIcon, Send, GitBranch, RotateCcw, Download, ThumbsUp, ThumbsDown, Volume2, VolumeX, ChevronDown, ChevronRight, Wrench, Loader2, Brain, RefreshCw, Pin, PinOff, AlertTriangle, FileText, Terminal, FileCode, DollarSign } from "lucide-react";
 import { usePrefersReducedMotion } from "@/hooks/use-motion-config";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -25,7 +25,7 @@ import { updateMessage } from "@/lib/db/queries";
 import { useVoiceOutput } from "@/hooks/use-voice-output";
 import { parseArtifactFences } from "@/lib/utils/artifact-fence-parser";
 import { useUIStore } from "@/stores/ui-store";
-import { useStreamingStore, type PipelineExecution, type ImageGenerationProgress, type ImageGenerationStage } from "@/stores/streaming-store";
+import { useStreamingStore, type PipelineExecution, type ImageGenerationProgress, type ImageGenerationStage, type CodingAgentStatus, type CodingAgentEventItem } from "@/stores/streaming-store";
 import { nanoid } from "nanoid";
 import { Code2 } from "lucide-react";
 import { ActiveSkillIndicator, SkillBadge } from "@/components/chat/active-skill-indicator";
@@ -255,6 +255,178 @@ function ImageGenerationProgressIndicator({
       <div className="text-sm text-muted-foreground">
         {stages[currentIndex]?.description || "Processing..."}
       </div>
+    </div>
+  );
+}
+
+/** Timeline of structured events from a coding agent (tool calls, file changes, commands) */
+function CodingAgentTimeline({ events }: { events: CodingAgentEventItem[] }) {
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const timelineRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (timelineRef.current) {
+      timelineRef.current.scrollTop = timelineRef.current.scrollHeight;
+    }
+  }, [events.length]);
+
+  if (events.length === 0) return null;
+
+  const toggle = (idx: number) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
+
+  const renderEvent = (evt: CodingAgentEventItem, idx: number) => {
+    switch (evt.type) {
+      case "tool_call":
+        return (
+          <div key={idx} className="flex items-start gap-2 text-xs">
+            <Wrench className="h-3 w-3 text-amber-500 mt-0.5 shrink-0" />
+            <div className="min-w-0">
+              <span className="text-amber-400 dark:text-amber-300 font-medium">{evt.name}</span>
+              {evt.input && (
+                <button onClick={() => toggle(idx)} className="ml-2 text-muted-foreground hover:text-foreground text-[11px]">
+                  {expanded.has(idx) ? "hide" : "show"} input
+                </button>
+              )}
+              {expanded.has(idx) && evt.input && (
+                <pre className="mt-1 p-2 rounded bg-muted text-muted-foreground text-[11px] max-h-32 overflow-auto whitespace-pre-wrap">
+                  {typeof evt.input === "string" ? evt.input : JSON.stringify(evt.input, null, 2)}
+                </pre>
+              )}
+            </div>
+          </div>
+        );
+      case "tool_result":
+        return (
+          <div key={idx} className="flex items-start gap-2 text-xs">
+            <Check className="h-3 w-3 text-green-500 mt-0.5 shrink-0" />
+            <div className="min-w-0">
+              <span className="text-muted-foreground">Result from {evt.name}</span>
+              {evt.output && (
+                <button onClick={() => toggle(idx)} className="ml-2 text-muted-foreground hover:text-foreground text-[11px]">
+                  {expanded.has(idx) ? "hide" : "show"} output
+                </button>
+              )}
+              {expanded.has(idx) && evt.output && (
+                <pre className="mt-1 p-2 rounded bg-muted text-muted-foreground text-[11px] max-h-32 overflow-auto whitespace-pre-wrap">
+                  {evt.output}
+                </pre>
+              )}
+            </div>
+          </div>
+        );
+      case "text":
+        return (
+          <div key={idx} className="flex items-start gap-2 text-xs">
+            <span className="text-muted-foreground/50 mt-0.5 shrink-0">...</span>
+            <span className="text-muted-foreground whitespace-pre-wrap">{(evt.content ?? "").slice(0, 300)}</span>
+          </div>
+        );
+      case "command":
+        return (
+          <div key={idx} className="flex items-start gap-2 text-xs">
+            <Terminal className="h-3 w-3 text-cyan-500 mt-0.5 shrink-0" />
+            <code className="text-cyan-400 dark:text-cyan-300 bg-muted px-1.5 py-0.5 rounded font-mono">$ {evt.command}</code>
+          </div>
+        );
+      case "file_change":
+        return (
+          <div key={idx} className="flex items-center gap-2 text-xs">
+            <FileCode className="h-3 w-3 text-blue-500 shrink-0" />
+            <span className="text-foreground/80">{evt.path}</span>
+            <Badge variant="outline" className={cn(
+              "text-[10px] h-4 px-1.5 font-normal",
+              evt.action === "created" ? "text-green-500 border-green-500/30" :
+              evt.action === "deleted" ? "text-red-500 border-red-500/30" :
+              "text-yellow-500 border-yellow-500/30"
+            )}>
+              {evt.action ?? "modified"}
+            </Badge>
+          </div>
+        );
+      case "cost":
+        return (
+          <div key={idx} className="flex items-center gap-2 text-xs text-muted-foreground">
+            <DollarSign className="h-3 w-3 shrink-0" />
+            <span>
+              {evt.inputTokens?.toLocaleString() ?? 0} in / {evt.outputTokens?.toLocaleString() ?? 0} out
+              {evt.totalCostUsd > 0 && ` ($${evt.totalCostUsd.toFixed(4)})`}
+            </span>
+          </div>
+        );
+      case "status":
+        return (
+          <div key={idx} className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Bot className="h-3 w-3 shrink-0" />
+            <span>{evt.message}</span>
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div
+      ref={timelineRef}
+      className="space-y-1.5 py-2 px-3 max-h-64 overflow-auto rounded bg-muted/40 border border-border/30"
+    >
+      {events.map(renderEvent)}
+    </div>
+  );
+}
+
+/** Indicator shown while a coding agent is running, with structured event timeline */
+function CodingAgentIndicator({ agent, events }: { agent: CodingAgentStatus; events: CodingAgentEventItem[] }) {
+  const [showRaw, setShowRaw] = useState(false);
+  const outputRef = useRef<HTMLPreElement>(null);
+  const hasEvents = events.length > 0;
+
+  useEffect(() => {
+    if (showRaw && outputRef.current) {
+      outputRef.current.scrollTop = outputRef.current.scrollHeight;
+    }
+  }, [agent.output, showRaw]);
+
+  return (
+    <div className="mt-2 rounded-lg border bg-muted/30 overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2 text-xs">
+        {agent.status === "running" ? (
+          <Loader2 className="h-3.5 w-3.5 text-violet-500 animate-spin shrink-0" />
+        ) : (
+          <Check className={cn("h-3.5 w-3.5 shrink-0", agent.exitCode === 0 ? "text-green-500" : "text-red-500")} />
+        )}
+        <Terminal className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <span className="font-medium text-foreground/80">Running {agent.provider}</span>
+        <span className="text-muted-foreground truncate max-w-xs">{agent.cwd}</span>
+        {agent.output && (
+          <button
+            onClick={() => setShowRaw(!showRaw)}
+            className="ml-auto text-muted-foreground hover:text-foreground text-[10px]"
+          >
+            {showRaw ? "Hide raw" : "Show raw"}
+          </button>
+        )}
+      </div>
+
+      {/* Structured timeline */}
+      {hasEvents && !showRaw && <CodingAgentTimeline events={events} />}
+
+      {/* Raw output fallback */}
+      {showRaw && agent.output && (
+        <pre
+          ref={outputRef}
+          className="px-3 py-2 text-[11px] text-muted-foreground max-h-48 overflow-auto border-t border-border/50 bg-muted/50"
+        >
+          {agent.output}
+        </pre>
+      )}
     </div>
   );
 }
@@ -965,7 +1137,7 @@ export const MessageItem = memo(function MessageItem({
   // Get streaming state for THIS chat for real-time updates
   // Include streamingVersion to ensure re-renders on each content update
   const chatStreamingState = useStreamingStore((state) => state.getChatStream(message.chatId));
-  const { streamingMessageId, streamingContent, streamingReasoning, streamingToolCalls, streamingToolResults, streamingApprovals, streamingVersion, pipelineExecution, activeSkill, imageGenerationProgress } = chatStreamingState;
+  const { streamingMessageId, streamingContent, streamingReasoning, streamingToolCalls, streamingToolResults, streamingApprovals, streamingVersion, pipelineExecution, activeSkill, imageGenerationProgress, codingAgent, codingAgentEvents } = chatStreamingState;
   const isStreaming = message.id === streamingMessageId;
   const isImageGenerating = imageGenerationProgress?.messageId === message.id && imageGenerationProgress?.isActive;
 
@@ -1611,6 +1783,28 @@ export const MessageItem = memo(function MessageItem({
                     pendingApprovals={pendingApprovals}
                     onApprovalResolved={handleApprovalResolved}
                   />
+                </motion.div>
+              )}
+
+              {/* Coding agent live timeline */}
+              {!isEditing && isAssistant && isStreaming && codingAgent && (
+                <motion.div
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
+                >
+                  <CodingAgentIndicator agent={codingAgent} events={codingAgentEvents} />
+                </motion.div>
+              )}
+
+              {/* Persisted coding agent timeline (after streaming completes) */}
+              {!isEditing && isAssistant && !isStreaming && message.codingAgent && (message.codingAgentEvents?.length ?? 0) > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
+                >
+                  <CodingAgentIndicator agent={{ ...message.codingAgent, output: "" }} events={message.codingAgentEvents!} />
                 </motion.div>
               )}
 

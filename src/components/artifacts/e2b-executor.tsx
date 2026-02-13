@@ -18,7 +18,7 @@ import {
   Copy,
   Check,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, wrapHtmlForSandbox } from "@/lib/utils";
 import Editor from "@monaco-editor/react";
 import { useTheme } from "next-themes";
 import {
@@ -361,7 +361,7 @@ export function E2BExecutor({
                               {r.type === "html" && r.data && (
                                 <div className="border rounded-lg overflow-hidden bg-card">
                                   <iframe
-                                    srcDoc={r.data}
+                                    srcDoc={wrapHtmlForSandbox(r.data)}
                                     className="w-full border-0"
                                     style={{ minHeight: "200px" }}
                                     sandbox="allow-scripts allow-forms allow-popups allow-modals"

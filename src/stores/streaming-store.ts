@@ -91,6 +91,21 @@ export interface ContextCompactionState {
   summaryPreview?: string;
 }
 
+// Coding agent state
+export interface CodingAgentStatus {
+  provider: string;
+  prompt: string;
+  cwd: string;
+  output: string;
+  status: "running" | "completed";
+  exitCode?: number;
+}
+
+export interface CodingAgentEventItem {
+  type: string;
+  [key: string]: any;
+}
+
 // Per-chat streaming state
 export interface ChatStreamingState {
   streamingMessageId: string | null;
@@ -107,6 +122,8 @@ export interface ChatStreamingState {
   imageGenerationProgress: ImageGenerationProgress | null;
   messageQueue: QueuedMessage[];
   contextCompaction: ContextCompactionState | null;
+  codingAgent: CodingAgentStatus | null;
+  codingAgentEvents: CodingAgentEventItem[];
 }
 
 // Default state for a new chat
@@ -125,6 +142,8 @@ const createDefaultChatState = (): ChatStreamingState => ({
   imageGenerationProgress: null,
   messageQueue: [],
   contextCompaction: null,
+  codingAgent: null,
+  codingAgentEvents: [],
 });
 
 // Stable default state to avoid creating new objects in selectors (prevents infinite re-renders)
@@ -143,6 +162,8 @@ const DEFAULT_CHAT_STATE: ChatStreamingState = Object.freeze({
   imageGenerationProgress: null,
   messageQueue: [],
   contextCompaction: null,
+  codingAgent: null,
+  codingAgentEvents: [],
 }) as ChatStreamingState;
 
 interface StreamingState {
@@ -212,6 +233,12 @@ interface StreamingState {
   // Context compaction actions
   setContextCompaction: (chatId: string, state: ContextCompactionState | null) => void;
   clearContextCompaction: (chatId: string) => void;
+
+  // Coding agent actions
+  setCodingAgentStarted: (chatId: string, data: { provider: string; prompt: string; cwd: string }) => void;
+  appendCodingAgentOutput: (chatId: string, chunk: string) => void;
+  setCodingAgentCompleted: (chatId: string, exitCode: number) => void;
+  addCodingAgentEvent: (chatId: string, event: CodingAgentEventItem) => void;
 }
 
 // Helper to get or create chat state
@@ -459,6 +486,8 @@ export const useStreamingStore = create<StreamingState>((set, get) => {
             streamingApprovals: [],
             streamingVersion: 0,
             activeSkill: preservedSkill,
+            codingAgent: null,
+            codingAgentEvents: [],
           }),
         };
       }
@@ -474,6 +503,8 @@ export const useStreamingStore = create<StreamingState>((set, get) => {
             streamingApprovals: [],
             streamingVersion: 0,
             activeSkill: preservedSkill,
+            codingAgent: null,
+            codingAgentEvents: [],
           }),
         };
       }
@@ -790,5 +821,46 @@ export const useStreamingStore = create<StreamingState>((set, get) => {
         contextCompaction: null,
       }),
     })),
+
+  // Coding agent actions
+  setCodingAgentStarted: (chatId, data) =>
+    set((state) => ({
+      chatStreams: updateChatState(state.chatStreams, chatId, {
+        codingAgent: { ...data, output: "", status: "running" },
+        codingAgentEvents: [],
+      }),
+    })),
+
+  appendCodingAgentOutput: (chatId, chunk) =>
+    set((state) => {
+      const current = getOrCreateChatState(state.chatStreams, chatId);
+      if (!current.codingAgent) return state;
+      return {
+        chatStreams: updateChatState(state.chatStreams, chatId, {
+          codingAgent: { ...current.codingAgent, output: current.codingAgent.output + chunk },
+        }),
+      };
+    }),
+
+  setCodingAgentCompleted: (chatId, exitCode) =>
+    set((state) => {
+      const current = getOrCreateChatState(state.chatStreams, chatId);
+      if (!current.codingAgent) return state;
+      return {
+        chatStreams: updateChatState(state.chatStreams, chatId, {
+          codingAgent: { ...current.codingAgent, status: "completed", exitCode },
+        }),
+      };
+    }),
+
+  addCodingAgentEvent: (chatId, event) =>
+    set((state) => {
+      const current = getOrCreateChatState(state.chatStreams, chatId);
+      return {
+        chatStreams: updateChatState(state.chatStreams, chatId, {
+          codingAgentEvents: [...current.codingAgentEvents, event],
+        }),
+      };
+    }),
   };
 });

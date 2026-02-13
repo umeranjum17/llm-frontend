@@ -109,6 +109,9 @@ export interface Message {
     agentName?: string;
   };
   skillId?: string; // Skill that was active when this message was generated
+  // Coding agent fields (persisted from streaming store on completion)
+  codingAgent?: { provider: string; prompt: string; cwd: string; status: string; exitCode?: number };
+  codingAgentEvents?: Array<{ type: string; [key: string]: any }>;
   // Context compaction fields
   isPinned?: boolean; // User pinned, never summarize
   isSummarized?: boolean; // Message was compressed into summary

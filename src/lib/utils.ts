@@ -51,6 +51,27 @@ export function sanitizeSvgHtml(html: string): string {
 }
 
 /**
+ * Wrap HTML for sandboxed srcDoc iframes with a storage shim.
+ * Some browsers block localStorage/sessionStorage in sandboxed about:srcdoc contexts.
+ */
+export function wrapHtmlForSandbox(html: string): string {
+  const shim = `<script id="lumina-storage-shim">(function(){var needsShim=false;try{var s=window.localStorage;var k="__lumina_storage_test__";s.setItem(k,"1");s.removeItem(k);}catch(_){needsShim=true;}if(!needsShim)return;var mk=function(){var data=Object.create(null);return{getItem:function(key){return Object.prototype.hasOwnProperty.call(data,key)?data[key]:null;},setItem:function(key,value){data[key]=String(value);},removeItem:function(key){delete data[key];},clear:function(){data=Object.create(null);},key:function(index){return Object.keys(data)[index]||null;},get length(){return Object.keys(data).length;}};};var ls=mk();var ss=mk();try{Object.defineProperty(window,"localStorage",{value:ls,configurable:true});}catch(_){try{window.localStorage=ls;}catch(__){}}try{Object.defineProperty(window,"sessionStorage",{value:ss,configurable:true});}catch(_){try{window.sessionStorage=ss;}catch(__){}}})();</script>`;
+
+  if (!html) return shim;
+  if (html.includes('id="lumina-storage-shim"')) return html;
+
+  if (/<head[^>]*>/i.test(html)) {
+    return html.replace(/(<head[^>]*>)/i, `$1${shim}`);
+  }
+
+  if (/<html[^>]*>/i.test(html)) {
+    return html.replace(/(<html[^>]*>)/i, `$1<head>${shim}</head>`);
+  }
+
+  return `${shim}${html}`;
+}
+
+/**
  * Map language names to proper file extensions.
  */
 export function languageToExtension(lang: string): string {

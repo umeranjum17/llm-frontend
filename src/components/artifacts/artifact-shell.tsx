@@ -29,7 +29,7 @@ const DocumentViewer = dynamic(() => import("@/components/artifacts/document-vie
 const SpreadsheetViewer = dynamic(() => import("@/components/artifacts/spreadsheet-viewer").then(m => ({ default: m.SpreadsheetViewer })), { ssr: false });
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
-import { cn, sanitizeSvgHtml, languageToExtension } from "@/lib/utils";
+import { cn, sanitizeSvgHtml, languageToExtension, wrapHtmlForSandbox } from "@/lib/utils";
 import {
     Tooltip,
     TooltipContent,
@@ -391,7 +391,7 @@ export function ArtifactShell() {
                                         >
                                             <iframe
                                                 ref={iframeRef}
-                                                srcDoc={activeArtifact.code}
+                                                srcDoc={wrapHtmlForSandbox(activeArtifact.code || "")}
                                                 className="absolute inset-0 w-full h-full border-0 bg-background focus:outline-none"
                                                 sandbox="allow-scripts allow-forms allow-popups allow-modals"
                                                 title="Preview"
