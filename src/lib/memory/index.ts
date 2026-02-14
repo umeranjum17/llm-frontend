@@ -116,39 +116,36 @@ async function searchMemoryVectors(
     const allVecs = await db.memoryVectors.toArray();
     if (allVecs.length === 0) return [];
 
-    // Check if any vectors match query dimension; if none do, re-embed the query
-    // with the same model used to store the vectors (handles local↔remote mismatch)
-    let effectiveQueryEmbedding = queryEmbedding;
-    const hasMatchingDim = allVecs.some((doc) => doc.embedding.length === queryEmbedding.length);
-    if (!hasMatchingDim && allVecs.length > 0) {
-        const storedDim = allVecs[0].embedding.length;
-        // Stored vectors are local (384-dim), query is remote → re-embed locally
-        if (storedDim <= 384 && queryEmbedding.length > 384) {
-            try {
-                const { generateEmbedding: genLocal } = await import("@/lib/rag/embeddings");
-                // We don't have the original text here, so fall back to returning all vectors
-                // sorted by recency instead of similarity
-                return allVecs
-                    .map((doc) => ({ ...doc, similarity: 0.6 }))
-                    .slice(0, limit);
-            } catch {
-                // Fall through
-            }
-        }
-        // If dimensions still don't match, return recent vectors as fallback
-        return allVecs
-            .map((doc) => ({ ...doc, similarity: 0.6 }))
+    // Split vectors by dimension match
+    const matchingVecs = allVecs.filter((doc) => doc.embedding.length === queryEmbedding.length);
+
+    // If we have vectors with matching dimensions, do proper cosine similarity search
+    if (matchingVecs.length > 0) {
+        return matchingVecs
+            .map((doc) => ({
+                ...doc,
+                similarity: cosineSimilarity(queryEmbedding, doc.embedding),
+            }))
+            .filter((r) => r.similarity >= threshold)
+            .sort((a, b) => b.similarity - a.similarity)
             .slice(0, limit);
     }
 
-    return allVecs
-        .filter((doc) => doc.embedding.length === effectiveQueryEmbedding.length)
-        .map((doc) => ({
-            ...doc,
-            similarity: cosineSimilarity(effectiveQueryEmbedding, doc.embedding),
-        }))
-        .filter((r) => r.similarity >= threshold)
-        .sort((a, b) => b.similarity - a.similarity)
+    // Dimension mismatch: can't compute similarity. Fall back to recency-based ranking
+    // by looking up corresponding userMemory records and sorting by updatedAt.
+    const vecsWithRecency: Array<MemoryVector & { similarity: number; updatedAt: number }> = [];
+    for (const vec of allVecs) {
+        const memId = vec.memoryId || vec.id.replace("memory-", "");
+        let updatedAt = 0;
+        try {
+            const record = await db.userMemories.get(memId);
+            if (record) updatedAt = record.updatedAt;
+        } catch { /* ignore lookup failure */ }
+        vecsWithRecency.push({ ...vec, similarity: 0.6, updatedAt });
+    }
+
+    return vecsWithRecency
+        .sort((a, b) => b.updatedAt - a.updatedAt)
         .slice(0, limit);
 }
 

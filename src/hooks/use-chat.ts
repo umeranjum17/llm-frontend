@@ -674,20 +674,23 @@ export function useChat(chatId: string | null) {
       clearTimeout(extractionTimeoutRef.current);
     }
 
+    // Capture chatId at schedule time to prevent stale closure when user switches chats
+    const capturedChatId = chatId;
+
     // Debounce: wait 20 seconds after last assistant response
     extractionTimeoutRef.current = setTimeout(async () => {
       try {
-        if (!chatId) return; // Can't extract without a chat ID
+        if (!capturedChatId) return; // Can't extract without a chat ID
 
         // Check if chat is in incognito mode - skip extraction if so
-        const chat = await getChatById(chatId);
+        const chat = await getChatById(capturedChatId);
         if (chat?.incognitoMode) return;
 
         const settings = await getSettings();
         const autoExtract = settings?.memoryAutoExtract ?? true; // Default to true
         if (!settings?.memoryEnabled || !autoExtract) return;
 
-        const messages = await getMessages(chatId);
+        const messages = await getMessages(capturedChatId);
         if (messages.length >= 2) {
           // Get last exchange (User + Assistant) for context
           const recentMessages = messages.slice(-2).map((m: Message) => ({
@@ -1858,6 +1861,25 @@ export function useChat(chatId: string | null) {
         }
       }
 
+      // Flush any remaining buffer content (handles streams that don't end with newline)
+      if (buffer.trim()) {
+        const remaining = buffer.trim();
+        if (remaining.startsWith("data: ")) {
+          const data = remaining.slice(6);
+          if (data !== "[DONE]") {
+            try {
+              const parsed = JSON.parse(data);
+              // Process usage/finish events that may be in the final chunk
+              if (parsed.type === "step-finish" || parsed.type === "finish") {
+                console.log(`[use-chat] Final buffer ${parsed.type} event:`, JSON.stringify(parsed).slice(0, 500));
+              }
+            } catch {
+              // Ignore parse errors in final buffer
+            }
+          }
+        }
+      }
+
       // If provider didn't supply usage, fall back to local estimation so cost isn't stuck at 0.
       if (!hasReceivedUsage) {
         try {
@@ -1894,10 +1916,10 @@ export function useChat(chatId: string | null) {
         // costIsEstimated is already true if we fell back to local token counting
       }
 
-      // Detect incomplete response (ends abruptly, no punctuation, or very long)
+      // Detect incomplete response (ends abruptly without punctuation AND is very long)
       const isIncomplete =
         fullContent.length > 0 &&
-        (!/[.!?]$/.test(fullContent.trim()) || fullContent.length > 3000);
+        !/[.!?]$/.test(fullContent.trim()) && fullContent.length > 3000;
 
       // Calculate cache savings from prompt caching
       const cacheSavings = cachedTokens > 0
