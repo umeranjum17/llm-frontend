@@ -104,6 +104,14 @@ export interface SkillMatchResult {
 }
 
 /**
+ * Result from matchSkillWithEmbedding - always includes the query embedding
+ */
+export interface SkillMatchWithEmbeddingResult {
+  match: SkillMatchResult | null;
+  queryEmbedding: number[] | null;
+}
+
+/**
  * Minimum message length to use without context
  * Short messages like "retry", "continue", "again" need conversation context
  */
@@ -151,13 +159,14 @@ function buildContextAwareMessage(
 }
 
 /**
- * Find the best matching skill for a user message using embedding similarity
- * Returns null if no skill matches above the threshold
+ * Like matchSkill, but always returns the query embedding alongside the match.
+ * This allows callers to reuse the embedding for other purposes (e.g., memory search)
+ * without making a second API call.
  *
  * This function is designed to fail gracefully - network errors, API issues,
- * and other failures will return null (no skill matched).
+ * and other failures will return null match/queryEmbedding.
  */
-export async function matchSkill(
+export async function matchSkillWithEmbedding(
   userMessage: string,
   apiKey: string,
   options?: {
@@ -171,7 +180,7 @@ export async function matchSkill(
     /** Exclude skills whose id starts with this prefix */
     excludePrefix?: string;
   }
-): Promise<SkillMatchResult | null> {
+): Promise<SkillMatchWithEmbeddingResult> {
   const {
     providerId = "openrouter",
     modelId,
@@ -181,6 +190,22 @@ export async function matchSkill(
     includePrefix,
     excludePrefix,
   } = options || {};
+
+  // Build context-aware message for short inputs like "retry", "continue", etc.
+  const messageToEmbed = buildContextAwareMessage(userMessage, conversationContext);
+
+  // Get embedding for user message (must use same model as skill embeddings)
+  // Wrapped in try-catch for extra resilience against network/API issues
+  let messageEmbedding: number[] | null = null;
+  try {
+    messageEmbedding = await getEmbedding(messageToEmbed, apiKey, providerId, modelId);
+  } catch (embedError) {
+    console.warn("[Skill Matcher] Embedding request failed:", embedError);
+  }
+
+  if (!messageEmbedding || messageEmbedding.length === 0) {
+    return { match: null, queryEmbedding: messageEmbedding };
+  }
 
   try {
     // Always reload cache to ensure we have latest embeddings
@@ -194,7 +219,7 @@ export async function matchSkill(
   const skillEmbeddings = getSkillEmbeddingsFromCache();
 
   if (skillEmbeddings.length === 0) {
-    return null;
+    return { match: null, queryEmbedding: messageEmbedding };
   }
 
   // Filter out manual-only skills if requested
@@ -211,27 +236,7 @@ export async function matchSkill(
   }
 
   if (eligibleSkills.length === 0) {
-    return null;
-  }
-
-  // Build context-aware message for short inputs like "retry", "continue", etc.
-  const messageToEmbed = buildContextAwareMessage(userMessage, conversationContext);
-
-  // Get embedding for user message (must use same model as skill embeddings)
-  // Wrapped in try-catch for extra resilience against network/API issues
-  let messageEmbedding: number[] | null = null;
-  try {
-    messageEmbedding = await getEmbedding(messageToEmbed, apiKey, providerId, modelId);
-  } catch (embedError) {
-    console.warn("[Skill Matcher] Embedding request failed:", embedError);
-  }
-
-  if (!messageEmbedding) {
-    return null;
-  }
-
-  if (messageEmbedding.length === 0) {
-    return null;
+    return { match: null, queryEmbedding: messageEmbedding };
   }
 
   // Find best match using cosine similarity with positive/exclusion adjustments
@@ -285,10 +290,36 @@ export async function matchSkill(
 
   // Apply minimum floor threshold - only return if best match is above floor
   if (bestMatch && bestMatch.similarity >= threshold) {
-    return bestMatch;
+    return { match: bestMatch, queryEmbedding: messageEmbedding };
   }
 
-  return null;
+  return { match: null, queryEmbedding: messageEmbedding };
+}
+
+/**
+ * Find the best matching skill for a user message using embedding similarity
+ * Returns null if no skill matches above the threshold
+ *
+ * This function is designed to fail gracefully - network errors, API issues,
+ * and other failures will return null (no skill matched).
+ */
+export async function matchSkill(
+  userMessage: string,
+  apiKey: string,
+  options?: {
+    providerId?: string;
+    modelId?: string;
+    threshold?: number;
+    excludeManualOnly?: boolean;
+    conversationContext?: Array<{ role: string; content: string }>;
+    /** Only match skills whose id starts with this prefix */
+    includePrefix?: string;
+    /** Exclude skills whose id starts with this prefix */
+    excludePrefix?: string;
+  }
+): Promise<SkillMatchResult | null> {
+  const { match } = await matchSkillWithEmbedding(userMessage, apiKey, options);
+  return match;
 }
 
 /**

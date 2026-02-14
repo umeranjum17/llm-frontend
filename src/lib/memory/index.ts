@@ -1,8 +1,8 @@
 import { db } from "@/lib/db/schema";
-import type { UserMemory } from "@/lib/db/schema";
+import type { UserMemory, MemoryVector } from "@/lib/db/schema";
 import { getSettings } from "@/lib/db/queries";
-import { searchSimilar, deleteDocuments } from "@/lib/rag/vector-store";
-import { generateEmbedding } from "@/lib/rag/embeddings";
+import { generateEmbedding, cosineSimilarity } from "@/lib/rag/embeddings";
+import { getEmbedding } from "@/lib/skills/skill-embeddings";
 
 interface MemoryItem {
     id: string;
@@ -70,6 +70,59 @@ export function refreshCacheInBackground(query?: string) {
 
     // Fire-and-forget refresh - don't await
     searchMemories(query).catch(() => {});
+}
+
+/**
+ * Get a remote embedding for text, using the embeddings API key from settings.
+ * Falls back to null if no API key is available (caller should fall back to local Xenova).
+ */
+async function getRemoteEmbedding(text: string): Promise<number[] | null> {
+    try {
+        if (typeof window === "undefined") return null;
+
+        const { useApiKeysStore } = await import("@/stores/api-keys-store");
+        const settings = await getSettings();
+        const providerId = settings?.embeddingsProvider || "openrouter";
+        const modelId = settings?.embeddingsModelId;
+        const keyRecord = useApiKeysStore.getState().getKeyForProvider(providerId);
+
+        if (!keyRecord?.key) return null;
+
+        return await getEmbedding(text, keyRecord.key, providerId, modelId);
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Generate an embedding for memory storage/search.
+ * Prefers remote API (1536-dim, same model as skill matching) for consistency.
+ * Falls back to local Xenova (384-dim) if no API key available.
+ */
+async function getMemoryEmbedding(text: string): Promise<number[]> {
+    const remote = await getRemoteEmbedding(text);
+    if (remote && remote.length > 0) return remote;
+    return generateEmbedding(text);
+}
+
+/**
+ * Search memoryVectors by cosine similarity against a pre-computed embedding.
+ */
+async function searchMemoryVectors(
+    queryEmbedding: number[],
+    limit: number = 5,
+    threshold: number = 0.5,
+): Promise<Array<MemoryVector & { similarity: number }>> {
+    const allVecs = await db.memoryVectors.toArray();
+    return allVecs
+        .filter((doc) => doc.embedding.length === queryEmbedding.length)
+        .map((doc) => ({
+            ...doc,
+            similarity: cosineSimilarity(queryEmbedding, doc.embedding),
+        }))
+        .filter((r) => r.similarity >= threshold)
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, limit);
 }
 
 /**
@@ -188,14 +241,17 @@ async function storeMemoryRecord(
         isActive: true,
     });
 
-    // Store in vector store using put to avoid duplicate-ID errors
+    // Store in memoryVectors table
+    // Uses remote embedding (1536-dim) when API key is available, falls back to local Xenova (384-dim)
     try {
-        const embedding = await generateEmbedding(content);
-        await db.vectorDocuments.put({
+        const embedding = await getMemoryEmbedding(content);
+        await db.memoryVectors.put({
             id: `memory-${memoryId}`,
             text: content,
             embedding,
-            metadata: { type: "memory" as const, memoryId, category },
+            memoryId,
+            category,
+            embeddingModel: embedding.length > 384 ? "remote" : "local",
         });
     } catch (error) {
         console.error("[Memory] Failed to store vector embedding:", error);
@@ -227,18 +283,18 @@ export async function addMemory(content: string | { role: string; content: strin
             // Check for semantic duplicates first (covers exact + near-exact)
             // This is cheaper than hashing every existing memory
 
-            // Check for semantic duplicates
+            // Check for semantic duplicates (use remote embedding for consistency with stored vectors)
             try {
-                const similar = await searchSimilar(trimmed, 3, 0.70, { type: "memory" });
+                const dedupEmbedding = await getMemoryEmbedding(trimmed);
+                const similar = await searchMemoryVectors(dedupEmbedding, 3, 0.70);
                 for (const match of similar) {
                     if (match.similarity >= 0.90) {
                         // Duplicate - bump existing memory
-                        const existingId = match.metadata?.memoryId;
-                        if (existingId) {
-                            await db.userMemories.update(existingId, { updatedAt: Date.now() });
+                        if (match.memoryId) {
+                            await db.userMemories.update(match.memoryId, { updatedAt: Date.now() });
                         }
                         invalidateCache();
-                        return { id: existingId, memory: match.text };
+                        return { id: match.memoryId, memory: match.text };
                     }
                 }
             } catch {
@@ -281,13 +337,13 @@ export async function addMemory(content: string | { role: string; content: strin
                 let skipStore = false;
 
                 try {
-                    const similar = await searchSimilar(contentText, 3, 0.70, { type: "memory" });
+                    const dedupEmbedding = await getMemoryEmbedding(contentText);
+                    const similar = await searchMemoryVectors(dedupEmbedding, 3, 0.70);
                     for (const match of similar) {
                         if (match.similarity >= 0.90) {
                             // Very similar - treat as duplicate, bump existing
-                            const existingId = match.metadata?.memoryId;
-                            if (existingId) {
-                                await db.userMemories.update(existingId, { updatedAt: Date.now() });
+                            if (match.memoryId) {
+                                await db.userMemories.update(match.memoryId, { updatedAt: Date.now() });
                             }
                             skipStore = true;
                             break;
@@ -327,7 +383,7 @@ export async function addMemory(content: string | { role: string; content: strin
  * Search for relevant memories based on a query (conversation context)
  * Uses simple global cache - returns cached results if within TTL
  */
-export async function searchMemories(query: string): Promise<MemoryItem[]> {
+export async function searchMemories(query: string, precomputedEmbedding?: number[]): Promise<MemoryItem[]> {
     const ttl = await getCacheTTL();
 
     // Check global cache first
@@ -343,13 +399,14 @@ export async function searchMemories(query: string): Promise<MemoryItem[]> {
     // Make the request
     inFlightSearch = (async () => {
         try {
-            const results = await searchSimilar(query, 5, 0.5, { type: "memory" });
+            const queryEmbedding = precomputedEmbedding ?? await getMemoryEmbedding(query);
+            const results = await searchMemoryVectors(queryEmbedding, 5, 0.5);
 
             // Map vector results to MemoryItems, enriching with IndexedDB timestamps
             const memoryItems: MemoryItem[] = [];
 
             for (const r of results) {
-                const memoryId = r.metadata?.memoryId || r.id;
+                const memoryId = r.memoryId || r.id;
                 let created_at: string | undefined;
                 let updated_at: string | undefined;
 
@@ -451,8 +508,8 @@ export async function deleteMemory(memoryId: string) {
         // Delete from IndexedDB
         await db.userMemories.delete(memoryId);
 
-        // Delete from vector store
-        await deleteDocuments({ memoryId });
+        // Delete from memoryVectors
+        await db.memoryVectors.where("memoryId").equals(memoryId).delete();
 
         // Invalidate cache since memories changed
         invalidateCache();
@@ -521,9 +578,9 @@ export async function runMemoryDecay(): Promise<void> {
         const toDelete = staleMemories.slice(0, 3);
         for (const memory of toDelete) {
             console.log(`[Memory Decay] Pruning stale memory: "${memory.content.slice(0, 50)}..."`);
-            // Delete from both IndexedDB and vector store
+            // Delete from both IndexedDB and memoryVectors
             await db.userMemories.delete(memory.id);
-            await deleteDocuments({ memoryId: memory.id });
+            await db.memoryVectors.where("memoryId").equals(memory.id).delete();
         }
 
         if (toDelete.length > 0) {
@@ -540,11 +597,11 @@ export async function runMemoryDecay(): Promise<void> {
 
 /**
  * Reconcile memory embeddings after S3 sync.
- * Ensures all userMemories have corresponding vectorDocuments and vice versa.
+ * Ensures all userMemories have corresponding memoryVectors and vice versa.
  *
- * 1. MISSING: userMemory exists but no vectorDocument → generate embedding
- * 2. ORPHAN: vectorDocument exists but no userMemory → delete the vectorDocument
- * 3. STALE: both exist but userMemory.updatedAt > vectorDocument creation → re-embed
+ * 1. MISSING: userMemory exists but no memoryVector → generate embedding
+ * 2. ORPHAN: memoryVector exists but no userMemory → delete the memoryVector
+ * 3. DIMENSION_UPGRADE: memoryVector has 384-dim (local Xenova) → re-embed with remote API (1536-dim)
  */
 export async function reconcileMemoryEmbeddings(): Promise<void> {
     try {
@@ -553,31 +610,29 @@ export async function reconcileMemoryEmbeddings(): Promise<void> {
         const activeMemories = allMemories.filter(m => m.isActive);
         const memoryMap = new Map(activeMemories.map(m => [m.id, m]));
 
-        // Get all memory-type vectorDocuments
-        const allVectorDocs = await db.vectorDocuments
-            .where("metadata.type")
-            .equals("memory")
-            .toArray();
-        const vectorMap = new Map<string, typeof allVectorDocs[0]>();
-        for (const doc of allVectorDocs) {
-            const memId = doc.metadata?.memoryId;
-            if (memId) vectorMap.set(memId, doc);
+        // Get all memoryVectors
+        const allMemoryVecs = await db.memoryVectors.toArray();
+        const vectorMap = new Map<string, MemoryVector>();
+        for (const doc of allMemoryVecs) {
+            if (doc.memoryId) vectorMap.set(doc.memoryId, doc);
         }
 
         let created = 0;
         let deleted = 0;
-        let updated = 0;
+        let upgraded = 0;
 
-        // 1. MISSING: userMemory exists but no vectorDocument
+        // 1. MISSING: userMemory exists but no memoryVector
         for (const [memId, memory] of memoryMap) {
             if (!vectorMap.has(memId)) {
                 try {
-                    const embedding = await generateEmbedding(memory.content);
-                    await db.vectorDocuments.put({
+                    const embedding = await getMemoryEmbedding(memory.content);
+                    await db.memoryVectors.put({
                         id: `memory-${memId}`,
                         text: memory.content,
                         embedding,
-                        metadata: { type: "memory" as const, memoryId: memId, category: memory.category },
+                        memoryId: memId,
+                        category: memory.category,
+                        embeddingModel: embedding.length > 384 ? "remote" : "local",
                     });
                     created++;
                 } catch (error) {
@@ -586,16 +641,41 @@ export async function reconcileMemoryEmbeddings(): Promise<void> {
             }
         }
 
-        // 2. ORPHAN: vectorDocument exists but no active userMemory
+        // 2. ORPHAN: memoryVector exists but no active userMemory
         for (const [memId, doc] of vectorMap) {
             if (!memoryMap.has(memId)) {
-                await db.vectorDocuments.delete(doc.id);
+                await db.memoryVectors.delete(doc.id);
                 deleted++;
             }
         }
 
-        if (created > 0 || deleted > 0 || updated > 0) {
-            console.log(`[Memory Reconcile] Created: ${created}, Deleted: ${deleted}, Updated: ${updated}`);
+        // 3. DIMENSION_UPGRADE: re-embed 384-dim vectors with remote API
+        // Only attempt if remote embedding is available
+        const testRemote = await getRemoteEmbedding("test");
+        if (testRemote && testRemote.length > 384) {
+            for (const [memId, doc] of vectorMap) {
+                if (!memoryMap.has(memId)) continue; // Already deleted as orphan
+                if (doc.embedding.length <= 384 && doc.embeddingModel !== "remote") {
+                    try {
+                        const memory = memoryMap.get(memId)!;
+                        const embedding = await getRemoteEmbedding(memory.content);
+                        if (embedding && embedding.length > 384) {
+                            await db.memoryVectors.put({
+                                ...doc,
+                                embedding,
+                                embeddingModel: "remote",
+                            });
+                            upgraded++;
+                        }
+                    } catch (error) {
+                        console.error(`[Memory Reconcile] Failed to upgrade memory ${memId}:`, error);
+                    }
+                }
+            }
+        }
+
+        if (created > 0 || deleted > 0 || upgraded > 0) {
+            console.log(`[Memory Reconcile] Created: ${created}, Deleted: ${deleted}, Upgraded: ${upgraded}`);
             invalidateCache();
         }
     } catch (error) {

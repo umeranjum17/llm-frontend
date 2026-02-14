@@ -17,7 +17,7 @@ import { isModelIdCompatibleWithProviderId, pickBestProviderId, providerLabel } 
 import { addMemory, refreshCacheInBackground, searchMemories, runMemoryDecay } from "@/lib/memory";
 import { generateAndApplySummary } from "@/lib/ai/summarization";
 import { getSettings } from "@/lib/db/queries";
-import { matchSkill, SKILL_SWITCH_THRESHOLD } from "@/lib/skills/skill-matcher";
+import { matchSkillWithEmbedding, SKILL_SWITCH_THRESHOLD } from "@/lib/skills/skill-matcher";
 import type { UIMessage } from "ai";
 
 function cleanReferencesForLLM(content: string) {
@@ -767,7 +767,8 @@ export function useChat(chatId: string | null) {
     overrideModelId?: string,
     parentUserMessageId?: string,
     activeSkill?: Skill | null,
-    chatIdOverride?: string
+    chatIdOverride?: string,
+    queryEmbedding?: number[]
   ) => {
     // Extract user message text for later use (e.g., background memory refresh)
     const userMessageText = getTextFromMessageContent(messageContent);
@@ -1170,7 +1171,7 @@ export function useChat(chatId: string | null) {
     const { staticMessages, dynamicContext } = await buildContextMessages(
       getTextFromMessageContent(messageContent),
       effectiveChatId,
-      { memoryDisabled: chat.memoryDisabled, incognitoMode: chat.incognitoMode, skill: activeSkill }
+      { memoryDisabled: chat.memoryDisabled, incognitoMode: chat.incognitoMode, skill: activeSkill, queryEmbedding }
     );
 
     // === Context Window Management ===
@@ -2196,7 +2197,10 @@ export function useChat(chatId: string | null) {
       await updateChat(actualChatId, { activeBranchLeafId: userMessage.id });
 
       // Auto-detect skill if none selected
+      // Also captures the query embedding from skill matching to reuse for memory search
+      // (one remote API call instead of two)
       let activeSkill: Skill | null = selectedSkill || null;
+      let sharedQueryEmbedding: number[] | undefined;
       if (!activeSkill) {
         try {
           const settings = await getSettings();
@@ -2234,7 +2238,9 @@ export function useChat(chatId: string | null) {
                 }));
               }
 
-              const matchResult = await matchSkill(
+              // Use matchSkillWithEmbedding to get BOTH the match and the query embedding
+              // The embedding is reused for memory search (avoids a second API call)
+              const { match: matchResult, queryEmbedding: skillQueryEmbedding } = await matchSkillWithEmbedding(
                 messageText,
                 embeddingsApiKey.key,
                 {
@@ -2246,6 +2252,11 @@ export function useChat(chatId: string | null) {
                   excludePrefix: "skill_builtin_lumina_",
                 }
               );
+
+              // Capture the embedding for reuse in memory search
+              if (skillQueryEmbedding) {
+                sharedQueryEmbedding = skillQueryEmbedding;
+              }
 
               if (stickySkill) {
                 // Sticky skill logic: keep the previous skill unless a *different* skill
@@ -2311,7 +2322,7 @@ export function useChat(chatId: string | null) {
         // Use allSettled so one model failure doesn't abort the others
         const modelIds = multiModelPanels.map(panel => panel.modelId);
         const results = await Promise.allSettled(
-          modelIds.map(modelId => generateResponse(content, attachments, modelId, userMessage.id, activeSkill, actualChatId!))
+          modelIds.map(modelId => generateResponse(content, attachments, modelId, userMessage.id, activeSkill, actualChatId!, sharedQueryEmbedding))
         );
         // Report individual failures without throwing (so the hook doesn't go into error state)
         for (let i = 0; i < results.length; i++) {
@@ -2325,7 +2336,7 @@ export function useChat(chatId: string | null) {
           }
         }
       } else {
-        await generateResponse(content, attachments, undefined, userMessage.id, activeSkill, actualChatId!);
+        await generateResponse(content, attachments, undefined, userMessage.id, activeSkill, actualChatId!, sharedQueryEmbedding);
       }
 
     } catch (err) {

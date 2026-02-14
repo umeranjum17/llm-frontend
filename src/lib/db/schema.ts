@@ -2,7 +2,7 @@ import Dexie, { type EntityTable } from "dexie";
 import { TABLE_REGISTRY, getStoresForVersion } from "./table-registry";
 
 // Current schema version - update this when adding new tables or indexes
-export const DB_SCHEMA_VERSION = 34;
+export const DB_SCHEMA_VERSION = 35;
 
 // Type definitions
 export interface Project {
@@ -443,6 +443,15 @@ export interface VectorDocument {
   };
 }
 
+export interface MemoryVector {
+  id: string;
+  text: string;
+  embedding: number[];
+  memoryId: string;
+  category?: string;
+  embeddingModel?: string;
+}
+
 export interface Workflow {
   id: string;
   name: string;
@@ -618,6 +627,7 @@ export class LuminaDB extends Dexie {
   skills!: EntityTable<Skill, "id">;
   skillEmbeddings!: EntityTable<SkillEmbedding, "skillId">;
   vectorDocuments!: EntityTable<VectorDocument, "id">;
+  memoryVectors!: EntityTable<MemoryVector, "id">;
   workflows!: EntityTable<Workflow, "id">;
   modelAliases!: EntityTable<ModelAlias, "id">;
   mcpServers!: EntityTable<McpServer, "id">;
@@ -696,6 +706,33 @@ export class LuminaDB extends Dexie {
           }
           console.log(`[DB] Migrated ${migrated} settings records`);
           console.log("[DB] ✓ v34 migration complete");
+        });
+      }
+
+      // Version 35: Separate memory vectors into dedicated memoryVectors table
+      if (version === 35) {
+        schema.upgrade(async (tx) => {
+          console.log("[DB] Running v35 upgrade: Migrating memory vectors to memoryVectors table");
+
+          const vectorDocs = await tx.table("vectorDocuments").toArray();
+          const memoryDocs = vectorDocs.filter((d: any) => d.metadata?.type === "memory");
+
+          let migrated = 0;
+          for (const doc of memoryDocs) {
+            await tx.table("memoryVectors").put({
+              id: doc.id,
+              text: doc.text,
+              embedding: doc.embedding,
+              memoryId: doc.metadata?.memoryId || doc.id.replace("memory-", ""),
+              category: doc.metadata?.category,
+              embeddingModel: doc.metadata?.embeddingModel,
+            });
+            await tx.table("vectorDocuments").delete(doc.id);
+            migrated++;
+          }
+
+          console.log(`[DB] Migrated ${migrated} memory vectors to memoryVectors table`);
+          console.log("[DB] ✓ v35 migration complete");
         });
       }
 

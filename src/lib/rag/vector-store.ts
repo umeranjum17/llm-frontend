@@ -52,24 +52,18 @@ export async function searchSimilar(
   filters?: {
     chatId?: string;
     projectId?: string;
-    type?: "memory" | "document";
-    memoryId?: string;
-  }
+    type?: "document";
+  },
+  precomputedEmbedding?: number[]
 ): Promise<Array<VectorDocument & { similarity: number }>> {
   try {
-    const queryEmbedding = await generateEmbedding(query);
+    const queryEmbedding = precomputedEmbedding ?? await generateEmbedding(query);
 
     // Get candidate documents using indices where possible
     let documents: VectorDocument[] = [];
 
     if (filters) {
-      if (filters.memoryId) {
-        // Highly specific filter
-        documents = await db.vectorDocuments
-          .where("metadata.memoryId")
-          .equals(filters.memoryId)
-          .toArray();
-      } else if (filters.chatId) {
+      if (filters.chatId) {
         // Chat-scoped retrieval
         documents = await db.vectorDocuments
           .where("metadata.chatId")
@@ -133,13 +127,10 @@ export async function deleteDocuments(filters: {
   chatId?: string;
   projectId?: string;
   messageId?: string;
-  memoryId?: string;
 }): Promise<void> {
   try {
     // Delete using indices for performance
-    if (filters.memoryId) {
-      await db.vectorDocuments.where("metadata.memoryId").equals(filters.memoryId).delete();
-    } else if (filters.chatId) {
+    if (filters.chatId) {
       await db.vectorDocuments.where("metadata.chatId").equals(filters.chatId).delete();
     } else if (filters.projectId) {
       await db.vectorDocuments.where("metadata.projectId").equals(filters.projectId).delete();
@@ -151,7 +142,6 @@ export async function deleteDocuments(filters: {
           if (filters.messageId && doc.metadata?.messageId === filters.messageId) return true;
           if (filters.chatId && doc.metadata?.chatId === filters.chatId) return true;
           if (filters.projectId && doc.metadata?.projectId === filters.projectId) return true;
-          if (filters.memoryId && doc.metadata?.memoryId === filters.memoryId) return true;
           return false;
         })
         .map((doc) => doc.id);

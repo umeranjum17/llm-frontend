@@ -261,6 +261,8 @@ export async function buildContextMessages(
     incognitoMode?: boolean;
     /** Active skill to inject systemPrompt from */
     skill?: Skill | null;
+    /** Pre-computed query embedding from skill matching (avoids duplicate API call) */
+    queryEmbedding?: number[];
   }
 ): Promise<ContextBuilderResult> {
   const messages: Message[] = [];
@@ -523,7 +525,7 @@ export async function buildContextMessages(
   if (memoryEnabled) {
     try {
       const memoryQuery = userMessage;
-      const rawMemories = await searchMemories(memoryQuery);
+      const rawMemories = await searchMemories(memoryQuery, options?.queryEmbedding);
 
       // Apply budgeting: relevance filter, item limit, token/char limit
       let budgetedMemories = rawMemories && rawMemories.length > 0 ? budgetMemories(rawMemories) : [];

@@ -87,6 +87,9 @@ export const TABLE_REGISTRY: TableConfig[] = [
   // Version 28 tables (Usage analytics sync)
   { name: "usageSnapshots", addedInVersion: 28, sync: true, backup: true, indexes: "id, date, deviceId, createdAt, [date+deviceId]" },
 
+  // Version 35 tables (memory vector separation)
+  { name: "memoryVectors", addedInVersion: 35, sync: false, backup: false, indexes: "id, memoryId, category" },
+
   // Version 29 tables (Draft message recovery)
   { name: "drafts", addedInVersion: 29, sync: false, backup: false, indexes: "chatId" },
 ];
