@@ -1210,6 +1210,10 @@ export const MessageItem = memo(function MessageItem({
     const endTime = resultObj?.endTime;
     const key = id || `tool-call-${i}`;
 
+    // If streaming is done and we never got a result for this tool call,
+    // mark it as complete so it doesn't show "loading" forever
+    const effectiveEndTime = endTime ?? (!isStreaming && toolCall.startTime ? toolCall.startTime : undefined);
+
     toolEvents.push({
       key,
       id,
@@ -1219,7 +1223,7 @@ export const MessageItem = memo(function MessageItem({
       args: toolCall.args,
       result,
       startTime: toolCall.startTime,
-      endTime
+      endTime: effectiveEndTime
     });
     if (id) toolEventIds.add(id);
   }

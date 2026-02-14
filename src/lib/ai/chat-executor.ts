@@ -488,11 +488,11 @@ export const DEFAULT_UTILITY_MODELS: Record<string, string> = {
 function getMaxStepsByTier(tier: ToolCallingTier): number {
   switch (tier) {
     case "elite":
-      return 10;
+      return 20;
     case "advanced":
-      return 6;
+      return 12;
     case "basic":
-      return 4;
+      return 6;
     case "none":
     default:
       return 1;

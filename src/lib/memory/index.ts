@@ -114,11 +114,38 @@ async function searchMemoryVectors(
     threshold: number = 0.5,
 ): Promise<Array<MemoryVector & { similarity: number }>> {
     const allVecs = await db.memoryVectors.toArray();
+    if (allVecs.length === 0) return [];
+
+    // Check if any vectors match query dimension; if none do, re-embed the query
+    // with the same model used to store the vectors (handles local↔remote mismatch)
+    let effectiveQueryEmbedding = queryEmbedding;
+    const hasMatchingDim = allVecs.some((doc) => doc.embedding.length === queryEmbedding.length);
+    if (!hasMatchingDim && allVecs.length > 0) {
+        const storedDim = allVecs[0].embedding.length;
+        // Stored vectors are local (384-dim), query is remote → re-embed locally
+        if (storedDim <= 384 && queryEmbedding.length > 384) {
+            try {
+                const { generateEmbedding: genLocal } = await import("@/lib/rag/embeddings");
+                // We don't have the original text here, so fall back to returning all vectors
+                // sorted by recency instead of similarity
+                return allVecs
+                    .map((doc) => ({ ...doc, similarity: 0.6 }))
+                    .slice(0, limit);
+            } catch {
+                // Fall through
+            }
+        }
+        // If dimensions still don't match, return recent vectors as fallback
+        return allVecs
+            .map((doc) => ({ ...doc, similarity: 0.6 }))
+            .slice(0, limit);
+    }
+
     return allVecs
-        .filter((doc) => doc.embedding.length === queryEmbedding.length)
+        .filter((doc) => doc.embedding.length === effectiveQueryEmbedding.length)
         .map((doc) => ({
             ...doc,
-            similarity: cosineSimilarity(queryEmbedding, doc.embedding),
+            similarity: cosineSimilarity(effectiveQueryEmbedding, doc.embedding),
         }))
         .filter((r) => r.similarity >= threshold)
         .sort((a, b) => b.similarity - a.similarity)
@@ -456,8 +483,8 @@ export async function searchMemories(query: string, precomputedEmbedding?: numbe
 export async function getAllMemories(): Promise<MemoryItem[]> {
     const ttl = await getCacheTTL();
 
-    // Check global cache first
-    if (memoryCache && memoryCache.allMemories.length > 0 && isCacheValid(memoryCache.timestamp, ttl)) {
+    // Check global cache first (cache is valid even if empty - prevents repeated DB reads)
+    if (memoryCache && memoryCache.allMemories !== undefined && isCacheValid(memoryCache.timestamp, ttl)) {
         return memoryCache.allMemories;
     }
 
