@@ -753,6 +753,8 @@ export async function getSettings() {
       currentProjectId: undefined,
       autoTaggingEnabled: false,
       defaultReasoningLevel: "medium",
+      memoryEnabled: true,
+      memoryAutoExtract: true,
       updatedAt: Date.now(),
     };
     // Persist defaults — but don't throw if we're inside a liveQuery

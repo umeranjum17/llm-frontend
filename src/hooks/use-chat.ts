@@ -687,8 +687,9 @@ export function useChat(chatId: string | null) {
         if (chat?.incognitoMode) return;
 
         const settings = await getSettings();
+        const memoryEnabled = settings?.memoryEnabled ?? true; // Default to true
         const autoExtract = settings?.memoryAutoExtract ?? true; // Default to true
-        if (!settings?.memoryEnabled || !autoExtract) return;
+        if (!memoryEnabled || !autoExtract) return;
 
         const messages = await getMessages(capturedChatId);
         if (messages.length >= 2) {
