@@ -101,9 +101,10 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
           db.tags.orderBy('name').toArray()
         ]);
 
-        // Merge and dedupe (pinned may overlap with recent)
+        // Merge and dedupe (pinned may overlap with recent), hide incognito chats
         const pinnedIds = new Set(pinnedChats.map((c: Chat) => c.id));
-        const allChats = [...pinnedChats, ...recentChats.filter((c: Chat) => !pinnedIds.has(c.id))];
+        const allChats = [...pinnedChats, ...recentChats.filter((c: Chat) => !pinnedIds.has(c.id))]
+          .filter((c: Chat) => !c.incognitoMode);
 
         // Sort chats: pinned first, then by explicit order if set, otherwise by recency
         allChats.sort((a, b) => {
@@ -155,7 +156,7 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
   const chats = useMemo(() => {
     if (!allChats) return undefined;
     if (!currentProjectId) return allChats;
-    return allChats.filter((chat: Chat) => chat.projectId === currentProjectId);
+    return allChats.filter((chat: Chat) => chat.projectId === currentProjectId && !chat.incognitoMode);
   }, [allChats, currentProjectId]);
 
   const filteredFolders = useMemo(() => {
@@ -189,12 +190,13 @@ export function ChatList({ searchQuery, onChatSelect, currentProjectId }: ChatLi
 
     const timeout = setTimeout(async () => {
       try {
-        // Only now do we load ALL chats for search
+        // Only now do we load ALL chats for search (exclude incognito)
         const allChatsForSearch = await db.chats.orderBy('updatedAt').reverse().toArray();
+        const nonIncognitoChats = allChatsForSearch.filter((chat: Chat) => !chat.incognitoMode);
         // Filter by current project if applicable
         const projectFilteredChats = currentProjectId
-          ? allChatsForSearch.filter((chat: Chat) => chat.projectId === currentProjectId)
-          : allChatsForSearch;
+          ? nonIncognitoChats.filter((chat: Chat) => chat.projectId === currentProjectId)
+          : nonIncognitoChats;
 
         // Perform fuzzy search using Fuse.js
         const Fuse = (await import('fuse.js')).default;

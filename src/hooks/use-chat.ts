@@ -9,16 +9,23 @@ import { buildContextMessages, formatDynamicContext } from "@/lib/ai/context-bui
 import { countMessagesTokens, countTokens, estimateCost, calculateCacheSavings } from "@/lib/utils/token-counter";
 import { calculateContextBudget, truncateHistoryToFit, estimateMessagesTokens, validateSystemContextFits, compactAndTruncateHistory, type LLMMessage, type CompactionConfig, type CompactionResult, type CompactedMessage } from "@/lib/utils/context-budget";
 import type { MessageContent, Agent, Skill, Message, PipelineStep } from "@/lib/db/schema";
-import { getImagesFromMessageContent, getTextFromMessageContent, mapTextInMessageContent, convertToAISDKContent } from "@/lib/utils/message-content";
+import { getImagesFromMessageContent, getTextFromMessageContent, mapTextInMessageContent, prependTextToMessageContent, convertToAISDKContent } from "@/lib/utils/message-content";
 import { getModelCapabilities } from "@/lib/constants/model-capabilities";
 import { toast } from "sonner";
 import { getActionableError, getErrorMessage, type APIErrorResponse } from "@/lib/utils/error-messages";
 import { isModelIdCompatibleWithProviderId, pickBestProviderId, providerLabel } from "@/lib/ai/provider-routing";
 import { addMemory, refreshCacheInBackground, searchMemories, runMemoryDecay } from "@/lib/memory";
 import { generateAndApplySummary } from "@/lib/ai/summarization";
+import { indexMessage } from "@/lib/rag/retrieval";
 import { getSettings } from "@/lib/db/queries";
 import { matchSkillWithEmbedding, SKILL_SWITCH_THRESHOLD } from "@/lib/skills/skill-matcher";
 import type { UIMessage } from "ai";
+import { nanoid } from "nanoid";
+import type { Artifact } from "@/stores/ui-store";
+import type { LuminaFileContent } from "@/lib/lumina/types";
+
+const MIN_MEMORY_RELEVANCE = 0.65;
+const MAX_PIPELINE_MEMORY_ITEMS = 5;
 
 function cleanReferencesForLLM(content: string) {
   return content
@@ -319,6 +326,7 @@ async function handlePipelineExecution(
   userImages?: string[],  // Base64 or URL images from the user message
   parentUserMessageId?: string,
   signal?: AbortSignal,
+  options?: { incognitoMode?: boolean; memoryDisabled?: boolean },
   pipelineActions?: {
     startPipeline: (steps: Array<{ id: string; name: string; type: "llm" | "image" | "tool" | "subagent" }>) => void;
     setStepRunning: (stepIndex: number, input?: string) => void;
@@ -372,12 +380,15 @@ async function handlePipelineExecution(
     // Fetch memory context if any step needs it
     let memoryContext: string | undefined;
     const needsMemory = agent.pipeline.steps.some(s => s.memoryEnabled !== false);
-    if (needsMemory) {
+    if (needsMemory && !options?.incognitoMode && !options?.memoryDisabled) {
       const settings = await getSettings();
       if (settings?.memoryEnabled) {
         const memories = await searchMemories(userInput);
-        if (memories?.length > 0) {
-          memoryContext = memories.map(m => `- ${m.memory}`).join("\n");
+        const relevantMemories = (memories ?? [])
+          .filter((m) => m.score === undefined || m.score === null || m.score >= MIN_MEMORY_RELEVANCE)
+          .slice(0, MAX_PIPELINE_MEMORY_ITEMS);
+        if (relevantMemories.length > 0) {
+          memoryContext = relevantMemories.map((m) => `- ${m.memory}`).join("\n");
         }
       }
     }
@@ -431,7 +442,7 @@ async function handlePipelineExecution(
         memoryContext,
         chatHistory,
         agentToolPolicy: agent.mcpToolPolicy,  // Agent-level tool restrictions
-        agentEnabledTools: agent.enabledTools,  // Agent-level enabled tools
+        agentEnabledTools: options?.incognitoMode ? [] : agent.enabledTools,  // Agent-level enabled tools
         composioGlobalToolkits,  // For step-specific session creation
       }),
       signal,
@@ -570,15 +581,24 @@ async function handlePipelineExecution(
             agentName: agent.name,
           },
         });
+        await indexMessage({
+          ...assistantMessage,
+          content: contentParts,
+        } as Message);
       } else {
         // Text result
+        const pipelineTextResult = typeof finalResult === "string" ? finalResult : JSON.stringify(finalResult);
         await updateMessage(assistantMessage.id, {
-          content: typeof finalResult === "string" ? finalResult : JSON.stringify(finalResult),
+          content: pipelineTextResult,
           pipelineExecution: {
             steps: executionSteps,
             agentName: agent.name,
           },
         });
+        await indexMessage({
+          ...assistantMessage,
+          content: pipelineTextResult,
+        } as Message);
       }
     }
   } catch (error) {
@@ -698,7 +718,7 @@ export function useChat(chatId: string | null) {
             role: m.role,
             content: typeof m.content === 'string' ? m.content : getTextFromMessageContent(m.content)
           }));
-          await addMemory(recentMessages);
+          await addMemory(recentMessages, { chatId: capturedChatId });
         }
       } catch (err) {
         console.error("[Chat] Failed to extract memories:", err);
@@ -723,7 +743,7 @@ export function useChat(chatId: string | null) {
               role: m.role,
               content: typeof m.content === 'string' ? m.content : getTextFromMessageContent(m.content)
             }));
-            addMemory(recentMessages).catch(console.error);
+            addMemory(recentMessages, { chatId }).catch(console.error);
           }
         }).catch(console.error);
       }
@@ -859,6 +879,96 @@ export function useChat(chatId: string | null) {
 
       const streamToolCalls: any[] = [];
       const streamToolResults: any[] = [];
+      // Accumulate artifact files across the stream to build a project artifact
+      const artifactFiles = new Map<string, { content: string; language: string }>();
+      let artifactId = nanoid();
+      // Track timeline entries to avoid duplicates
+      const timelineFilePaths = new Set<string>();
+
+      // Normalize paths to /filename format for Sandpack compatibility
+      const normalizeArtifactPath = (rawPath: string): string => {
+        const filename = rawPath.split("/").pop() || rawPath;
+        return filename.startsWith("/") ? filename : `/${filename}`;
+      };
+
+      // Helper to infer artifact type from file extension
+      const inferArtifactType = (path: string, language: string): Artifact["type"] => {
+        const ext = path.split(".").pop()?.toLowerCase();
+        if (ext === "html" || ext === "htm" || ext === "svg") return "html";
+        if (ext === "md" || ext === "markdown") return "markdown";
+        if (ext === "csv") return "csv";
+        return "code";
+      };
+
+      // Helper to infer Sandpack template from file extensions
+      const inferTemplate = (paths: string[]): string => {
+        const hasJsx = paths.some(f => f.endsWith(".jsx") || f.endsWith(".tsx"));
+        const hasTs = paths.some(f => f.endsWith(".ts") || f.endsWith(".tsx"));
+        const hasVue = paths.some(f => f.endsWith(".vue"));
+        const hasSvelte = paths.some(f => f.endsWith(".svelte"));
+        if (hasVue) return "vue";
+        if (hasSvelte) return "svelte";
+        if (hasJsx) return hasTs ? "react-ts" : "react";
+        return hasTs ? "vanilla-ts" : "vanilla";
+      };
+
+      // Helper to push accumulated files to the artifact panel
+      const updateArtifactPanel = () => {
+        if (artifactFiles.size === 0) return;
+        const { addArtifactTab } = useUIStore.getState();
+        if (artifactFiles.size === 1) {
+          const [path, file] = [...artifactFiles.entries()][0];
+          const filename = path.replace(/^\//, "") || path;
+          addArtifactTab({
+            id: artifactId,
+            title: filename,
+            code: file.content,
+            language: file.language,
+            type: inferArtifactType(path, file.language),
+          });
+        } else {
+          const filesRecord: Record<string, string> = {};
+          for (const [path, file] of artifactFiles) {
+            filesRecord[path] = file.content;
+          }
+          // Find entry file: prefer index.html, then first html, then first file
+          // Keys are already normalized to /filename format
+          const paths = [...artifactFiles.keys()];
+          const entry = paths.find(p => p.endsWith("/index.html"))
+            || paths.find(p => p.endsWith(".html"))
+            || paths[0];
+          addArtifactTab({
+            id: artifactId,
+            title: "Generated Project",
+            code: filesRecord[entry] || "",
+            language: "project",
+            type: "project",
+            files: filesRecord,
+            entry,
+            template: inferTemplate(paths),
+          });
+        }
+      };
+
+      // Helper to add file contents from tool results to the artifact accumulator
+      const processFileContents = (fileContents: LuminaFileContent[]) => {
+        for (const fc of fileContents) {
+          if (!fc.content || !fc.path) continue;
+          const normalizedPath = normalizeArtifactPath(fc.path);
+          artifactFiles.set(normalizedPath, { content: fc.content, language: fc.language || "text" });
+          if (!timelineFilePaths.has(normalizedPath)) {
+            timelineFilePaths.add(normalizedPath);
+            addCodingAgentEvent(effectiveChatId, {
+              type: "file_change",
+              path: normalizedPath,
+              action: "created",
+              language: fc.language,
+            });
+          }
+        }
+        updateArtifactPanel();
+      };
+
       try {
         const client = luminaStore.client;
         if (!client) {
@@ -877,19 +987,58 @@ export function useChat(chatId: string | null) {
               fullContent += event.text;
               appendStreamingContent(effectiveChatId, event.text);
               break;
-            case "tool-call":
+            case "tool-call-started":
+              // Show tool starting immediately (before args are fully assembled)
               streamToolCalls.push({
                 id: event.toolCallId,
                 toolCallId: event.toolCallId,
                 taskId: event.taskId,
                 toolName: event.toolName,
                 toolLabel: event.toolLabel,
-                args: event.args,
+                args: {},
                 startTime: Date.now(),
               });
               setStreamingToolCalls(effectiveChatId, [...streamToolCalls]);
-              await updateMessage(placeholderMsg.id, { toolCalls: [...streamToolCalls] });
               break;
+            case "tool-input-delta": {
+              // Stream tool arguments in real-time
+              const deltaIdx = streamToolCalls.findIndex(tc => tc.toolCallId === event.toolCallId);
+              if (deltaIdx >= 0) {
+                const existing = streamToolCalls[deltaIdx];
+                const currentInput = existing._rawInput || "";
+                existing._rawInput = currentInput + event.inputDelta;
+                try {
+                  existing.args = JSON.parse(existing._rawInput);
+                } catch {
+                  existing.args = { _streaming: existing._rawInput };
+                }
+                setStreamingToolCalls(effectiveChatId, [...streamToolCalls]);
+              }
+              break;
+            }
+            case "tool-call": {
+              // Merge with existing entry from tool-call-started, or create new
+              const existingIdx = streamToolCalls.findIndex(tc => tc.toolCallId === event.toolCallId);
+              if (existingIdx >= 0) {
+                streamToolCalls[existingIdx] = {
+                  ...streamToolCalls[existingIdx],
+                  args: event.args,
+                  _rawInput: undefined,
+                };
+              } else {
+                streamToolCalls.push({
+                  id: event.toolCallId,
+                  toolCallId: event.toolCallId,
+                  taskId: event.taskId,
+                  toolName: event.toolName,
+                  toolLabel: event.toolLabel,
+                  args: event.args,
+                  startTime: Date.now(),
+                });
+              }
+              setStreamingToolCalls(effectiveChatId, [...streamToolCalls]);
+              break;
+            }
             case "tool-result":
               streamToolResults.push({
                 id: event.toolCallId,
@@ -897,11 +1046,17 @@ export function useChat(chatId: string | null) {
                 taskId: event.taskId,
                 toolName: event.toolName,
                 summary: event.summary,
-                result: event.summary,
+                result: (event as any).result ?? event.summary,
                 endTime: Date.now(),
               });
               setStreamingToolResults(effectiveChatId, [...streamToolResults]);
-              await updateMessage(placeholderMsg.id, { toolResults: [...streamToolResults] });
+              // Create artifacts from file contents if present
+              const toolFileContents = (event as any).fileContents
+                ?? (event as any).result?.sideEffects?.fileContents
+                ?? (event as any).result?.fileContents;
+              if (toolFileContents?.length) {
+                processFileContents(toolFileContents);
+              }
               break;
             case "approval-requested":
               upsertStreamingApproval(effectiveChatId, {
@@ -931,14 +1086,25 @@ export function useChat(chatId: string | null) {
             case "coding-agent-event":
               addCodingAgentEvent(effectiveChatId, event.event);
               break;
-            case "artifact-created":
-              addCodingAgentEvent(effectiveChatId, {
-                type: "file_change",
-                path: event.path,
-                action: "created",
-                language: event.language,
-              });
+            case "artifact-created": {
+              const normalizedPath = normalizeArtifactPath(event.path);
+              // Add to timeline (deduplicated)
+              if (!timelineFilePaths.has(normalizedPath)) {
+                timelineFilePaths.add(normalizedPath);
+                addCodingAgentEvent(effectiveChatId, {
+                  type: "file_change",
+                  path: normalizedPath,
+                  action: "created",
+                  language: event.language,
+                });
+              }
+              // Create real artifact for preview
+              if (event.content) {
+                artifactFiles.set(normalizedPath, { content: event.content, language: event.language });
+                updateArtifactPanel();
+              }
               break;
+            }
             case "reasoning":
               appendStreamingReasoning(effectiveChatId, event.text);
               break;
@@ -955,6 +1121,41 @@ export function useChat(chatId: string | null) {
           }
         }
 
+        // Post-stream fallback: if no artifacts were collected but coding agent created files, fetch them
+        if (artifactFiles.size === 0 && client) {
+          const streamState = useStreamingStore.getState().getChatStream(effectiveChatId);
+          const cwd = streamState?.codingAgent?.cwd;
+          const events = streamState?.codingAgentEvents || [];
+          const fileChanges = events.filter(
+            (e: any) => e.type === "file_change" && e.path
+          );
+
+          if (cwd && fileChanges.length > 0) {
+            const ARTIFACT_EXTS = [".html", ".htm", ".svg"];
+            const artifactChanges = fileChanges.filter((e: any) =>
+              ARTIFACT_EXTS.some(ext => e.path.endsWith(ext))
+            );
+            const toFetch = artifactChanges.length > 0 ? artifactChanges : fileChanges;
+
+            for (const fc of toFetch) {
+              try {
+                const fullPath = (fc as any).path.startsWith("/") ? (fc as any).path : `${cwd}/${(fc as any).path}`;
+                const content = await client.fetchArtifact(fullPath);
+                if (content) {
+                  const normalizedPath = normalizeArtifactPath((fc as any).path);
+                  const ext = (fc as any).path.split(".").pop()?.toLowerCase() || "text";
+                  artifactFiles.set(normalizedPath, { content, language: (fc as any).language || ext });
+                }
+              } catch {
+                // Best-effort — skip files that can't be fetched
+              }
+            }
+            if (artifactFiles.size > 0) {
+              updateArtifactPanel();
+            }
+          }
+        }
+
         const finalContent = fullContent
           ? (luminaTaskId ? `${fullContent}\n\n*Task ID: ${luminaTaskId}*` : fullContent)
           : "Lumina Runtime returned an empty response. This usually means a configuration issue — check Settings > Lumina.";
@@ -962,9 +1163,14 @@ export function useChat(chatId: string | null) {
         const successStreamState = useStreamingStore.getState().getChatStream(effectiveChatId);
         const successCodingAgent = successStreamState?.codingAgent;
         const successCodingEvents = successStreamState?.codingAgentEvents;
+        // Clean internal streaming fields before DB persistence
+        const cleanedToolCalls = streamToolCalls.map(({ _rawInput, ...tc }) => ({
+          ...tc,
+          args: tc.args?._streaming !== undefined ? {} : tc.args,
+        }));
         await updateMessage(placeholderMsg.id, {
           content: finalContent,
-          toolCalls: streamToolCalls.length > 0 ? streamToolCalls : undefined,
+          toolCalls: cleanedToolCalls.length > 0 ? cleanedToolCalls : undefined,
           toolResults: streamToolResults.length > 0 ? streamToolResults : undefined,
           codingAgent: successCodingAgent ? { provider: successCodingAgent.provider, prompt: successCodingAgent.prompt, cwd: successCodingAgent.cwd, status: successCodingAgent.status, exitCode: successCodingAgent.exitCode } : undefined,
           codingAgentEvents: successCodingEvents?.length ? successCodingEvents : undefined,
@@ -991,12 +1197,18 @@ export function useChat(chatId: string | null) {
             endTime: Date.now(),
           }));
         const allToolResults = [...streamToolResults, ...errorToolResults];
+        // Clean internal streaming fields before DB persistence
+        const errorCleanedToolCalls = streamToolCalls.map(({ _rawInput, ...tc }) => ({
+          ...tc,
+          args: tc.args?._streaming !== undefined ? {} : tc.args,
+        }));
         // Snapshot coding agent state before clearStreaming wipes it
         const errorStreamState = useStreamingStore.getState().getChatStream(effectiveChatId);
         const errorCodingAgent = errorStreamState?.codingAgent;
         const errorCodingEvents = errorStreamState?.codingAgentEvents;
         await updateMessage(placeholderMsg.id, {
           content,
+          toolCalls: errorCleanedToolCalls.length > 0 ? errorCleanedToolCalls : undefined,
           toolResults: allToolResults.length > 0 ? allToolResults : undefined,
           codingAgent: errorCodingAgent ? { provider: errorCodingAgent.provider, prompt: errorCodingAgent.prompt, cwd: errorCodingAgent.cwd, status: errorCodingAgent.status, exitCode: errorCodingAgent.exitCode } : undefined,
           codingAgentEvents: errorCodingEvents?.length ? errorCodingEvents : undefined,
@@ -1059,6 +1271,7 @@ export function useChat(chatId: string | null) {
     if (agent?.executionType === "pipeline" && agent.pipeline?.steps?.length) {
       abortControllerRef.current = new AbortController();
       try {
+        const pipelineIncognito = chat.incognitoMode === true;
         // Get MCP servers for tool steps - include servers from all pipeline step configurations
         // Steps can have their own mcpServerIds that need to be fetched
         const allStepMcpServerIds = agent.pipeline.steps.flatMap((step: PipelineStep) => step.mcpServerIds || []);
@@ -1067,9 +1280,12 @@ export function useChat(chatId: string | null) {
           ...(agent.mcpServerIds || []),
           ...allStepMcpServerIds
         ])];
-        // Ensure Composio session is valid before fetching MCP servers
-        await ensureComposioSession(uniqueMcpServerIds);
-        const mcpServers = await getActiveMcpServersForChat(uniqueMcpServerIds);
+        const mcpServers = pipelineIncognito
+          ? []
+          : await (async () => {
+            await ensureComposioSession(uniqueMcpServerIds);
+            return getActiveMcpServersForChat(uniqueMcpServerIds);
+          })();
 
         // Extract images from message content for vision-enabled pipeline steps
         const userImages = getImagesFromMessageContent(messageContent);
@@ -1082,6 +1298,7 @@ export function useChat(chatId: string | null) {
           userImages,  // Pass images for vision models in pipeline
           parentUserMessageId,
           abortControllerRef.current.signal,
+          { incognitoMode: pipelineIncognito, memoryDisabled: chat.memoryDisabled === true },
           {
             startPipeline: (steps) => startPipeline(effectiveChatId, steps),
             setStepRunning: (stepIndex, input) => setStepRunning(effectiveChatId, stepIndex, input),
@@ -1094,6 +1311,9 @@ export function useChat(chatId: string | null) {
           },
           mcpServers
         );
+        if (!pipelineIncognito && !chat.memoryDisabled) {
+          scheduleMemoryExtraction();
+        }
         // Pipeline completed successfully - clear after delay for UI to catch up
         if (pipelineClearTimeoutRef.current) {
           clearTimeout(pipelineClearTimeoutRef.current);
@@ -1175,7 +1395,13 @@ export function useChat(chatId: string | null) {
     const { staticMessages, dynamicContext } = await buildContextMessages(
       getTextFromMessageContent(messageContent),
       effectiveChatId,
-      { memoryDisabled: chat.memoryDisabled, incognitoMode: chat.incognitoMode, skill: activeSkill, queryEmbedding }
+      {
+        enableRAG: chat.ragEnabled === true,
+        memoryDisabled: chat.memoryDisabled,
+        incognitoMode: chat.incognitoMode,
+        skill: activeSkill,
+        queryEmbedding,
+      }
     );
 
     // === Context Window Management ===
@@ -1350,14 +1576,15 @@ export function useChat(chatId: string | null) {
       const lastIdx = truncatedHistory.length - 1;
       const lastMsg = truncatedHistory[lastIdx];
       if (lastMsg.role === 'user') {
-        const originalContent = typeof lastMsg.content === 'string'
-          ? lastMsg.content
-          : Array.isArray(lastMsg.content)
-            ? lastMsg.content.filter((p: any) => p.type === 'text').map((p: any) => p.text || '').join('')
-            : '';
         finalHistory = [
           ...truncatedHistory.slice(0, lastIdx),
-          { ...lastMsg, content: contextPrefix + originalContent },
+          {
+            ...lastMsg,
+            content: convertToAISDKContent(
+              prependTextToMessageContent(lastMsg.content as MessageContent, contextPrefix),
+              "user"
+            ),
+          },
         ];
       }
     }
@@ -1928,8 +2155,8 @@ export function useChat(chatId: string | null) {
         : 0;
 
       // Update the assistant message with full content and metadata
-      await updateMessage(assistantMessage.id, {
-        content: fullContent,
+    await updateMessage(assistantMessage.id, {
+      content: fullContent,
         reasoning: fullReasoning || undefined,
         inputTokens: inputTokens || 0,
         outputTokens: outputTokens || 0,
@@ -1940,9 +2167,13 @@ export function useChat(chatId: string | null) {
         costIsEstimated: costIsEstimated || undefined,
         isIncomplete,
         canContinue: isIncomplete,
-        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-        toolResults: toolResults.length > 0 ? toolResults : undefined,
-      });
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      toolResults: toolResults.length > 0 ? toolResults : undefined,
+    });
+      await indexMessage({
+        ...assistantMessage,
+        content: fullContent,
+      } as Message);
 
       // Update chat's total cost and cache savings (activeBranchLeafId already set when assistant message was created)
       const currentTotalCost = chat.totalCost || 0;
@@ -2156,6 +2387,7 @@ export function useChat(chatId: string | null) {
           reasoningLevel: (draftChatConfig.reasoningLevel as "low" | "medium" | "high" | "xhigh") || "medium",
           temperature: draftChatConfig.temperature,
           maxTokens: draftChatConfig.maxTokens,
+          incognitoMode: draftChatConfig.incognitoMode,
         });
 
         actualChatId = newChat.id;
@@ -2212,6 +2444,7 @@ export function useChat(chatId: string | null) {
         content,
         parentId,
       });
+      indexMessage(userMessage).catch(() => {});
 
       // Clear optimistic message immediately - user message is now in DB and will appear via live query
       clearOptimisticMessage(actualChatId);
@@ -2400,6 +2633,7 @@ export function useChat(chatId: string | null) {
         content: newContent,
         parentId: message.parentId,
       });
+      indexMessage(branchedUser).catch(() => {});
 
       const hasBranches = await chatHasBranches(chatId!);
       await updateChat(chatId!, {
@@ -2438,6 +2672,7 @@ export function useChat(chatId: string | null) {
         content: continuePrompt,
         parentId: messageId,
       });
+      indexMessage(continueUser).catch(() => {});
       await updateChat(chatId!, { activeBranchLeafId: continueUser.id });
 
       await updateMessage(messageId, { canContinue: false });

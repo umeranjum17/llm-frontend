@@ -24,6 +24,7 @@ import { useStreamingStore } from "@/stores/streaming-store";
 import { MentionTextarea } from "@/components/chat/mention-textarea";
 import { MentionItem } from "@/lib/mentions/types";
 import { useLuminaStore } from "@/stores/lumina-store";
+import { useUIStore } from "@/stores/ui-store";
 import { useVoiceInput } from "@/hooks/use-voice-input";
 import { SkillQuickSelect } from "@/components/chat/skill-quick-select";
 import { SKILL_COLORS } from "@/lib/constants/skills";
@@ -351,12 +352,14 @@ export function InputArea({ chatId }: InputAreaProps) {
   const skills = useLiveQuery(() => getAllSkills(), []);
   const codebases = useLuminaStore((s) => s.codebases);
   const isLuminaConnected = useLuminaStore((s) => s.isConnected);
+  const draftChatConfig = useUIStore((s) => s.draftChatConfig);
 
-  // Model capabilities for the current chat model
+  // Model capabilities for the current chat model (falls back to draft config in draft mode)
   const modelCaps = useMemo(() => {
-    if (!chat?.modelId) return null;
-    return getModelCapabilities(chat.modelId);
-  }, [chat?.modelId]);
+    const modelId = chat?.modelId || (!chatId ? draftChatConfig?.modelId : undefined);
+    if (!modelId) return null;
+    return getModelCapabilities(modelId);
+  }, [chat?.modelId, chatId, draftChatConfig?.modelId]);
 
   const supportsVision = modelCaps?.supportsVision ?? false;
   const supportedImageFormats = modelCaps?.supportedImageFormats ?? [];

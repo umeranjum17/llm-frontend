@@ -222,7 +222,7 @@ export default function Home() {
           await state.loadSettings();
         }
 
-        const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultExecutionTarget, currentProjectId, defaultReasoningLevel, defaultMcpServerIds, defaultTemperature, defaultMaxTokens } =
+        const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultExecutionTarget, currentProjectId, defaultReasoningLevel, defaultMcpServerIds, defaultTemperature, defaultMaxTokens, incognitoDefault } =
           useSettingsStore.getState();
         const { providerId, modelId, executionTarget } = getDefaultChatConfig({
           defaultProviderId,
@@ -241,6 +241,7 @@ export default function Home() {
           reasoningLevel: (defaultReasoningLevel as "low" | "medium" | "high" | "xhigh") || "medium",
           temperature: defaultTemperature,
           maxTokens: defaultMaxTokens,
+          incognitoMode: incognitoDefault || undefined,
         });
         useUIStore.getState().setActiveChatId(null);
 

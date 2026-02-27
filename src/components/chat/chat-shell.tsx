@@ -9,12 +9,14 @@ import { useUIStore } from "@/stores/ui-store";
 import { useShallow } from "zustand/react/shallow";
 import {
   createChat,
+  getChatById,
   getChatWithAgent,
   getModelPickerData,
   updateChat,
   updateModelLastUsed,
   getMessages,
   updateAgent,
+  deleteChat,
 } from "@/lib/db/queries";
 import type { Message } from "@/lib/db/schema";
 import { MODELS, type Model, getModelById, USE_CASE_RECOMMENDATIONS, MODEL_CATALOG } from "@/lib/constants/models";
@@ -258,6 +260,21 @@ export function ChatShell() {
 
   // Auto-summary hook
   useChatSummary(activeChatId || "", aiMessages, chat?.summary);
+
+  // Auto-delete incognito chats when navigating away
+  const prevChatIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prevId = prevChatIdRef.current;
+    prevChatIdRef.current = activeChatId;
+
+    if (prevId && prevId !== activeChatId) {
+      getChatById(prevId).then(prevChat => {
+        if (prevChat?.incognitoMode) {
+          deleteChat(prevId);
+        }
+      });
+    }
+  }, [activeChatId]);
 
   // Always use chat's model - agent's default model is copied to chat.modelId when agent is selected
   // If user changes model via dropdown, chat.modelId is updated and should take precedence
@@ -572,7 +589,7 @@ export function ChatShell() {
       if (!state.isLoaded) {
         await state.loadSettings();
       }
-      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultExecutionTarget, defaultMcpServerIds, defaultReasoningLevel, defaultTemperature, defaultMaxTokens } =
+      const { defaultProviderId, defaultModelId, defaultModelIdsByProvider, defaultExecutionTarget, defaultMcpServerIds, defaultReasoningLevel, defaultTemperature, defaultMaxTokens, incognitoDefault } =
         useSettingsStore.getState();
       const { providerId, modelId, executionTarget } = getDefaultChatConfig({
         defaultProviderId,
@@ -589,6 +606,7 @@ export function ChatShell() {
         reasoningLevel: (defaultReasoningLevel as "low" | "medium" | "high" | "xhigh") || "medium",
         temperature: defaultTemperature,
         maxTokens: defaultMaxTokens,
+        incognitoMode: incognitoDefault || undefined,
       });
       setActiveChatId(newChat.id);
       // No toast - new chat appearing is obvious

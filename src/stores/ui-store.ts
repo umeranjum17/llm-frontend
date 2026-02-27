@@ -23,6 +23,7 @@ export interface DraftChatConfig {
   temperature?: number;
   maxTokens?: number;
   projectId?: string;
+  incognitoMode?: boolean;
 }
 
 // Multi-model panel configuration

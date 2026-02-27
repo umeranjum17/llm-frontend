@@ -29,6 +29,7 @@ interface SettingsState extends Partial<UserSettings> {
   updateDefaultTemperature: (temperature: number) => Promise<void>;
   updateDefaultMaxTokens: (maxTokens: number) => Promise<void>;
   updateLuminaSettings: (url: string, secret: string, enabled: boolean) => Promise<void>;
+  updateIncognitoDefault: (enabled: boolean) => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -44,6 +45,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   lastProviderIdByModel: {},
   defaultTemperature: 1,
   defaultMaxTokens: 4096,
+  incognitoDefault: false,
 
   loadSettings: async () => {
     const maxRetries = 3;
@@ -210,5 +212,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateLuminaSettings: async (url, secret, enabled) => {
     await updateSettings({ luminaUrl: url, luminaSecret: secret, luminaEnabled: enabled });
     set({ luminaUrl: url, luminaSecret: secret, luminaEnabled: enabled });
+  },
+
+  updateIncognitoDefault: async (enabled) => {
+    await updateSettings({ incognitoDefault: enabled });
+    set({ incognitoDefault: enabled });
   },
 }));

@@ -14,7 +14,8 @@ import {
 import { useSettingsStore } from "@/stores/settings-store";
 import { MODELS } from "@/lib/constants/models";
 import { toast } from "sonner";
-import { GraduationCap, Download, Share, Check } from "lucide-react";
+import { GraduationCap, Download, Share, Check, EyeOff } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { BackgroundModelsCard } from "./background-models-card";
 import { ModelSelector } from "@/components/model-picker/model-selector";
 import { useAvailableModels } from "@/hooks/use-available-models";
@@ -27,6 +28,8 @@ export function GeneralSettings() {
     defaultProviderId: savedDefaultProviderId,
     defaultModelIdsByProvider: savedDefaultModelIdsByProvider,
     updateDefaultChatDefaults,
+    incognitoDefault,
+    updateIncognitoDefault,
   } = useSettingsStore();
 
   const { isInstallable, isInstalled, isIOSSafari, install } = usePWA();
@@ -140,6 +143,27 @@ export function GeneralSettings() {
       {/* Background Models */}
       <div className="border-t pt-6">
         <BackgroundModelsCard />
+      </div>
+
+      {/* Incognito Default */}
+      <div className="space-y-4 border-t pt-6">
+        <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <EyeOff className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h3 className="font-semibold">Always Start in Incognito</h3>
+              <p className="text-sm text-muted-foreground">
+                New chats will start in incognito mode by default. Incognito chats disable memory, tools, and are auto-deleted when you navigate away.
+              </p>
+            </div>
+          </div>
+          <Switch
+            checked={incognitoDefault ?? false}
+            onCheckedChange={updateIncognitoDefault}
+          />
+        </div>
       </div>
 
       {/* Onboarding Tour */}

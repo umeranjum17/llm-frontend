@@ -2,7 +2,7 @@ import Dexie, { type EntityTable } from "dexie";
 import { TABLE_REGISTRY, getStoresForVersion } from "./table-registry";
 
 // Current schema version - update this when adding new tables or indexes
-export const DB_SCHEMA_VERSION = 35;
+export const DB_SCHEMA_VERSION = 36;
 
 // Type definitions
 export interface Project {
@@ -207,6 +207,8 @@ export interface UserSettings {
   luminaUrl?: string;           // e.g. "http://100.x.x.x:8000" (Tailscale IP)
   luminaSecret?: string;        // Bearer token matching Lumina's LUMINA_SECRET env var
   luminaEnabled?: boolean;      // Master toggle for Lumina integration
+  // Incognito mode settings
+  incognitoDefault?: boolean;   // Always start new chats in incognito mode (default: false)
 }
 
 export interface ModelFavorite {
@@ -450,6 +452,8 @@ export interface MemoryVector {
   memoryId: string;
   category?: string;
   embeddingModel?: string;
+  embeddingProvider?: string;
+  embeddingDimensions?: number;
 }
 
 export interface Workflow {
@@ -733,6 +737,49 @@ export class LuminaDB extends Dexie {
 
           console.log(`[DB] Migrated ${migrated} memory vectors to memoryVectors table`);
           console.log("[DB] ✓ v35 migration complete");
+        });
+      }
+
+      // Version 36: Backfill memory vector metadata + migrate legacy memoryModelId into map
+      if (version === 36) {
+        schema.upgrade(async (tx) => {
+          console.log("[DB] Running v36 upgrade: Backfilling memory metadata");
+
+          const memoryVectors = await tx.table("memoryVectors").toArray();
+          let vecUpdated = 0;
+          for (const vector of memoryVectors) {
+            const updates: Record<string, any> = {};
+            if (typeof vector.embeddingDimensions !== "number") {
+              updates.embeddingDimensions = Array.isArray(vector.embedding) ? vector.embedding.length : undefined;
+            }
+            if (!vector.embeddingProvider && vector.embeddingModel) {
+              updates.embeddingProvider = vector.embeddingModel.startsWith("local") ? "local" : "remote";
+            }
+            if (Object.keys(updates).length > 0) {
+              await tx.table("memoryVectors").update(vector.id, updates);
+              vecUpdated++;
+            }
+          }
+
+          const settings = await tx.table("settings").toArray();
+          let settingsUpdated = 0;
+          for (const setting of settings) {
+            if (
+              setting.memoryModelId &&
+              typeof setting.memoryModelId === "string" &&
+              setting.memoryModelId.includes("/")
+            ) {
+              const provider = setting.memoryModelId.split("/")[0];
+              const nextMap = { ...(setting.memoryModelIdsByProvider || {}), [provider]: setting.memoryModelId };
+              await tx.table("settings").update(setting.id, {
+                memoryModelIdsByProvider: nextMap,
+              });
+              settingsUpdated++;
+            }
+          }
+
+          console.log(`[DB] v36 updated ${vecUpdated} memory vectors and ${settingsUpdated} settings rows`);
+          console.log("[DB] ✓ v36 migration complete");
         });
       }
 
