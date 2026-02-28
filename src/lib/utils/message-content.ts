@@ -31,6 +31,26 @@ export function getImagesFromMessageContent(content: MessageContent): string[] {
     .map((part) => part.image_url.url);
 }
 
+export function prependTextToMessageContent(
+  content: MessageContent,
+  prefix: string
+): MessageContent {
+  if (!prefix) return content;
+  if (typeof content === "string") return `${prefix}${content}`;
+  if (content.length === 0) return [{ type: "text", text: prefix }];
+
+  const firstTextIndex = content.findIndex((part) => part.type === "text");
+  if (firstTextIndex === -1) {
+    return [{ type: "text", text: prefix }, ...content];
+  }
+
+  return content.map((part, idx) => (
+    part.type === "text" && idx === firstTextIndex
+      ? { ...part, text: `${prefix}${part.text}` }
+      : part
+  ));
+}
+
 /**
  * Convert message content to AI SDK ModelMessage format.
  * The AI SDK uses a different format than OpenAI:
@@ -105,4 +125,3 @@ export function convertToAISDKContent(
 
   return convertedParts;
 }
-

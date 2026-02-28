@@ -4,6 +4,7 @@ import {
   getTextFromMessageContent,
   mapTextInMessageContent,
   getImagesFromMessageContent,
+  prependTextToMessageContent,
   convertToAISDKContent,
 } from '../message-content';
 
@@ -134,6 +135,23 @@ describe('message-content utilities', () => {
         { type: 'image_url' as const, image_url: { url: 'data:image/png;base64,abc123' } },
       ];
       expect(getImagesFromMessageContent(content)).toEqual(['data:image/png;base64,abc123']);
+    });
+  });
+
+  describe('prependTextToMessageContent', () => {
+    it('prepends to string content', () => {
+      expect(prependTextToMessageContent('hello', 'ctx: ')).toBe('ctx: hello');
+    });
+
+    it('prepends to first text part and preserves images', () => {
+      const content = [
+        { type: 'image_url' as const, image_url: { url: 'https://example.com/1.png' } },
+        { type: 'text' as const, text: 'describe this' },
+      ];
+      expect(prependTextToMessageContent(content, 'ctx: ')).toEqual([
+        { type: 'image_url', image_url: { url: 'https://example.com/1.png' } },
+        { type: 'text', text: 'ctx: describe this' },
+      ]);
     });
   });
 
