@@ -263,6 +263,7 @@ export async function POST(req: Request) {
       tokenBreakdown.toolSchemas;
 
     // === END TOKEN BREAKDOWN ===
+    console.log(`[Chat] Token breakdown — system: ${tokenBreakdown.systemMessages}, user: ${tokenBreakdown.userMessages}, assistant: ${tokenBreakdown.assistantMessages}, toolInstructions: ${tokenBreakdown.toolInstructions}, toolSchemas: ${tokenBreakdown.toolSchemas}, total: ${tokenBreakdown.total}`);
 
     // Provider options for streamText
     // Note: Usage and provider routing are now configured at model creation time
